@@ -1,3 +1,4 @@
+import { memo } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { CopyButton } from "@/components/CopyButton";
@@ -18,7 +19,11 @@ function textOfBlocks(blocks: ContentBlock[]): string {
     .join("");
 }
 
-export function MessageRow({ m }: { m: UiMessage }) {
+export function hasTraceBlocks(m: UiMessage): boolean {
+  return m.role === "tool" || m.content.some((block) => block.type !== "text");
+}
+
+export const MessageRow = memo(function MessageRow({ m, showTrace = false }: { m: UiMessage; showTrace?: boolean }) {
   if (m.error) {
     return (
       <div className="flex gap-3">
@@ -43,7 +48,7 @@ export function MessageRow({ m }: { m: UiMessage }) {
             </div>
           </div>
         )}
-        {results.map((b, i) => (
+        {showTrace && results.map((b, i) => (
           <ToolResult key={i} block={b as Extract<ContentBlock, { type: "tool_result" }>} />
         ))}
       </>
@@ -51,6 +56,7 @@ export function MessageRow({ m }: { m: UiMessage }) {
   }
 
   if (m.role === "tool") {
+    if (!showTrace) return null;
     return (
       <>
         {m.content.map((b, i) =>
@@ -75,11 +81,11 @@ export function MessageRow({ m }: { m: UiMessage }) {
             </div>
           ) : null;
         }
-        if (b.type === "tool_use") return <ToolUse key={i} block={b as Extract<ContentBlock, { type: "tool_use" }>} />;
-        if (b.type === "tool_result") return <ToolResult key={i} block={b as Extract<ContentBlock, { type: "tool_result" }>} />;
+        if (b.type === "tool_use") return showTrace ? <ToolUse key={i} block={b as Extract<ContentBlock, { type: "tool_use" }>} /> : null;
+        if (b.type === "tool_result") return showTrace ? <ToolResult key={i} block={b as Extract<ContentBlock, { type: "tool_result" }>} /> : null;
         if (b.type === "thinking") {
           const t = (b as { thinking?: string; text?: string }).thinking ?? (b as { text?: string }).text ?? "";
-          return t ? <Thinking key={i} text={t} /> : null;
+          return showTrace && t ? <Thinking key={i} text={t} /> : null;
         }
         return null;
       })}
@@ -90,4 +96,4 @@ export function MessageRow({ m }: { m: UiMessage }) {
       )}
     </div>
   );
-}
+});

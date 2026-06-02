@@ -1,15 +1,16 @@
-import { PanelLeftOpen, Compass, Bot, Users, Calculator, BookOpen, Database, type LucideIcon } from "lucide-react";
+import { PanelLeftOpen, Compass, Bot, Users, Calculator, BookOpen, Database, FlaskConical, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type Tab = "explore" | "single" | "multi" | "aggregate" | "rule_memory" | "xan_db";
+export type Tab = "explore" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "anax";
 
 export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "explore", label: "探索", icon: Compass },
-  { id: "single", label: "单智能体", icon: Bot },
-  { id: "multi", label: "多智能体", icon: Users },
-  { id: "aggregate", label: "聚合计算", icon: Calculator },
+  { id: "multi", label: "工作流", icon: Users },
+  { id: "aggregate", label: "计算工具", icon: Calculator },
   { id: "rule_memory", label: "规则记忆", icon: BookOpen },
   { id: "xan_db", label: "Xan数据库", icon: Database },
+  { id: "research_lab", label: "实验室", icon: FlaskConical },
+  { id: "anax", label: "AnaX", icon: Bot },
 ];
 
 interface Props {
@@ -21,10 +22,23 @@ interface Props {
   onOpenSidebar: () => void;
   totalTokens: number;
   totalCost: number;
+  /** 0–1. 0 = no data yet (hidden). cacheReadTokens / (input + cacheRead + cacheWrite) */
+  cacheHitRate: number;
+  hiddenTabs: string[];
+  rulesPromptEnabled: boolean;
+  rulesPromptCount: number;
+  rulesPromptUpdatedAt: number | null;
+  onToggleRulesPrompt: () => void;
 }
 
 export function MainHeader(p: Props) {
   const tabLabel = TABS.find((t) => t.id === p.activeTab)?.label ?? "";
+  const visibleTabs = TABS.filter((t) => !p.hiddenTabs.includes(t.id));
+  const rulesPromptTitle = p.rulesPromptCount === 0
+    ? "无启用规则，开启后也不会注入内容"
+    : p.rulesPromptEnabled
+      ? `规则记忆注入已开启，将注入 ${p.rulesPromptCount} 条启用规则${p.rulesPromptUpdatedAt ? `\n更新于 ${new Date(p.rulesPromptUpdatedAt).toLocaleString()}` : ""}`
+      : `规则记忆注入已关闭，有 ${p.rulesPromptCount} 条启用规则可注入${p.rulesPromptUpdatedAt ? `\n更新于 ${new Date(p.rulesPromptUpdatedAt).toLocaleString()}` : ""}`;
   return (
     <header className="flex h-12 shrink-0 items-center px-4">
       {!p.sidebarOpen && (
@@ -51,7 +65,7 @@ export function MainHeader(p: Props) {
 
       {/* tab strip */}
       <nav className="ml-4 flex h-9 shrink-0 items-center gap-1">
-        {TABS.map((t) => {
+        {visibleTabs.map((t) => {
           const Icon = t.icon;
           const active = t.id === p.activeTab;
           return (
@@ -74,9 +88,37 @@ export function MainHeader(p: Props) {
 
       {/* right: usage chips */}
       <div className="ml-auto flex shrink-0 items-center gap-3 pl-3 text-[11px] text-neutral-500 dark:text-neutral-400">
-        <span title="累计 token">{p.totalTokens.toLocaleString()} tok</span>
+        <button
+          onClick={p.onToggleRulesPrompt}
+          title={rulesPromptTitle}
+          disabled={p.rulesPromptCount === 0}
+          className={cn(
+            "inline-flex h-7 items-center rounded-md px-2 text-[11.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            p.rulesPromptEnabled
+              ? "bg-emerald-50 font-medium text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300"
+              : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200",
+          )}
+        >
+          rules {p.rulesPromptCount === 0 ? "none" : p.rulesPromptEnabled ? `on · ${p.rulesPromptCount}` : `off · ${p.rulesPromptCount}`}
+        </button>
+        {p.cacheHitRate > 0 && (
+          <span
+            title={`Provider 缓存命中率：${(p.cacheHitRate * 100).toFixed(1)}%\n命中 token 占比 = cacheRead / (input + cacheRead + cacheWrite)`}
+            className={cn(
+              "font-medium tabular-nums",
+              p.cacheHitRate >= 0.5
+                ? "text-emerald-600 dark:text-emerald-400"
+                : p.cacheHitRate >= 0.2
+                  ? "text-amber-500 dark:text-amber-400"
+                  : "text-neutral-500 dark:text-neutral-400",
+            )}
+          >
+            ↩{(p.cacheHitRate * 100).toFixed(0)}%
+          </span>
+        )}
+        <span title="累计 token" className="tabular-nums">{p.totalTokens.toLocaleString()} tok</span>
         <span className="text-neutral-300 dark:text-neutral-700">·</span>
-        <span title="累计成本 (USD)">${p.totalCost.toFixed(4)}</span>
+        <span title="累计成本 (USD)" className="tabular-nums">${p.totalCost.toFixed(4)}</span>
       </div>
     </header>
   );

@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, Plus, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleAlert, Copy, FileText, Folder, FolderOpen, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
-import type { WorkspaceFolderName, WorkspacePath } from "@/types";
+import type { FlowTreeNode, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "@/types";
 
 type Scope =
   | { type: "workspace"; workspaceId: string }
@@ -11,69 +12,139 @@ type Scope =
 interface Props {
   scope: Scope | null;
   folder: WorkspaceFolderName;
+  onPathsChange?: (paths: WorkspacePath[]) => void;
 }
 
 const META: Record<WorkspaceFolderName, { title: string; hint: string }> = {
-  draw_data: { title: "原始数据", hint: "填入待分析的原始数据文件路径" },
-  clean_data: { title: "清洗数据", hint: "填入已清洗处理的数据文件路径" },
-  report: { title: "报告", hint: "填入报告输出目录或文件路径" },
+  draw_data: { title: "原始数据", hint: "添加待分析的原始数据文件或文件夹" },
+  clean_data: { title: "聚合数据", hint: "添加已聚合处理的数据文件或文件夹" },
+  report: { title: "报告输出", hint: "优先添加内容输出目录；未设置时默认输出到最近加载的数据源目录" },
 };
 
+interface PreviewState {
+  entryId: number;
+  name: string;
+  size: number;
+  loading: boolean;
+  previewable: boolean;
+  truncated: boolean;
+  content?: string;
+  error?: string;
+}
 
+function formatBytes(size: number): string {
+  if (size < 1024) return `${size} B`;
+  if (size < 1024 * 1024) return `${(size / 1024).toFixed(1)} KB`;
+  return `${(size / 1024 / 1024).toFixed(1)} MB`;
+}
 
-export function FolderPathsPane({ scope, folder }: Props) {
+function isMarkdown(name: string): boolean {
+  const lower = name.toLowerCase();
+  return lower.endsWith(".md") || lower.endsWith(".markdown");
+}
+
+function PathTreeNode({ node, depth, onPreview }: { node: FlowTreeNode; depth: number; onPreview: (path: string) => void }) {
+  const [open, setOpen] = useState(depth < 1);
+  const paddingLeft = `${12 + depth * 14}px`;
+  if (node.kind === "file") {
+    return (
+      <button
+        onClick={() => onPreview(node.path)}
+        style={{ paddingLeft }}
+        className="flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-[12px] text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      >
+        <FileText className="h-3.5 w-3.5 shrink-0 text-neutral-400" strokeWidth={1.75} />
+        <span className="truncate">{node.name}</span>
+      </button>
+    );
+  }
+  return (
+    <div>
+      <button
+        onClick={() => setOpen((value) => !value)}
+        style={{ paddingLeft }}
+        className="flex w-full items-center gap-1 rounded py-1 pr-2 text-left text-[12px] text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      >
+        {open ? <ChevronDown className="h-3 w-3 shrink-0" /> : <ChevronRight className="h-3 w-3 shrink-0" />}
+        <Folder className="h-3.5 w-3.5 shrink-0 text-neutral-400" strokeWidth={1.75} />
+        <span className="truncate">{node.name}</span>
+      </button>
+      {open && (node.children ?? []).map((child) => (
+        <PathTreeNode key={child.path} node={child} depth={depth + 1} onPreview={onPreview} />
+      ))}
+    </div>
+  );
+}
+
+export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
   const [paths, setPaths] = useState<WorkspacePath[]>([]);
-  const [adding, setAdding] = useState(false);
+  const [addingKind, setAddingKind] = useState<WorkspacePathKind | null>(null);
   const [draft, setDraft] = useState("");
   const [picking, setPicking] = useState(false);
+  const [trees, setTrees] = useState<Record<number, FlowTreeNode>>({});
+  const [openDirs, setOpenDirs] = useState<Set<number>>(new Set());
+  const [treeErrors, setTreeErrors] = useState<Record<number, string>>({});
+  const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [addError, setAddError] = useState("");
+  const [copiedPathId, setCopiedPathId] = useState<number | null>(null);
 
   const load = useCallback(() => {
     if (!scope) return;
+    const updatePaths = (nextPaths: WorkspacePath[]) => {
+      setPaths(nextPaths);
+      onPathsChange?.(nextPaths);
+    };
     switch (scope.type) {
       case "workspace":
-        api.listWorkspacePaths(scope.workspaceId, folder).then(setPaths).catch(() => setPaths([]));
+        api.listWorkspacePaths(scope.workspaceId, folder).then(updatePaths).catch(() => updatePaths([]));
         break;
       case "session":
-        api.listSessionPaths(scope.sessionId, folder).then(setPaths).catch(() => setPaths([]));
+        api.listSessionPaths(scope.sessionId, folder).then(updatePaths).catch(() => updatePaths([]));
         break;
       case "flow":
-        api.listFlowPaths(scope.flowId, folder).then(setPaths).catch(() => setPaths([]));
+        api.listFlowPaths(scope.flowId, folder).then(updatePaths).catch(() => updatePaths([]));
         break;
     }
-  }, [scope, folder]);
+  }, [scope, folder, onPathsChange]);
 
   useEffect(() => {
     load();
   }, [load]);
 
-  const startAdding = () => {
+  const startAdding = (kind: WorkspacePathKind) => {
     setDraft("");
-    setAdding(true);
+    setAddError("");
+    setAddingKind(kind);
   };
 
   const confirm = async () => {
     const p = draft.trim();
-    if (!scope || !p) return;
-    switch (scope.type) {
-      case "workspace":
-        await api.addWorkspacePath(scope.workspaceId, folder, p);
-        break;
-      case "session":
-        await api.addSessionPath(scope.sessionId, folder, p);
-        break;
-      case "flow":
-        await api.addFlowPath(scope.flowId, folder, p);
-        break;
+    if (!scope || !p || !addingKind) return;
+    try {
+      switch (scope.type) {
+        case "workspace":
+          await api.addWorkspacePath(scope.workspaceId, folder, p, addingKind);
+          break;
+        case "session":
+          await api.addSessionPath(scope.sessionId, folder, p, addingKind);
+          break;
+        case "flow":
+          await api.addFlowPath(scope.flowId, folder, p, addingKind);
+          break;
+      }
+      setDraft("");
+      setAddingKind(null);
+      load();
+    } catch (err) {
+      setAddError(String(err));
     }
-    setDraft("");
-    setAdding(false);
-    load();
   };
 
   const pick = async () => {
+    if (!addingKind) return;
     setPicking(true);
     try {
-      const { path } = await api.pickLocalPath("file");
+      const { path } = await api.pickLocalPath(addingKind === "dir" ? "dir" : "file");
       setDraft(path);
     } catch {
       // user cancelled — no-op
@@ -95,7 +166,52 @@ export function FolderPathsPane({ scope, folder }: Props) {
         await api.removeFlowPath(scope.flowId, id);
         break;
     }
-    setPaths((cur) => cur.filter((p) => p.id !== id));
+    const nextPaths = paths.filter((path) => path.id !== id);
+    setPaths(nextPaths);
+    onPathsChange?.(nextPaths);
+    setOpenDirs((cur) => {
+      const next = new Set(cur);
+      next.delete(id);
+      return next;
+    });
+    setPreview((cur) => cur?.entryId === id ? null : cur);
+  };
+
+  const copyPath = async (path: WorkspacePath) => {
+    await navigator.clipboard.writeText(path.path);
+    setCopiedPathId(path.id);
+    window.setTimeout(() => {
+      setCopiedPathId((current) => current === path.id ? null : current);
+    }, 1500);
+  };
+
+  const previewFile = async (entryId: number, path = "") => {
+    setPreview({ entryId, name: path || "加载中", size: 0, loading: true, previewable: true, truncated: false });
+    try {
+      const file = await api.workspacePathFileGet(entryId, path);
+      setPreview({ entryId, ...file, loading: false });
+    } catch (err) {
+      setPreview({ entryId, name: path || "无法预览", size: 0, loading: false, previewable: false, truncated: false, error: String(err) });
+    }
+  };
+
+  const toggleDir = async (entryId: number) => {
+    if (openDirs.has(entryId)) {
+      setOpenDirs((cur) => {
+        const next = new Set(cur);
+        next.delete(entryId);
+        return next;
+      });
+      return;
+    }
+    setOpenDirs((cur) => new Set(cur).add(entryId));
+    if (trees[entryId]) return;
+    try {
+      const tree = await api.workspacePathTree(entryId);
+      setTrees((cur) => ({ ...cur, [entryId]: tree }));
+    } catch (err) {
+      setTreeErrors((cur) => ({ ...cur, [entryId]: String(err) }));
+    }
   };
 
   const { title, hint } = META[folder];
@@ -115,78 +231,160 @@ export function FolderPathsPane({ scope, folder }: Props) {
         <div>
           <h2 className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">{title}</h2>
           <p className="mt-0.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">{hint}</p>
+          {folder === "draw_data" && (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-red-600 dark:text-red-500">
+              <ShieldAlert className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              数据安全：原始数据不得被 LLM 读取
+            </p>
+          )}
+          {folder === "clean_data" && (
+            <p className="mt-2 inline-flex items-center gap-1.5 text-[12px] text-amber-600 dark:text-amber-500">
+              <CircleAlert className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+              数据安全：可被 LLM 读取，不要放入明细数据
+            </p>
+          )}
         </div>
-        <button
-          onClick={startAdding}
-          className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12.5px] font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
-        >
-          <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
-          添加路径
-        </button>
+        <div className="flex gap-2">
+          <button
+            onClick={() => startAdding("file")}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12.5px] font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+            添加文件
+          </button>
+          <button
+            onClick={() => startAdding("dir")}
+            className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 text-[12.5px] font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          >
+            <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+            添加文件夹
+          </button>
+        </div>
       </div>
 
       {/* inline add row */}
-      {adding && (
-        <div className="flex items-center gap-2 rounded-lg border border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900">
-          <input
-            autoFocus
-            value={draft}
-            onChange={(e) => setDraft(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === "Enter") void confirm();
-              if (e.key === "Escape") setAdding(false);
-            }}
-            placeholder="/path/to/file"
-            className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-neutral-900 outline-none placeholder:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
-          />
-          <button
-            onClick={pick}
-            disabled={picking}
-            title="选取本地文件"
-            className="inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
-          >
-            <FolderOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
-            选取
-          </button>
-          <button
-            onClick={() => void confirm()}
-            className="inline-flex h-7 items-center rounded px-2 text-[11px] font-medium text-neutral-900 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800"
-          >
-            确认
-          </button>
-          <button
-            onClick={() => setAdding(false)}
-            className="inline-flex h-7 items-center rounded px-2 text-[11px] text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
-          >
-            取消
-          </button>
+      {addingKind && (
+        <div className="rounded-lg border border-neutral-200 bg-white px-3 py-2 dark:border-neutral-700 dark:bg-neutral-900">
+          <div className="flex items-center gap-2">
+            <input
+              autoFocus
+              value={draft}
+              onChange={(e) => setDraft(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === "Enter") void confirm();
+                if (e.key === "Escape") setAddingKind(null);
+              }}
+              placeholder={addingKind === "dir" ? "/path/to/folder" : "/path/to/file"}
+              className="min-w-0 flex-1 bg-transparent font-mono text-[12.5px] text-neutral-900 outline-none placeholder:text-neutral-400 dark:text-neutral-100 dark:placeholder:text-neutral-600"
+            />
+            <button
+              onClick={() => void pick()}
+              disabled={picking}
+              title={addingKind === "dir" ? "选取本地文件夹" : "选取本地文件"}
+              className="inline-flex h-7 items-center gap-1 rounded px-2 text-[11px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            >
+              <FolderOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
+              选取
+            </button>
+            <button
+              onClick={() => void confirm()}
+              className="inline-flex h-7 items-center rounded px-2 text-[11px] font-medium text-neutral-900 hover:bg-neutral-100 dark:text-neutral-100 dark:hover:bg-neutral-800"
+            >
+              确认
+            </button>
+            <button
+              onClick={() => setAddingKind(null)}
+              className="inline-flex h-7 items-center rounded px-2 text-[11px] text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            >
+              取消
+            </button>
+          </div>
+          {addError && <p className="mt-1 text-[11px] text-red-500">{addError}</p>}
         </div>
       )}
 
-      {/* path list */}
-      <div className="space-y-1">
-        {paths.map((p) => (
-          <div
-            key={p.id}
-            className="group flex items-center gap-2 rounded-md px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-800/60"
-          >
-            <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-neutral-800 dark:text-neutral-200">
-              {p.path}
-            </span>
-            <button
-              onClick={() => void remove(p.id)}
-              title="移除"
-              className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded opacity-0 text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100 dark:text-neutral-500 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
-            >
-              <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
-            </button>
-          </div>
-        ))}
-        {paths.length === 0 && !adding && (
-          <p className="px-3 py-6 text-center text-[12.5px] text-neutral-400 dark:text-neutral-500">
-            还没有路径，点「添加路径」填入{title}文件路径。
-          </p>
-        )}
+      <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
+        {/* path list */}
+        <div className="space-y-1">
+          {paths.map((p) => (
+            <div key={p.id}>
+              <div className="group flex items-center gap-2 rounded-md px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-800/60">
+                <button
+                  onClick={() => p.kind === "dir" ? void toggleDir(p.id) : void previewFile(p.id)}
+                  className="flex min-w-0 flex-1 items-center gap-2 text-left"
+                >
+                  {p.kind === "dir" ? (
+                    openDirs.has(p.id) ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-neutral-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                  ) : <span className="w-3.5 shrink-0" />}
+                  {p.kind === "dir" ? <Folder className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.75} /> : <FileText className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.75} />}
+                  <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-neutral-800 dark:text-neutral-200">{p.path}</span>
+                </button>
+                <button
+                  onClick={() => void copyPath(p)}
+                  title={copiedPathId === p.id ? "已复制" : "复制路径"}
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100 dark:text-neutral-500 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+                >
+                  {copiedPathId === p.id
+                    ? <Check className="h-3.5 w-3.5" strokeWidth={1.75} />
+                    : <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                </button>
+                <button
+                  onClick={() => void remove(p.id)}
+                  title="移除"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-400 opacity-0 hover:bg-neutral-200 hover:text-neutral-700 group-hover:opacity-100 dark:text-neutral-500 dark:hover:bg-neutral-700 dark:hover:text-neutral-200"
+                >
+                  <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                </button>
+              </div>
+              {p.kind === "dir" && openDirs.has(p.id) && (
+                <div className="ml-3 border-l border-neutral-200 py-1 dark:border-neutral-800">
+                  {treeErrors[p.id] ? (
+                    <p className="px-3 py-1 text-[11px] text-red-500">{treeErrors[p.id]}</p>
+                  ) : trees[p.id] ? (
+                    (trees[p.id]?.children ?? []).map((node) => (
+                      <PathTreeNode key={node.path} node={node} depth={0} onPreview={(path) => void previewFile(p.id, path)} />
+                    ))
+                  ) : (
+                    <p className="px-3 py-1 text-[11px] text-neutral-400">正在读取...</p>
+                  )}
+                </div>
+              )}
+            </div>
+          ))}
+          {paths.length === 0 && !addingKind && (
+            <p className="px-3 py-6 text-center text-[12.5px] text-neutral-400 dark:text-neutral-500">
+              还没有文档或文件夹，点击上方按钮添加。
+            </p>
+          )}
+        </div>
+
+        {/* preview */}
+        <div className="min-h-[240px] rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+          {!preview ? (
+            <p className="flex h-full items-center justify-center text-[12.5px] text-neutral-400">选择文件后在这里预览</p>
+          ) : preview.loading ? (
+            <p className="text-[12.5px] text-neutral-400">正在读取...</p>
+          ) : (
+            <>
+              <div className="mb-3 border-b border-neutral-200 pb-2 dark:border-neutral-800">
+                <p className="truncate font-mono text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">{preview.name}</p>
+                <p className="mt-1 text-[11px] text-neutral-400">
+                  {formatBytes(preview.size)}
+                  {preview.truncated ? " · 内容已截断至 2 MB" : ""}
+                </p>
+              </div>
+              {preview.error ? (
+                <p className="text-[12px] text-red-500">{preview.error}</p>
+              ) : !preview.previewable ? (
+                <p className="text-[12.5px] text-neutral-500 dark:text-neutral-400">该文件类型暂不支持内容预览。</p>
+              ) : isMarkdown(preview.name) ? (
+                <Markdown>{preview.content || "_（空文件）_"}</Markdown>
+              ) : (
+                <pre className="max-h-[520px] overflow-auto whitespace-pre-wrap break-words font-mono text-[12px] leading-5 text-neutral-700 dark:text-neutral-300">{preview.content || "（空文件）"}</pre>
+              )}
+            </>
+          )}
+        </div>
       </div>
     </div>
   );

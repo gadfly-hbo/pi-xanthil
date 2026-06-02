@@ -2,7 +2,7 @@
   "name": "pi-xanthil",
   "private": true,
   "version": "0.1.0",
-  "description": "湘鉴 pi-Xanthil — 数据分析 AI 工作台 (pi cli 套壳)",
+  "description": "苍耳 pi-Xanthil — 数据分析 AI 工作台 (pi cli 套壳)",
   "type": "module",
   "workspaces": [
     "server",

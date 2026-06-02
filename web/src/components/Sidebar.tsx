@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
   Folder,
+  CopyPlus,
   MessageSquarePlus,
   PanelLeftClose,
   Pencil,
@@ -9,11 +10,12 @@ import {
   Moon,
   Sun,
   Trash2,
+  Star,
   Workflow,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useTheme } from "@/lib/theme";
-import type { Flow, Session, Workspace } from "@/types";
+import type { Flow, Session, WorkflowFavorite, Workspace } from "@/types";
 
 interface Props {
   workspaces: Workspace[];
@@ -22,6 +24,7 @@ interface Props {
   activeSessionId: string | null;
   flows: Flow[];
   activeFlowId: string | null;
+  workflowFavorites: WorkflowFavorite[];
   onSelectWorkspace: (id: string) => void;
   onSelectSession: (id: string) => void;
   onSelectFlow: (id: string) => void;
@@ -34,7 +37,11 @@ interface Props {
   onDeleteSession: (id: string) => void;
   onRenameFlow: (id: string, name: string) => void;
   onDeleteFlow: (id: string) => void;
+  onFavoriteFlow: (id: string) => void;
+  onRemoveWorkflowFavorite: (id: string) => void;
+  onReuseWorkflowFavorite: (id: string) => void;
   onCollapse: () => void;
+  onOpenSettings: () => void;
 }
 
 const ICON = 1.75;
@@ -203,6 +210,48 @@ export function Sidebar(p: Props) {
           </div>
         </section>
 
+        {/* global reusable workflow snapshots */}
+        <section className="pt-3">
+          <SectionHeader label="精选收藏" />
+          <div className="space-y-0.5">
+            {p.workflowFavorites.map((favorite) => (
+              <div key={favorite.id} className="group flex items-center rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800/60">
+                <div className="min-w-0 flex-1 px-2 py-1">
+                  <div className="flex items-center gap-1.5">
+                    <Star className="h-3.5 w-3.5 shrink-0 fill-amber-400 text-amber-500" strokeWidth={ICON} />
+                    <span className="truncate text-[12.5px] text-neutral-900 dark:text-neutral-100">{favorite.name}</span>
+                  </div>
+                  <div className="truncate pl-5 text-[10.5px] text-neutral-500 dark:text-neutral-400">
+                    来源：{favorite.sourceWorkspaceName}
+                  </div>
+                </div>
+                <div className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100">
+                  <button
+                    className={rowActionBtn}
+                    title={p.activeWorkspaceId ? "复用到当前工作区" : "请先选择工作区"}
+                    disabled={!p.activeWorkspaceId}
+                    onClick={() => p.onReuseWorkflowFavorite(favorite.id)}
+                  >
+                    <CopyPlus className="h-3.5 w-3.5" strokeWidth={ICON} />
+                  </button>
+                  <button
+                    className={rowActionBtn}
+                    title="移除收藏"
+                    onClick={() => {
+                      if (confirm(`移除精选收藏「${favorite.name}」？源工作流和已复用副本不会被删除。`)) p.onRemoveWorkflowFavorite(favorite.id);
+                    }}
+                  >
+                    <Trash2 className="h-3.5 w-3.5" strokeWidth={ICON} />
+                  </button>
+                </div>
+              </div>
+            ))}
+            {p.workflowFavorites.length === 0 && (
+              <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">还没有收藏的工作流。</div>
+            )}
+          </div>
+        </section>
+
         {/* sessions */}
         {p.activeWorkspaceId && (
           <section className="pt-3">
@@ -265,76 +314,11 @@ export function Sidebar(p: Props) {
           </section>
         )}
 
-        {/* single-agent flows */}
+        {/* workflow (multi-agent) flows */}
         {p.activeWorkspaceId && (
           <section className="pt-3">
-            <SectionHeader label="单智能体">
-              <button className={iconBtn} title="新建单智能体" onClick={() => p.onNewFlow("single")}>
-                <Plus className="h-3.5 w-3.5" strokeWidth={ICON} />
-              </button>
-            </SectionHeader>
-            <div className="space-y-0.5">
-              {p.flows.filter((f) => f.kind === "single" || !f.kind).map((f) =>
-                editing?.kind === "flow" && editing.id === f.id ? (
-                  <div key={f.id} className="px-2 py-0.5">
-                    <input
-                      autoFocus
-                      value={editing.value}
-                      onChange={(e) => setEditing({ ...editing, value: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitEdit();
-                        if (e.key === "Escape") setEditing(null);
-                      }}
-                      onBlur={commitEdit}
-                      className={editInput}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    key={f.id}
-                    className={cn(
-                      "group flex items-center rounded-md",
-                      f.id === p.activeFlowId
-                        ? "bg-neutral-200/70 dark:bg-neutral-800"
-                        : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60",
-                    )}
-                  >
-                    <button onClick={() => p.onSelectFlow(f.id)} className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-left text-[12.5px] text-neutral-800 dark:text-neutral-200">
-                      <Workflow className="h-3.5 w-3.5 shrink-0 text-neutral-500 dark:text-neutral-400" strokeWidth={ICON} />
-                      <span className="min-w-0 flex-1 truncate">{f.name}</span>
-                      {f.sourceName && (
-                        <span className="ml-1 shrink-0 text-[10px] text-neutral-400 dark:text-neutral-500">{f.sourceName}</span>
-                      )}
-                    </button>
-                    <div className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button className={rowActionBtn} title="重命名" onClick={() => setEditing({ kind: "flow", id: f.id, value: f.name })}>
-                        <Pencil className="h-3.5 w-3.5" strokeWidth={ICON} />
-                      </button>
-                      <button
-                        className={rowActionBtn}
-                        title="删除"
-                        onClick={() => {
-                          if (confirm(`删除工作流「${f.name}」？（磁盘文件保留）`)) p.onDeleteFlow(f.id);
-                        }}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" strokeWidth={ICON} />
-                      </button>
-                    </div>
-                  </div>
-                ),
-              )}
-              {p.flows.filter((f) => f.kind === "single" || !f.kind).length === 0 && (
-                <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">还没有单智能体，点上方 + 新建。</div>
-              )}
-            </div>
-          </section>
-        )}
-
-        {/* multi-agent flows */}
-        {p.activeWorkspaceId && (
-          <section className="pt-3">
-            <SectionHeader label="多智能体">
-              <button className={iconBtn} title="新建多智能体" onClick={() => p.onNewFlow("multi")}>
+            <SectionHeader label="工作流">
+              <button className={iconBtn} title="新建工作流" onClick={() => p.onNewFlow("multi")}>
                 <Plus className="h-3.5 w-3.5" strokeWidth={ICON} />
               </button>
             </SectionHeader>
@@ -372,6 +356,25 @@ export function Sidebar(p: Props) {
                       )}
                     </button>
                     <div className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button
+                        className={rowActionBtn}
+                        title={p.workflowFavorites.some((favorite) => favorite.sourceFlowId === f.id) ? "更新精选收藏快照" : "加入精选收藏"}
+                        onClick={() => {
+                          const existing = p.workflowFavorites.some((favorite) => favorite.sourceFlowId === f.id);
+                          const message = existing
+                            ? `更新「${f.name}」的精选收藏快照？`
+                            : `收藏「${f.name}」？收藏会复制工作流目录，请确认其中不包含明细数据。`;
+                          if (confirm(message)) p.onFavoriteFlow(f.id);
+                        }}
+                      >
+                        <Star
+                          className={cn(
+                            "h-3.5 w-3.5",
+                            p.workflowFavorites.some((favorite) => favorite.sourceFlowId === f.id) && "fill-amber-400 text-amber-500",
+                          )}
+                          strokeWidth={ICON}
+                        />
+                      </button>
                       <button className={rowActionBtn} title="重命名" onClick={() => setEditing({ kind: "flow", id: f.id, value: f.name })}>
                         <Pencil className="h-3.5 w-3.5" strokeWidth={ICON} />
                       </button>
@@ -389,7 +392,7 @@ export function Sidebar(p: Props) {
                 ),
               )}
               {p.flows.filter((f) => f.kind === "multi").length === 0 && (
-                <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">还没有多智能体，点上方 + 新建。</div>
+                <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">还没有工作流，点上方 + 新建。</div>
               )}
             </div>
           </section>
@@ -398,7 +401,7 @@ export function Sidebar(p: Props) {
 
       {/* footer */}
       <div className="flex items-center gap-1 border-t border-neutral-200 px-2 py-2 dark:border-neutral-800">
-        <button className="flex h-9 flex-1 items-center justify-start gap-2 rounded-lg px-3 text-[13px] font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100">
+        <button onClick={p.onOpenSettings} className="flex h-9 flex-1 items-center justify-start gap-2 rounded-lg px-3 text-[13px] font-medium text-neutral-600 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100">
           <SettingsIcon className="h-4 w-4" strokeWidth={ICON} />
           <span>设置</span>
         </button>

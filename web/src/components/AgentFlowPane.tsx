@@ -90,13 +90,18 @@ export function AgentFlowPane(p: Props) {
   }, []);
 
   const sendText = useCallback(
-    (text: string) => {
+    (text: string, skillPaths?: string[]) => {
       if (!p.flow) return;
       setMessages((cur) => [...cur, { id: nextId(), role: "user", content: [{ type: "text", text }] }]);
-      gateway.send({ type: "send_flow", flowId: p.flow.id, text, model: p.model || undefined });
+      gateway.send({ type: "send_flow", flowId: p.flow.id, text, model: p.model || undefined, skillPaths });
     },
     [p.flow, p.model],
   );
+
+  const stopChat = useCallback(() => {
+    if (!p.flow) return;
+    gateway.send({ type: "abort_flow", flowId: p.flow.id });
+  }, [p.flow]);
 
   const onImport = useCallback(
     async (files: FileList) => {
@@ -189,6 +194,7 @@ export function AgentFlowPane(p: Props) {
             importHint={importHint}
             onModelChange={p.onModelChange}
             onSend={sendText}
+            onStop={stopChat}
             onImport={onImport}
             onApplyToEditor={applyToEditor}
           />

@@ -1,0 +1,13 @@
+{
+  "id": "extract-tmall-profile",
+  "name": "提取天猫人群画像",
+  "version": "1.0.0",
+  "description": "从天猫数据银行 HTML 文件中提取人群画像，按标签规则输出 Markdown 和 JSON。",
+  "entry": "extract_tmall.py",
+  "runtime": "python3",
+  "input": {
+    "accept": [".html"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".md", ".json"]
+}
