@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelRightOpen, BookOpen, Calculator, CircleAlert, Database, TriangleAlert, Gauge, FolderKanban, Search } from "lucide-react";
+import { PanelRightOpen, CircleAlert, Database, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/Sidebar";
 import { ChatPane } from "@/components/ChatPane";
@@ -14,40 +14,30 @@ import { getSubTabsForTab, type SubTab } from "@/lib/constants";
 import { WorkflowPickerPane, type WorkflowTemplate } from "@/components/WorkflowPickerPane";
 import { Placeholder } from "@/components/Placeholder";
 import { ResearchLabPane } from "@/components/ResearchLabPane";
+import { SkillLabPane } from "@/components/SkillLabPane";
+import { ToolLabPane } from "@/components/ToolLabPane";
 import { AggregatePane } from "@/components/AggregatePane";
 import { ExtractionPane } from "@/components/ExtractionPane";
 import { TokenStatsPane } from "@/components/TokenStatsPane";
 import { TracePane } from "@/components/TracePane";
 import { RulesPane } from "@/components/RulesPane";
-import { DecisionTreePane } from "@/components/DecisionTreePane";
-import { TocPane } from "@/components/TocPane";
+import { BusinessContextPane } from "@/components/BusinessContextPane";
+import { IndicatorsPane } from "@/components/IndicatorsPane";
+import { GoldenStrategyPane } from "@/components/GoldenStrategyPane";
+import { AnaXPane } from "@/components/AnaXPane";
+import { ModelLabPane } from "@/components/ModelLabPane";
+import { OperationalModelPane } from "@/components/OperationalModelPane";
+import { AnaXReadmePane } from "@/components/AnaXReadmePane";
+import { HypothesisPane } from "@/components/HypothesisPane";
+import { CasesPane } from "@/components/CasesPane";
+import { SqlConnectPane } from "@/components/SqlConnectPane";
+import { PresentationVersionPane } from "@/components/PresentationVersionPane";
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
 import { asBlocks, textOf, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type WorkflowFavorite, type Workspace, type WorkspacePath } from "@/types";
 
 let uid = 0;
 const nextId = () => `m${++uid}`;
-
-function isToday(ts: number): boolean {
-  const d = new Date(ts);
-  const now = new Date();
-  return d.getFullYear() === now.getFullYear() &&
-    d.getMonth() === now.getMonth() &&
-    d.getDate() === now.getDate();
-}
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 const DEFAULT_CHAT_MODEL = "minimax-cn/MiniMax-M3";
 const STREAM_END_ERROR = "Stream ended without finish_reason";
@@ -73,6 +63,7 @@ export default function App() {
   const [model, setModel] = useState("");
   const [models, setModels] = useState<PiModel[]>([]);
   const [totals, setTotals] = useState({ tokens: 0, cost: 0, input: 0, cacheRead: 0, cacheWrite: 0 });
+  const [todayCacheHitRate, setTodayCacheHitRate] = useState(0);
   const [runtime, setRuntime] = useState<SessionRuntime | null>(null);
   const [compacting, setCompacting] = useState(false);
   const [runtimeNotice, setRuntimeNotice] = useState("");
@@ -105,12 +96,45 @@ export default function App() {
       return;
     }
     try {
-      const result = await api.getRulesPrompt(activeWorkspaceId);
-      setRulesPromptInfo({ count: result.count, updatedAt: result.updatedAt });
-      if (result.count === 0) setRulesPromptEnabled(false);
+      // The injectRulesPrompt toggle controls combined memory: rules + 指标体系 + 业务环境.
+      // Sum all three so the toggle isn't gated to zero when only one source has content.
+      const [rules, standards, businessContext] = await Promise.all([
+        api.getRulesPrompt(activeWorkspaceId),
+        api.getStandardsPrompt(activeWorkspaceId),
+        api.getBusinessContextPrompt(activeWorkspaceId),
+      ]);
+      const count = rules.count + standards.count + businessContext.count;
+      const updatedAt = Math.max(rules.updatedAt ?? 0, standards.updatedAt ?? 0, businessContext.updatedAt ?? 0) || null;
+      setRulesPromptInfo({ count, updatedAt });
+      if (count === 0) setRulesPromptEnabled(false);
     } catch {
       setRulesPromptInfo({ count: 0, updatedAt: null });
       setRulesPromptEnabled(false);
+    }
+  }, [activeWorkspaceId]);
+
+  const refreshTokenTotals = useCallback(async () => {
+    if (!activeWorkspaceId) {
+      setTotals({ tokens: 0, cost: 0, input: 0, cacheRead: 0, cacheWrite: 0 });
+      setTodayCacheHitRate(0);
+      return;
+    }
+    try {
+      const [stats, today] = await Promise.all([
+        api.getWorkspaceTokenStats(activeWorkspaceId),
+        api.getWorkspaceTodayTokenStats(activeWorkspaceId),
+      ]);
+      setTotals({
+        tokens: stats.inputTokens + stats.outputTokens + stats.cacheReadTokens + stats.cacheWriteTokens,
+        cost: stats.totalCost,
+        input: stats.inputTokens,
+        cacheRead: stats.cacheReadTokens,
+        cacheWrite: stats.cacheWriteTokens,
+      });
+      setTodayCacheHitRate(today.cacheHitRate);
+    } catch {
+      setTotals({ tokens: 0, cost: 0, input: 0, cacheRead: 0, cacheWrite: 0 });
+      setTodayCacheHitRate(0);
     }
   }, [activeWorkspaceId]);
 
@@ -130,6 +154,12 @@ export default function App() {
     });
     api.listWorkflowFavorites().then(setWorkflowFavorites);
   }, []);
+
+  useEffect(() => {
+    void refreshTokenTotals();
+    const timer = window.setInterval(() => void refreshTokenTotals(), 10_000);
+    return () => window.clearInterval(timer);
+  }, [refreshTokenTotals]);
 
   // ---- load sessions on workspace change ----
   useEffect(() => {
@@ -179,20 +209,7 @@ export default function App() {
       setMessages(msgs);
       const lastAssistant = [...rows].reverse().find((r) => r.role === "assistant");
       setReport(lastAssistant ? textOf(lastAssistant.content) : "");
-      setTotals(
-        rows
-          .filter((r) => isToday(r.createdAt))
-          .reduce(
-            (acc, r) => ({
-              tokens: acc.tokens + (r.usage?.totalTokens ?? 0),
-              cost: acc.cost + (r.usage?.cost.total ?? 0),
-              input: acc.input + (r.usage?.input ?? 0),
-              cacheRead: acc.cacheRead + (r.usage?.cacheRead ?? 0),
-              cacheWrite: acc.cacheWrite + (r.usage?.cacheWrite ?? 0),
-            }),
-            { tokens: 0, cost: 0, input: 0, cacheRead: 0, cacheWrite: 0 },
-          ),
-      );
+      void refreshTokenTotals();
     });
     api.getSessionRunStatus(activeSessionId)
       .then((status) => {
@@ -222,6 +239,7 @@ export default function App() {
         setRunning(false);
         setArtifactRefreshKey((current) => current + 1);
         if (activeRef.current) api.getSessionRuntime(activeRef.current, true).then(setRuntime).catch(() => undefined);
+        void refreshTokenTotals();
       }
       else if (msg.type === "error") {
         setRunning(msg.message.startsWith(SESSION_RUNNING_ERROR));
@@ -256,19 +274,11 @@ export default function App() {
             const text = textOf(m.content);
             if (m.role === "assistant" && text) setReport(text);
           }
-          if (m.usage) {
-            setTotals((t) => ({
-              tokens: t.tokens + m.usage!.totalTokens,
-              cost: t.cost + m.usage!.cost.total,
-              input: t.input + m.usage!.input,
-              cacheRead: t.cacheRead + m.usage!.cacheRead,
-              cacheWrite: t.cacheWrite + m.usage!.cacheWrite,
-            }));
-          }
+          if (m.usage) void refreshTokenTotals();
         }
       }
     });
-  }, []);
+  }, [refreshTokenTotals]);
 
   // ---- actions ----
   const newWorkspace = useCallback(async (name: string) => {
@@ -452,11 +462,6 @@ export default function App() {
     }
   }, [activeSessionId, compacting, running]);
 
-  const cacheHitRate = (() => {
-    const total = totals.input + totals.cacheRead + totals.cacheWrite;
-    return total > 0 ? totals.cacheRead / total : 0;
-  })();
-
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
   const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
   const activeFlow = flows.find((f) => f.id === activeFlowId) ?? null;
@@ -566,7 +571,7 @@ export default function App() {
           onOpenSidebar={() => setSidebarOpen(true)}
           totalTokens={totals.tokens}
           totalCost={totals.cost}
-          cacheHitRate={cacheHitRate}
+          cacheHitRate={todayCacheHitRate}
           hiddenTabs={hiddenTabs}
           rulesPromptEnabled={rulesPromptEnabled}
           rulesPromptCount={rulesPromptInfo.count}
@@ -633,6 +638,9 @@ export default function App() {
                 onPromoteToWorkflow={openPromote}
               />
             )}
+            {activeTab === "explore" && activeSubTab === "business_context" && (
+              <BusinessContextPane workspaceId={activeWorkspaceId} onChanged={() => void refreshRulesPromptInfo()} />
+            )}
             {activeTab === "explore" && activeSubTab === "draw_data" && (
               <FolderPathsPane scope={folderScope} folder="draw_data" />
             )}
@@ -642,11 +650,11 @@ export default function App() {
             {activeTab === "explore" && activeSubTab === "report" && (
               <FolderPathsPane scope={folderScope} folder="report" onPathsChange={handleReportPathsChange} />
             )}
-            {activeTab === "explore" && activeSubTab === "decision_tree" && (
-              <DecisionTreePane scope={{ type: "session", sessionId: activeSessionId }} models={models} />
+            {activeTab === "explore" && activeSubTab === "presentation_version" && (
+              <PresentationVersionPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
-            {activeTab === "explore" && activeSubTab === "toc" && (
-              <TocPane scope={{ type: "session", sessionId: activeSessionId }} models={models} />
+            {activeTab === "explore" && activeSubTab === "golden_strategy" && (
+              <GoldenStrategyPane scope={{ type: "session", sessionId: activeSessionId }} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
 
             {/* Workflow (multi-agent) tab */}
@@ -659,6 +667,9 @@ export default function App() {
                 rulesPromptEnabled={rulesPromptEnabled}
               />
             )}
+            {activeTab === "multi" && activeSubTab === "business_context" && (
+              <BusinessContextPane workspaceId={activeWorkspaceId} onChanged={() => void refreshRulesPromptInfo()} />
+            )}
             {activeTab === "multi" && activeSubTab === "draw_data" && (
               <FolderPathsPane scope={folderScope} folder="draw_data" />
             )}
@@ -668,37 +679,32 @@ export default function App() {
             {activeTab === "multi" && activeSubTab === "report" && (
               <FolderPathsPane scope={folderScope} folder="report" onPathsChange={handleReportPathsChange} />
             )}
-            {activeTab === "multi" && activeSubTab === "decision_tree" && (
-              <DecisionTreePane scope={{ type: "flow", flow: activeFlow?.kind === "multi" ? activeFlow : null }} models={models} />
+            {activeTab === "multi" && activeSubTab === "presentation_version" && (
+              <PresentationVersionPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
-            {activeTab === "multi" && activeSubTab === "toc" && (
-              <TocPane scope={{ type: "flow", flow: activeFlow?.kind === "multi" ? activeFlow : null }} models={models} />
+            {activeTab === "multi" && activeSubTab === "golden_strategy" && (
+              <GoldenStrategyPane scope={{ type: "flow", flow: activeFlow?.kind === "multi" ? activeFlow : null }} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
 
             {/* Aggregate tab */}
             {activeTab === "aggregate" && activeSubTab === "view" && (
-              <AggregatePane />
+              <AggregatePane model={model} models={models} />
             )}
             {activeTab === "aggregate" && activeSubTab === "extraction" && (
               <ExtractionPane />
+            )}
+            {activeTab === "aggregate" && activeSubTab === "sql_connect" && (
+              <SqlConnectPane workspaceId={activeWorkspaceId} />
             )}
             {/* Rule Memory tab */}
             {activeTab === "rule_memory" && activeSubTab === "rules" && (
               <RulesPane workspaceId={activeWorkspaceId} onRulesChanged={() => void refreshRulesPromptInfo()} />
             )}
             {activeTab === "rule_memory" && activeSubTab === "indicators" && (
-              <Placeholder
-                icon={Gauge}
-                title="指标体系"
-                hint="指标体系管理，即将推出"
-              />
+              <IndicatorsPane workspaceId={activeWorkspaceId} onStandardsChanged={() => void refreshRulesPromptInfo()} />
             )}
             {activeTab === "rule_memory" && activeSubTab === "cases" && (
-              <Placeholder
-                icon={FolderKanban}
-                title="分析案例库"
-                hint="分析案例库管理，即将推出"
-              />
+              <CasesPane workspaceId={activeWorkspaceId} />
             )}
             {activeTab === "rule_memory" && activeSubTab === "trace" && (
               <TracePane workspaceId={activeWorkspaceId} onRulesChanged={() => void refreshRulesPromptInfo()} />
@@ -732,26 +738,36 @@ export default function App() {
               />
             )}
             {activeTab === "research_lab" && activeSubTab === "skill" && (
-              <Placeholder
-                icon={BookOpen}
-                title="skill"
-                hint="Skill 评估模块，即将推出"
+              <SkillLabPane
+                workspaceId={activeWorkspaceId}
+                model={model}
+                models={models}
+                onModelChange={setModel}
               />
             )}
             {activeTab === "research_lab" && activeSubTab === "tool" && (
-              <Placeholder
-                icon={Calculator}
-                title="tool"
-                hint="Tool 评估模块，即将推出"
-              />
+              <ToolLabPane workspaceId={activeWorkspaceId} model={model} models={models} />
             )}
             {/* AnaX tab */}
             {activeTab === "anax" && activeSubTab === "view" && (
-              <Placeholder
-                icon={Search}
-                title="AnaX"
-                hint="AnaX 功能即将推出"
+              <AnaXPane
+                workspaceId={activeWorkspaceId}
+                model={model}
+                rulesPromptEnabled={rulesPromptEnabled}
               />
+            )}
+            {activeTab === "anax" && activeSubTab === "hypothesis" && (
+              <HypothesisPane workspaceId={activeWorkspaceId} />
+            )}
+            {activeTab === "anax" && activeSubTab === "readme" && (
+              <AnaXReadmePane />
+            )}
+            {/* 模型工坊 tab */}
+            {activeTab === "model_lab" && activeSubTab === "view" && (
+              <ModelLabPane model={model} models={models} />
+            )}
+            {activeTab === "model_lab" && activeSubTab === "operational_model" && (
+              <OperationalModelPane />
             )}
           </div>
 
