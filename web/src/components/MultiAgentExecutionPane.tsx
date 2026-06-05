@@ -1,22 +1,30 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
+  AlertCircle,
+  GitBranch,
   CheckCircle2,
+  Copy,
   Loader2,
   MessageSquare,
   Play,
+  Plus,
+  Save,
   Square,
+  Trash2,
   Users,
   Workflow,
+  Wrench,
   XCircle,
 } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { CreationPane } from "@/components/CreationPane";
 import { RunOutputPanel } from "@/components/RunOutputPanel";
+import { WorkflowDagEditor } from "@/components/WorkflowDagEditor";
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
 import { cn } from "@/lib/cn";
-import type { Flow, FlowRun, FlowTreeNode, PiEvent, PiModel, ServerMessage, WorkflowDef, WorkflowNode } from "@/types";
+import type { ExtractionTool, Flow, FlowRun, FlowTreeNode, PiEvent, PiModel, ServerMessage, WorkflowDef, WorkflowNode } from "@/types";
 
 interface Props {
   flow: Flow | null;
@@ -35,9 +43,28 @@ interface StepState {
   events: PiEvent[];
 }
 
+interface ToolStepOutput {
+  kind: "tool";
+  toolId: string;
+  outputPath: string;
+  summaryPath: string;
+  success: boolean;
+  artifacts: string[];
+}
+
 type CenterTab = "flow" | "logs";
 
 type View = "chat" | "execute";
+
+type WorkflowNodeKind = NonNullable<WorkflowNode["kind"]>;
+type WorkflowIssueLevel = "warning" | "error";
+
+interface WorkflowIssue {
+  level: WorkflowIssueLevel;
+  nodeId?: string;
+  edgeId?: string;
+  message: string;
+}
 
 const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_\-一-鿿.]+)\s*\}\}/g;
 /** Built-in injected keys that are not upstream node references. */
@@ -110,7 +137,89 @@ function colorForNode(node: WorkflowNode, index: number): string {
 
 function iconForNode(node: WorkflowNode): string {
   if (node.icon) return node.icon;
+  if (node.kind === "tool") return "\u{1F6E0}";
+  if (node.kind === "gate") return "\u{1F6A6}";
   return "\u{1F916}"; // 🤖 default
+}
+
+function normalizedNodeKind(node: WorkflowNode): WorkflowNodeKind {
+  return node.kind ?? "agent";
+}
+
+function nodeKindLabel(kind: WorkflowNodeKind): string {
+  if (kind === "tool") return "tool";
+  if (kind === "gate") return "gate";
+  return "agent";
+}
+
+function nextUniqueId(base: string, used: Set<string>): string {
+  const cleaned = base.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "node";
+  if (!used.has(cleaned)) return cleaned;
+  for (let i = 2; i < 1000; i += 1) {
+    const candidate = `${cleaned}-${i}`;
+    if (!used.has(candidate)) return candidate;
+  }
+  return `${cleaned}-${Date.now().toString(36)}`;
+}
+
+function makeEdgeId(source: string, target: string, used: Set<string>): string {
+  return nextUniqueId(`e-${source}-${target}`, used);
+}
+
+function validateWorkflowEditor(workflow: WorkflowDef | null): WorkflowIssue[] {
+  if (!workflow) return [];
+  const issues: WorkflowIssue[] = [];
+  const seen = new Set<string>();
+  const duplicates = new Set<string>();
+  for (const node of workflow.nodes) {
+    if (!node.id.trim()) issues.push({ level: "error", nodeId: node.id, message: "node id 不能为空" });
+    if (seen.has(node.id)) duplicates.add(node.id);
+    seen.add(node.id);
+    if (!node.label.trim()) issues.push({ level: "warning", nodeId: node.id, message: `${node.id || "未命名节点"} 缺少节点名称` });
+    if (normalizedNodeKind(node) === "tool") {
+      if (!node.toolId?.trim()) issues.push({ level: "error", nodeId: node.id, message: `${node.id} 缺少 toolId` });
+      if (!node.inputPath?.trim()) issues.push({ level: "error", nodeId: node.id, message: `${node.id} 缺少 inputPath` });
+    }
+  }
+  for (const id of duplicates) issues.push({ level: "error", nodeId: id, message: `node id 重复：${id}` });
+  const nodeIds = new Set(workflow.nodes.map((node) => node.id));
+  for (const edge of workflow.edges) {
+    if (!nodeIds.has(edge.source)) issues.push({ level: "error", edgeId: edge.id, message: `${edge.id} source 不存在：${edge.source}` });
+    if (!nodeIds.has(edge.target)) issues.push({ level: "error", edgeId: edge.id, message: `${edge.id} target 不存在：${edge.target}` });
+    if (edge.source === edge.target) issues.push({ level: "warning", edgeId: edge.id, message: `${edge.id} 指向自身` });
+  }
+  return issues;
+}
+
+function parseToolStepOutput(text: string): ToolStepOutput | null {
+  if (!text.trim()) return null;
+  try {
+    const value = JSON.parse(text) as Partial<ToolStepOutput>;
+    if (
+      value.kind !== "tool"
+      || typeof value.toolId !== "string"
+      || typeof value.outputPath !== "string"
+      || typeof value.summaryPath !== "string"
+      || typeof value.success !== "boolean"
+      || !Array.isArray(value.artifacts)
+      || !value.artifacts.every((item) => typeof item === "string")
+    ) {
+      return null;
+    }
+    return value as ToolStepOutput;
+  } catch {
+    return null;
+  }
+}
+
+function toRunRelativePath(runRoot: string | null, absoluteOrRelative: string): string | null {
+  const value = absoluteOrRelative.trim();
+  if (!value) return null;
+  if (!runRoot) return value.startsWith("/") ? null : value;
+  const normalizedRoot = runRoot.replace(/\/+$/, "");
+  if (value === normalizedRoot) return "";
+  if (value.startsWith(normalizedRoot + "/")) return value.slice(normalizedRoot.length + 1);
+  return value.startsWith("/") ? null : value;
 }
 
 /** Extract text from pi message_end events for the live dialog tab. */
@@ -153,6 +262,12 @@ export function MultiAgentExecutionPane(p: Props) {
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
   const [workflow, setWorkflow] = useState<WorkflowDef | null>(null);
   const [loading, setLoading] = useState(true);
+  const [workflowDirty, setWorkflowDirty] = useState(false);
+  const [savingWorkflow, setSavingWorkflow] = useState(false);
+  const [workflowSaveError, setWorkflowSaveError] = useState<string | null>(null);
+  const [workflowSaveMessage, setWorkflowSaveMessage] = useState<string | null>(null);
+  const [tools, setTools] = useState<ExtractionTool[]>([]);
+  const [loadingTools, setLoadingTools] = useState(false);
 
   // ---- execute state ----
   const [taskText, setTaskText] = useState("");
@@ -165,6 +280,8 @@ export function MultiAgentExecutionPane(p: Props) {
   const [runs, setRuns] = useState<FlowRun[]>([]);
   const [centerTab, setCenterTab] = useState<CenterTab>("flow");
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
+  const [requestedOutputFile, setRequestedOutputFile] = useState<{ path: string; nonce: number } | null>(null);
+  const [showDagEditor, setShowDagEditor] = useState(false);
 
   // ---- resizable left rail ----
   const [leftWidth, setLeftWidth] = useState(() => Number(localStorage.getItem("xanthil-magent-left-w")) || 288);
@@ -212,12 +329,33 @@ export function MultiAgentExecutionPane(p: Props) {
     api.flowWorkflowGet(flowId).then((r) => {
       if (cancelled) return;
       setWorkflow(r.workflow);
+      setWorkflowDirty(false);
+      setWorkflowSaveError(null);
+      setWorkflowSaveMessage(null);
       setLoading(false);
     });
     return () => {
       cancelled = true;
     };
   }, [flowId, p.refreshKey, workflowRefreshKey]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoadingTools(true);
+    api.listExtractionTools()
+      .then((items) => {
+        if (!cancelled) setTools(items);
+      })
+      .catch(() => {
+        if (!cancelled) setTools([]);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTools(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
 
   // ---- Load run history ----
   useEffect(() => {
@@ -321,9 +459,151 @@ export function MultiAgentExecutionPane(p: Props) {
     setWorkflowRefreshKey((k) => k + 1);
   }, []);
 
+  const updateWorkflowNode = useCallback((nodeId: string, patch: Partial<WorkflowNode>) => {
+    setWorkflow((cur) => {
+      if (!cur) return cur;
+      return {
+        ...cur,
+        nodes: cur.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
+      };
+    });
+    setWorkflowDirty(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+  }, []);
+
+  const renameWorkflowNodeId = useCallback((nodeId: string, nextIdRaw: string) => {
+    const nextId = nextIdRaw.trim();
+    setWorkflow((cur) => {
+      if (!cur) return cur;
+      return {
+        ...cur,
+        nodes: cur.nodes.map((node) => (node.id === nodeId ? { ...node, id: nextId } : node)),
+        edges: cur.edges.map((edge) => ({
+          ...edge,
+          source: edge.source === nodeId ? nextId : edge.source,
+          target: edge.target === nodeId ? nextId : edge.target,
+        })),
+      };
+    });
+    setExpandedNode(nextId || nodeId);
+    setWorkflowDirty(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+  }, []);
+
+  const addWorkflowNode = useCallback((kind: WorkflowNodeKind) => {
+    const cur = workflow;
+    const id = nextUniqueId(kind === "tool" ? "tool-step" : "step", new Set(cur?.nodes.map((node) => node.id) ?? []));
+    const previous = cur?.nodes.at(-1);
+    const nextNode: WorkflowNode = {
+      id,
+      label: kind === "tool" ? "Tool Step" : "New Step",
+      prompt: kind === "tool" ? "" : "{{task}}",
+      model: "",
+      kind,
+      ...(kind === "tool" ? { inputPath: "{{input.file}}", outputDir: "output", timeoutMs: 60000 } : {}),
+    };
+    const edgeIds = new Set(cur?.edges.map((edge) => edge.id) ?? []);
+    const nextEdges = previous
+      ? [...(cur?.edges ?? []), { id: makeEdgeId(previous.id, id, edgeIds), source: previous.id, target: id }]
+      : cur?.edges ?? [];
+    setWorkflow({
+      version: cur?.version ?? 1,
+      defaultModel: cur?.defaultModel ?? "",
+      ...cur,
+      nodes: [...(cur?.nodes ?? []), nextNode],
+      edges: nextEdges,
+    });
+    setExpandedNode(id);
+    setWorkflowDirty(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+  }, [workflow]);
+
+  const deleteWorkflowNode = useCallback((nodeId: string) => {
+    setWorkflow((cur) => {
+      if (!cur) return cur;
+      return {
+        ...cur,
+        nodes: cur.nodes.filter((node) => node.id !== nodeId),
+        edges: cur.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
+      };
+    });
+    setExpandedNode((cur) => (cur === nodeId ? null : cur));
+    setWorkflowDirty(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+  }, []);
+
+  const updateWorkflowEdge = useCallback((edgeId: string, patch: Partial<WorkflowDef["edges"][number]>) => {
+    setWorkflow((cur) => {
+      if (!cur) return cur;
+      return { ...cur, edges: cur.edges.map((edge) => (edge.id === edgeId ? { ...edge, ...patch } : edge)) };
+    });
+    setWorkflowDirty(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+  }, []);
+
+  const addWorkflowEdge = useCallback((source: string, target: string) => {
+    if (!source || !target) return;
+    setWorkflow((cur) => {
+      if (!cur) return cur;
+      return { ...cur, edges: [...cur.edges, { id: makeEdgeId(source, target, new Set(cur.edges.map((edge) => edge.id))), source, target }] };
+    });
+    setWorkflowDirty(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+  }, []);
+
+  const deleteWorkflowEdge = useCallback((edgeId: string) => {
+    setWorkflow((cur) => cur ? { ...cur, edges: cur.edges.filter((edge) => edge.id !== edgeId) } : cur);
+    setWorkflowDirty(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+  }, []);
+
+  const applyToolTemplateToNode = useCallback((nodeId: string, tool: ExtractionTool) => {
+    updateWorkflowNode(nodeId, {
+      kind: "tool",
+      toolId: tool.id,
+      label: tool.name || tool.id,
+      inputPath: "{{input.file}}",
+      outputDir: "output",
+      timeoutMs: 60000,
+    });
+  }, [updateWorkflowNode]);
+
+  const handleSaveWorkflow = useCallback(async () => {
+    if (!flowId || !workflow || savingWorkflow) return;
+    const firstError = validateWorkflowEditor(workflow).find((issue) => issue.level === "error");
+    if (firstError) {
+      setWorkflowSaveError(firstError.message);
+      return;
+    }
+    setSavingWorkflow(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+    try {
+      await api.flowWorkflowPut(flowId, workflow);
+      setWorkflowDirty(false);
+      setWorkflowSaveMessage("已保存 workflow.json");
+    } catch (err) {
+      setWorkflowSaveError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setSavingWorkflow(false);
+    }
+  }, [flowId, workflow, savingWorkflow]);
+
   // ---- execute actions ----
   const handleRun = useCallback(() => {
     if (!flowId || !workflow || running) return;
+    const firstError = validateWorkflowEditor(workflow).find((issue) => issue.level === "error");
+    if (firstError) {
+      setLogs((cur) => [...cur, `✖ workflow 无法运行：${firstError.message}`]);
+      return;
+    }
     const newRunId = makeRunId();
     setRunId(newRunId);
     setRunning(true);
@@ -356,6 +636,19 @@ export function MultiAgentExecutionPane(p: Props) {
     [orderedNodes, stepStates],
   );
   const currentOutputDir = p.flow && runId ? `${p.flow.folderPath}/runs/${runId}` : null;
+  const openRunOutputFile = useCallback((path: string) => {
+    setRequestedOutputFile({ path, nonce: Date.now() });
+  }, []);
+  const workflowIssues = useMemo(() => validateWorkflowEditor(workflow), [workflow]);
+  const workflowHasErrors = workflowIssues.some((issue) => issue.level === "error");
+  const issueByNodeId = useMemo(() => {
+    const out = new Map<string, WorkflowIssue[]>();
+    for (const issue of workflowIssues) {
+      if (!issue.nodeId) continue;
+      out.set(issue.nodeId, [...(out.get(issue.nodeId) ?? []), issue]);
+    }
+    return out;
+  }, [workflowIssues]);
 
   const CENTER_TABS: { id: CenterTab; label: string }[] = [
     { id: "flow", label: "执行流" },
@@ -468,13 +761,14 @@ export function MultiAgentExecutionPane(p: Props) {
                 ) : (
                   <button
                     onClick={handleRun}
-                    disabled={!workflow}
+                    disabled={!workflow || workflowHasErrors}
                     className={cn(
                       "flex w-full items-center justify-center gap-1.5 rounded-md h-8 text-[12.5px] font-medium transition-colors",
-                      !workflow
+                      !workflow || workflowHasErrors
                         ? "bg-neutral-100 text-neutral-400 cursor-not-allowed dark:bg-neutral-800 dark:text-neutral-600"
                         : "bg-sky-500 text-white hover:bg-sky-600 dark:bg-sky-600 dark:hover:bg-sky-700",
                     )}
+                    title={workflowHasErrors ? workflowIssues.find((issue) => issue.level === "error")?.message : undefined}
                   >
                     <Play className="h-3.5 w-3.5" strokeWidth={2} />
                     运行工作流
@@ -512,17 +806,71 @@ export function MultiAgentExecutionPane(p: Props) {
                     {t.label}
                   </button>
                 ))}
-                {centerTab === "flow" && orderedNodes.length > 0 && (
+                {centerTab === "flow" && (
                   <div className="ml-auto flex items-center gap-2">
-                    <span className="text-[10px] tabular-nums text-neutral-400">
-                      {doneCount}/{orderedNodes.length}
-                    </span>
-                    <div className="h-1 w-20 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
-                      <div
-                        className={cn("h-full rounded-full transition-all", running ? "bg-amber-400" : "bg-emerald-500")}
-                        style={{ width: `${(doneCount / orderedNodes.length) * 100}%` }}
-                      />
-                    </div>
+                    <button
+                      onClick={() => setShowDagEditor(true)}
+                      disabled={!workflow}
+                      title="打开图形化 DAG 编辑器"
+                      className="inline-flex h-6 items-center gap-1 rounded-md border border-sky-200 px-2 text-[10.5px] font-medium text-sky-600 hover:bg-sky-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-sky-800 dark:text-sky-400 dark:hover:bg-sky-950/30"
+                    >
+                      <GitBranch className="h-3 w-3" strokeWidth={1.75} />
+                      DAG 视图
+                    </button>
+                    <button
+                      onClick={() => addWorkflowNode("agent")}
+                      disabled={running}
+                      className="inline-flex h-6 items-center gap-1 rounded-md border border-neutral-200 px-2 text-[10.5px] font-medium text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800/50"
+                    >
+                      <Plus className="h-3 w-3" strokeWidth={1.75} />
+                      agent
+                    </button>
+                    <button
+                      onClick={() => addWorkflowNode("tool")}
+                      disabled={running}
+                      className="inline-flex h-6 items-center gap-1 rounded-md border border-emerald-200 px-2 text-[10.5px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                    >
+                      <Wrench className="h-3 w-3" strokeWidth={1.75} />
+                      tool
+                    </button>
+                    {(workflowDirty || savingWorkflow || workflowSaveMessage || workflowSaveError) && (
+                      <span
+                        className={cn(
+                          "max-w-[220px] truncate text-[10px]",
+                          workflowSaveError ? "text-rose-500" : workflowDirty ? "text-amber-600" : "text-emerald-600",
+                        )}
+                        title={workflowSaveError ?? workflowSaveMessage ?? "有未保存改动"}
+                      >
+                        {workflowSaveError ?? (savingWorkflow ? "保存中…" : workflowDirty ? "未保存" : workflowSaveMessage)}
+                      </span>
+                    )}
+                    <button
+                      onClick={() => void handleSaveWorkflow()}
+                      disabled={!workflowDirty || savingWorkflow || running || workflowHasErrors}
+                      className={cn(
+                        "inline-flex h-6 items-center gap-1 rounded-md px-2 text-[10.5px] font-medium",
+                        !workflowDirty || savingWorkflow || running || workflowHasErrors
+                          ? "cursor-not-allowed bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600"
+                          : "bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white",
+                      )}
+                      title={workflowHasErrors ? workflowIssues.find((issue) => issue.level === "error")?.message : undefined}
+                    >
+                      {savingWorkflow ? <Loader2 className="h-3 w-3 animate-spin" strokeWidth={1.75} /> : <Save className="h-3 w-3" strokeWidth={1.75} />}
+                      保存
+                    </button>
+                    {orderedNodes.length > 0 && (
+                      <>
+                        <span className="text-[10px] tabular-nums text-neutral-400">
+                          {doneCount}/{orderedNodes.length}
+                        </span>
+                        <div className="h-1 w-20 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
+                          <div
+                            className={cn("h-full rounded-full transition-all", running ? "bg-amber-400" : "bg-emerald-500")}
+                            style={{ width: `${(doneCount / orderedNodes.length) * 100}%` }}
+                          />
+                        </div>
+                      </>
+                    )}
                   </div>
                 )}
               </div>
@@ -538,16 +886,23 @@ export function MultiAgentExecutionPane(p: Props) {
                     ) : (
                       orderedNodes.map((node, idx) => {
                         const state = stepStates[node.id];
-                        const refs = upstreamRefs(node.prompt, nodeIdSet);
+                        const refs = upstreamRefs(`${node.prompt ?? ""}\n${node.inputPath ?? ""}\n${node.outputDir ?? ""}`, nodeIdSet);
                         const isExpanded = expandedNode === node.id;
                         const isActive = activeNodeId === node.id;
                         const color = colorForNode(node, idx);
+                        const kind = normalizedNodeKind(node);
+                        const selectedTool = tools.find((tool) => tool.id === node.toolId) ?? null;
+                        const toolOutput = kind === "tool" && state?.output ? parseToolStepOutput(state.output) : null;
+                        const nodeIssues = issueByNodeId.get(node.id) ?? [];
+                        const hasNodeError = nodeIssues.some((issue) => issue.level === "error");
                         return (
                           <div
                             key={node.id}
                             className={cn(
                               "rounded-md border",
-                              isActive
+                              hasNodeError
+                                ? "border-rose-300 dark:border-rose-800"
+                                : isActive
                                 ? "border-sky-300 dark:border-sky-800"
                                 : "border-neutral-200 dark:border-neutral-700",
                             )}
@@ -571,6 +926,22 @@ export function MultiAgentExecutionPane(p: Props) {
                                 )}
                               </span>
                               <span className="text-[12px] font-medium text-neutral-800 dark:text-neutral-100">{node.label}</span>
+                              {hasNodeError && (
+                                <AlertCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" strokeWidth={1.75} />
+                              )}
+                              <span
+                                className={cn(
+                                  "inline-flex shrink-0 items-center gap-1 rounded-full px-1.5 py-0.5 text-[9px] font-medium",
+                                  kind === "tool"
+                                    ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-300"
+                                    : kind === "gate"
+                                      ? "bg-amber-50 text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                                      : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400",
+                                )}
+                              >
+                                {kind === "tool" && <Wrench className="h-2.5 w-2.5" strokeWidth={1.75} />}
+                                {nodeKindLabel(kind)}
+                              </span>
                               {node.role && (
                                 <span
                                   className="shrink-0 rounded-full px-1.5 py-0.5 text-[9px] font-medium"
@@ -590,7 +961,267 @@ export function MultiAgentExecutionPane(p: Props) {
                               </span>
                             </button>
                             {isExpanded && (
-                              <div className="border-t border-neutral-100 px-3 py-2 dark:border-neutral-800">
+                              <div className="flex flex-col gap-3 border-t border-neutral-100 px-3 py-2 dark:border-neutral-800">
+                                <div className="grid gap-2 md:grid-cols-2">
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-[10px] font-medium text-neutral-500">node id</span>
+                                    <input
+                                      value={node.id}
+                                      disabled={running}
+                                      onChange={(e) => renameWorkflowNodeId(node.id, e.target.value)}
+                                      className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+                                    />
+                                  </label>
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-[10px] font-medium text-neutral-500">节点类型</span>
+                                    <select
+                                      value={kind}
+                                      disabled={running}
+                                      onChange={(e) => updateWorkflowNode(node.id, { kind: e.target.value as WorkflowNodeKind })}
+                                      className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+                                    >
+                                      <option value="agent">agent</option>
+                                      <option value="gate">gate</option>
+                                      <option value="tool">tool</option>
+                                    </select>
+                                  </label>
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-[10px] font-medium text-neutral-500">节点名称</span>
+                                    <input
+                                      value={node.label}
+                                      disabled={running}
+                                      onChange={(e) => updateWorkflowNode(node.id, { label: e.target.value })}
+                                      className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+                                    />
+                                  </label>
+                                  <label className="flex flex-col gap-1">
+                                    <span className="text-[10px] font-medium text-neutral-500">model</span>
+                                    <input
+                                      value={node.model ?? ""}
+                                      disabled={running}
+                                      onChange={(e) => updateWorkflowNode(node.id, { model: e.target.value })}
+                                      placeholder="留空继承默认模型"
+                                      className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+                                    />
+                                  </label>
+                                  <label className="flex flex-col gap-1 md:col-span-2">
+                                    <span className="text-[10px] font-medium text-neutral-500">inputs</span>
+                                    <input
+                                      value={(node.inputs ?? []).join(", ")}
+                                      disabled={running}
+                                      onChange={(e) => updateWorkflowNode(node.id, {
+                                        inputs: e.target.value.split(",").map((item) => item.trim()).filter(Boolean),
+                                      })}
+                                      placeholder="可选，逗号分隔上游 node id；留空则按 edges"
+                                      className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+                                    />
+                                  </label>
+                                  {kind !== "tool" && (
+                                    <label className="flex flex-col gap-1 md:col-span-2">
+                                      <span className="text-[10px] font-medium text-neutral-500">prompt</span>
+                                      <textarea
+                                        value={node.prompt ?? ""}
+                                        disabled={running}
+                                        onChange={(e) => updateWorkflowNode(node.id, { prompt: e.target.value })}
+                                        className="min-h-24 resize-y rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 font-mono text-[11px] leading-4 text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+                                      />
+                                    </label>
+                                  )}
+                                </div>
+                                <div className="flex flex-col gap-1.5 rounded-md border border-neutral-100 bg-neutral-50/60 p-2 dark:border-neutral-800 dark:bg-neutral-900/30">
+                                  <div className="flex items-center gap-2">
+                                    <span className="text-[10px] font-medium text-neutral-500">edges</span>
+                                    <button
+                                      onClick={() => {
+                                        const target = orderedNodes.find((candidate) => candidate.id !== node.id)?.id;
+                                        if (target) addWorkflowEdge(node.id, target);
+                                      }}
+                                      disabled={running || orderedNodes.length < 2}
+                                      className="ml-auto inline-flex h-6 items-center gap-1 rounded border border-neutral-200 bg-white px-1.5 text-[10px] text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-300 dark:hover:bg-neutral-900"
+                                    >
+                                      <Plus className="h-3 w-3" strokeWidth={1.75} />
+                                      edge
+                                    </button>
+                                  </div>
+                                  {(workflow?.edges.filter((edge) => edge.source === node.id || edge.target === node.id) ?? []).length === 0 ? (
+                                    <p className="text-[10.5px] text-neutral-400">无关联 edge</p>
+                                  ) : (
+                                    workflow?.edges.filter((edge) => edge.source === node.id || edge.target === node.id).map((edge) => (
+                                      <div key={edge.id} className="grid grid-cols-[1fr_1fr_auto] gap-1">
+                                        <select
+                                          value={edge.source}
+                                          disabled={running}
+                                          onChange={(e) => updateWorkflowEdge(edge.id, { source: e.target.value })}
+                                          className="h-7 min-w-0 rounded border border-neutral-200 bg-white px-1.5 font-mono text-[10.5px] text-neutral-900 outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                                        >
+                                          {orderedNodes.map((candidate) => (
+                                            <option key={candidate.id} value={candidate.id}>{candidate.id}</option>
+                                          ))}
+                                        </select>
+                                        <select
+                                          value={edge.target}
+                                          disabled={running}
+                                          onChange={(e) => updateWorkflowEdge(edge.id, { target: e.target.value })}
+                                          className="h-7 min-w-0 rounded border border-neutral-200 bg-white px-1.5 font-mono text-[10.5px] text-neutral-900 outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                                        >
+                                          {orderedNodes.map((candidate) => (
+                                            <option key={candidate.id} value={candidate.id}>{candidate.id}</option>
+                                          ))}
+                                        </select>
+                                        <button
+                                          onClick={() => deleteWorkflowEdge(edge.id)}
+                                          disabled={running}
+                                          className="flex h-7 w-7 items-center justify-center rounded border border-neutral-200 bg-white text-neutral-400 hover:text-rose-500 disabled:cursor-not-allowed disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-950"
+                                          title="删除 edge"
+                                        >
+                                          <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                                        </button>
+                                      </div>
+                                    ))
+                                  )}
+                                </div>
+                                {nodeIssues.length > 0 && (
+                                  <div className="flex flex-col gap-1">
+                                    {nodeIssues.map((issue) => (
+                                      <div
+                                        key={issue.message}
+                                        className={cn(
+                                          "flex items-center gap-1 text-[10.5px]",
+                                          issue.level === "error" ? "text-rose-600 dark:text-rose-300" : "text-amber-700 dark:text-amber-300",
+                                        )}
+                                      >
+                                        <AlertCircle className="h-3 w-3 shrink-0" strokeWidth={1.75} />
+                                        {issue.message}
+                                      </div>
+                                    ))}
+                                  </div>
+                                )}
+                                {kind === "tool" && (
+                                  <div className="grid gap-2 rounded-md border border-emerald-100 bg-emerald-50/40 p-2 dark:border-emerald-900/40 dark:bg-emerald-950/20 md:grid-cols-2">
+                                    <label className="flex flex-col gap-1">
+                                      <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">toolId</span>
+                                      <select
+                                        value={node.toolId ?? ""}
+                                        disabled={running || loadingTools}
+                                        onChange={(e) => updateWorkflowNode(node.id, { toolId: e.target.value })}
+                                        className="h-8 rounded-md border border-emerald-200 bg-white px-2 text-[12px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
+                                      >
+                                        <option value="">{loadingTools ? "加载工具中…" : "选择 registered tool"}</option>
+                                        {tools.map((tool) => (
+                                          <option key={tool.id} value={tool.id}>{tool.id}</option>
+                                        ))}
+                                      </select>
+                                    </label>
+                                    <label className="flex flex-col gap-1">
+                                      <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">timeoutMs</span>
+                                      <input
+                                        type="number"
+                                        min={1}
+                                        value={node.timeoutMs ?? ""}
+                                        disabled={running}
+                                        onChange={(e) => updateWorkflowNode(node.id, { timeoutMs: e.target.value ? Number(e.target.value) : undefined })}
+                                        placeholder="60000"
+                                        className="h-8 rounded-md border border-emerald-200 bg-white px-2 text-[12px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
+                                      />
+                                    </label>
+                                    <label className="flex flex-col gap-1 md:col-span-2">
+                                      <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">inputPath</span>
+                                      <input
+                                        value={node.inputPath ?? ""}
+                                        disabled={running}
+                                        onChange={(e) => updateWorkflowNode(node.id, { inputPath: e.target.value })}
+                                        placeholder="{{input.file}} 或上游节点产出的路径"
+                                        className="h-8 rounded-md border border-emerald-200 bg-white px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
+                                      />
+                                    </label>
+                                    <label className="flex flex-col gap-1 md:col-span-2">
+                                      <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">outputDir</span>
+                                      <input
+                                        value={node.outputDir ?? ""}
+                                        disabled={running}
+                                        onChange={(e) => updateWorkflowNode(node.id, { outputDir: e.target.value || undefined })}
+                                        placeholder="留空则写入当前 node run directory"
+                                        className="h-8 rounded-md border border-emerald-200 bg-white px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
+                                      />
+                                    </label>
+                                    {selectedTool && (
+                                      <div className="flex items-center gap-2 md:col-span-2">
+                                        <div className="min-w-0 flex-1 truncate text-[10.5px] leading-4 text-emerald-700 dark:text-emerald-300">
+                                          {selectedTool.name} · input {selectedTool.input.modes.join("/")} · accept {selectedTool.input.accept.join(", ")} · output {selectedTool.output.join(", ")}
+                                        </div>
+                                        <button
+                                          onClick={() => applyToolTemplateToNode(node.id, selectedTool)}
+                                          disabled={running}
+                                          className="inline-flex h-6 shrink-0 items-center gap-1 rounded border border-emerald-200 bg-white px-1.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                                        >
+                                          <Copy className="h-3 w-3" strokeWidth={1.75} />
+                                          套用
+                                        </button>
+                                      </div>
+                                    )}
+                                    {(!node.toolId || !node.inputPath) && (
+                                      <div className="flex items-center gap-1 md:col-span-2 text-[10.5px] text-amber-700 dark:text-amber-300">
+                                        <AlertCircle className="h-3 w-3 shrink-0" strokeWidth={1.75} />
+                                        tool node 运行前需要保存有效的 toolId 和 inputPath。
+                                      </div>
+                                    )}
+                                  </div>
+                                )}
+                                <div className="flex justify-end">
+                                  <button
+                                    onClick={() => {
+                                      if (window.confirm(`删除节点 ${node.id}？关联 edges 会同时删除。`)) deleteWorkflowNode(node.id);
+                                    }}
+                                    disabled={running}
+                                    className="inline-flex h-7 items-center gap-1 rounded-md border border-rose-200 px-2 text-[10.5px] font-medium text-rose-600 hover:bg-rose-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-rose-900/60 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                                  >
+                                    <Trash2 className="h-3 w-3" strokeWidth={1.75} />
+                                    删除节点
+                                  </button>
+                                </div>
+                                {toolOutput && (
+                                  <div className="rounded-md border border-emerald-100 bg-emerald-50/40 p-2 dark:border-emerald-900/40 dark:bg-emerald-950/20">
+                                    <div className="flex items-center gap-2">
+                                      <Wrench className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-300" strokeWidth={1.75} />
+                                      <span className="min-w-0 flex-1 truncate text-[11px] font-medium text-emerald-700 dark:text-emerald-300">
+                                        {toolOutput.toolId} · {toolOutput.success ? "success" : "failed"}
+                                      </span>
+                                      {(() => {
+                                        const summaryPath = toRunRelativePath(currentOutputDir, toolOutput.summaryPath);
+                                        return summaryPath ? (
+                                          <button
+                                            onClick={() => openRunOutputFile(summaryPath)}
+                                            className="shrink-0 rounded border border-emerald-200 px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 hover:bg-emerald-100 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/50"
+                                          >
+                                            summary.json
+                                          </button>
+                                        ) : null;
+                                      })()}
+                                    </div>
+                                    {toolOutput.artifacts.length > 0 ? (
+                                      <div className="mt-2 flex flex-wrap gap-1">
+                                        {toolOutput.artifacts.map((artifact) => {
+                                          const outputDir = toRunRelativePath(currentOutputDir, toolOutput.outputPath);
+                                          const path = outputDir ? `${outputDir.replace(/\/+$/, "")}/${artifact}` : artifact;
+                                          return (
+                                            <button
+                                              key={artifact}
+                                              onClick={() => openRunOutputFile(path)}
+                                              className="max-w-full truncate rounded border border-emerald-200 bg-white px-1.5 py-0.5 font-mono text-[10px] text-emerald-700 hover:bg-emerald-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                                              title={path}
+                                            >
+                                              {artifact}
+                                            </button>
+                                          );
+                                        })}
+                                      </div>
+                                    ) : (
+                                      <p className="mt-1 text-[10.5px] text-emerald-700/70 dark:text-emerald-300/70">
+                                        tool 未记录产物文件
+                                      </p>
+                                    )}
+                                  </div>
+                                )}
                                 {state?.output ? (
                                   <div className="prose prose-sm dark:prose-invert max-w-none text-[13px]">
                                     <Markdown>{state.output}</Markdown>
@@ -636,10 +1267,29 @@ export function MultiAgentExecutionPane(p: Props) {
               runs={runs}
               currentRunId={runId}
               running={running}
+              requestedFile={requestedOutputFile}
             />
           </div>
         )}
       </div>
+
+      {/* ---- DAG editor overlay ---- */}
+      {showDagEditor && workflow && (
+        <WorkflowDagEditor
+          workflow={workflow}
+          models={p.models}
+          tools={tools}
+          flowName={p.flow?.name ?? ""}
+          running={running}
+          onWorkflowChange={(wf) => {
+            setWorkflow(wf);
+            setWorkflowDirty(true);
+            setWorkflowSaveError(null);
+            setWorkflowSaveMessage(null);
+          }}
+          onClose={() => setShowDagEditor(false)}
+        />
+      )}
     </div>
   );
 }

@@ -16,6 +16,7 @@
     "typecheck": "npm -w server run typecheck && npm -w web run typecheck"
   },
   "devDependencies": {
+    "@playwright/test": "^1.60.0",
     "concurrently": "^9.1.0"
   },
   "engines": {
