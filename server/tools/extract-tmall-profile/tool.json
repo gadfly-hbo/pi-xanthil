@@ -9,5 +9,10 @@
     "accept": [".html"],
     "modes": ["file", "directory"]
   },
-  "output": [".md", ".json"]
+  "output": [".md", ".json"],
+  "resultColumns": [
+    { "key": "crowdName", "label": "人群" },
+    { "key": "totalTags", "label": "标签数" },
+    { "key": "matchRate", "label": "匹配率" }
+  ]
 }

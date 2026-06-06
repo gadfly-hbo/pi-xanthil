@@ -35,13 +35,12 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
       setRules(nextRules);
       setPromptInfo(nextPrompt);
       setSelectedIds((current) => current.filter((id) => nextRules.some((rule) => rule.id === id)));
-      onRulesChanged?.();
     } catch (err) {
       setError(String(err));
     } finally {
       setLoading(false);
     }
-  }, [onRulesChanged, workspaceId]);
+  }, [workspaceId]);
 
   useEffect(() => {
     refresh();

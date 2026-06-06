@@ -5,6 +5,7 @@ import { join } from "node:path";
 import { PI_BIN } from "./config.ts";
 import type { PiEvent } from "./types.ts";
 import { assembleSystemPrompt } from "./prompt-blocks.ts";
+import { notifyChildProcess, registerChildProcess, type ChildProcessListener } from "./child-processes.ts";
 
 export interface RunPiOptions {
   workspaceRoot: string;
@@ -14,6 +15,7 @@ export interface RunPiOptions {
   systemPrompt?: string;
   skillPaths?: string[];
   onEvent: (event: PiEvent) => void;
+  onChildProcess?: ChildProcessListener;
 }
 
 export interface PiRun {
@@ -28,6 +30,8 @@ export interface RunPiPromptOptions {
   model?: string;
   systemPrompt?: string;
   timeoutMs?: number;
+  onEvent?: (event: PiEvent) => void;
+  onChildProcess?: ChildProcessListener;
 }
 
 interface PiRpcResponse<T> {
@@ -77,6 +81,14 @@ function runPiRpcCommand<T>(
       cwd: workspaceRoot,
       env: process.env,
       stdio: ["pipe", "pipe", "pipe"],
+    });
+    registerChildProcess(child, {
+      kind: "pi",
+      command: PI_BIN,
+      args: ["--mode", "rpc", "--session-id", piSessionId, "--session-dir", sessionDir(workspaceRoot)],
+      cwd: workspaceRoot,
+      label: "pi-rpc",
+      sessionId: piSessionId,
     });
     let stdout = "";
     let stderr = "";
@@ -150,7 +162,7 @@ export function compactPiSession(workspaceRoot: string, piSessionId: string): Pr
  */
 export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
   const piSessionDir = sessionDir(opts.workspaceRoot);
-  const args = ["-p", "--mode", "json", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
+  const args = ["-p", "--mode", "json", "--no-extensions", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
   if (opts.model) args.push("--model", opts.model);
   args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt));
   args.push(opts.text);
@@ -161,18 +173,28 @@ export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
       env: process.env,
       stdio: ["ignore", "pipe", "pipe"],
     });
+    notifyChildProcess(opts.onChildProcess, child, {
+      kind: "pi",
+      command: PI_BIN,
+      args: args.slice(0, -1),
+      cwd: opts.workspaceRoot,
+      label: "pi-prompt",
+    });
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
       reject(new Error(`pi prompt timed out after ${opts.timeoutMs ?? 120_000} ms`));
     }, opts.timeoutMs ?? 120_000);
     let stderr = "";
     let output = "";
+    const allEvents: string[] = [];
     const rl = createInterface({ input: child.stdout });
     rl.on("line", (line) => {
       const trimmed = line.trim();
       if (!trimmed) return;
+      allEvents.push(trimmed);
       try {
         const event = JSON.parse(trimmed) as PiEvent;
+        opts.onEvent?.(event);
         if (event.type === "message_end" || event.type === "turn_end") {
           const { message } = event as Extract<PiEvent, { type: "message_end" | "turn_end" }>;
           if (message.role === "assistant") output = extractPiMessageText(message.content) || output;
@@ -181,6 +203,25 @@ export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
         // Ignore non-JSON process noise.
       }
     });
+    let exitCode: number | null = null;
+    let finished = false;
+
+    const finish = () => {
+      if (finished) return;
+      finished = true;
+      clearTimeout(timer);
+      if (exitCode !== 0 && exitCode !== null) {
+        reject(new Error(`pi exited with code ${String(exitCode)}${stderr.trim() ? `: ${stderr.trim()}` : ""}`));
+      } else {
+        const result = output.trim();
+        if (!result) {
+          resolve(`DEBUG_EMPTY_OUTPUT: ${allEvents.join("\n")}`);
+        } else {
+          resolve(result);
+        }
+      }
+    };
+
     child.stderr.setEncoding("utf8");
     child.stderr.on("data", (chunk: string) => {
       stderr += chunk;
@@ -190,10 +231,11 @@ export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
       reject(error);
     });
     child.on("close", (code) => {
-      clearTimeout(timer);
-      rl.close();
-      if (code !== 0) reject(new Error(`pi exited with code ${String(code)}${stderr.trim() ? `: ${stderr.trim()}` : ""}`));
-      else resolve(output.trim());
+      exitCode = code;
+      // Wait for rl close to ensure stdout is fully drained
+    });
+    rl.on("close", () => {
+      finish();
     });
   });
 }
@@ -233,6 +275,14 @@ export function runPiTurn(opts: RunPiOptions): PiRun {
     env: process.env,
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
+  });
+  notifyChildProcess(opts.onChildProcess, child, {
+    kind: "pi",
+    command: PI_BIN,
+    args: args.slice(0, -1),
+    cwd: opts.workspaceRoot,
+    label: "pi-turn",
+    sessionId: opts.piSessionId,
   });
 
   const rl = createInterface({ input: child.stdout });

@@ -2,7 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { BarChart3, CheckCircle2, FlaskConical, Loader2, Play, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import type { EvaluationFlowConfig, Flow, PiModel, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult } from "@/types";
+import type { EvaluationError, EvaluationFlowConfig, Flow, PiModel, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult } from "@/types";
 
 interface Props {
   workspaceId: string | null;
@@ -211,7 +211,7 @@ export function ResearchLabPane(p: Props) {
               <div><div className="flex items-center gap-2 text-base font-semibold"><BarChart3 className="h-4 w-4" />工作流测评报告</div><p className="mt-1 max-w-4xl whitespace-pre-wrap text-xs leading-5 text-neutral-500">{selected.prompt}</p></div>
               <div className="flex shrink-0 items-center gap-2 text-xs text-neutral-500"><StatusIcon status={selected.status} />{statusLabel(selected.status)}</div>
             </div>
-            {selected.error && <p className="mt-3 rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/30">{selected.error}</p>}
+            {selected.error && <p className="mt-3 whitespace-pre-wrap rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/30">{formatEvaluationError(selected.error)}</p>}
             <SavedModelConfigs evaluation={selected} />
             <SummaryTable summaries={summaries} hasJudge={!!selected.rubric.trim()} />
             <div className="mt-6 text-sm font-semibold">运行明细</div>
@@ -304,7 +304,7 @@ function SummaryTable({ summaries, hasJudge }: { summaries: FlowSummary[]; hasJu
 }
 
 function ResultCard({ result }: { result: WorkflowEvaluationResult }) {
-  return <details className="rounded-md border border-neutral-200 px-3 py-2 dark:border-neutral-800"><summary className="flex cursor-pointer list-none items-center gap-2 text-xs"><StatusIcon status={result.status} /><span className="font-medium">{result.flowName}</span><span className="text-neutral-400">第 {result.attempt} 次</span><span className="ml-auto text-neutral-400">{result.durationSec.toFixed(1)}s · {result.totalTokens.toLocaleString()} tok · ${result.totalCost.toFixed(4)}</span></summary><div className="mt-3 grid gap-3 lg:grid-cols-2"><div><div className="mb-1 text-xs font-medium">输出</div><pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded bg-neutral-50 p-3 text-xs dark:bg-neutral-900">{result.output || result.error || "等待运行"}</pre></div><div><div className="mb-1 text-xs font-medium">Judge</div><div className="rounded bg-neutral-50 p-3 text-xs leading-5 dark:bg-neutral-900">{result.judgeScore === null ? "未评分" : `${result.judgeScore.toFixed(1)} / 100`}<div className="mt-1 text-neutral-500">{result.judgeDetails}</div></div></div></div></details>;
+  return <details className="rounded-md border border-neutral-200 px-3 py-2 dark:border-neutral-800"><summary className="flex cursor-pointer list-none items-center gap-2 text-xs"><StatusIcon status={result.status} /><span className="font-medium">{result.flowName}</span><span className="text-neutral-400">第 {result.attempt} 次</span><span className="ml-auto text-neutral-400">{result.durationSec.toFixed(1)}s · {result.totalTokens.toLocaleString()} tok · ${result.totalCost.toFixed(4)}</span></summary><div className="mt-3 grid gap-3 lg:grid-cols-2"><div><div className="mb-1 text-xs font-medium">输出</div><pre className="max-h-80 overflow-auto whitespace-pre-wrap rounded bg-neutral-50 p-3 text-xs dark:bg-neutral-900">{result.output || formatEvaluationError(result.error) || "等待运行"}</pre></div><div><div className="mb-1 text-xs font-medium">Judge</div><div className="rounded bg-neutral-50 p-3 text-xs leading-5 dark:bg-neutral-900">{result.judgeScore === null ? "未评分" : `${result.judgeScore.toFixed(1)} / 100`}<div className="mt-1 text-neutral-500">{result.judgeDetails}</div></div></div></div></details>;
 }
 
 function summarize(results: WorkflowEvaluationResult[]): FlowSummary[] {
@@ -319,6 +319,10 @@ function summarize(results: WorkflowEvaluationResult[]): FlowSummary[] {
 }
 
 function sum(rows: WorkflowEvaluationResult[], key: "durationSec" | "totalTokens" | "totalCost" | "toolCalls" | "outputChars"): number { return rows.reduce((acc, row) => acc + row[key], 0); }
+function formatEvaluationError(error: EvaluationError | null): string {
+  if (!error) return "";
+  return [`[${error.code}] ${error.message}`, error.hint ? `hint: ${error.hint}` : ""].filter(Boolean).join("\n");
+}
 function StatusIcon({ status }: { status: string }) { return status === "success" ? <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-500" /> : status === "failed" ? <XCircle className="h-3.5 w-3.5 shrink-0 text-rose-500" /> : <Loader2 className={cn("h-3.5 w-3.5 shrink-0 text-amber-500", status === "running" && "animate-spin")} />; }
 function statusLabel(status: string): string { return status === "success" ? "已完成" : status === "failed" ? "失败" : "运行中"; }
 function inputClass(extra = ""): string { return cn("w-full rounded-md border border-neutral-300 bg-transparent px-2 py-1.5 text-xs outline-none focus:border-neutral-500 dark:border-neutral-700", extra); }

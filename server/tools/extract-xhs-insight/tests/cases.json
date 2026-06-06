@@ -1,0 +1,35 @@
+{
+  "cases": [
+    {
+      "id": "xhs-minimal-golden",
+      "name": "Minimal HTML golden JSON",
+      "inputPath": "tests/fixtures/minimal.html",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "golden",
+        "goldenDir": "tests/golden/minimal",
+        "normalizeWhitespace": true
+      }
+    },
+    {
+      "id": "xhs-minimal-schema",
+      "name": "Minimal HTML schema",
+      "inputPath": "tests/fixtures/minimal.html",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "schema",
+        "jsonPath": "*.json",
+        "schema": {
+          "type": "object",
+          "required": ["fileName", "aiContent", "labels"],
+          "properties": {
+            "labels": {
+              "type": "object",
+              "required": ["gender", "age", "interests", "keywords", "lifestyle"]
+            }
+          }
+        }
+      }
+    }
+  ]
+}

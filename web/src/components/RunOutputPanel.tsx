@@ -25,6 +25,7 @@ interface Props {
   /** Client-side runId (basename of outputDir) of the active/just-finished run. */
   currentRunId: string | null;
   running: boolean;
+  requestedFile?: { path: string; nonce: number } | null;
 }
 
 interface FileState {
@@ -166,6 +167,11 @@ export function RunOutputPanel(p: Props) {
         editing: false, saving: false, dirty: false, error: String(err),
       }));
   }, [p.flowId, runId]);
+
+  useEffect(() => {
+    if (!p.requestedFile || !runId) return;
+    openFile(p.requestedFile.path, basename(p.requestedFile.path));
+  }, [openFile, p.requestedFile, runId]);
 
   const save = useCallback(async () => {
     if (!file || !runId || !file.dirty) return;

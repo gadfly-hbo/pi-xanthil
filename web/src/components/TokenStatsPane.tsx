@@ -1,11 +1,9 @@
 import { useCallback, useEffect, useState } from "react";
 import { BarChart3, Database, DollarSign, RefreshCw, Hash, Layers, TrendingUp, Cpu } from "lucide-react";
 import { api } from "@/lib/api";
-import type { SessionTokenStats } from "@/types";
+import type { TokenUsageStats, TokenUsageTargetKind } from "@/types";
 
-interface TokenStatsRow extends SessionTokenStats {
-  title: string;
-}
+type TokenStatsRow = TokenUsageStats;
 
 function fmt(n: number): string {
   return n.toLocaleString();
@@ -19,6 +17,23 @@ function costFmt(n: number): string {
 
 function pct(n: number): string {
   return `${(n * 100).toFixed(1)}%`;
+}
+
+function kindLabel(kind: TokenUsageTargetKind): string {
+  const labels: Record<TokenUsageTargetKind, string> = {
+    session: "探索",
+    flow: "工作流聊天",
+    flow_run: "工作流执行",
+    toc: "TOC",
+    decision_tree: "决策树",
+    golden_strategy: "黄金策",
+    business_requirement: "业务需求",
+    report_version: "汇报版本",
+    workflow_promotion: "工作流沉淀",
+    evaluation: "实验室",
+    repair: "JSON repair",
+  };
+  return labels[kind] ?? kind;
 }
 
 function barWidth(ratio: number): string {
@@ -99,7 +114,7 @@ export function TokenStatsPane({ workspaceId }: { workspaceId: string | null }) 
               <BarChart3 className="h-4 w-4" /> Token 使用统计
             </h1>
             <p className="mt-1 text-[12.5px] text-neutral-500">
-              全工作区 token 消耗概览，按会话维度汇总
+              全工作区 token 消耗概览，覆盖探索、工作流、TOC、决策树和实验室等来源
             </p>
           </div>
           <button
@@ -143,7 +158,7 @@ export function TokenStatsPane({ workspaceId }: { workspaceId: string | null }) 
           />
           <StatCard
             icon={<Layers className="h-5 w-5 text-white" />}
-            label="会话数"
+            label="来源数"
             value={fmt(rows.length)}
             sub={rows.length > 0 ? `最近更新: ${new Date(Math.max(...rows.map((r) => r.updatedAt))).toLocaleString()}` : ""}
             color="bg-amber-500"
@@ -203,14 +218,14 @@ export function TokenStatsPane({ workspaceId }: { workspaceId: string | null }) 
           </div>
         )}
 
-        {/* Per-session table */}
+        {/* Per-target table */}
         <div className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
             <Hash className="h-3.5 w-3.5 text-neutral-500" />
             <h2 className="text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
-              会话明细
+              来源明细
             </h2>
-            <span className="text-[11px] text-neutral-400">({rows.length} 个会话)</span>
+            <span className="text-[11px] text-neutral-400">({rows.length} 个来源)</span>
           </div>
           {rows.length === 0 ? (
             <div className="flex min-h-32 items-center justify-center text-[13px] text-neutral-400">
@@ -221,7 +236,8 @@ export function TokenStatsPane({ workspaceId }: { workspaceId: string | null }) 
               <table className="w-full text-left text-[12px]">
                 <thead>
                   <tr className="border-b border-neutral-100 text-neutral-500 dark:border-neutral-800">
-                    <th className="sticky left-0 bg-white px-4 py-2.5 font-medium dark:bg-neutral-900">会话</th>
+                    <th className="sticky left-0 bg-white px-4 py-2.5 font-medium dark:bg-neutral-900">来源</th>
+                    <th className="px-3 py-2.5 font-medium">类型</th>
                     <th className="px-3 py-2.5 font-medium text-right">input</th>
                     <th className="px-3 py-2.5 font-medium text-right">output</th>
                     <th className="px-3 py-2.5 font-medium text-right">cacheRead</th>
@@ -238,12 +254,13 @@ export function TokenStatsPane({ workspaceId }: { workspaceId: string | null }) 
                     const sessionTotal = r.inputTokens + r.outputTokens + r.cacheReadTokens + r.cacheWriteTokens;
                     return (
                       <tr
-                        key={r.sessionId}
+                        key={`${r.targetKind}:${r.targetId}`}
                         className="border-b border-neutral-50 text-neutral-700 hover:bg-neutral-50 dark:border-neutral-800/50 dark:text-neutral-300 dark:hover:bg-neutral-800/30"
                       >
                         <td className="sticky left-0 max-w-[14rem] truncate bg-white px-4 py-2.5 font-medium dark:bg-neutral-900">
-                          {r.title || r.sessionId.slice(0, 8)}
+                          {r.title || r.targetId.slice(0, 8)}
                         </td>
+                        <td className="px-3 py-2.5 text-neutral-500">{kindLabel(r.targetKind)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{fmt(r.inputTokens)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{fmt(r.outputTokens)}</td>
                         <td className="px-3 py-2.5 text-right tabular-nums">{fmt(r.cacheReadTokens)}</td>

@@ -1,7 +1,7 @@
-import { PanelLeftOpen, Compass, Bot, Users, Calculator, BookOpen, Database, FlaskConical, type LucideIcon } from "lucide-react";
+import { PanelLeftOpen, Compass, Bot, Users, Calculator, BookOpen, Database, FlaskConical, Cpu, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type Tab = "explore" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "anax";
+export type Tab = "explore" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "anax" | "dashboard";
 
 export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "explore", label: "探索", icon: Compass },
@@ -11,6 +11,7 @@ export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "xan_db", label: "Xan数据库", icon: Database },
   { id: "research_lab", label: "实验室", icon: FlaskConical },
   { id: "anax", label: "AnaX", icon: Bot },
+  { id: "dashboard", label: "Dashboard", icon: Cpu },
 ];
 
 interface Props {
@@ -21,14 +22,14 @@ interface Props {
   sidebarOpen: boolean;
   onOpenSidebar: () => void;
   totalTokens: number;
-  totalCost: number;
-  /** 0–1. 0 = no data yet (hidden). cacheReadTokens / (input + cacheRead + cacheWrite) */
+  /** Today's cacheReadTokens / (input + cacheRead + cacheWrite). */
   cacheHitRate: number;
   hiddenTabs: string[];
   rulesPromptEnabled: boolean;
   rulesPromptCount: number;
   rulesPromptUpdatedAt: number | null;
   onToggleRulesPrompt: () => void;
+  onOpenTokenStats: () => void;
 }
 
 export function MainHeader(p: Props) {
@@ -101,24 +102,27 @@ export function MainHeader(p: Props) {
         >
           rules {p.rulesPromptCount === 0 ? "none" : p.rulesPromptEnabled ? `on · ${p.rulesPromptCount}` : `off · ${p.rulesPromptCount}`}
         </button>
-        {p.cacheHitRate > 0 && (
-          <span
-            title={`Provider 缓存命中率：${(p.cacheHitRate * 100).toFixed(1)}%\n命中 token 占比 = cacheRead / (input + cacheRead + cacheWrite)`}
-            className={cn(
-              "font-medium tabular-nums",
-              p.cacheHitRate >= 0.5
-                ? "text-emerald-600 dark:text-emerald-400"
-                : p.cacheHitRate >= 0.2
-                  ? "text-amber-500 dark:text-amber-400"
-                  : "text-neutral-500 dark:text-neutral-400",
-            )}
-          >
-            ↩{(p.cacheHitRate * 100).toFixed(0)}%
-          </span>
-        )}
+        <span
+          title={`今日 Provider 缓存命中率：${(p.cacheHitRate * 100).toFixed(1)}%\n命中 token 占比 = cacheRead / (input + cacheRead + cacheWrite)`}
+          className={cn(
+            "font-medium tabular-nums",
+            p.cacheHitRate >= 0.5
+              ? "text-emerald-600 dark:text-emerald-400"
+              : p.cacheHitRate >= 0.2
+                ? "text-amber-500 dark:text-amber-400"
+                : "text-neutral-500 dark:text-neutral-400",
+          )}
+        >
+          ↩{(p.cacheHitRate * 100).toFixed(0)}%
+        </span>
         <span title="累计 token" className="tabular-nums">{p.totalTokens.toLocaleString()} tok</span>
-        <span className="text-neutral-300 dark:text-neutral-700">·</span>
-        <span title="累计成本 (USD)" className="tabular-nums">${p.totalCost.toFixed(4)}</span>
+        <button
+          onClick={p.onOpenTokenStats}
+          title="查看 token 统计明细"
+          className="inline-flex h-7 items-center rounded-md px-2 text-[11.5px] text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+        >
+          token统计
+        </button>
       </div>
     </header>
   );

@@ -1,4 +1,14 @@
-import * as XLSX from "xlsx";
+import type { WorkSheet } from "xlsx";
+
+type XLSXModule = typeof import("xlsx");
+let _xlsx: XLSXModule | null = null;
+
+async function getXlsx(): Promise<XLSXModule> {
+  if (!_xlsx) {
+    _xlsx = await import("xlsx");
+  }
+  return _xlsx;
+}
 
 export type AggregateValue = string | number | boolean | Date | null;
 export type AggregateRow = Record<string, AggregateValue>;
@@ -69,8 +79,8 @@ export function inferColumns(rows: AggregateRow[], names?: string[]): AggregateC
   });
 }
 
-function normalizeRows(sheet: XLSX.WorkSheet): LocalDataset {
-  const matrix = XLSX.utils.sheet_to_json<AggregateValue[]>(sheet, {
+function normalizeRows(xlsx: XLSXModule, sheet: WorkSheet): LocalDataset {
+  const matrix = xlsx.utils.sheet_to_json<AggregateValue[]>(sheet, {
     header: 1,
     raw: true,
     defval: null,
@@ -89,12 +99,13 @@ function normalizeRows(sheet: XLSX.WorkSheet): LocalDataset {
 }
 
 export async function readLocalDataset(file: File): Promise<LocalDataset> {
-  const workbook = XLSX.read(await file.arrayBuffer(), { type: "array", cellDates: true });
+  const xlsx = await getXlsx();
+  const workbook = xlsx.read(await file.arrayBuffer(), { type: "array", cellDates: true });
   const sheetName = workbook.SheetNames[0];
   if (!sheetName) throw new Error("文件中没有可读取的工作表");
   const sheet = workbook.Sheets[sheetName];
   if (!sheet) throw new Error("无法读取第一个工作表");
-  return { ...normalizeRows(sheet), sheetName };
+  return { ...normalizeRows(xlsx, sheet), sheetName };
 }
 
 function dateBucket(value: AggregateValue, granularity: DateGranularity): string {

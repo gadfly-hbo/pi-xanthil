@@ -2,7 +2,29 @@
 
 ---
 
-## 📌 Session 11（最新）— 2026-06-02
+## 📌 Session 12（最新）— 2026-06-03
+
+### 0. 本次更新摘要（Changelog）
+
+**本次推进**: 修复决策树/TOC 图突然消失的 Bug，并新增「保存为图片（HTML）」功能。
+
+1）**决策树/TOC 消失 Bug 修复** ✅ — 根本原因：`App.tsx` 每次渲染都以对象字面量方式传入 `scope`（如 `{ type: "session", sessionId: ... }`），导致两个 Pane 内 `useCallback([scope])` 因引用变化而每次重建，触发 `useEffect` → `loadReports()` → `setTree([])`/`setGraph([])` 清空画布。任何父级重渲染（token 刷新、WebSocket 推送等）均会触发。修复方案：在两个 Pane 内从 `scope` 提取三个稳定原始值（`scopeType`、`scopeSessionId`、`scopeFlowId`）作为 `useCallback` deps，同时用 `scopeRef` 持有最新 scope 供 async 回调读取；`selectedReport` 的内容加载 effect 也改为依赖 `selectedReport?.id`（字符串）而非对象引用。彻底断开对象引用导致的重建链路。
+
+2）**保存为 HTML 格式图片** ✅ — 新增「保存图片」按钮（`Download` 图标，生成后才启用）。保存流程：读取当前 scope 的「报告输出」路径列表（`folder="report"`）→ 取第一个 `dir` path → 生成 HTML 文件 → POST 到服务端写入 `graphs/` 子目录。文件名格式：`graphs/decision_tree_<报告名>_<时间戳>.html` / `graphs/toc_<报告名>_<时间戳>.html`。保存成功后工具栏下方显示完整保存路径（绿色提示条）。格式选择 HTML 而非 SVG 的原因：SVG 需手动坐标定位文字，中文字体（PingFang/Noto CJK）无法正确嵌入，字体变形；HTML 用浏览器原生渲染，`font-family` 中文支持完整，文本自然换行，双击即可在浏览器打开。
+
+3）**服务端新增 `PUT /api/workspace-paths/:pathId/file`** ✅ — 向 workspace path 目录写入任意文本文件，带 `safeResolve` 路径穿越防护，自动创建中间目录（`mkdirSync recursive`）。`api.ts` 新增 `workspacePathFilePut(pathId, path, content)`。
+
+4）**HTML 图片生成方案** — 节点为 `<div>` + `position:absolute` + 内联 CSS（保留与 App 一致的颜色 token：sky/amber/emerald/rose/violet/neutral），边用 `<svg>` overlay 贝塞尔曲线绘制（坐标系统与 `toFlowNodes` 对齐，`minX/minY` 偏移修正），字体声明 PingFang SC → Noto Sans CJK SC → Helvetica Neue 降级链。`escapeHtml` 处理节点文本 XSS 转义，`<br>` 保留换行。
+
+**关键决策**: SVG 字体问题根因是 SVG 无法内嵌系统 CJK 字体，改 HTML 一次性解决，无新依赖，文件可直接浏览器打开，也可后续用 puppeteer 转 PNG；`scope` 对象引用问题的根治在 Pane 组件内部提取稳定 deps，不改 App.tsx 的调用方式（App.tsx 的内联对象写法在整个项目中是惯例，不应全局改）。
+
+**新增阻塞/问题**: 无。`npm run typecheck` server + web 双绿。
+
+**下一步重点**: 1）端到端验证保存功能（实际点击「保存图片」，检查 `graphs/` 目录是否生成，浏览器打开 HTML 是否字体正常）；2）Session 11 遗留：工作流未运行过时右栏空白是否补 flow 目录文件树（待用户决策）；3）`SingleAgentExecutionPane.tsx` 死代码是否删除（待用户确认）。
+
+---
+
+## 📌 Session 11 — 2026-06-02
 
 ### 0. 本次更新摘要（Changelog）
 

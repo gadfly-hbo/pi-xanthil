@@ -3,7 +3,8 @@ import { randomUUID } from "node:crypto";
 import { join } from "node:path";
 import { mkdirSync, statSync } from "node:fs";
 import { DB_PATH, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
-import type { AnalysisStandard, AnalysisStandardKind, CreateRuleResult, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, PiUsage, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, StoredFlowMessage, StoredMessage, TraceErrorType, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
+import type { AnalysisCase, AnalysisCaseInput, AnaxGateConfig, AnalysisStandard, AnalysisStandardKind, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalInput, ChangeProposalStatus, CreateRuleResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, KgEdge, KgNode, KgNodeType, KgRelation, MemoryEvalVariant, MemoryEvaluation, MemoryEvaluationDetail, MemoryEvaluationResult, MemoryInjectionRecord, MemoryInjectionSnapshot, MemoryProposal, MemoryProposalRiskFlag, MemoryFailureAttribution, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, RuleConflict, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, PiUsage, PredictionResult, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, SkillCurationProposalRecord, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillEvalSet, SkillEvalTask, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, StaleNode, StaleNodeReason, StoredFlowMessage, StoredMessage, TokenUsageStats, TokenUsageTargetKind, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, TraceErrorType, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
+import { parseEvaluationError, serializeEvaluationError } from "./evaluation-errors.ts";
 
 ensureDirs(); // DB opens at import time — guarantee the data dir exists first.
 const db = new DatabaseSync(DB_PATH);
@@ -39,6 +40,15 @@ try {
   const cols = db.prepare("PRAGMA table_info(rule_memories)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "scope")) {
     db.exec("ALTER TABLE rule_memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'global'");
+  }
+  if (!cols.some((c) => c.name === "version")) {
+    db.exec("ALTER TABLE rule_memories ADD COLUMN version INTEGER NOT NULL DEFAULT 1");
+  }
+  if (!cols.some((c) => c.name === "supersedes_rule_id")) {
+    db.exec("ALTER TABLE rule_memories ADD COLUMN supersedes_rule_id TEXT");
+  }
+  if (!cols.some((c) => c.name === "change_reason")) {
+    db.exec("ALTER TABLE rule_memories ADD COLUMN change_reason TEXT NOT NULL DEFAULT ''");
   }
 } catch {
   // ignore
@@ -206,6 +216,41 @@ db.exec(`
     judge_details TEXT NOT NULL DEFAULT ''
   );
   CREATE INDEX IF NOT EXISTS idx_workflow_evaluation_results_eval ON workflow_evaluation_results(evaluation_id);
+  CREATE TABLE IF NOT EXISTS memory_evaluations (
+    id           TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    prompt       TEXT NOT NULL,
+    rubric       TEXT NOT NULL,
+    model        TEXT NOT NULL,
+    judge_model  TEXT NOT NULL DEFAULT '',
+    target_scope TEXT NOT NULL,
+    repeat       INTEGER NOT NULL,
+    status       TEXT NOT NULL,
+    created_at   INTEGER NOT NULL,
+    ended_at     INTEGER,
+    error        TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_memory_evaluations_ws ON memory_evaluations(workspace_id, created_at DESC);
+  CREATE TABLE IF NOT EXISTS memory_evaluation_results (
+    id              TEXT PRIMARY KEY,
+    evaluation_id   TEXT NOT NULL REFERENCES memory_evaluations(id),
+    variant         TEXT NOT NULL,
+    attempt         INTEGER NOT NULL,
+    status          TEXT NOT NULL,
+    started_at      INTEGER,
+    ended_at        INTEGER,
+    duration_sec    REAL NOT NULL DEFAULT 0,
+    total_tokens    INTEGER NOT NULL DEFAULT 0,
+    total_cost      REAL NOT NULL DEFAULT 0,
+    tool_calls      INTEGER NOT NULL DEFAULT 0,
+    output_chars    INTEGER NOT NULL DEFAULT 0,
+    output          TEXT NOT NULL DEFAULT '',
+    error           TEXT,
+    judge_score     REAL,
+    judge_details   TEXT NOT NULL DEFAULT '',
+    memory_snapshot TEXT
+  );
+  CREATE INDEX IF NOT EXISTS idx_memory_evaluation_results_eval ON memory_evaluation_results(evaluation_id);
   CREATE TABLE IF NOT EXISTS workspace_paths (
     id           INTEGER PRIMARY KEY AUTOINCREMENT,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id),
@@ -214,6 +259,7 @@ db.exec(`
     folder       TEXT NOT NULL,
     path         TEXT NOT NULL,
     kind         TEXT NOT NULL DEFAULT 'file',
+    file_hash    TEXT,
     added_at     INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_ws_paths_ws ON workspace_paths(workspace_id, folder);
@@ -230,6 +276,34 @@ db.exec(`
     updated_at          INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_session_token_stats_session ON session_token_stats(session_id);
+  CREATE TABLE IF NOT EXISTS token_usage_stats (
+    workspace_id        TEXT NOT NULL REFERENCES workspaces(id),
+    target_kind         TEXT NOT NULL,
+    target_id           TEXT NOT NULL,
+    title               TEXT NOT NULL,
+    input_tokens        INTEGER NOT NULL DEFAULT 0,
+    output_tokens       INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+    turn_count          INTEGER NOT NULL DEFAULT 0,
+    total_cost          REAL NOT NULL DEFAULT 0,
+    updated_at          INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, target_kind, target_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_token_usage_stats_ws ON token_usage_stats(workspace_id, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS token_usage_daily_stats (
+    day                 TEXT NOT NULL,
+    workspace_id        TEXT NOT NULL REFERENCES workspaces(id),
+    input_tokens        INTEGER NOT NULL DEFAULT 0,
+    output_tokens       INTEGER NOT NULL DEFAULT 0,
+    cache_read_tokens   INTEGER NOT NULL DEFAULT 0,
+    cache_write_tokens  INTEGER NOT NULL DEFAULT 0,
+    turn_count          INTEGER NOT NULL DEFAULT 0,
+    total_cost          REAL NOT NULL DEFAULT 0,
+    updated_at          INTEGER NOT NULL,
+    PRIMARY KEY (day, workspace_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_token_usage_daily_stats_ws_day ON token_usage_daily_stats(workspace_id, day DESC);
   CREATE TABLE IF NOT EXISTS file_analysis_cache (
     file_hash  TEXT PRIMARY KEY,
     content    TEXT NOT NULL,
@@ -250,6 +324,38 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_trace_events_ws_time ON trace_events(workspace_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_trace_events_target ON trace_events(target_kind, target_id);
   CREATE INDEX IF NOT EXISTS idx_trace_events_type ON trace_events(type);
+  CREATE TABLE IF NOT EXISTS memory_proposals (
+    id               TEXT PRIMARY KEY,
+    workspace_id     TEXT NOT NULL REFERENCES workspaces(id),
+    kind             TEXT NOT NULL,
+    title            TEXT NOT NULL,
+    evidence         TEXT NOT NULL,
+    source           TEXT NOT NULL,
+    severity         TEXT NOT NULL,
+    scope            TEXT NOT NULL,
+    source_event_ids TEXT NOT NULL DEFAULT '[]',
+    confidence       REAL NOT NULL DEFAULT 0,
+    risk_flags       TEXT NOT NULL DEFAULT '[]',
+    status           TEXT NOT NULL,
+    rejection_reason TEXT NOT NULL DEFAULT '',
+    approved_rule_id TEXT,
+    created_at       INTEGER NOT NULL,
+    updated_at       INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_memory_proposals_ws_status ON memory_proposals(workspace_id, status, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS memory_usage_stats (
+    workspace_id      TEXT NOT NULL REFERENCES workspaces(id),
+    source_kind       TEXT NOT NULL,
+    source_id         TEXT NOT NULL DEFAULT '*',
+    used_count        INTEGER NOT NULL DEFAULT 0,
+    last_used_at      INTEGER,
+    positive_signals  INTEGER NOT NULL DEFAULT 0,
+    negative_signals  INTEGER NOT NULL DEFAULT 0,
+    stale_after_days  INTEGER NOT NULL DEFAULT 90,
+    updated_at        INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, source_kind, source_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_memory_usage_stats_ws ON memory_usage_stats(workspace_id, updated_at DESC);
   CREATE TABLE IF NOT EXISTS rule_memories (
     id           TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id),
@@ -259,10 +365,38 @@ db.exec(`
     severity     TEXT NOT NULL,
     scope        TEXT NOT NULL DEFAULT 'global',
     enabled      INTEGER NOT NULL DEFAULT 1,
+    version      INTEGER NOT NULL DEFAULT 1,
+    supersedes_rule_id TEXT,
+    change_reason TEXT NOT NULL DEFAULT '',
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_rule_memories_ws ON rule_memories(workspace_id, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS rule_conflicts (
+    id           TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    rule_a_id    TEXT NOT NULL REFERENCES rule_memories(id),
+    rule_b_id    TEXT NOT NULL REFERENCES rule_memories(id),
+    reason       TEXT NOT NULL,
+    severity     TEXT NOT NULL,
+    status       TEXT NOT NULL DEFAULT 'open',
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL,
+    UNIQUE(rule_a_id, rule_b_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_rule_conflicts_ws ON rule_conflicts(workspace_id, status, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS memory_failure_attributions (
+    id           TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    target_kind  TEXT NOT NULL,
+    target_id    TEXT NOT NULL,
+    cause        TEXT NOT NULL,
+    source_kind  TEXT,
+    source_id    TEXT,
+    note         TEXT NOT NULL DEFAULT '',
+    created_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_memory_failure_attributions_ws ON memory_failure_attributions(workspace_id, created_at DESC);
   CREATE TABLE IF NOT EXISTS analysis_standards (
     id           TEXT PRIMARY KEY,
     workspace_id TEXT NOT NULL REFERENCES workspaces(id),
@@ -280,12 +414,293 @@ db.exec(`
     updated_at   INTEGER NOT NULL
   );
   CREATE INDEX IF NOT EXISTS idx_analysis_standards_ws ON analysis_standards(workspace_id, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS business_contexts (
+    id           TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    category     TEXT NOT NULL,
+    title        TEXT NOT NULL,
+    content      TEXT NOT NULL DEFAULT '',
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_business_contexts_ws ON business_contexts(workspace_id, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS analysis_cases (
+    id           TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    title        TEXT NOT NULL,
+    category     TEXT NOT NULL DEFAULT '',
+    scenario     TEXT NOT NULL DEFAULT '',
+    approach     TEXT NOT NULL DEFAULT '',
+    conclusion   TEXT NOT NULL DEFAULT '',
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_analysis_cases_ws ON analysis_cases(workspace_id, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS hypothesis_library (
+    id           TEXT PRIMARY KEY,
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    scene        TEXT NOT NULL,
+    hypothesis   TEXT NOT NULL,
+    verdict      TEXT NOT NULL,
+    evidence     TEXT NOT NULL DEFAULT '',
+    impact       TEXT NOT NULL DEFAULT '',
+    source       TEXT NOT NULL DEFAULT 'manual',
+    enabled      INTEGER NOT NULL DEFAULT 1,
+    created_at   INTEGER NOT NULL,
+    updated_at   INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_hypothesis_library_ws ON hypothesis_library(workspace_id, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS change_proposals (
+    id              TEXT PRIMARY KEY,
+    workspace_id    TEXT NOT NULL REFERENCES workspaces(id),
+    run_id          TEXT,
+    source_node_id  TEXT,
+    title           TEXT NOT NULL,
+    description     TEXT NOT NULL DEFAULT '',
+    expected_impact TEXT NOT NULL DEFAULT '',
+    status          TEXT NOT NULL DEFAULT 'proposed',
+    applied_result  TEXT NOT NULL DEFAULT '',
+    created_at      INTEGER NOT NULL,
+    updated_at      INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_change_proposals_ws ON change_proposals(workspace_id, updated_at DESC);
+  CREATE TABLE IF NOT EXISTS anax_gate_config (
+    workspace_id          TEXT PRIMARY KEY,
+    min_confidence        TEXT NOT NULL DEFAULT 'medium',
+    min_evidence_count    INTEGER NOT NULL DEFAULT 2,
+    min_data_quality_score REAL NOT NULL DEFAULT 7
+  );
+  CREATE TABLE IF NOT EXISTS stale_nodes (
+    id           INTEGER PRIMARY KEY AUTOINCREMENT,
+    run_id       TEXT NOT NULL,
+    node_id      TEXT NOT NULL,
+    reason       TEXT NOT NULL,
+    triggered_at INTEGER NOT NULL,
+    UNIQUE(run_id, node_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_stale_nodes_run ON stale_nodes(run_id);
+  CREATE TABLE IF NOT EXISTS model_lab_runs (
+    id          TEXT PRIMARY KEY,
+    model_id    TEXT NOT NULL,
+    model       TEXT NOT NULL,
+    status      TEXT NOT NULL,
+    row_count   INTEGER NOT NULL,
+    rows_total  INTEGER NOT NULL,
+    rows_capped INTEGER NOT NULL,
+    duration_ms INTEGER NOT NULL,
+    result      TEXT NOT NULL,
+    raw_output  TEXT NOT NULL,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE INDEX IF NOT EXISTS idx_model_lab_runs_created ON model_lab_runs(created_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_model_lab_runs_model ON model_lab_runs(model_id, created_at DESC);
+  CREATE TABLE IF NOT EXISTS bi_datasets (
+    id            TEXT PRIMARY KEY,
+    slot          TEXT NOT NULL,
+    filename      TEXT NOT NULL,
+    storage_path  TEXT NOT NULL,
+    columns_json  TEXT NOT NULL,
+    rows_json     TEXT NOT NULL,
+    row_count     INTEGER NOT NULL,
+    column_count  INTEGER NOT NULL,
+    size_bytes    INTEGER NOT NULL,
+    uploaded_at   INTEGER NOT NULL,
+    active        INTEGER NOT NULL DEFAULT 1
+  );
+  CREATE INDEX IF NOT EXISTS idx_bi_datasets_slot_uploaded ON bi_datasets(slot, uploaded_at DESC);
+  CREATE INDEX IF NOT EXISTS idx_bi_datasets_slot_active ON bi_datasets(slot, active);
 `);
+
+try {
+  const cols = db.prepare("PRAGMA table_info(workspace_paths)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "session_id")) {
+    db.exec("ALTER TABLE workspace_paths ADD COLUMN session_id TEXT");
+  }
+  if (!cols.some((c) => c.name === "flow_id")) {
+    db.exec("ALTER TABLE workspace_paths ADD COLUMN flow_id TEXT");
+  }
+  if (!cols.some((c) => c.name === "kind")) {
+    db.exec("ALTER TABLE workspace_paths ADD COLUMN kind TEXT NOT NULL DEFAULT 'file'");
+  }
+  if (!cols.some((c) => c.name === "file_hash")) {
+    db.exec("ALTER TABLE workspace_paths ADD COLUMN file_hash TEXT");
+  }
+} catch {
+  // ignore
+}
+
+try {
+  const cols = db.prepare("PRAGMA table_info(model_lab_runs)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "error_message")) {
+    db.exec("ALTER TABLE model_lab_runs ADD COLUMN error_message TEXT");
+  }
+} catch {
+  // ignore
+}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_eval_sets (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name         TEXT NOT NULL,
+      tasks        TEXT NOT NULL,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_eval_sets_ws ON skill_eval_sets(workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS skill_evaluations (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL REFERENCES workspaces(id),
+      model             TEXT NOT NULL,
+      repeat            INTEGER NOT NULL,
+      status            TEXT NOT NULL,
+      started_at        INTEGER NOT NULL,
+      ended_at          INTEGER NOT NULL,
+      duration_sec      REAL NOT NULL DEFAULT 0,
+      variants          TEXT NOT NULL,
+      tasks             TEXT NOT NULL,
+      context_prefix    TEXT NOT NULL DEFAULT '',
+      variant_summaries TEXT NOT NULL,
+      task_summaries    TEXT NOT NULL,
+      pairwise_summaries TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_evaluations_ws ON skill_evaluations(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS skill_evaluation_results (
+      id            TEXT PRIMARY KEY,
+      evaluation_id TEXT NOT NULL REFERENCES skill_evaluations(id),
+      variant_id    TEXT NOT NULL,
+      variant_label TEXT NOT NULL,
+      task_id       TEXT NOT NULL,
+      attempt       INTEGER NOT NULL,
+      status        TEXT NOT NULL,
+      started_at    INTEGER NOT NULL,
+      ended_at      INTEGER NOT NULL,
+      duration_sec  REAL NOT NULL DEFAULT 0,
+      skill_paths   TEXT NOT NULL,
+      total_tokens  INTEGER NOT NULL DEFAULT 0,
+      total_cost    REAL NOT NULL DEFAULT 0,
+      tool_calls    INTEGER NOT NULL DEFAULT 0,
+      output_chars  INTEGER NOT NULL DEFAULT 0,
+      output        TEXT NOT NULL DEFAULT '',
+      activation    TEXT NOT NULL,
+      pairwise      TEXT,
+      error         TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_evaluation_results_eval ON skill_evaluation_results(evaluation_id);
+  `);
+  try { db.exec("ALTER TABLE skill_evaluations ADD COLUMN pairwise_summaries TEXT NOT NULL DEFAULT '[]'"); } catch { /* column exists or read-only */ }
+  try { db.exec("ALTER TABLE skill_evaluation_results ADD COLUMN pairwise TEXT"); } catch { /* column exists or read-only */ }
+} catch {
+  // Read-only test sandboxes may import db only for unrelated helpers.
+}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS tool_case_sets (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name         TEXT NOT NULL,
+      tool_id      TEXT NOT NULL,
+      cases        TEXT NOT NULL,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tool_case_sets_ws_tool ON tool_case_sets(workspace_id, tool_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS tool_evaluations (
+      id             TEXT PRIMARY KEY,
+      workspace_id   TEXT NOT NULL REFERENCES workspaces(id),
+      tool_id        TEXT NOT NULL,
+      repeat         INTEGER NOT NULL,
+      status         TEXT NOT NULL,
+      started_at     INTEGER NOT NULL,
+      ended_at       INTEGER NOT NULL,
+      duration_sec   REAL NOT NULL DEFAULT 0,
+      cases          TEXT NOT NULL,
+      case_summaries TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tool_evaluations_ws ON tool_evaluations(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS tool_evaluation_results (
+      id            TEXT PRIMARY KEY,
+      evaluation_id TEXT NOT NULL REFERENCES tool_evaluations(id),
+      case_id       TEXT NOT NULL,
+      case_name     TEXT NOT NULL,
+      attempt       INTEGER NOT NULL,
+      status        TEXT NOT NULL,
+      started_at    INTEGER NOT NULL,
+      ended_at      INTEGER NOT NULL,
+      duration_sec  REAL NOT NULL DEFAULT 0,
+      input_path    TEXT NOT NULL,
+      output_path   TEXT NOT NULL,
+      stdout        TEXT NOT NULL DEFAULT '',
+      stderr        TEXT NOT NULL DEFAULT '',
+      summary       TEXT,
+      expectation   TEXT NOT NULL,
+      error         TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_tool_evaluation_results_eval ON tool_evaluation_results(evaluation_id);
+  `);
+} catch {
+  // Read-only test sandboxes may import db only for unrelated helpers.
+}
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_curation_proposals (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL REFERENCES workspaces(id),
+      evaluation_id     TEXT NOT NULL,
+      type              TEXT NOT NULL,
+      target_path       TEXT NOT NULL,
+      suggested_content TEXT NOT NULL DEFAULT '',
+      rationale         TEXT NOT NULL DEFAULT '',
+      confidence        REAL NOT NULL DEFAULT 0,
+      evidence          TEXT NOT NULL DEFAULT '[]',
+      status            TEXT NOT NULL DEFAULT 'pending',
+      created_at        INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_curation_proposals_ws ON skill_curation_proposals(workspace_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_skill_curation_proposals_eval ON skill_curation_proposals(evaluation_id);
+  `);
+} catch {
+  // Read-only test sandboxes may import db only for unrelated helpers.
+}
+
+try {
+  db.exec(`
+    INSERT OR IGNORE INTO token_usage_stats
+      (workspace_id, target_kind, target_id, title, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, turn_count, total_cost, updated_at)
+    SELECT s.workspace_id, 'session', sts.session_id, s.title,
+           sts.input_tokens, sts.output_tokens, sts.cache_read_tokens, sts.cache_write_tokens,
+           sts.turn_count, sts.total_cost, sts.updated_at
+    FROM session_token_stats sts
+    JOIN sessions s ON s.id = sts.session_id
+  `);
+} catch {
+  // ignore
+}
 
 try {
   const cols = db.prepare("PRAGMA table_info(messages)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "error_message")) {
     db.exec("ALTER TABLE messages ADD COLUMN error_message TEXT");
+  }
+} catch {
+  // ignore
+}
+
+try {
+  const hcols = db.prepare("PRAGMA table_info(hypothesis_library)").all() as Array<{ name: string }>;
+  if (!hcols.some((c) => c.name === "confirm_count")) {
+    db.exec("ALTER TABLE hypothesis_library ADD COLUMN confirm_count INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!hcols.some((c) => c.name === "reject_count")) {
+    db.exec("ALTER TABLE hypothesis_library ADD COLUMN reject_count INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!hcols.some((c) => c.name === "partial_count")) {
+    db.exec("ALTER TABLE hypothesis_library ADD COLUMN partial_count INTEGER NOT NULL DEFAULT 0");
   }
 } catch {
   // ignore
@@ -337,6 +752,25 @@ export function deleteWorkspace(id: string): void {
   const delEvaluationResults = db.prepare("DELETE FROM workflow_evaluation_results WHERE evaluation_id = ?");
   for (const evaluation of evaluations) delEvaluationResults.run(evaluation.id);
   db.prepare("DELETE FROM workflow_evaluations WHERE workspace_id = ?").run(id);
+  const memoryEvaluations = db.prepare("SELECT id FROM memory_evaluations WHERE workspace_id = ?").all(id) as unknown as Array<{ id: string }>;
+  const delMemoryEvaluationResults = db.prepare("DELETE FROM memory_evaluation_results WHERE evaluation_id = ?");
+  for (const evaluation of memoryEvaluations) delMemoryEvaluationResults.run(evaluation.id);
+  db.prepare("DELETE FROM memory_evaluations WHERE workspace_id = ?").run(id);
+  const skillEvaluations = db.prepare("SELECT id FROM skill_evaluations WHERE workspace_id = ?").all(id) as unknown as Array<{ id: string }>;
+  const delSkillEvaluationResults = db.prepare("DELETE FROM skill_evaluation_results WHERE evaluation_id = ?");
+  for (const evaluation of skillEvaluations) delSkillEvaluationResults.run(evaluation.id);
+  db.prepare("DELETE FROM skill_evaluations WHERE workspace_id = ?").run(id);
+  const toolEvaluations = db.prepare("SELECT id FROM tool_evaluations WHERE workspace_id = ?").all(id) as unknown as Array<{ id: string }>;
+  const delToolEvaluationResults = db.prepare("DELETE FROM tool_evaluation_results WHERE evaluation_id = ?");
+  for (const evaluation of toolEvaluations) delToolEvaluationResults.run(evaluation.id);
+  db.prepare("DELETE FROM tool_evaluations WHERE workspace_id = ?").run(id);
+  db.prepare("DELETE FROM skill_eval_sets WHERE workspace_id = ?").run(id);
+  db.prepare("DELETE FROM tool_case_sets WHERE workspace_id = ?").run(id);
+  db.prepare("DELETE FROM skill_curation_proposals WHERE workspace_id = ?").run(id);
+  db.prepare("DELETE FROM memory_proposals WHERE workspace_id = ?").run(id);
+  db.prepare("DELETE FROM memory_usage_stats WHERE workspace_id = ?").run(id);
+  db.prepare("DELETE FROM rule_conflicts WHERE workspace_id = ?").run(id);
+  db.prepare("DELETE FROM memory_failure_attributions WHERE workspace_id = ?").run(id);
   // Cascade: delete flows and their dependent records in this workspace.
   const flows = db.prepare("SELECT id FROM flows WHERE workspace_id = ?").all(id) as unknown as Array<{ id: string }>;
   for (const flow of flows) deleteFlow(flow.id);
@@ -717,23 +1151,28 @@ export function getWorkflowEvaluation(id: string): WorkflowEvaluationDetail | un
   const evaluation = parseEvaluationFlowConfigs(row);
   const results = db.prepare(
     "SELECT id, evaluation_id AS evaluationId, flow_id AS flowId, flow_name AS flowName, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, total_tokens AS totalTokens, total_cost AS totalCost, tool_calls AS toolCalls, output_chars AS outputChars, output, error, judge_score AS judgeScore, judge_details AS judgeDetails FROM workflow_evaluation_results WHERE evaluation_id = ? ORDER BY flow_name, attempt",
-  ).all(id) as unknown as WorkflowEvaluationResult[];
-  return { ...evaluation, results };
+  ).all(id) as unknown as Array<Omit<WorkflowEvaluationResult, "error"> & { error: unknown }>;
+  const parsedResults: WorkflowEvaluationResult[] = results.map((result) => ({
+    ...result,
+    error: parseEvaluationError(result.error),
+  }));
+  return { ...evaluation, results: parsedResults };
 }
 
 function parseEvaluationFlowConfigs(
   row: Omit<WorkflowEvaluation, "flowConfigs"> & { flowConfigs: string },
 ): WorkflowEvaluation {
+  const error = parseEvaluationError(row.error);
   try {
-    return { ...row, flowConfigs: JSON.parse(row.flowConfigs) as Record<string, EvaluationFlowConfig> };
+    return { ...row, error, flowConfigs: JSON.parse(row.flowConfigs) as Record<string, EvaluationFlowConfig> };
   } catch {
-    return { ...row, flowConfigs: {} };
+    return { ...row, error, flowConfigs: {} };
   }
 }
 
-export function updateWorkflowEvaluation(id: string, status: EvaluationStatus, error: string | null = null): void {
+export function updateWorkflowEvaluation(id: string, status: EvaluationStatus, error: WorkflowEvaluation["error"] | string | null = null): void {
   db.prepare("UPDATE workflow_evaluations SET status = ?, ended_at = ?, error = ? WHERE id = ?")
-    .run(status, Date.now(), error, id);
+    .run(status, Date.now(), serializeEvaluationError(error), id);
 }
 
 export function updateWorkflowEvaluationResult(
@@ -759,8 +1198,527 @@ export function updateWorkflowEvaluationResult(
   const valid = entries.filter(([key]) => columns[key]);
   if (valid.length === 0) return;
   const sql = valid.map(([key]) => `${columns[key]} = ?`).join(", ");
+  const values = valid.map(([key, value]) => {
+    if (key === "error") return serializeEvaluationError(value as WorkflowEvaluationResult["error"] | string | null);
+    if (value === undefined) return null;
+    if (typeof value === "object" && value !== null) return JSON.stringify(value);
+    return value;
+  });
   db.prepare(`UPDATE workflow_evaluation_results SET ${sql} WHERE id = ?`)
-    .run(...valid.map(([, value]) => value), id);
+    .run(...values, id);
+}
+
+// ---- memory evaluations ----
+
+const MEMORY_EVAL_VARIANTS: MemoryEvalVariant[] = ["baseline", "memory"];
+
+function parseMemoryEvaluationRow(row: Omit<MemoryEvaluation, "error"> & { error: unknown }): MemoryEvaluation {
+  return { ...row, error: parseEvaluationError(row.error) };
+}
+
+function parseMemoryEvaluationResultRow(row: Omit<MemoryEvaluationResult, "error" | "memorySnapshot"> & { error: unknown; memorySnapshot: string | null }): MemoryEvaluationResult {
+  let memorySnapshot: MemoryInjectionSnapshot | null = null;
+  if (row.memorySnapshot) {
+    try {
+      memorySnapshot = JSON.parse(row.memorySnapshot) as MemoryInjectionSnapshot;
+    } catch {
+      memorySnapshot = null;
+    }
+  }
+  return { ...row, error: parseEvaluationError(row.error), memorySnapshot };
+}
+
+export function createMemoryEvaluation(
+  workspaceId: string,
+  prompt: string,
+  rubric: string,
+  model: string,
+  judgeModel: string,
+  targetScope: "chat" | "workflow",
+  repeat: number,
+): MemoryEvaluationDetail {
+  const id = randomUUID();
+  const createdAt = Date.now();
+  const status: EvaluationStatus = "running";
+  db.prepare(`
+    INSERT INTO memory_evaluations
+      (id, workspace_id, prompt, rubric, model, judge_model, target_scope, repeat, status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, workspaceId, prompt, rubric, model, judgeModel, targetScope, repeat, status, createdAt);
+
+  const insert = db.prepare(`
+    INSERT INTO memory_evaluation_results (id, evaluation_id, variant, attempt, status)
+    VALUES (?, ?, ?, ?, ?)
+  `);
+  const results: MemoryEvaluationResult[] = [];
+  for (const variant of MEMORY_EVAL_VARIANTS) {
+    for (let attempt = 1; attempt <= repeat; attempt++) {
+      const result: MemoryEvaluationResult = {
+        id: randomUUID(),
+        evaluationId: id,
+        variant,
+        attempt,
+        status: "pending",
+        startedAt: null,
+        endedAt: null,
+        durationSec: 0,
+        totalTokens: 0,
+        totalCost: 0,
+        toolCalls: 0,
+        outputChars: 0,
+        output: "",
+        error: null,
+        judgeScore: null,
+        judgeDetails: "",
+        memorySnapshot: null,
+      };
+      insert.run(result.id, id, variant, attempt, result.status);
+      results.push(result);
+    }
+  }
+  return { id, workspaceId, prompt, rubric, model, judgeModel, targetScope, repeat, status, createdAt, endedAt: null, error: null, results };
+}
+
+export function listMemoryEvaluations(workspaceId: string): MemoryEvaluation[] {
+  const rows = db.prepare(`
+    SELECT id, workspace_id AS workspaceId, prompt, rubric, model, COALESCE(NULLIF(judge_model, ''), model) AS judgeModel,
+           target_scope AS targetScope, repeat, status, created_at AS createdAt, ended_at AS endedAt, error
+    FROM memory_evaluations
+    WHERE workspace_id = ?
+    ORDER BY created_at DESC
+  `).all(workspaceId) as unknown as Array<Omit<MemoryEvaluation, "error"> & { error: unknown }>;
+  return rows.map(parseMemoryEvaluationRow);
+}
+
+export function getMemoryEvaluation(id: string): MemoryEvaluationDetail | undefined {
+  const row = db.prepare(`
+    SELECT id, workspace_id AS workspaceId, prompt, rubric, model, COALESCE(NULLIF(judge_model, ''), model) AS judgeModel,
+           target_scope AS targetScope, repeat, status, created_at AS createdAt, ended_at AS endedAt, error
+    FROM memory_evaluations
+    WHERE id = ?
+  `).get(id) as unknown as (Omit<MemoryEvaluation, "error"> & { error: unknown }) | undefined;
+  if (!row) return undefined;
+  const results = db.prepare(`
+    SELECT id, evaluation_id AS evaluationId, variant, attempt, status, started_at AS startedAt,
+           ended_at AS endedAt, duration_sec AS durationSec, total_tokens AS totalTokens,
+           total_cost AS totalCost, tool_calls AS toolCalls, output_chars AS outputChars,
+           output, error, judge_score AS judgeScore, judge_details AS judgeDetails,
+           memory_snapshot AS memorySnapshot
+    FROM memory_evaluation_results
+    WHERE evaluation_id = ?
+    ORDER BY variant, attempt
+  `).all(id) as unknown as Array<Omit<MemoryEvaluationResult, "error" | "memorySnapshot"> & { error: unknown; memorySnapshot: string | null }>;
+  return { ...parseMemoryEvaluationRow(row), results: results.map(parseMemoryEvaluationResultRow) };
+}
+
+export function updateMemoryEvaluation(id: string, status: EvaluationStatus, error: MemoryEvaluation["error"] | string | null = null): void {
+  db.prepare("UPDATE memory_evaluations SET status = ?, ended_at = ?, error = ? WHERE id = ?")
+    .run(status, Date.now(), serializeEvaluationError(error), id);
+}
+
+export function updateMemoryEvaluationResult(
+  id: string,
+  fields: Partial<Omit<MemoryEvaluationResult, "id" | "evaluationId" | "variant" | "attempt">>,
+): void {
+  const entries = Object.entries(fields);
+  if (entries.length === 0) return;
+  const columns: Record<string, string> = {
+    status: "status",
+    startedAt: "started_at",
+    endedAt: "ended_at",
+    durationSec: "duration_sec",
+    totalTokens: "total_tokens",
+    totalCost: "total_cost",
+    toolCalls: "tool_calls",
+    outputChars: "output_chars",
+    output: "output",
+    error: "error",
+    judgeScore: "judge_score",
+    judgeDetails: "judge_details",
+    memorySnapshot: "memory_snapshot",
+  };
+  const valid = entries.filter(([key]) => columns[key]);
+  if (valid.length === 0) return;
+  const sql = valid.map(([key]) => `${columns[key]} = ?`).join(", ");
+  const values = valid.map(([key, value]) => {
+    if (key === "error") return serializeEvaluationError(value as MemoryEvaluationResult["error"] | string | null);
+    if (key === "memorySnapshot") return value ? JSON.stringify(value) : null;
+    if (value === undefined) return null;
+    if (typeof value === "object" && value !== null) return JSON.stringify(value);
+    return value;
+  });
+  db.prepare(`UPDATE memory_evaluation_results SET ${sql} WHERE id = ?`)
+    .run(...values, id);
+}
+
+// ---- skill evaluations ----
+
+export function createSkillEvalSet(workspaceId: string, name: string, tasks: SkillEvalTask[]): SkillEvalSet {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO skill_eval_sets (id, workspace_id, name, tasks, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run(id, workspaceId, name, JSON.stringify(tasks), now, now);
+  return { id, workspaceId, name, tasks, createdAt: now, updatedAt: now };
+}
+
+export function getSkillEvalSet(id: string): SkillEvalSet | undefined {
+  const row = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, name, tasks, created_at AS createdAt, updated_at AS updatedAt FROM skill_eval_sets WHERE id = ?",
+  ).get(id) as unknown as SkillEvalSetRow | undefined;
+  return row ? parseSkillEvalSetRow(row) : undefined;
+}
+
+export function listSkillEvalSets(workspaceId: string): SkillEvalSet[] {
+  const rows = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, name, tasks, created_at AS createdAt, updated_at AS updatedAt FROM skill_eval_sets WHERE workspace_id = ? ORDER BY updated_at DESC",
+  ).all(workspaceId) as unknown as SkillEvalSetRow[];
+  return rows.map(parseSkillEvalSetRow);
+}
+
+export function updateSkillEvalSet(id: string, name: string, tasks: SkillEvalTask[]): SkillEvalSet | undefined {
+  const existing = getSkillEvalSet(id);
+  if (!existing) return undefined;
+  const updatedAt = Date.now();
+  db.prepare("UPDATE skill_eval_sets SET name = ?, tasks = ?, updated_at = ? WHERE id = ?")
+    .run(name, JSON.stringify(tasks), updatedAt, id);
+  return { ...existing, name, tasks, updatedAt };
+}
+
+export function deleteSkillEvalSet(id: string): boolean {
+  const result = db.prepare("DELETE FROM skill_eval_sets WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+type SkillEvalSetRow = Omit<SkillEvalSet, "tasks"> & {
+  tasks: string;
+};
+
+function parseSkillEvalSetRow(row: SkillEvalSetRow): SkillEvalSet {
+  return {
+    ...row,
+    tasks: parseJsonArray<SkillEvalTask>(row.tasks),
+  };
+}
+
+export function saveSkillEvaluation(
+  workspaceId: string,
+  model: string,
+  repeat: number,
+  variants: SkillVariant[],
+  tasks: SkillEvalTask[],
+  contextPrefix: string | undefined,
+  summary: Omit<SkillEvaluationDetail, "workspaceId" | "model" | "repeat" | "variants" | "tasks" | "contextPrefix">,
+): SkillEvaluationDetail {
+  db.prepare(
+    "INSERT INTO skill_evaluations (id, workspace_id, model, repeat, status, started_at, ended_at, duration_sec, variants, tasks, context_prefix, variant_summaries, task_summaries, pairwise_summaries) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    summary.evaluationId,
+    workspaceId,
+    model,
+    repeat,
+    summary.status,
+    summary.startedAt,
+    summary.endedAt,
+    summary.durationSec,
+    JSON.stringify(variants),
+    JSON.stringify(tasks),
+    contextPrefix ?? "",
+    JSON.stringify(summary.variantSummaries),
+    JSON.stringify(summary.taskSummaries),
+    JSON.stringify(summary.pairwiseSummaries),
+  );
+  const insert = db.prepare(
+    "INSERT INTO skill_evaluation_results (id, evaluation_id, variant_id, variant_label, task_id, attempt, status, started_at, ended_at, duration_sec, skill_paths, total_tokens, total_cost, tool_calls, output_chars, output, activation, pairwise, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const result of summary.results) {
+    insert.run(
+      result.id,
+      summary.evaluationId,
+      result.variantId,
+      result.variantLabel,
+      result.taskId,
+      result.attempt,
+      result.status,
+      result.startedAt,
+      result.endedAt,
+      result.durationSec,
+      JSON.stringify(result.skillPaths),
+      result.totalTokens,
+      result.totalCost,
+      result.toolCalls,
+      result.outputChars,
+      result.output,
+      JSON.stringify(result.activation),
+      result.pairwise ? JSON.stringify(result.pairwise) : null,
+      serializeEvaluationError(result.error),
+    );
+  }
+  return {
+    evaluationId: summary.evaluationId,
+    workspaceId,
+    model,
+    repeat,
+    status: summary.status,
+    startedAt: summary.startedAt,
+    endedAt: summary.endedAt,
+    durationSec: summary.durationSec,
+    variants,
+    tasks,
+    contextPrefix: contextPrefix ?? "",
+    results: summary.results,
+    variantSummaries: summary.variantSummaries,
+    taskSummaries: summary.taskSummaries,
+    pairwiseSummaries: summary.pairwiseSummaries,
+  };
+}
+
+export function listSkillEvaluations(workspaceId: string): SkillEvaluation[] {
+  const rows = db.prepare(
+    "SELECT id AS evaluationId, workspace_id AS workspaceId, model, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, variants, tasks, context_prefix AS contextPrefix, variant_summaries AS variantSummaries, task_summaries AS taskSummaries, pairwise_summaries AS pairwiseSummaries FROM skill_evaluations WHERE workspace_id = ? ORDER BY started_at DESC",
+  ).all(workspaceId) as unknown as SkillEvaluationRow[];
+  return rows.map(parseSkillEvaluationRow);
+}
+
+export function getSkillEvaluation(id: string): SkillEvaluationDetail | undefined {
+  const row = db.prepare(
+    "SELECT id AS evaluationId, workspace_id AS workspaceId, model, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, variants, tasks, context_prefix AS contextPrefix, variant_summaries AS variantSummaries, task_summaries AS taskSummaries, pairwise_summaries AS pairwiseSummaries FROM skill_evaluations WHERE id = ?",
+  ).get(id) as unknown as SkillEvaluationRow | undefined;
+  if (!row) return undefined;
+  const evaluation = parseSkillEvaluationRow(row);
+  const results = db.prepare(
+    "SELECT id, variant_id AS variantId, variant_label AS variantLabel, task_id AS taskId, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, skill_paths AS skillPaths, total_tokens AS totalTokens, total_cost AS totalCost, tool_calls AS toolCalls, output_chars AS outputChars, output, activation, pairwise, error FROM skill_evaluation_results WHERE evaluation_id = ? ORDER BY variant_label, task_id, attempt",
+  ).all(id) as unknown as SkillEvaluationResultRow[];
+  return {
+    ...evaluation,
+    results: results.map(parseSkillEvaluationResultRow),
+  };
+}
+
+type SkillEvaluationRow = Omit<SkillEvaluation, "variants" | "tasks" | "variantSummaries" | "taskSummaries" | "pairwiseSummaries"> & {
+  variants: string;
+  tasks: string;
+  variantSummaries: string;
+  taskSummaries: string;
+  pairwiseSummaries: string;
+};
+
+type SkillEvaluationResultRow = Omit<SkillEvaluationRunResult, "skillPaths" | "activation" | "pairwise" | "error"> & {
+  skillPaths: string;
+  activation: string;
+  pairwise: string | null;
+  error: unknown;
+};
+
+function parseSkillEvaluationRow(row: SkillEvaluationRow): SkillEvaluation {
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    variants: parseJsonArray<SkillVariant>(row.variants),
+    tasks: parseJsonArray<SkillEvalTask>(row.tasks),
+    variantSummaries: parseJsonArray<SkillVariantSummary>(row.variantSummaries),
+    taskSummaries: parseJsonArray<SkillTaskSummary>(row.taskSummaries),
+    pairwiseSummaries: parseJsonArray<SkillPairwiseSummary>(row.pairwiseSummaries),
+  };
+}
+
+function parseSkillEvaluationResultRow(row: SkillEvaluationResultRow): SkillEvaluationRunResult {
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    skillPaths: parseJsonArray<string>(row.skillPaths),
+    activation: parseJsonObject(row.activation, {
+      activated: false,
+      matchedKeywords: [],
+      matchedSkillPaths: [],
+      evidence: [],
+    }),
+    pairwise: row.pairwise ? parseJsonObject<SkillPairwiseResult | null>(row.pairwise, null) : null,
+    error: parseEvaluationError(row.error),
+  };
+}
+
+function parseJsonArray<T>(value: string): T[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed as T[] : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseJsonObject<T>(value: string, fallback: T): T {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return typeof parsed === "object" && parsed !== null ? parsed as T : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
+// ---- tool evaluations ----
+
+export function createToolCaseSet(workspaceId: string, name: string, toolId: string, cases: ToolEvalCase[]): ToolCaseSet {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO tool_case_sets (id, workspace_id, name, tool_id, cases, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(id, workspaceId, name, toolId, JSON.stringify(cases), now, now);
+  return { id, workspaceId, name, toolId, cases, createdAt: now, updatedAt: now };
+}
+
+export function getToolCaseSet(id: string): ToolCaseSet | undefined {
+  const row = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, name, tool_id AS toolId, cases, created_at AS createdAt, updated_at AS updatedAt FROM tool_case_sets WHERE id = ?",
+  ).get(id) as unknown as ToolCaseSetRow | undefined;
+  return row ? parseToolCaseSetRow(row) : undefined;
+}
+
+export function listToolCaseSets(workspaceId: string, toolId?: string): ToolCaseSet[] {
+  const rows = toolId
+    ? db.prepare(
+      "SELECT id, workspace_id AS workspaceId, name, tool_id AS toolId, cases, created_at AS createdAt, updated_at AS updatedAt FROM tool_case_sets WHERE workspace_id = ? AND tool_id = ? ORDER BY updated_at DESC",
+    ).all(workspaceId, toolId) as unknown as ToolCaseSetRow[]
+    : db.prepare(
+      "SELECT id, workspace_id AS workspaceId, name, tool_id AS toolId, cases, created_at AS createdAt, updated_at AS updatedAt FROM tool_case_sets WHERE workspace_id = ? ORDER BY updated_at DESC",
+    ).all(workspaceId) as unknown as ToolCaseSetRow[];
+  return rows.map(parseToolCaseSetRow);
+}
+
+export function updateToolCaseSet(id: string, name: string, toolId: string, cases: ToolEvalCase[]): ToolCaseSet | undefined {
+  const existing = getToolCaseSet(id);
+  if (!existing) return undefined;
+  const updatedAt = Date.now();
+  db.prepare("UPDATE tool_case_sets SET name = ?, tool_id = ?, cases = ?, updated_at = ? WHERE id = ?")
+    .run(name, toolId, JSON.stringify(cases), updatedAt, id);
+  return { ...existing, name, toolId, cases, updatedAt };
+}
+
+export function deleteToolCaseSet(id: string): boolean {
+  const result = db.prepare("DELETE FROM tool_case_sets WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+type ToolCaseSetRow = Omit<ToolCaseSet, "cases"> & {
+  cases: string;
+};
+
+function parseToolCaseSetRow(row: ToolCaseSetRow): ToolCaseSet {
+  return {
+    ...row,
+    cases: parseJsonArray<ToolEvalCase>(row.cases),
+  };
+}
+
+export function saveToolEvaluation(
+  workspaceId: string,
+  toolId: string,
+  repeat: number,
+  cases: ToolEvalCase[],
+  summary: Omit<ToolEvaluationDetail, "workspaceId" | "toolId" | "repeat" | "cases">,
+): ToolEvaluationDetail {
+  db.prepare(
+    "INSERT INTO tool_evaluations (id, workspace_id, tool_id, repeat, status, started_at, ended_at, duration_sec, cases, case_summaries) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    summary.evaluationId,
+    workspaceId,
+    toolId,
+    repeat,
+    summary.status,
+    summary.startedAt,
+    summary.endedAt,
+    summary.durationSec,
+    JSON.stringify(cases),
+    JSON.stringify(summary.caseSummaries),
+  );
+  const insert = db.prepare(
+    "INSERT INTO tool_evaluation_results (id, evaluation_id, case_id, case_name, attempt, status, started_at, ended_at, duration_sec, input_path, output_path, stdout, stderr, summary, expectation, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const result of summary.results) {
+    insert.run(
+      result.id,
+      summary.evaluationId,
+      result.caseId,
+      result.caseName,
+      result.attempt,
+      result.status,
+      result.startedAt,
+      result.endedAt,
+      result.durationSec,
+      result.inputPath,
+      result.outputPath,
+      result.stdout,
+      result.stderr,
+      result.summary ? JSON.stringify(result.summary) : null,
+      JSON.stringify(result.expectation),
+      serializeEvaluationError(result.error),
+    );
+  }
+  return {
+    evaluationId: summary.evaluationId,
+    workspaceId,
+    toolId,
+    repeat,
+    status: summary.status,
+    startedAt: summary.startedAt,
+    endedAt: summary.endedAt,
+    durationSec: summary.durationSec,
+    cases,
+    caseSummaries: summary.caseSummaries,
+    results: summary.results,
+  };
+}
+
+export function listToolEvaluations(workspaceId: string): ToolEvaluation[] {
+  const rows = db.prepare(
+    "SELECT id AS evaluationId, workspace_id AS workspaceId, tool_id AS toolId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM tool_evaluations WHERE workspace_id = ? ORDER BY started_at DESC",
+  ).all(workspaceId) as unknown as ToolEvaluationRow[];
+  return rows.map(parseToolEvaluationRow);
+}
+
+export function getToolEvaluation(id: string): ToolEvaluationDetail | undefined {
+  const row = db.prepare(
+    "SELECT id AS evaluationId, workspace_id AS workspaceId, tool_id AS toolId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM tool_evaluations WHERE id = ?",
+  ).get(id) as unknown as ToolEvaluationRow | undefined;
+  if (!row) return undefined;
+  const evaluation = parseToolEvaluationRow(row);
+  const results = db.prepare(
+    "SELECT id, case_id AS caseId, case_name AS caseName, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, input_path AS inputPath, output_path AS outputPath, stdout, stderr, summary, expectation, error FROM tool_evaluation_results WHERE evaluation_id = ? ORDER BY case_name, attempt",
+  ).all(id) as unknown as ToolEvaluationResultRow[];
+  return {
+    ...evaluation,
+    results: results.map(parseToolEvaluationResultRow),
+  };
+}
+
+type ToolEvaluationRow = Omit<ToolEvaluation, "cases" | "caseSummaries"> & {
+  cases: string;
+  caseSummaries: string;
+};
+
+type ToolEvaluationResultRow = Omit<ToolEvaluationRunResult, "summary" | "expectation" | "error"> & {
+  summary: string | null;
+  expectation: string;
+  error: unknown;
+};
+
+function parseToolEvaluationRow(row: ToolEvaluationRow): ToolEvaluation {
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    cases: parseJsonArray<ToolEvalCase>(row.cases),
+    caseSummaries: parseJsonArray<ToolCaseSummary>(row.caseSummaries),
+  };
+}
+
+function parseToolEvaluationResultRow(row: ToolEvaluationResultRow): ToolEvaluationRunResult {
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    summary: row.summary ? parseJsonObject(row.summary, {}) : null,
+    expectation: parseJsonObject(row.expectation, { kind: "must-fail" }),
+    error: parseEvaluationError(row.error),
+  };
 }
 
 // ---- workspace paths ----
@@ -908,15 +1866,418 @@ export function listRawSessionTokenStatsWithTitles(workspaceId: string): (RawSes
   `).all(workspaceId) as unknown as (RawSessionTokenStats & { title: string })[];
 }
 
+type RawTokenUsageStats = Omit<TokenUsageStats, "cacheHitRate">;
+
+function dayKey(ts = Date.now()): string {
+  return new Date(ts).toISOString().slice(0, 10);
+}
+
+export function accumulateTokenUsageStats(
+  target: { workspaceId: string; targetKind: TokenUsageTargetKind; targetId: string; title: string },
+  delta: { input: number; output: number; cacheRead: number; cacheWrite: number; cost: number },
+): void {
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO token_usage_stats
+      (workspace_id, target_kind, target_id, title, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, turn_count, total_cost, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(workspace_id, target_kind, target_id) DO UPDATE SET
+      title              = excluded.title,
+      input_tokens       = input_tokens + excluded.input_tokens,
+      output_tokens      = output_tokens + excluded.output_tokens,
+      cache_read_tokens  = cache_read_tokens + excluded.cache_read_tokens,
+      cache_write_tokens = cache_write_tokens + excluded.cache_write_tokens,
+      turn_count         = turn_count + 1,
+      total_cost         = total_cost + excluded.total_cost,
+      updated_at         = excluded.updated_at
+  `).run(
+    target.workspaceId,
+    target.targetKind,
+    target.targetId,
+    target.title,
+    delta.input,
+    delta.output,
+    delta.cacheRead,
+    delta.cacheWrite,
+    delta.cost,
+    now,
+  );
+  db.prepare(`
+    INSERT INTO token_usage_daily_stats
+      (day, workspace_id, input_tokens, output_tokens, cache_read_tokens, cache_write_tokens, turn_count, total_cost, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 1, ?, ?)
+    ON CONFLICT(day, workspace_id) DO UPDATE SET
+      input_tokens       = input_tokens + excluded.input_tokens,
+      output_tokens      = output_tokens + excluded.output_tokens,
+      cache_read_tokens  = cache_read_tokens + excluded.cache_read_tokens,
+      cache_write_tokens = cache_write_tokens + excluded.cache_write_tokens,
+      turn_count         = turn_count + 1,
+      total_cost         = total_cost + excluded.total_cost,
+      updated_at         = excluded.updated_at
+  `).run(
+    dayKey(now),
+    target.workspaceId,
+    delta.input,
+    delta.output,
+    delta.cacheRead,
+    delta.cacheWrite,
+    delta.cost,
+    now,
+  );
+}
+
+export function listRawTokenUsageStatsByWorkspace(workspaceId: string): RawTokenUsageStats[] {
+  return db.prepare(`
+    SELECT workspace_id AS workspaceId, target_kind AS targetKind, target_id AS targetId, title,
+           input_tokens AS inputTokens, output_tokens AS outputTokens,
+           cache_read_tokens AS cacheReadTokens, cache_write_tokens AS cacheWriteTokens,
+           turn_count AS turnCount, total_cost AS totalCost, updated_at AS updatedAt
+    FROM token_usage_stats
+    WHERE workspace_id = ?
+    ORDER BY updated_at DESC
+  `).all(workspaceId) as unknown as RawTokenUsageStats[];
+}
+
+export function getRawTokenUsageStatsByTarget(
+  workspaceId: string,
+  targetKind: TokenUsageTargetKind,
+  targetId: string,
+): RawTokenUsageStats | undefined {
+  return db.prepare(`
+    SELECT workspace_id AS workspaceId, target_kind AS targetKind, target_id AS targetId, title,
+           input_tokens AS inputTokens, output_tokens AS outputTokens,
+           cache_read_tokens AS cacheReadTokens, cache_write_tokens AS cacheWriteTokens,
+           turn_count AS turnCount, total_cost AS totalCost, updated_at AS updatedAt
+    FROM token_usage_stats
+    WHERE workspace_id = ? AND target_kind = ? AND target_id = ?
+  `).get(workspaceId, targetKind, targetId) as unknown as RawTokenUsageStats | undefined;
+}
+
+export function getRawTokenUsageDailyStats(workspaceId: string, day = dayKey()): RawSessionTokenStats | undefined {
+  return db.prepare(`
+    SELECT workspace_id AS sessionId, input_tokens AS inputTokens, output_tokens AS outputTokens,
+           cache_read_tokens AS cacheReadTokens, cache_write_tokens AS cacheWriteTokens,
+           turn_count AS turnCount, total_cost AS totalCost, updated_at AS updatedAt
+    FROM token_usage_daily_stats
+    WHERE workspace_id = ? AND day = ?
+  `).get(workspaceId, day) as unknown as RawSessionTokenStats | undefined;
+}
+
+// ---- memory usage / feedback ----
+
+function mapMemoryUsageStats(row: MemoryUsageStats): MemoryUsageStats {
+  return {
+    ...row,
+    lastUsedAt: row.lastUsedAt ?? null,
+    usedCount: row.usedCount ?? 0,
+    positiveSignals: row.positiveSignals ?? 0,
+    negativeSignals: row.negativeSignals ?? 0,
+    staleAfterDays: row.staleAfterDays ?? 90,
+  };
+}
+
+export function listMemoryUsageStats(workspaceId: string): MemoryUsageStats[] {
+  const rows = db.prepare(`
+    SELECT workspace_id AS workspaceId, source_kind AS sourceKind, source_id AS sourceId,
+           used_count AS usedCount, last_used_at AS lastUsedAt,
+           positive_signals AS positiveSignals, negative_signals AS negativeSignals,
+           stale_after_days AS staleAfterDays, updated_at AS updatedAt
+    FROM memory_usage_stats
+    WHERE workspace_id = ?
+    ORDER BY updated_at DESC
+  `).all(workspaceId) as unknown as MemoryUsageStats[];
+  return rows.map(mapMemoryUsageStats);
+}
+
+export function getMemoryUsageStats(workspaceId: string, sourceKind: MemorySourceKind, sourceId = "*"): MemoryUsageStats | null {
+  const row = db.prepare(`
+    SELECT workspace_id AS workspaceId, source_kind AS sourceKind, source_id AS sourceId,
+           used_count AS usedCount, last_used_at AS lastUsedAt,
+           positive_signals AS positiveSignals, negative_signals AS negativeSignals,
+           stale_after_days AS staleAfterDays, updated_at AS updatedAt
+    FROM memory_usage_stats
+    WHERE workspace_id = ? AND source_kind = ? AND source_id = ?
+  `).get(workspaceId, sourceKind, sourceId) as unknown as MemoryUsageStats | undefined;
+  return row ? mapMemoryUsageStats(row) : null;
+}
+
+function ensureMemoryUsageStats(workspaceId: string, sourceKind: MemorySourceKind, sourceId = "*"): MemoryUsageStats {
+  const existing = getMemoryUsageStats(workspaceId, sourceKind, sourceId);
+  if (existing) return existing;
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO memory_usage_stats
+      (workspace_id, source_kind, source_id, used_count, last_used_at, positive_signals, negative_signals, stale_after_days, updated_at)
+    VALUES (?, ?, ?, 0, NULL, 0, 0, 90, ?)
+  `).run(workspaceId, sourceKind, sourceId, now);
+  return {
+    workspaceId,
+    sourceKind,
+    sourceId,
+    usedCount: 0,
+    lastUsedAt: null,
+    positiveSignals: 0,
+    negativeSignals: 0,
+    staleAfterDays: 90,
+    updatedAt: now,
+  };
+}
+
+export function recordMemorySourceUsed(workspaceId: string, sourceKind: MemorySourceKind, sourceId = "*", usedAt = Date.now()): MemoryUsageStats {
+  ensureMemoryUsageStats(workspaceId, sourceKind, sourceId);
+  db.prepare(`
+    UPDATE memory_usage_stats
+    SET used_count = used_count + 1, last_used_at = ?, updated_at = ?
+    WHERE workspace_id = ? AND source_kind = ? AND source_id = ?
+  `).run(usedAt, usedAt, workspaceId, sourceKind, sourceId);
+  return getMemoryUsageStats(workspaceId, sourceKind, sourceId) as MemoryUsageStats;
+}
+
+export function recordMemoryInjectionUsage(workspaceId: string, snapshot: MemoryInjectionSnapshot, usedAt = Date.now()): void {
+  for (const source of snapshot.sources) {
+    if (!source.injected) continue;
+    recordMemorySourceUsed(workspaceId, source.kind, "*", usedAt);
+    for (const itemId of source.itemIds ?? []) {
+      recordMemorySourceUsed(workspaceId, source.kind, itemId, usedAt);
+    }
+  }
+}
+
+export function recordMemoryFeedback(workspaceId: string, sourceKind: MemorySourceKind, signal: "positive" | "negative", sourceId = "*"): MemoryUsageStats {
+  ensureMemoryUsageStats(workspaceId, sourceKind, sourceId);
+  const now = Date.now();
+  const column = signal === "positive" ? "positive_signals" : "negative_signals";
+  db.prepare(`
+    UPDATE memory_usage_stats
+    SET ${column} = ${column} + 1, updated_at = ?
+    WHERE workspace_id = ? AND source_kind = ? AND source_id = ?
+  `).run(now, workspaceId, sourceKind, sourceId);
+  return getMemoryUsageStats(workspaceId, sourceKind, sourceId) as MemoryUsageStats;
+}
+
+export function createMemoryFailureAttribution(input: {
+  workspaceId: string;
+  targetKind: string;
+  targetId: string;
+  cause: MemoryFailureAttribution["cause"];
+  sourceKind?: MemorySourceKind | null;
+  sourceId?: string | null;
+  note?: string;
+}): MemoryFailureAttribution {
+  const id = randomUUID();
+  const createdAt = Date.now();
+  db.prepare(`
+    INSERT INTO memory_failure_attributions
+      (id, workspace_id, target_kind, target_id, cause, source_kind, source_id, note, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.workspaceId,
+    input.targetKind,
+    input.targetId,
+    input.cause,
+    input.sourceKind ?? null,
+    input.sourceId ?? null,
+    input.note ?? "",
+    createdAt,
+  );
+  if (input.sourceKind) recordMemoryFeedback(input.workspaceId, input.sourceKind, "negative", input.sourceId ?? "*");
+  return {
+    id,
+    workspaceId: input.workspaceId,
+    targetKind: input.targetKind,
+    targetId: input.targetId,
+    cause: input.cause,
+    sourceKind: input.sourceKind ?? null,
+    sourceId: input.sourceId ?? null,
+    note: input.note ?? "",
+    createdAt,
+  };
+}
+
+export function listMemoryFailureAttributions(workspaceId: string, targetKind?: string, targetId?: string): MemoryFailureAttribution[] {
+  const rows = targetKind && targetId
+    ? db.prepare(`
+      SELECT id, workspace_id AS workspaceId, target_kind AS targetKind, target_id AS targetId,
+             cause, source_kind AS sourceKind, source_id AS sourceId, note, created_at AS createdAt
+      FROM memory_failure_attributions
+      WHERE workspace_id = ? AND target_kind = ? AND target_id = ?
+      ORDER BY created_at DESC
+    `).all(workspaceId, targetKind, targetId)
+    : db.prepare(`
+      SELECT id, workspace_id AS workspaceId, target_kind AS targetKind, target_id AS targetId,
+             cause, source_kind AS sourceKind, source_id AS sourceId, note, created_at AS createdAt
+      FROM memory_failure_attributions
+      WHERE workspace_id = ?
+      ORDER BY created_at DESC
+    `).all(workspaceId);
+  return rows as unknown as MemoryFailureAttribution[];
+}
+
+// ---- memory proposals ----
+
+export interface RuleMemoryProposalInput {
+  workspaceId: string;
+  title: string;
+  evidence: string;
+  severity: RuleMemory["severity"];
+  scope: RuleMemory["scope"];
+  sourceEventIds?: string[];
+}
+
+function detectMemoryProposalRisk(input: Pick<RuleMemoryProposalInput, "title" | "evidence" | "sourceEventIds">): { confidence: number; riskFlags: MemoryProposalRiskFlag[] } {
+  const text = `${input.title}\n${input.evidence}`;
+  const riskFlags: MemoryProposalRiskFlag[] = [];
+  if (/(ignore|disregard|override).{0,30}(previous|above|system|developer|instruction)|jailbreak|system prompt|developer message|忽略.{0,12}(以上|之前|系统|规则)|无视.{0,12}(以上|之前|系统|规则)|覆盖.{0,12}(系统|规则|指令)/i.test(text)) {
+    riskFlags.push({ code: "instruction_injection", severity: "high", message: "疑似包含覆盖系统/开发者指令或 jailbreak 内容" });
+  }
+  if (/[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}/i.test(text) || /\b1[3-9]\d{9}\b/.test(text) || /\b\d{17}[\dXx]\b/.test(text)) {
+    riskFlags.push({ code: "pii", severity: "high", message: "疑似包含 email、手机号或身份证号等 PII" });
+  }
+  if (input.evidence.trim().length < 12 || (input.sourceEventIds ?? []).length === 0) {
+    riskFlags.push({ code: "weak_evidence", severity: "medium", message: "证据不足，缺少可追溯 trace event 或 evidence 过短" });
+  }
+  if (input.title.trim().length < 6 || /^(注意|优化|改进|提升|处理|分析|遵守)$/.test(input.title.trim())) {
+    riskFlags.push({ code: "overbroad", severity: "medium", message: "规则标题过宽泛，可能污染后续 prompt" });
+  }
+  const penalty = riskFlags.reduce((sum, flag) => sum + (flag.severity === "high" ? 0.45 : flag.severity === "medium" ? 0.2 : 0.1), 0);
+  return { confidence: Math.max(0, Math.min(1, 0.85 - penalty)), riskFlags };
+}
+
+function mapMemoryProposal(row: Omit<MemoryProposal, "sourceEventIds" | "riskFlags"> & { sourceEventIds: string; riskFlags: string }): MemoryProposal {
+  let sourceEventIds: string[] = [];
+  let riskFlags: MemoryProposalRiskFlag[] = [];
+  try {
+    const parsed = JSON.parse(row.sourceEventIds) as unknown;
+    sourceEventIds = Array.isArray(parsed) ? parsed.filter((item): item is string => typeof item === "string") : [];
+  } catch {
+    sourceEventIds = [];
+  }
+  try {
+    const parsed = JSON.parse(row.riskFlags) as unknown;
+    riskFlags = Array.isArray(parsed) ? parsed as MemoryProposalRiskFlag[] : [];
+  } catch {
+    riskFlags = [];
+  }
+  return { ...row, sourceEventIds, riskFlags };
+}
+
+export function createRuleMemoryProposal(input: RuleMemoryProposalInput): MemoryProposal {
+  const now = Date.now();
+  const id = randomUUID();
+  const sourceEventIds = input.sourceEventIds ?? [];
+  const { confidence, riskFlags } = detectMemoryProposalRisk({ title: input.title, evidence: input.evidence, sourceEventIds });
+  db.prepare(`
+    INSERT INTO memory_proposals
+      (id, workspace_id, kind, title, evidence, source, severity, scope, source_event_ids, confidence, risk_flags, status, created_at, updated_at)
+    VALUES (?, ?, 'rule', ?, ?, 'trace', ?, ?, ?, ?, ?, 'pending', ?, ?)
+  `).run(
+    id,
+    input.workspaceId,
+    input.title,
+    input.evidence,
+    input.severity,
+    input.scope,
+    JSON.stringify(sourceEventIds),
+    confidence,
+    JSON.stringify(riskFlags),
+    now,
+    now,
+  );
+  return {
+    id,
+    workspaceId: input.workspaceId,
+    kind: "rule",
+    title: input.title,
+    evidence: input.evidence,
+    source: "trace",
+    severity: input.severity,
+    scope: input.scope,
+    sourceEventIds,
+    confidence,
+    riskFlags,
+    status: "pending",
+    rejectionReason: "",
+    approvedRuleId: null,
+    createdAt: now,
+    updatedAt: now,
+  };
+}
+
+export function listMemoryProposals(workspaceId: string, status?: MemoryProposalStatus): MemoryProposal[] {
+  const rows = (status
+    ? db.prepare(`
+      SELECT id, workspace_id AS workspaceId, kind, title, evidence, source, severity, scope,
+             source_event_ids AS sourceEventIds, confidence, risk_flags AS riskFlags, status,
+             rejection_reason AS rejectionReason, approved_rule_id AS approvedRuleId,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM memory_proposals WHERE workspace_id = ? AND status = ? ORDER BY updated_at DESC
+    `).all(workspaceId, status)
+    : db.prepare(`
+      SELECT id, workspace_id AS workspaceId, kind, title, evidence, source, severity, scope,
+             source_event_ids AS sourceEventIds, confidence, risk_flags AS riskFlags, status,
+             rejection_reason AS rejectionReason, approved_rule_id AS approvedRuleId,
+             created_at AS createdAt, updated_at AS updatedAt
+      FROM memory_proposals WHERE workspace_id = ? ORDER BY updated_at DESC
+    `).all(workspaceId)) as unknown as Array<Omit<MemoryProposal, "sourceEventIds" | "riskFlags"> & { sourceEventIds: string; riskFlags: string }>;
+  return rows.map(mapMemoryProposal);
+}
+
+export function getMemoryProposal(id: string): MemoryProposal | undefined {
+  const row = db.prepare(`
+    SELECT id, workspace_id AS workspaceId, kind, title, evidence, source, severity, scope,
+           source_event_ids AS sourceEventIds, confidence, risk_flags AS riskFlags, status,
+           rejection_reason AS rejectionReason, approved_rule_id AS approvedRuleId,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM memory_proposals WHERE id = ?
+  `).get(id) as unknown as (Omit<MemoryProposal, "sourceEventIds" | "riskFlags"> & { sourceEventIds: string; riskFlags: string }) | undefined;
+  return row ? mapMemoryProposal(row) : undefined;
+}
+
+export function approveMemoryProposal(id: string): CreateRuleResult {
+  const proposal = getMemoryProposal(id);
+  if (!proposal) throw new Error("memory proposal not found");
+  if (proposal.status !== "pending") throw new Error("memory proposal is not pending");
+  if (proposal.riskFlags.some((flag) => flag.severity === "high")) throw new Error("memory proposal has high-risk guardrail flags");
+  const result = createRuleMemory({
+    workspaceId: proposal.workspaceId,
+    title: proposal.title,
+    evidence: proposal.evidence,
+    source: "trace",
+    severity: proposal.severity,
+    scope: proposal.scope,
+  });
+  db.prepare("UPDATE memory_proposals SET status = 'approved', approved_rule_id = ?, updated_at = ? WHERE id = ?")
+    .run(result.rule.id, Date.now(), id);
+  return result;
+}
+
+export function rejectMemoryProposal(id: string, reason: string): void {
+  const proposal = getMemoryProposal(id);
+  if (!proposal) throw new Error("memory proposal not found");
+  if (proposal.status !== "pending") throw new Error("memory proposal is not pending");
+  db.prepare("UPDATE memory_proposals SET status = 'rejected', rejection_reason = ?, updated_at = ? WHERE id = ?")
+    .run(reason, Date.now(), id);
+}
+
 // ---- rule memories ----
 
 function mapRuleMemory(row: Omit<RuleMemory, "enabled"> & { enabled: number }): RuleMemory {
-  return { ...row, scope: row.scope ?? "global", enabled: Boolean(row.enabled) };
+  return {
+    ...row,
+    scope: row.scope ?? "global",
+    enabled: Boolean(row.enabled),
+    version: row.version ?? 1,
+    supersedesRuleId: row.supersedesRuleId ?? null,
+    changeReason: row.changeReason ?? "",
+  };
 }
 
 export function listRuleMemories(workspaceId: string): RuleMemory[] {
   const rows = db.prepare(`
-    SELECT id, workspace_id AS workspaceId, title, evidence, source, severity, scope, enabled, created_at AS createdAt, updated_at AS updatedAt
+    SELECT id, workspace_id AS workspaceId, title, evidence, source, severity, scope, enabled,
+           version, supersedes_rule_id AS supersedesRuleId, change_reason AS changeReason,
+           created_at AS createdAt, updated_at AS updatedAt
     FROM rule_memories WHERE workspace_id = ? ORDER BY updated_at DESC
   `).all(workspaceId) as unknown as Array<Omit<RuleMemory, "enabled"> & { enabled: number }>;
   return rows.map(mapRuleMemory);
@@ -931,7 +2292,9 @@ export function createRuleMemory(input: {
   scope: RuleMemory["scope"];
 }): CreateRuleResult {
   const existing = db.prepare(`
-    SELECT id, workspace_id AS workspaceId, title, evidence, source, severity, scope, enabled, created_at AS createdAt, updated_at AS updatedAt
+    SELECT id, workspace_id AS workspaceId, title, evidence, source, severity, scope, enabled,
+           version, supersedes_rule_id AS supersedesRuleId, change_reason AS changeReason,
+           created_at AS createdAt, updated_at AS updatedAt
     FROM rule_memories WHERE workspace_id = ? AND title = ? LIMIT 1
   `).get(input.workspaceId, input.title) as unknown as (Omit<RuleMemory, "enabled"> & { enabled: number }) | undefined;
   if (existing) return { rule: mapRuleMemory(existing), created: false };
@@ -941,7 +2304,7 @@ export function createRuleMemory(input: {
     INSERT INTO rule_memories (id, workspace_id, title, evidence, source, severity, scope, enabled, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
   `).run(id, input.workspaceId, input.title, input.evidence, input.source, input.severity, input.scope, now, now);
-  return { rule: { id, workspaceId: input.workspaceId, title: input.title, evidence: input.evidence, source: input.source, severity: input.severity, scope: input.scope, enabled: true, createdAt: now, updatedAt: now }, created: true };
+  return { rule: { id, workspaceId: input.workspaceId, title: input.title, evidence: input.evidence, source: input.source, severity: input.severity, scope: input.scope, enabled: true, version: 1, supersedesRuleId: null, changeReason: "", createdAt: now, updatedAt: now }, created: true };
 }
 
 export function updateRuleMemory(input: {
@@ -951,7 +2314,7 @@ export function updateRuleMemory(input: {
   severity: RuleMemory["severity"];
   scope: RuleMemory["scope"];
 }): void {
-  db.prepare("UPDATE rule_memories SET title = ?, evidence = ?, severity = ?, scope = ?, updated_at = ? WHERE id = ?")
+  db.prepare("UPDATE rule_memories SET title = ?, evidence = ?, severity = ?, scope = ?, version = version + 1, change_reason = 'manual update', updated_at = ? WHERE id = ?")
     .run(input.title, input.evidence, input.severity, input.scope, Date.now(), input.id);
 }
 
@@ -967,6 +2330,73 @@ export function updateRuleMemoriesEnabled(ids: string[], enabled: boolean): void
 
 export function deleteRuleMemory(id: string): void {
   db.prepare("DELETE FROM rule_memories WHERE id = ?").run(id);
+}
+
+function normalizeRuleText(value: string): string {
+  return value.toLowerCase().replace(/[^\p{L}\p{N}\u4e00-\u9fa5]+/gu, "");
+}
+
+function detectRuleConflictReason(a: RuleMemory, b: RuleMemory): { reason: string; severity: RuleConflict["severity"] } | null {
+  const aText = `${a.title} ${a.evidence}`;
+  const bText = `${b.title} ${b.evidence}`;
+  const normalizedA = normalizeRuleText(a.title);
+  const normalizedB = normalizeRuleText(b.title);
+  const sameTopic = normalizedA && normalizedB && (normalizedA.includes(normalizedB) || normalizedB.includes(normalizedA) || normalizedA.slice(0, 8) === normalizedB.slice(0, 8));
+  const aNegative = /(禁止|不要|不得|避免|不能|不应|disable|never|must not)/i.test(aText);
+  const bNegative = /(禁止|不要|不得|避免|不能|不应|disable|never|must not)/i.test(bText);
+  const aPositive = /(必须|需要|应当|优先|启用|使用|must|should|enable|always)/i.test(aText);
+  const bPositive = /(必须|需要|应当|优先|启用|使用|must|should|enable|always)/i.test(bText);
+  if (sameTopic && aNegative !== bNegative && (aPositive || bPositive)) {
+    return { reason: "同一主题下存在禁止/必须方向冲突", severity: "high" };
+  }
+  if (sameTopic && a.severity !== b.severity) {
+    return { reason: "同一主题下 severity 不一致，需确认是否为版本替代关系", severity: "medium" };
+  }
+  return null;
+}
+
+function mapRuleConflict(row: RuleConflict): RuleConflict {
+  return row;
+}
+
+export function detectRuleConflicts(workspaceId: string): RuleConflict[] {
+  const rules = listRuleMemories(workspaceId).filter((rule) => rule.enabled);
+  const now = Date.now();
+  const insert = db.prepare(`
+    INSERT OR IGNORE INTO rule_conflicts
+      (id, workspace_id, rule_a_id, rule_b_id, reason, severity, status, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, 'open', ?, ?)
+  `);
+  for (let i = 0; i < rules.length; i++) {
+    for (let j = i + 1; j < rules.length; j++) {
+      const a = rules[i];
+      const b = rules[j];
+      const conflict = detectRuleConflictReason(a, b);
+      if (!conflict) continue;
+      const [ruleAId, ruleBId] = [a.id, b.id].sort();
+      insert.run(randomUUID(), workspaceId, ruleAId, ruleBId, conflict.reason, conflict.severity, now, now);
+    }
+  }
+  return listRuleConflicts(workspaceId, "open");
+}
+
+export function listRuleConflicts(workspaceId: string, status?: RuleConflict["status"]): RuleConflict[] {
+  const rows = (status
+    ? db.prepare(`
+      SELECT id, workspace_id AS workspaceId, rule_a_id AS ruleAId, rule_b_id AS ruleBId,
+             reason, severity, status, created_at AS createdAt, updated_at AS updatedAt
+      FROM rule_conflicts WHERE workspace_id = ? AND status = ? ORDER BY updated_at DESC
+    `).all(workspaceId, status)
+    : db.prepare(`
+      SELECT id, workspace_id AS workspaceId, rule_a_id AS ruleAId, rule_b_id AS ruleBId,
+             reason, severity, status, created_at AS createdAt, updated_at AS updatedAt
+      FROM rule_conflicts WHERE workspace_id = ? ORDER BY updated_at DESC
+    `).all(workspaceId)) as unknown as RuleConflict[];
+  return rows.map(mapRuleConflict);
+}
+
+export function updateRuleConflictStatus(id: string, status: RuleConflict["status"]): void {
+  db.prepare("UPDATE rule_conflicts SET status = ?, updated_at = ? WHERE id = ?").run(status, Date.now(), id);
 }
 
 export function buildEnabledRulesPrompt(workspaceId: string, targetScope?: "chat" | "workflow"): { prompt: string; count: number; updatedAt: number | null } {
@@ -1090,6 +2520,339 @@ export function buildEnabledStandardsPrompt(workspaceId: string): { prompt: stri
   };
 }
 
+// ---- business context (业务环境) ----
+
+const BUSINESS_CONTEXT_LABELS: Record<BusinessContextCategory, string> = {
+  org: "组织/主体",
+  status: "业务现状",
+  glossary: "术语/口径",
+  constraint: "约束/红线",
+  history: "历史/背景",
+  goal: "目标/期望",
+};
+
+function mapBusinessContext(row: Omit<BusinessContext, "enabled"> & { enabled: number }): BusinessContext {
+  return { ...row, enabled: Boolean(row.enabled) };
+}
+
+export function listBusinessContexts(workspaceId: string): BusinessContext[] {
+  const rows = db.prepare(`
+    SELECT id, workspace_id AS workspaceId, category, title, content, enabled, created_at AS createdAt, updated_at AS updatedAt
+    FROM business_contexts WHERE workspace_id = ? ORDER BY updated_at DESC
+  `).all(workspaceId) as unknown as Array<Omit<BusinessContext, "enabled"> & { enabled: number }>;
+  return rows.map(mapBusinessContext);
+}
+
+export interface BusinessContextInput {
+  category: BusinessContextCategory;
+  title: string;
+  content: string;
+}
+
+export function createBusinessContext(workspaceId: string, input: BusinessContextInput): BusinessContext {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO business_contexts (id, workspace_id, category, title, content, enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
+  `).run(id, workspaceId, input.category, input.title, input.content, now, now);
+  return { id, workspaceId, ...input, enabled: true, createdAt: now, updatedAt: now };
+}
+
+export function updateBusinessContext(id: string, input: BusinessContextInput): void {
+  db.prepare("UPDATE business_contexts SET category = ?, title = ?, content = ?, updated_at = ? WHERE id = ?")
+    .run(input.category, input.title, input.content, Date.now(), id);
+}
+
+export function updateBusinessContextEnabled(id: string, enabled: boolean): void {
+  db.prepare("UPDATE business_contexts SET enabled = ?, updated_at = ? WHERE id = ?").run(enabled ? 1 : 0, Date.now(), id);
+}
+
+export function updateBusinessContextsEnabled(ids: string[], enabled: boolean): void {
+  const now = Date.now();
+  const stmt = db.prepare("UPDATE business_contexts SET enabled = ?, updated_at = ? WHERE id = ?");
+  for (const id of ids) stmt.run(enabled ? 1 : 0, now, id);
+}
+
+export function deleteBusinessContext(id: string): void {
+  db.prepare("DELETE FROM business_contexts WHERE id = ?").run(id);
+}
+
+export function buildEnabledBusinessContextPrompt(workspaceId: string): { prompt: string; count: number; updatedAt: number | null } {
+  const enabled = listBusinessContexts(workspaceId).filter((c) => c.enabled);
+  if (enabled.length === 0) return { prompt: "", count: 0, updatedAt: null };
+
+  const order: BusinessContextCategory[] = ["org", "status", "glossary", "constraint", "history", "goal"];
+  const lines: string[] = [
+    "<xanthil-business-context>",
+    "以下是当前业务的真实背景。做任何分析、判断与决策前都必须纳入考虑，不得凭空假设：",
+  ];
+  for (const category of order) {
+    const items = enabled.filter((c) => c.category === category);
+    if (items.length === 0) continue;
+    lines.push("", `[${BUSINESS_CONTEXT_LABELS[category]}]`);
+    items.forEach((item) => {
+      lines.push(`- ${item.title}${item.content ? `：${item.content}` : ""}`);
+    });
+  }
+  lines.push("</xanthil-business-context>");
+  return {
+    prompt: lines.join("\n"),
+    count: enabled.length,
+    updatedAt: Math.max(...enabled.map((c) => c.updatedAt)),
+  };
+}
+
+// ---- analysis cases (分析案例库) ----
+
+function mapAnalysisCase(row: Omit<AnalysisCase, "enabled"> & { enabled: number }): AnalysisCase {
+  return { ...row, enabled: Boolean(row.enabled) };
+}
+
+export function listAnalysisCases(workspaceId: string): AnalysisCase[] {
+  const rows = db.prepare(`
+    SELECT id, workspace_id AS workspaceId, title, category, scenario, approach, conclusion, enabled, created_at AS createdAt, updated_at AS updatedAt
+    FROM analysis_cases WHERE workspace_id = ? ORDER BY updated_at DESC
+  `).all(workspaceId) as unknown as Array<Omit<AnalysisCase, "enabled"> & { enabled: number }>;
+  return rows.map(mapAnalysisCase);
+}
+
+export function createAnalysisCase(workspaceId: string, input: AnalysisCaseInput): AnalysisCase {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO analysis_cases (id, workspace_id, title, category, scenario, approach, conclusion, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)"
+  ).run(id, workspaceId, input.title, input.category, input.scenario, input.approach, input.conclusion, now, now);
+  return { id, workspaceId, ...input, enabled: true, createdAt: now, updatedAt: now };
+}
+
+export function updateAnalysisCase(id: string, input: AnalysisCaseInput): void {
+  db.prepare(
+    "UPDATE analysis_cases SET title=?, category=?, scenario=?, approach=?, conclusion=?, updated_at=? WHERE id=?"
+  ).run(input.title, input.category, input.scenario, input.approach, input.conclusion, Date.now(), id);
+}
+
+export function updateAnalysisCaseEnabled(id: string, enabled: boolean): void {
+  db.prepare("UPDATE analysis_cases SET enabled=?, updated_at=? WHERE id=?").run(enabled ? 1 : 0, Date.now(), id);
+}
+
+export function deleteAnalysisCase(id: string): void {
+  db.prepare("DELETE FROM analysis_cases WHERE id=?").run(id);
+}
+
+export function buildEnabledCasesPrompt(workspaceId: string): { prompt: string; count: number; updatedAt: number | null } {
+  const enabled = listAnalysisCases(workspaceId).filter((c) => c.enabled);
+  if (enabled.length === 0) return { prompt: "", count: 0, updatedAt: null };
+  const blocks = enabled.map((c) =>
+    [
+      `[案例：${c.title}${c.category ? `（${c.category}）` : ""}]`,
+      c.scenario ? `场景：${c.scenario}` : null,
+      c.approach ? `分析思路：${c.approach}` : null,
+      c.conclusion ? `结论格式：${c.conclusion}` : null,
+    ].filter(Boolean).join("\n")
+  ).join("\n\n");
+  return {
+    prompt: `<xanthil-cases>\n以下是已验证的分析案例，可作为 few-shot 参考，复用其中的分析框架和结论格式：\n\n${blocks}\n</xanthil-cases>`,
+    count: enabled.length,
+    updatedAt: Math.max(...enabled.map((c) => c.updatedAt)),
+  };
+}
+
+// ---- AnaX hypothesis library (归档飞轮) ----
+
+const HYPOTHESIS_VERDICT_LABELS: Record<HypothesisEntry["verdict"], string> = {
+  confirmed: "✅ 成立",
+  rejected: "❌ 不成立",
+  partial: "⚠️ 部分成立",
+};
+
+type HypothesisRow = Omit<HypothesisEntry, "enabled"> & { enabled: number };
+
+function mapHypothesis(row: HypothesisRow): HypothesisEntry {
+  return {
+    ...row,
+    enabled: Boolean(row.enabled),
+    confirmCount: row.confirmCount ?? 0,
+    rejectCount: row.rejectCount ?? 0,
+    partialCount: row.partialCount ?? 0,
+  };
+}
+
+export function listHypotheses(workspaceId: string): HypothesisEntry[] {
+  const rows = db.prepare(`
+    SELECT id, workspace_id AS workspaceId, scene, hypothesis, verdict, evidence, impact, source, enabled,
+           confirm_count AS confirmCount, reject_count AS rejectCount, partial_count AS partialCount,
+           created_at AS createdAt, updated_at AS updatedAt
+    FROM hypothesis_library WHERE workspace_id = ? ORDER BY updated_at DESC
+  `).all(workspaceId) as unknown as HypothesisRow[];
+  return rows.map(mapHypothesis);
+}
+
+export function createHypothesis(workspaceId: string, input: HypothesisEntryInput, source: HypothesisEntry["source"] = "manual"): HypothesisEntry {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO hypothesis_library (id, workspace_id, scene, hypothesis, verdict, evidence, impact, source, enabled, confirm_count, reject_count, partial_count, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, 1, 0, 0, 0, ?, ?)
+  `).run(id, workspaceId, input.scene, input.hypothesis, input.verdict, input.evidence, input.impact, source, now, now);
+  return { id, workspaceId, ...input, source, enabled: true, confirmCount: 0, rejectCount: 0, partialCount: 0, createdAt: now, updatedAt: now };
+}
+
+/**
+ * Upsert a hypothesis from an archive flywheel run.
+ * If an entry with the same (workspace, scene, hypothesis) already exists,
+ * increments the corresponding verdict counter and updates the latest verdict/evidence.
+ * Otherwise creates a new entry with an initial count of 1.
+ */
+export function upsertHypothesisFromArchive(workspaceId: string, input: HypothesisEntryInput): void {
+  const existing = db.prepare(
+    "SELECT id FROM hypothesis_library WHERE workspace_id = ? AND lower(trim(scene)) = lower(trim(?)) AND lower(trim(hypothesis)) = lower(trim(?)) LIMIT 1"
+  ).get(workspaceId, input.scene, input.hypothesis) as { id: string } | undefined;
+
+  const now = Date.now();
+  if (existing) {
+    const countCol = input.verdict === "confirmed" ? "confirm_count" : input.verdict === "rejected" ? "reject_count" : "partial_count";
+    db.prepare(`UPDATE hypothesis_library SET verdict = ?, evidence = ?, impact = ?, ${countCol} = ${countCol} + 1, updated_at = ? WHERE id = ?`)
+      .run(input.verdict, input.evidence || "", input.impact || "", now, existing.id);
+  } else {
+    const id = randomUUID();
+    const confirmCount = input.verdict === "confirmed" ? 1 : 0;
+    const rejectCount = input.verdict === "rejected" ? 1 : 0;
+    const partialCount = input.verdict === "partial" ? 1 : 0;
+    db.prepare(`
+      INSERT INTO hypothesis_library (id, workspace_id, scene, hypothesis, verdict, evidence, impact, source, enabled, confirm_count, reject_count, partial_count, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, 'archive', 1, ?, ?, ?, ?, ?)
+    `).run(id, workspaceId, input.scene, input.hypothesis, input.verdict, input.evidence || "", input.impact || "", confirmCount, rejectCount, partialCount, now, now);
+  }
+}
+
+export function updateHypothesisEnabled(id: string, enabled: boolean): void {
+  db.prepare("UPDATE hypothesis_library SET enabled = ?, updated_at = ? WHERE id = ?").run(enabled ? 1 : 0, Date.now(), id);
+}
+
+export function deleteHypothesis(id: string): void {
+  db.prepare("DELETE FROM hypothesis_library WHERE id = ?").run(id);
+}
+
+// ---- hypothesis library context pruning ----
+
+/** Library size below which we skip scoring and inject everything. */
+const HYPO_PRUNE_THRESHOLD = 20;
+/** Target number of entries to inject when pruning. */
+const HYPO_PRUNE_TARGET = 10;
+
+const STOP_TOKENS_ZH = new Set(["的", "了", "在", "是", "有", "和", "与", "或", "但", "因", "为", "以", "从", "到", "个", "该", "这", "那", "其", "此", "之"]);
+const STOP_TOKENS_EN = new Set(["a", "the", "is", "in", "of", "to", "and", "or", "for", "by", "at", "an", "be", "it", "on", "as"]);
+
+export function tokenizeQuery(text: string): string[] {
+  return text.toLowerCase()
+    .split(/[\s\p{P}，。！？、；：""''（）【】「」《》\d]+/u)
+    .flatMap((t) => {
+      const trimmed = t.trim();
+      // For mixed CJK+Latin, also yield 2-gram CJK sub-tokens for short segments
+      const cjk = [...trimmed.matchAll(/[一-鿿]{2,}/g)].map((m) => m[0]);
+      return [trimmed, ...cjk];
+    })
+    .filter((t) => t.length >= 2 && !STOP_TOKENS_ZH.has(t) && !STOP_TOKENS_EN.has(t));
+}
+
+export function scoreHypothesis(entry: HypothesisEntry, queryTokens: string[]): number {
+  const sceneHay = entry.scene.toLowerCase();
+  const hypoHay = entry.hypothesis.toLowerCase();
+  const evidHay = entry.evidence.toLowerCase();
+  // scene matches are weighted 3× — scene relevance is the primary signal.
+  // hypothesis matches are 1×; evidence matches 0.5× (supporting detail).
+  let keywordScore = 0;
+  for (const t of queryTokens) {
+    if (sceneHay.includes(t)) keywordScore += 3;
+    if (hypoHay.includes(t)) keywordScore += 1;
+    if (evidHay.includes(t)) keywordScore += 0.5;
+  }
+  // Hypotheses confirmed multiple times across runs earn a small boost.
+  const trustBonus = (entry.confirmCount ?? 0) * 0.5;
+  return keywordScore + trustBonus;
+}
+
+/**
+ * Build the hypothesis library context block to prepend to AnaX runs.
+ *
+ * Two-phase filtering when `query` is provided:
+ * 1. Scene pre-filter (always runs): compute per-scene token overlap; if any
+ *    scene is relevant, drop hypotheses from zero-score scenes. Falls back to
+ *    injecting all when no scene matches (prevents empty context).
+ * 2. Size-based pruning (only when filtered set > HYPO_PRUNE_THRESHOLD):
+ *    score individual entries and keep the top HYPO_PRUNE_TARGET.
+ */
+export function buildHypothesisLibraryContext(workspaceId: string, query?: string): string {
+  const enabled = listHypotheses(workspaceId).filter((h) => h.enabled);
+  if (enabled.length === 0) return "";
+
+  let selected = enabled;
+  if (query) {
+    const tokens = tokenizeQuery(query);
+    if (tokens.length > 0) {
+      // Phase 1: scene-level pre-filter.
+      const sceneScores = new Map<string, number>();
+      for (const h of enabled) {
+        if (!sceneScores.has(h.scene)) {
+          const hay = h.scene.toLowerCase();
+          sceneScores.set(h.scene, tokens.filter((t) => hay.includes(t)).length);
+        }
+      }
+      if ([...sceneScores.values()].some((s) => s > 0)) {
+        selected = enabled.filter((h) => (sceneScores.get(h.scene) ?? 0) > 0);
+      }
+
+      // Phase 2: size-based pruning on the already-filtered set.
+      if (selected.length > HYPO_PRUNE_THRESHOLD) {
+        const scored = selected
+          .map((h) => ({ h, score: scoreHypothesis(h, tokens) }))
+          .sort((a, b) => b.score - a.score || (b.h.confirmCount ?? 0) - (a.h.confirmCount ?? 0) || b.h.updatedAt - a.h.updatedAt);
+
+        const taken = new Set<string>();
+        const result: HypothesisEntry[] = [];
+
+        // First: entries with any keyword overlap, up to target
+        for (const { h, score } of scored) {
+          if (result.length >= HYPO_PRUNE_TARGET) break;
+          if (score > 0) { result.push(h); taken.add(h.id); }
+        }
+        // Fill remainder with most-recent unselected entries
+        for (const { h } of scored) {
+          if (result.length >= HYPO_PRUNE_TARGET) break;
+          if (!taken.has(h.id)) { result.push(h); taken.add(h.id); }
+        }
+
+        selected = result;
+      }
+    }
+  }
+
+  const byScene = new Map<string, HypothesisEntry[]>();
+  for (const h of selected) {
+    const arr = byScene.get(h.scene) ?? [];
+    if (arr.length === 0) byScene.set(h.scene, arr);
+    arr.push(h);
+  }
+  const lines: string[] = [
+    "[历史假设库 — 本工作区过往验证过的假设，规范阶段应优先复用/排除，不要从零重猜]",
+  ];
+  for (const [scene, items] of byScene) {
+    lines.push(`场景「${scene}」：`);
+    for (const h of items) {
+      const impact = h.impact ? `（影响：${h.impact}）` : "";
+      const evidence = h.evidence ? ` — ${h.evidence}` : "";
+      const totalRuns = (h.confirmCount ?? 0) + (h.rejectCount ?? 0) + (h.partialCount ?? 0);
+      const runBadge = totalRuns >= 2 ? `（${totalRuns}次验证）` : "";
+      lines.push(`  - ${HYPOTHESIS_VERDICT_LABELS[h.verdict]}${runBadge} ${h.hypothesis}${impact}${evidence}`);
+    }
+  }
+  if (selected.length < enabled.length) {
+    lines.push(`（已按场景相关性筛选，显示 ${selected.length}/${enabled.length} 条；其余可在「假设库」tab 查看）`);
+  }
+  return lines.join("\n");
+}
+
 // ---- trace ----
 
 export function addTraceEvent(input: {
@@ -1129,6 +2892,66 @@ export function addTraceEvent(input: {
     status: input.status as TraceEvent["status"],
     detail: input.detail ?? null,
   };
+}
+
+export function pruneTraceEvents(workspaceId: string, retainDays: number): number {
+  const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
+  return Number(db.prepare("DELETE FROM trace_events WHERE workspace_id = ? AND created_at < ?").run(workspaceId, cutoff).changes);
+}
+
+export function pruneAllTraceEvents(retainDays: number): number {
+  const cutoff = Date.now() - retainDays * 24 * 60 * 60 * 1000;
+  return Number(db.prepare("DELETE FROM trace_events WHERE created_at < ?").run(cutoff).changes);
+}
+
+function parseMemoryInjectionSnapshot(payload: string | null): MemoryInjectionSnapshot | null {
+  if (!payload) return null;
+  try {
+    const parsed = JSON.parse(payload) as { memoryInjection?: unknown };
+    const snapshot = parsed.memoryInjection;
+    if (!snapshot || typeof snapshot !== "object") return null;
+    const candidate = snapshot as Partial<MemoryInjectionSnapshot>;
+    if (typeof candidate.requested !== "boolean" || typeof candidate.injected !== "boolean") return null;
+    if (candidate.targetScope !== "chat" && candidate.targetScope !== "workflow") return null;
+    if (!Array.isArray(candidate.sources)) return null;
+    return candidate as MemoryInjectionSnapshot;
+  } catch {
+    return null;
+  }
+}
+
+export function listMemoryInjectionRecords(workspaceId: string, limit = 50): MemoryInjectionRecord[] {
+  const rows = db.prepare(`
+    SELECT id, workspace_id AS workspaceId, target_kind AS targetKind, target_id AS targetId,
+           target, status, payload, created_at AS createdAt
+    FROM trace_events
+    WHERE workspace_id = ? AND type = 'run_start' AND payload IS NOT NULL
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(workspaceId, Math.max(1, Math.min(200, limit))) as Array<{
+    id: string;
+    workspaceId: string;
+    targetKind: string;
+    targetId: string;
+    target: string;
+    status: string;
+    payload: string | null;
+    createdAt: number;
+  }>;
+  return rows.flatMap((row) => {
+    const snapshot = parseMemoryInjectionSnapshot(row.payload);
+    if (!snapshot) return [];
+    return [{
+      eventId: row.id,
+      workspaceId: row.workspaceId,
+      targetKind: row.targetKind,
+      targetId: row.targetId,
+      target: row.target,
+      status: row.status,
+      createdAt: row.createdAt,
+      snapshot,
+    }];
+  });
 }
 
 function classifyTraceError(text: string | null | undefined, source = ""): TraceErrorType {
@@ -1461,4 +3284,544 @@ export function generateTraceRuleSuggestions(workspaceId: string): TraceRuleSugg
   }
 
   return suggestions.slice(0, 6);
+}
+
+// ---- change proposals ----
+
+export function createChangeProposal(workspaceId: string, input: ChangeProposalInput): ChangeProposal {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO change_proposals (id, workspace_id, run_id, source_node_id, title, description, expected_impact, status, applied_result, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, 'proposed', '', ?, ?)",
+  ).run(id, workspaceId, input.runId ?? null, input.sourceNodeId ?? null, input.title, input.description ?? "", input.expectedImpact ?? "", now, now);
+  return { id, workspaceId, runId: input.runId ?? null, sourceNodeId: input.sourceNodeId ?? null, title: input.title, description: input.description ?? "", expectedImpact: input.expectedImpact ?? "", status: "proposed", appliedResult: "", createdAt: now, updatedAt: now };
+}
+
+export function listChangeProposals(workspaceId: string): ChangeProposal[] {
+  return db.prepare(
+    "SELECT id, workspace_id AS workspaceId, run_id AS runId, source_node_id AS sourceNodeId, title, description, expected_impact AS expectedImpact, status, applied_result AS appliedResult, created_at AS createdAt, updated_at AS updatedAt FROM change_proposals WHERE workspace_id = ? ORDER BY updated_at DESC",
+  ).all(workspaceId) as unknown as ChangeProposal[];
+}
+
+export function updateChangeProposal(id: string, patch: { status?: ChangeProposalStatus; appliedResult?: string; title?: string; description?: string; expectedImpact?: string }): boolean {
+  const now = Date.now();
+  const fields: string[] = ["updated_at = ?"];
+  const values: Array<string | number | null> = [now];
+  if (patch.status !== undefined) { fields.push("status = ?"); values.push(patch.status); }
+  if (patch.appliedResult !== undefined) { fields.push("applied_result = ?"); values.push(patch.appliedResult); }
+  if (patch.title !== undefined) { fields.push("title = ?"); values.push(patch.title); }
+  if (patch.description !== undefined) { fields.push("description = ?"); values.push(patch.description); }
+  if (patch.expectedImpact !== undefined) { fields.push("expected_impact = ?"); values.push(patch.expectedImpact); }
+  const result = db.prepare(`UPDATE change_proposals SET ${fields.join(", ")} WHERE id = ?`).run(...values, id);
+  return result.changes > 0;
+}
+
+export function deleteChangeProposal(id: string): boolean {
+  return db.prepare("DELETE FROM change_proposals WHERE id = ?").run(id).changes > 0;
+}
+
+// ---- stale nodes ----
+
+export function markNodesStale(runId: string, nodeIds: string[], reason: StaleNodeReason): void {
+  const now = Date.now();
+  const stmt = db.prepare(
+    "INSERT INTO stale_nodes (run_id, node_id, reason, triggered_at) VALUES (?, ?, ?, ?) ON CONFLICT(run_id, node_id) DO UPDATE SET reason = excluded.reason, triggered_at = excluded.triggered_at",
+  );
+  for (const nodeId of nodeIds) stmt.run(runId, nodeId, reason, now);
+}
+
+export function getStaleNodes(runId: string): StaleNode[] {
+  return db.prepare(
+    "SELECT id, run_id AS runId, node_id AS nodeId, reason, triggered_at AS triggeredAt FROM stale_nodes WHERE run_id = ? ORDER BY id ASC",
+  ).all(runId) as unknown as StaleNode[];
+}
+
+export function clearStaleNodes(runId: string): void {
+  db.prepare("DELETE FROM stale_nodes WHERE run_id = ?").run(runId);
+}
+
+// ---- AnaX gate config ----
+
+export function getAnaxGateConfig(workspaceId: string): AnaxGateConfig {
+  const row = db.prepare(
+    "SELECT workspace_id AS workspaceId, min_confidence AS minConfidence, min_evidence_count AS minEvidenceCount, min_data_quality_score AS minDataQualityScore FROM anax_gate_config WHERE workspace_id = ?"
+  ).get(workspaceId) as AnaxGateConfig | undefined;
+  return row ?? { workspaceId, minConfidence: "medium", minEvidenceCount: 2, minDataQualityScore: 7 };
+}
+
+export function upsertAnaxGateConfig(workspaceId: string, patch: { minConfidence?: string; minEvidenceCount?: number; minDataQualityScore?: number }): AnaxGateConfig {
+  const current = getAnaxGateConfig(workspaceId);
+  const minConfidence = (patch.minConfidence ?? current.minConfidence) as AnaxGateConfig["minConfidence"];
+  const minEvidenceCount = patch.minEvidenceCount ?? current.minEvidenceCount;
+  const minDataQualityScore = patch.minDataQualityScore ?? current.minDataQualityScore;
+  db.prepare(
+    "INSERT INTO anax_gate_config (workspace_id, min_confidence, min_evidence_count, min_data_quality_score) VALUES (?, ?, ?, ?) ON CONFLICT(workspace_id) DO UPDATE SET min_confidence = excluded.min_confidence, min_evidence_count = excluded.min_evidence_count, min_data_quality_score = excluded.min_data_quality_score"
+  ).run(workspaceId, minConfidence, minEvidenceCount, minDataQualityScore);
+  return { workspaceId, minConfidence, minEvidenceCount, minDataQualityScore };
+}
+
+// ---- skill curation proposals ----
+
+export function saveSkillCurationProposals(
+  workspaceId: string,
+  evaluationId: string,
+  proposals: Array<{ type: string; targetPath: string; suggestedContent: string; rationale: string; confidence: number; evidence: string[] }>,
+): void {
+  const stmt = db.prepare(
+    "INSERT INTO skill_curation_proposals (id, workspace_id, evaluation_id, type, target_path, suggested_content, rationale, confidence, evidence, status, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)",
+  );
+  const now = Date.now();
+  for (const p of proposals) {
+    stmt.run(randomUUID(), workspaceId, evaluationId, p.type, p.targetPath, p.suggestedContent, p.rationale, p.confidence, JSON.stringify(p.evidence), now);
+  }
+}
+
+export function listSkillCurationProposals(workspaceId: string, status?: string): SkillCurationProposalRecord[] {
+  const query = status
+    ? "SELECT id, workspace_id AS workspaceId, evaluation_id AS evaluationId, type, target_path AS targetPath, suggested_content AS suggestedContent, rationale, confidence, evidence, status, created_at AS createdAt FROM skill_curation_proposals WHERE workspace_id = ? AND status = ? ORDER BY created_at DESC"
+    : "SELECT id, workspace_id AS workspaceId, evaluation_id AS evaluationId, type, target_path AS targetPath, suggested_content AS suggestedContent, rationale, confidence, evidence, status, created_at AS createdAt FROM skill_curation_proposals WHERE workspace_id = ? ORDER BY created_at DESC";
+  const rows = (status ? db.prepare(query).all(workspaceId, status) : db.prepare(query).all(workspaceId)) as unknown as Array<Omit<SkillCurationProposalRecord, "evidence"> & { evidence: string }>;
+  return rows.map((r) => ({ ...r, evidence: parseJsonArray(r.evidence) }));
+}
+
+export function updateSkillCurationProposalStatus(id: string, status: string): boolean {
+  return db.prepare("UPDATE skill_curation_proposals SET status = ? WHERE id = ?").run(status, id).changes > 0;
+}
+
+// ---- Knowledge Graph ----
+
+try {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS kg_nodes (
+      id          TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      type        TEXT NOT NULL,
+      source_key  TEXT NOT NULL,
+      title       TEXT NOT NULL,
+      summary     TEXT NOT NULL DEFAULT '',
+      tags        TEXT NOT NULL DEFAULT '[]',
+      content_hash TEXT,
+      hidden      INTEGER NOT NULL DEFAULT 0,
+      created_at  INTEGER NOT NULL,
+      updated_at  INTEGER NOT NULL,
+      UNIQUE(workspace_id, source_key)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kg_nodes_ws ON kg_nodes(workspace_id, type);
+    CREATE TABLE IF NOT EXISTS kg_edges (
+      id          TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL,
+      from_id     TEXT NOT NULL,
+      to_id       TEXT NOT NULL,
+      relation    TEXT NOT NULL,
+      weight      REAL NOT NULL DEFAULT 1.0,
+      auto        INTEGER NOT NULL DEFAULT 1,
+      created_at  INTEGER NOT NULL,
+      UNIQUE(from_id, to_id, relation)
+    );
+    CREATE INDEX IF NOT EXISTS idx_kg_edges_ws ON kg_edges(workspace_id);
+  `);
+  // Migrate existing tables that lack the hidden column
+  try { db.exec("ALTER TABLE kg_nodes ADD COLUMN hidden INTEGER NOT NULL DEFAULT 0"); } catch { /* column exists */ }
+  try { db.exec("ALTER TABLE kg_nodes ADD COLUMN ai_extracted_hash TEXT"); } catch { /* column exists */ }
+} catch {
+  // ignore (read-only test env)
+}
+
+interface KgNodeRow {
+  id: string;
+  workspaceId: string;
+  type: KgNodeType;
+  sourceKey: string;
+  title: string;
+  summary: string;
+  tags: string;
+  contentHash: string | null;
+  aiExtractedHash: string | null;
+  hidden: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+function parseKgNode(row: KgNodeRow): KgNode {
+  return {
+    id: row.id,
+    workspaceId: row.workspaceId,
+    type: row.type,
+    sourceKey: row.sourceKey,
+    title: row.title,
+    summary: row.summary,
+    tags: parseJsonArray<string>(row.tags),
+    contentHash: row.contentHash,
+    aiExtractedHash: row.aiExtractedHash ?? null,
+    hidden: row.hidden === 1,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt,
+  };
+}
+
+export interface KgNodeInput {
+  workspaceId: string;
+  type: KgNodeType;
+  sourceKey: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  contentHash: string | null;
+}
+
+export function upsertKgNode(input: KgNodeInput): KgNode {
+  const now = Date.now();
+  const existing = db.prepare(
+    "SELECT id, created_at AS createdAt FROM kg_nodes WHERE workspace_id = ? AND source_key = ?",
+  ).get(input.workspaceId, input.sourceKey) as { id: string; createdAt: number } | undefined;
+
+  if (existing) {
+    db.prepare(
+      "UPDATE kg_nodes SET type = ?, title = ?, summary = ?, tags = ?, content_hash = ?, updated_at = ? WHERE id = ?",
+    ).run(input.type, input.title, input.summary, JSON.stringify(input.tags), input.contentHash, now, existing.id);
+    return {
+      id: existing.id,
+      workspaceId: input.workspaceId,
+      type: input.type,
+      sourceKey: input.sourceKey,
+      title: input.title,
+      summary: input.summary,
+      tags: input.tags,
+      contentHash: input.contentHash,
+      aiExtractedHash: null,
+      hidden: false,
+      createdAt: existing.createdAt,
+      updatedAt: now,
+    };
+  }
+
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO kg_nodes (id, workspace_id, type, source_key, title, summary, tags, content_hash, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(id, input.workspaceId, input.type, input.sourceKey, input.title, input.summary, JSON.stringify(input.tags), input.contentHash, now, now);
+  return { id, workspaceId: input.workspaceId, type: input.type, sourceKey: input.sourceKey, title: input.title, summary: input.summary, tags: input.tags, contentHash: input.contentHash, aiExtractedHash: null, hidden: false, createdAt: now, updatedAt: now };
+}
+
+export function listKgNodes(workspaceId: string, includeHidden = false): KgNode[] {
+  const sql = includeHidden
+    ? "SELECT id, workspace_id AS workspaceId, type, source_key AS sourceKey, title, summary, tags, content_hash AS contentHash, ai_extracted_hash AS aiExtractedHash, hidden, created_at AS createdAt, updated_at AS updatedAt FROM kg_nodes WHERE workspace_id = ? ORDER BY type, title"
+    : "SELECT id, workspace_id AS workspaceId, type, source_key AS sourceKey, title, summary, tags, content_hash AS contentHash, ai_extracted_hash AS aiExtractedHash, hidden, created_at AS createdAt, updated_at AS updatedAt FROM kg_nodes WHERE workspace_id = ? AND hidden = 0 ORDER BY type, title";
+  return (db.prepare(sql).all(workspaceId) as unknown as KgNodeRow[]).map(parseKgNode);
+}
+
+export function setKgNodeHidden(id: string, hidden: boolean): boolean {
+  return db.prepare("UPDATE kg_nodes SET hidden = ?, updated_at = ? WHERE id = ?").run(hidden ? 1 : 0, Date.now(), id).changes > 0;
+}
+
+export function setKgNodeAiExtractedHash(id: string, hash: string): void {
+  db.prepare("UPDATE kg_nodes SET ai_extracted_hash = ? WHERE id = ?").run(hash, id);
+}
+
+export function insertManualKgEdge(workspaceId: string, fromId: string, toId: string, relation: KgRelation, weight = 1.0): KgEdge {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT OR REPLACE INTO kg_edges (id, workspace_id, from_id, to_id, relation, weight, auto, created_at) VALUES (?, ?, ?, ?, ?, ?, 0, ?)",
+  ).run(id, workspaceId, fromId, toId, relation, weight, now);
+  return { id, workspaceId, fromId, toId, relation, weight, auto: false, createdAt: now };
+}
+
+export function deleteKgEdge(id: string): boolean {
+  return db.prepare("DELETE FROM kg_edges WHERE id = ?").run(id).changes > 0;
+}
+
+export function deleteKgNodesForSource(workspaceId: string, sourceKeyPrefix: string): void {
+  db.prepare("DELETE FROM kg_nodes WHERE workspace_id = ? AND source_key LIKE ?").run(workspaceId, `${sourceKeyPrefix}%`);
+}
+
+export function clearKgAutoEdges(workspaceId: string): void {
+  db.prepare("DELETE FROM kg_edges WHERE workspace_id = ? AND auto = 1").run(workspaceId);
+}
+
+export interface KgEdgeInput {
+  workspaceId: string;
+  fromId: string;
+  toId: string;
+  relation: KgRelation;
+  weight: number;
+}
+
+export function insertKgEdges(edges: KgEdgeInput[]): void {
+  const stmt = db.prepare(
+    "INSERT OR IGNORE INTO kg_edges (id, workspace_id, from_id, to_id, relation, weight, auto, created_at) VALUES (?, ?, ?, ?, ?, ?, 1, ?)",
+  );
+  const now = Date.now();
+  for (const e of edges) {
+    stmt.run(randomUUID(), e.workspaceId, e.fromId, e.toId, e.relation, e.weight, now);
+  }
+}
+
+export function listKgEdges(workspaceId: string): KgEdge[] {
+  const rows = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, from_id AS fromId, to_id AS toId, relation, weight, auto, created_at AS createdAt FROM kg_edges WHERE workspace_id = ? ORDER BY weight DESC",
+  ).all(workspaceId) as unknown as Array<Omit<KgEdge, "auto"> & { auto: number }>;
+  return rows.map((r) => ({ ...r, auto: r.auto === 1 }));
+}
+
+export function deleteKgData(workspaceId: string): void {
+  db.prepare("DELETE FROM kg_edges WHERE workspace_id = ?").run(workspaceId);
+  db.prepare("DELETE FROM kg_nodes WHERE workspace_id = ?").run(workspaceId);
+}
+
+type ModelLabRunRow = Omit<ModelLabRunDetail, "result" | "rawOutput" | "rowsCapped" | "rowsTotal" | "rowCount" | "durationMs" | "createdAt" | "errorMessage"> & {
+  rowCount: number;
+  rowsTotal: number;
+  rowsCapped: number;
+  durationMs: number;
+  result: string;
+  rawOutput: string;
+  createdAt: number;
+  errorMessage: string | null;
+};
+
+function parseModelLabRunRow(row: ModelLabRunRow): ModelLabRunDetail {
+  let result: PredictionResult | null = null;
+  if (row.result && row.result.length > 0) {
+    try {
+      result = JSON.parse(row.result) as PredictionResult;
+    } catch {
+      result = null;
+    }
+  }
+  return {
+    id: row.id,
+    modelId: row.modelId,
+    model: row.model,
+    status: row.status,
+    rowCount: row.rowCount,
+    rowsTotal: row.rowsTotal,
+    rowsCapped: row.rowsCapped === 1,
+    durationMs: row.durationMs,
+    result,
+    rawOutput: row.rawOutput,
+    createdAt: row.createdAt,
+    errorMessage: row.errorMessage,
+  };
+}
+
+export function createModelLabRun(input: {
+  modelId: string;
+  model: string;
+  status: ModelLabRunSummary["status"];
+  rowCount: number;
+  rowsTotal: number;
+  rowsCapped: boolean;
+  durationMs: number;
+  result: PredictionResult | null;
+  rawOutput: string;
+  errorMessage?: string | null;
+}): ModelLabRunDetail {
+  const id = randomUUID();
+  const createdAt = Date.now();
+  const resultJson = input.result ? JSON.stringify(input.result) : "";
+  const errorMessage = input.errorMessage ?? null;
+  db.prepare(
+    "INSERT INTO model_lab_runs (id, model_id, model, status, row_count, rows_total, rows_capped, duration_ms, result, raw_output, created_at, error_message) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(id, input.modelId, input.model, input.status, input.rowCount, input.rowsTotal, input.rowsCapped ? 1 : 0, input.durationMs, resultJson, input.rawOutput, createdAt, errorMessage);
+  return {
+    id,
+    modelId: input.modelId,
+    model: input.model,
+    status: input.status,
+    rowCount: input.rowCount,
+    rowsTotal: input.rowsTotal,
+    rowsCapped: input.rowsCapped,
+    durationMs: input.durationMs,
+    result: input.result,
+    rawOutput: input.rawOutput,
+    createdAt,
+    errorMessage,
+  };
+}
+
+export function listModelLabRuns(limit = 30): ModelLabRunSummary[] {
+  const safeLimit = Math.min(100, Math.max(1, limit));
+  const rows = db.prepare(
+    "SELECT id, model_id AS modelId, model, status, row_count AS rowCount, rows_total AS rowsTotal, rows_capped AS rowsCapped, duration_ms AS durationMs, created_at AS createdAt, error_message AS errorMessage FROM model_lab_runs ORDER BY created_at DESC LIMIT ?",
+  ).all(safeLimit) as unknown as Array<Omit<ModelLabRunSummary, "rowsCapped" | "errorMessage"> & { rowsCapped: number; errorMessage: string | null }>;
+  return rows.map((row) => ({ ...row, rowsCapped: row.rowsCapped === 1 }));
+}
+
+export function getModelLabRun(id: string): ModelLabRunDetail | undefined {
+  const row = db.prepare(
+    "SELECT id, model_id AS modelId, model, status, row_count AS rowCount, rows_total AS rowsTotal, rows_capped AS rowsCapped, duration_ms AS durationMs, result, raw_output AS rawOutput, created_at AS createdAt, error_message AS errorMessage FROM model_lab_runs WHERE id = ?",
+  ).get(id) as unknown as ModelLabRunRow | undefined;
+  return row ? parseModelLabRunRow(row) : undefined;
+}
+
+export function getModelLabStats(): ModelLabStats {
+  const totals = db.prepare(
+    "SELECT COUNT(*) AS totalRuns, COALESCE(SUM(row_count), 0) AS totalRows, COALESCE(AVG(duration_ms), 0) AS avgDuration FROM model_lab_runs WHERE status = 'success'",
+  ).get() as { totalRuns: number; totalRows: number; avgDuration: number };
+
+  const sevenDaysAgo = Date.now() - 7 * 24 * 60 * 60 * 1000;
+  const recent = db.prepare(
+    "SELECT COUNT(*) AS c FROM model_lab_runs WHERE status = 'success' AND created_at >= ?",
+  ).get(sevenDaysAgo) as { c: number };
+
+  const thirtyDaysAgo = Date.now() - 30 * 24 * 60 * 60 * 1000;
+  const trendRows = db.prepare(
+    "SELECT strftime('%Y-%m-%d', created_at / 1000, 'unixepoch', 'localtime') AS date, COUNT(*) AS count FROM model_lab_runs WHERE status = 'success' AND created_at >= ? GROUP BY date ORDER BY date ASC",
+  ).all(thirtyDaysAgo) as Array<{ date: string; count: number }>;
+
+  const topRows = db.prepare(
+    "SELECT model_id AS modelId, model, COUNT(*) AS count, AVG(duration_ms) AS avgDurationMs FROM model_lab_runs WHERE status = 'success' GROUP BY model_id, model ORDER BY count DESC LIMIT 10",
+  ).all() as Array<{ modelId: string; model: string; count: number; avgDurationMs: number }>;
+
+  return {
+    totalRuns: totals.totalRuns,
+    recentRuns7d: recent.c,
+    avgDurationMs: Math.round(totals.avgDuration),
+    totalRowsProcessed: totals.totalRows,
+    dailyTrend: trendRows.map((r) => ({ date: r.date, count: r.count })),
+    topModels: topRows.map((r) => ({
+      modelId: r.modelId,
+      model: r.model,
+      count: r.count,
+      avgDurationMs: Math.round(r.avgDurationMs),
+    })),
+  };
+}
+
+export function deleteModelLabRun(id: string): boolean {
+  const info = db.prepare("DELETE FROM model_lab_runs WHERE id = ?").run(id);
+  return Number(info.changes) > 0;
+}
+
+export function deleteModelLabRunsBefore(input: {
+  beforeTs: number;
+  onlyFailed: boolean;
+}): number {
+  const { beforeTs, onlyFailed } = input;
+  const sql = onlyFailed
+    ? "DELETE FROM model_lab_runs WHERE status = 'failed' AND created_at < ?"
+    : "DELETE FROM model_lab_runs WHERE created_at < ?";
+  const info = db.prepare(sql).run(beforeTs);
+  return Number(info.changes);
+}
+
+// ---- BI Datasets ----
+
+const VALID_BI_SLOTS = new Set<BiDatasetSlot>(["member_retention", "member_recall"]);
+
+function rowToBiDatasetSummary(row: Record<string, unknown>): BiDatasetSummary {
+  return {
+    id: String(row.id),
+    slot: row.slot as BiDatasetSlot,
+    filename: String(row.filename),
+    rowCount: Number(row.rowCount ?? 0),
+    columnCount: Number(row.columnCount ?? 0),
+    sizeBytes: Number(row.sizeBytes ?? 0),
+    uploadedAt: Number(row.uploadedAt ?? 0),
+    active: Number(row.active ?? 0),
+  };
+}
+
+export function insertBiDataset(input: {
+  slot: BiDatasetSlot;
+  filename: string;
+  storagePath: string;
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+  sizeBytes: number;
+}): BiDatasetDetail {
+  if (!VALID_BI_SLOTS.has(input.slot)) throw new Error(`invalid slot: ${input.slot}`);
+  const id = randomUUID();
+  const uploadedAt = Date.now();
+  const columnsJson = JSON.stringify(input.columns);
+  const rowsJson = JSON.stringify(input.rows);
+  const rowCount = input.rows.length;
+  const columnCount = input.columns.length;
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE bi_datasets SET active = 0 WHERE slot = ?").run(input.slot);
+    db.prepare(
+      "INSERT INTO bi_datasets (id, slot, filename, storage_path, columns_json, rows_json, row_count, column_count, size_bytes, uploaded_at, active) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1)",
+    ).run(id, input.slot, input.filename, input.storagePath, columnsJson, rowsJson, rowCount, columnCount, input.sizeBytes, uploadedAt);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+  return {
+    id,
+    slot: input.slot,
+    filename: input.filename,
+    rowCount,
+    columnCount,
+    sizeBytes: input.sizeBytes,
+    uploadedAt,
+    active: 1,
+    columns: input.columns,
+    rows: input.rows,
+  };
+}
+
+export function listBiDatasets(slot?: BiDatasetSlot): BiDatasetSummary[] {
+  const sql = slot
+    ? "SELECT id, slot, filename, row_count AS rowCount, column_count AS columnCount, size_bytes AS sizeBytes, uploaded_at AS uploadedAt, active FROM bi_datasets WHERE slot = ? ORDER BY uploaded_at DESC"
+    : "SELECT id, slot, filename, row_count AS rowCount, column_count AS columnCount, size_bytes AS sizeBytes, uploaded_at AS uploadedAt, active FROM bi_datasets ORDER BY uploaded_at DESC";
+  const stmt = db.prepare(sql);
+  const rows = slot ? (stmt.all(slot) as Array<Record<string, unknown>>) : (stmt.all() as Array<Record<string, unknown>>);
+  return rows.map(rowToBiDatasetSummary);
+}
+
+export function getBiDatasetById(id: string): BiDatasetDetail | undefined {
+  const row = db
+    .prepare(
+      "SELECT id, slot, filename, storage_path AS storagePath, columns_json AS columnsJson, rows_json AS rowsJson, row_count AS rowCount, column_count AS columnCount, size_bytes AS sizeBytes, uploaded_at AS uploadedAt, active FROM bi_datasets WHERE id = ?",
+    )
+    .get(id) as Record<string, unknown> | undefined;
+  if (!row) return undefined;
+  const summary = rowToBiDatasetSummary(row);
+  let columns: string[] = [];
+  let rows: Array<Record<string, unknown>> = [];
+  try {
+    columns = JSON.parse(String(row.columnsJson ?? "[]")) as string[];
+  } catch {
+    columns = [];
+  }
+  try {
+    rows = JSON.parse(String(row.rowsJson ?? "[]")) as Array<Record<string, unknown>>;
+  } catch {
+    rows = [];
+  }
+  return { ...summary, columns, rows };
+}
+
+export function getActiveBiDataset(slot: BiDatasetSlot): BiDatasetDetail | undefined {
+  const row = db
+    .prepare(
+      "SELECT id FROM bi_datasets WHERE slot = ? AND active = 1 ORDER BY uploaded_at DESC LIMIT 1",
+    )
+    .get(slot) as { id: string } | undefined;
+  if (!row) return undefined;
+  return getBiDatasetById(row.id);
+}
+
+export function deleteBiDataset(id: string): { deleted: boolean; storagePath: string | null } {
+  const row = db.prepare("SELECT storage_path AS storagePath FROM bi_datasets WHERE id = ?").get(id) as { storagePath: string } | undefined;
+  if (!row) return { deleted: false, storagePath: null };
+  const info = db.prepare("DELETE FROM bi_datasets WHERE id = ?").run(id);
+  return { deleted: Number(info.changes) > 0, storagePath: row.storagePath };
+}
+
+export function setActiveBiDataset(slot: BiDatasetSlot, id: string): boolean {
+  const target = db.prepare("SELECT id FROM bi_datasets WHERE id = ? AND slot = ?").get(id, slot) as { id: string } | undefined;
+  if (!target) return false;
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE bi_datasets SET active = 0 WHERE slot = ?").run(slot);
+    db.prepare("UPDATE bi_datasets SET active = 1 WHERE id = ?").run(id);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+  return true;
 }

@@ -7,6 +7,20 @@ export default defineConfig({
   resolve: {
     alias: { "@": fileURLToPath(new URL("./src", import.meta.url)) },
   },
+  build: {
+    chunkSizeWarningLimit: 1200,
+    rollupOptions: {
+      output: {
+        manualChunks: {
+          xlsx: ["xlsx"],
+          markdown: ["react-markdown", "remark-gfm", "react-syntax-highlighter"],
+          xyflow: ["@xyflow/react"],
+          dnd: ["@dnd-kit/core"],
+          icons: ["lucide-react"],
+        },
+      },
+    },
+  },
   server: {
     port: 5173,
     proxy: {

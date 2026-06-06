@@ -1,0 +1,27 @@
+{
+  "cases": [
+    {
+      "id": "tmall-minimal-golden",
+      "name": "Minimal HTML golden JSON",
+      "inputPath": "tests/fixtures/minimal.html",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "golden",
+        "goldenDir": "tests/golden/minimal",
+        "ignorePaths": ["基本信息.生成时间"],
+        "normalizeWhitespace": true
+      }
+    },
+    {
+      "id": "tmall-minimal-fields",
+      "name": "Minimal HTML required fields",
+      "inputPath": "tests/fixtures/minimal.html",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["基本信息.人群名称", "统计信息.总标签数", "统计信息.标签匹配率"]
+      }
+    }
+  ]
+}

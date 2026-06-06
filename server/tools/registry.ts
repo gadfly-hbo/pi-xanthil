@@ -2,6 +2,16 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 
+export interface ToolParameter {
+  name: string;
+  label: string;
+  type: "string" | "number" | "boolean" | "select";
+  required?: boolean;
+  default?: string | number | boolean;
+  options?: string[];
+  description?: string;
+}
+
 export interface ExtractionToolManifest {
   id: string;
   name: string;
@@ -14,6 +24,9 @@ export interface ExtractionToolManifest {
     modes: Array<"file" | "directory">;
   };
   output: string[];
+  timeoutMs?: number;
+  parameters?: ToolParameter[];
+  resultColumns?: Array<{ key: string; label: string }>;
 }
 
 export interface RegisteredExtractionTool extends ExtractionToolManifest {
@@ -42,7 +55,10 @@ function isManifest(value: unknown): value is ExtractionToolManifest {
     && isStringArray(input.accept)
     && Array.isArray(input.modes)
     && input.modes.every((mode) => mode === "file" || mode === "directory")
-    && isStringArray(item.output);
+    && isStringArray(item.output)
+    && (item.timeoutMs === undefined || (typeof item.timeoutMs === "number" && Number.isInteger(item.timeoutMs) && item.timeoutMs > 0))
+    && (!item.parameters || Array.isArray(item.parameters))
+    && (!item.resultColumns || Array.isArray(item.resultColumns));
 }
 
 function resolveInside(rootPath: string, relativePath: string): string {

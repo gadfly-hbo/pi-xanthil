@@ -21,17 +21,23 @@ import { ExtractionPane } from "@/components/ExtractionPane";
 import { TokenStatsPane } from "@/components/TokenStatsPane";
 import { TracePane } from "@/components/TracePane";
 import { RulesPane } from "@/components/RulesPane";
+import { BusinessRequirementPane } from "@/components/BusinessRequirementPane";
+import { DataExplorationPane } from "@/components/DataExplorationPane";
 import { BusinessContextPane } from "@/components/BusinessContextPane";
 import { IndicatorsPane } from "@/components/IndicatorsPane";
 import { GoldenStrategyPane } from "@/components/GoldenStrategyPane";
 import { AnaXPane } from "@/components/AnaXPane";
 import { ModelLabPane } from "@/components/ModelLabPane";
-import { OperationalModelPane } from "@/components/OperationalModelPane";
+import { BiDashboardPane } from "@/components/BiDashboardPane";
+import { ModelRunHistoryDashboard } from "@/components/ModelRunHistoryDashboard";
+import { KnowledgeGraphPane } from "@/components/KnowledgeGraphPane";
 import { AnaXReadmePane } from "@/components/AnaXReadmePane";
 import { HypothesisPane } from "@/components/HypothesisPane";
+import { ChangeManagementPane } from "@/components/ChangeManagementPane";
 import { CasesPane } from "@/components/CasesPane";
 import { SqlConnectPane } from "@/components/SqlConnectPane";
 import { PresentationVersionPane } from "@/components/PresentationVersionPane";
+
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
 import { asBlocks, textOf, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type WorkflowFavorite, type Workspace, type WorkspacePath } from "@/types";
@@ -75,6 +81,7 @@ export default function App() {
   const [previewOpen, setPreviewOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("explore");
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("view");
+  const [pendingRestoreRunId, setPendingRestoreRunId] = useState<string | null>(null);
   const [showWorkflowPicker, setShowWorkflowPicker] = useState(true);
   const [hasReportPath, setHasReportPath] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
@@ -96,15 +103,17 @@ export default function App() {
       return;
     }
     try {
-      // The injectRulesPrompt toggle controls combined memory: rules + 指标体系 + 业务环境.
-      // Sum all three so the toggle isn't gated to zero when only one source has content.
-      const [rules, standards, businessContext] = await Promise.all([
+      // The injectRulesPrompt toggle controls combined memory: rules + 指标体系 + 业务环境 + 案例库 + 知识图谱.
+      // Sum all five so the toggle isn't gated to zero when only one source has content.
+      const [rules, standards, businessContext, cases, kg] = await Promise.all([
         api.getRulesPrompt(activeWorkspaceId),
         api.getStandardsPrompt(activeWorkspaceId),
         api.getBusinessContextPrompt(activeWorkspaceId),
+        api.getCasesPrompt(activeWorkspaceId),
+        api.getKgPrompt(activeWorkspaceId),
       ]);
-      const count = rules.count + standards.count + businessContext.count;
-      const updatedAt = Math.max(rules.updatedAt ?? 0, standards.updatedAt ?? 0, businessContext.updatedAt ?? 0) || null;
+      const count = rules.count + standards.count + businessContext.count + cases.count + kg.count;
+      const updatedAt = Math.max(rules.updatedAt ?? 0, standards.updatedAt ?? 0, businessContext.updatedAt ?? 0, cases.updatedAt ?? 0, kg.updatedAt ?? 0) || null;
       setRulesPromptInfo({ count, updatedAt });
       if (count === 0) setRulesPromptEnabled(false);
     } catch {
@@ -403,6 +412,16 @@ export default function App() {
     setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : "view");
   }, [activeTab]);
 
+  const handleRequestRestoreRun = useCallback((runId: string) => {
+    setPendingRestoreRunId(runId);
+    setActiveTab("research_lab");
+    setActiveSubTab("model");
+  }, []);
+
+  const handleRestoreConsumed = useCallback(() => {
+    setPendingRestoreRunId(null);
+  }, []);
+
   useEffect(() => {
     if (!isVisible(activeTab)) {
       const firstAvailable = TABS.find((t) => isVisible(t.id))?.id;
@@ -420,10 +439,10 @@ export default function App() {
 
 
   const onSend = useCallback(
-    (text: string, skillPaths?: string[]) => {
+    (text: string, skillPaths?: string[], businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string }) => {
       if (!activeSessionId) return;
       setMessages((cur) => [...cur, { id: nextId(), role: "user", content: [{ type: "text", text }] }]);
-      gateway.send({ type: "send", sessionId: activeSessionId, text, model: model || undefined, skillPaths, injectRulesPrompt: rulesPromptEnabled });
+      gateway.send({ type: "send", sessionId: activeSessionId, text, model: model || undefined, skillPaths, injectRulesPrompt: rulesPromptEnabled, businessRequirementContext });
     },
     [activeSessionId, model, rulesPromptEnabled],
   );
@@ -533,32 +552,70 @@ export default function App() {
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {sidebarOpen && (
-        <Sidebar
-          workspaces={workspaces}
-          activeWorkspaceId={activeWorkspaceId}
-          sessions={sessions}
-          activeSessionId={activeSessionId}
-          flows={flows}
-          activeFlowId={activeFlowId}
-          workflowFavorites={workflowFavorites}
-          onSelectWorkspace={setActiveWorkspaceId}
-          onSelectSession={handleSelectSession}
-          onSelectFlow={onSelectFlow}
-          onNewWorkspace={newWorkspace}
-          onNewSession={newSession}
-          onNewFlow={newFlow}
-          onRenameWorkspace={renameWorkspace}
-          onDeleteWorkspace={deleteWorkspace}
-          onRenameSession={renameSession}
-          onDeleteSession={deleteSession}
-          onRenameFlow={renameFlow}
-          onDeleteFlow={deleteFlow}
-          onFavoriteFlow={favoriteFlow}
-          onRemoveWorkflowFavorite={removeWorkflowFavorite}
-          onReuseWorkflowFavorite={reuseWorkflowFavorite}
-          onCollapse={() => setSidebarOpen(false)}
-          onOpenSettings={() => setSettingsOpen(true)}
-        />
+        <>
+          <button
+            type="button"
+            aria-label="关闭侧栏"
+            onClick={() => setSidebarOpen(false)}
+            className="fixed inset-0 z-40 bg-black/30 md:hidden"
+          />
+          <div className="fixed inset-y-0 left-0 z-50 w-0 max-w-[85vw] md:hidden">
+            <Sidebar
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              flows={flows}
+              activeFlowId={activeFlowId}
+              workflowFavorites={workflowFavorites}
+              onSelectWorkspace={setActiveWorkspaceId}
+              onSelectSession={handleSelectSession}
+              onSelectFlow={onSelectFlow}
+              onNewWorkspace={newWorkspace}
+              onNewSession={newSession}
+              onNewFlow={newFlow}
+              onRenameWorkspace={renameWorkspace}
+              onDeleteWorkspace={deleteWorkspace}
+              onRenameSession={renameSession}
+              onDeleteSession={deleteSession}
+              onRenameFlow={renameFlow}
+              onDeleteFlow={deleteFlow}
+              onFavoriteFlow={favoriteFlow}
+              onRemoveWorkflowFavorite={removeWorkflowFavorite}
+              onReuseWorkflowFavorite={reuseWorkflowFavorite}
+              onCollapse={() => setSidebarOpen(false)}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
+          </div>
+          <div className="hidden md:block">
+            <Sidebar
+              workspaces={workspaces}
+              activeWorkspaceId={activeWorkspaceId}
+              sessions={sessions}
+              activeSessionId={activeSessionId}
+              flows={flows}
+              activeFlowId={activeFlowId}
+              workflowFavorites={workflowFavorites}
+              onSelectWorkspace={setActiveWorkspaceId}
+              onSelectSession={handleSelectSession}
+              onSelectFlow={onSelectFlow}
+              onNewWorkspace={newWorkspace}
+              onNewSession={newSession}
+              onNewFlow={newFlow}
+              onRenameWorkspace={renameWorkspace}
+              onDeleteWorkspace={deleteWorkspace}
+              onRenameSession={renameSession}
+              onDeleteSession={deleteSession}
+              onRenameFlow={renameFlow}
+              onDeleteFlow={deleteFlow}
+              onFavoriteFlow={favoriteFlow}
+              onRemoveWorkflowFavorite={removeWorkflowFavorite}
+              onReuseWorkflowFavorite={reuseWorkflowFavorite}
+              onCollapse={() => setSidebarOpen(false)}
+              onOpenSettings={() => setSettingsOpen(true)}
+            />
+          </div>
+        </>
       )}
 
       <section className="flex min-h-0 min-w-0 flex-1 flex-col bg-white dark:bg-neutral-950">
@@ -570,13 +627,16 @@ export default function App() {
           sidebarOpen={sidebarOpen}
           onOpenSidebar={() => setSidebarOpen(true)}
           totalTokens={totals.tokens}
-          totalCost={totals.cost}
           cacheHitRate={todayCacheHitRate}
           hiddenTabs={hiddenTabs}
           rulesPromptEnabled={rulesPromptEnabled}
           rulesPromptCount={rulesPromptInfo.count}
           rulesPromptUpdatedAt={rulesPromptInfo.updatedAt}
           onToggleRulesPrompt={() => setRulesPromptEnabled((current) => !current)}
+          onOpenTokenStats={() => {
+            setActiveTab("rule_memory");
+            setActiveSubTab("token_stats");
+          }}
         />
 
         {/* Sub-tab strip: 工作视图 | 原始数据 | 聚合数据 | 报告输出 */}
@@ -624,6 +684,7 @@ export default function App() {
                 running={running}
                 disabled={!activeSessionId}
                 workspaceId={activeWorkspaceId}
+                folderScope={folderScope}
                 model={model}
                 models={models}
                 onModelChange={setModel}
@@ -638,8 +699,8 @@ export default function App() {
                 onPromoteToWorkflow={openPromote}
               />
             )}
-            {activeTab === "explore" && activeSubTab === "business_context" && (
-              <BusinessContextPane workspaceId={activeWorkspaceId} onChanged={() => void refreshRulesPromptInfo()} />
+            {activeTab === "explore" && activeSubTab === "business_requirement" && (
+              <BusinessRequirementPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} onBusinessContextChanged={() => void refreshRulesPromptInfo()} />
             )}
             {activeTab === "explore" && activeSubTab === "draw_data" && (
               <FolderPathsPane scope={folderScope} folder="draw_data" />
@@ -647,9 +708,13 @@ export default function App() {
             {activeTab === "explore" && activeSubTab === "clean_data" && (
               <FolderPathsPane scope={folderScope} folder="clean_data" />
             )}
+            {activeTab === "explore" && activeSubTab === "data_exploration" && (
+              <DataExplorationPane scope={folderScope} />
+            )}
             {activeTab === "explore" && activeSubTab === "report" && (
               <FolderPathsPane scope={folderScope} folder="report" onPathsChange={handleReportPathsChange} />
             )}
+
             {activeTab === "explore" && activeSubTab === "presentation_version" && (
               <PresentationVersionPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
@@ -667,8 +732,8 @@ export default function App() {
                 rulesPromptEnabled={rulesPromptEnabled}
               />
             )}
-            {activeTab === "multi" && activeSubTab === "business_context" && (
-              <BusinessContextPane workspaceId={activeWorkspaceId} onChanged={() => void refreshRulesPromptInfo()} />
+            {activeTab === "multi" && activeSubTab === "business_requirement" && (
+              <BusinessRequirementPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} onBusinessContextChanged={() => void refreshRulesPromptInfo()} />
             )}
             {activeTab === "multi" && activeSubTab === "draw_data" && (
               <FolderPathsPane scope={folderScope} folder="draw_data" />
@@ -676,9 +741,13 @@ export default function App() {
             {activeTab === "multi" && activeSubTab === "clean_data" && (
               <FolderPathsPane scope={folderScope} folder="clean_data" />
             )}
+            {activeTab === "multi" && activeSubTab === "data_exploration" && (
+              <DataExplorationPane scope={folderScope} />
+            )}
             {activeTab === "multi" && activeSubTab === "report" && (
               <FolderPathsPane scope={folderScope} folder="report" onPathsChange={handleReportPathsChange} />
             )}
+
             {activeTab === "multi" && activeSubTab === "presentation_version" && (
               <PresentationVersionPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
@@ -700,17 +769,23 @@ export default function App() {
             {activeTab === "rule_memory" && activeSubTab === "rules" && (
               <RulesPane workspaceId={activeWorkspaceId} onRulesChanged={() => void refreshRulesPromptInfo()} />
             )}
+            {activeTab === "rule_memory" && activeSubTab === "business_context" && (
+              <BusinessContextPane workspaceId={activeWorkspaceId} onChanged={() => void refreshRulesPromptInfo()} />
+            )}
             {activeTab === "rule_memory" && activeSubTab === "indicators" && (
               <IndicatorsPane workspaceId={activeWorkspaceId} onStandardsChanged={() => void refreshRulesPromptInfo()} />
             )}
             {activeTab === "rule_memory" && activeSubTab === "cases" && (
-              <CasesPane workspaceId={activeWorkspaceId} />
+              <CasesPane workspaceId={activeWorkspaceId} onChanged={() => void refreshRulesPromptInfo()} />
             )}
             {activeTab === "rule_memory" && activeSubTab === "trace" && (
               <TracePane workspaceId={activeWorkspaceId} onRulesChanged={() => void refreshRulesPromptInfo()} />
             )}
             {activeTab === "rule_memory" && activeSubTab === "token_stats" && (
               <TokenStatsPane workspaceId={activeWorkspaceId} />
+            )}
+            {activeTab === "rule_memory" && activeSubTab === "knowledge_graph" && (
+              <KnowledgeGraphPane workspaceId={activeWorkspaceId} onSynced={() => void refreshRulesPromptInfo()} />
             )}
             {/* Xan数据库 tab */}
             {activeTab === "xan_db" && activeSubTab === "the-crowd" && (
@@ -748,26 +823,38 @@ export default function App() {
             {activeTab === "research_lab" && activeSubTab === "tool" && (
               <ToolLabPane workspaceId={activeWorkspaceId} model={model} models={models} />
             )}
+            {activeTab === "research_lab" && activeSubTab === "model" && (
+              <ModelLabPane
+                model={model}
+                models={models}
+                mode="all"
+                restoreRunId={pendingRestoreRunId}
+                onRestoreConsumed={handleRestoreConsumed}
+              />
+            )}
             {/* AnaX tab */}
             {activeTab === "anax" && activeSubTab === "view" && (
               <AnaXPane
                 workspaceId={activeWorkspaceId}
                 model={model}
+                models={models}
                 rulesPromptEnabled={rulesPromptEnabled}
               />
             )}
             {activeTab === "anax" && activeSubTab === "hypothesis" && (
               <HypothesisPane workspaceId={activeWorkspaceId} />
             )}
+            {activeTab === "anax" && activeSubTab === "change_mgmt" && (
+              <ChangeManagementPane workspaceId={activeWorkspaceId} />
+            )}
             {activeTab === "anax" && activeSubTab === "readme" && (
               <AnaXReadmePane />
             )}
-            {/* 模型工坊 tab */}
-            {activeTab === "model_lab" && activeSubTab === "view" && (
-              <ModelLabPane model={model} models={models} />
-            )}
-            {activeTab === "model_lab" && activeSubTab === "operational_model" && (
-              <OperationalModelPane />
+            {/* Dashboard tab -> BI 看板 */}
+            {activeTab === "dashboard" && activeSubTab === "view" && <BiDashboardPane />}
+            {/* Dashboard tab -> 运行历史（模型工坊调用统计） */}
+            {activeTab === "dashboard" && activeSubTab === "run_history" && (
+              <ModelRunHistoryDashboard onRequestRestore={handleRequestRestoreRun} />
             )}
           </div>
 

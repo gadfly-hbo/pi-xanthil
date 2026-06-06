@@ -1,6 +1,8 @@
 // Domain + protocol types shared conceptually with the web client.
 // (Duplicated in web/src/types.ts to keep the two packages decoupled.)
 
+import type { GateVerdict } from "./anax-gate.ts";
+
 export interface Workspace {
   id: string;
   name: string;
@@ -22,6 +24,11 @@ export interface WorkspacePath {
   /** SHA-256 of file content; null for directories or if hash hasn't been computed yet. */
   fileHash: string | null;
   addedAt: number;
+  exists?: boolean;
+  currentKind?: WorkspacePathKind | null;
+  size?: number | null;
+  mtime?: number | null;
+  status?: "ok" | "missing" | "kind_mismatch";
 }
 
 export interface FileAnalysis {
@@ -134,6 +141,100 @@ export interface DecisionTreeResult {
   model: string;
 }
 
+export type PredictionTierColor = "red" | "orange" | "amber" | "green" | "blue" | "purple" | "neutral";
+export type PredictionVariant = "neutral" | "success" | "warning" | "danger";
+
+export interface PredictionKpi {
+  label: string;
+  value: string;
+  sub?: string;
+  variant?: PredictionVariant;
+}
+
+export interface PredictionRowResult {
+  id: string;
+  label?: string;
+  score: number;
+  tier: string;
+  tierLabel: string;
+  tierColor: PredictionTierColor;
+  primaryConclusion: string;
+  attributes?: { key: string; value: string }[];
+}
+
+export interface PredictionResult {
+  modelId: string;
+  summary: {
+    kpis: PredictionKpi[];
+    keyInsights: string[];
+    recommendations: string[];
+  };
+  rows: PredictionRowResult[];
+  rowsCapped?: boolean;
+  rowsTotal?: number;
+  model?: string;
+  runId?: string;
+}
+
+export interface ModelLabRunSummary {
+  id: string;
+  modelId: string;
+  model: string;
+  status: "success" | "failed";
+  rowCount: number;
+  rowsTotal: number;
+  rowsCapped: boolean;
+  durationMs: number;
+  createdAt: number;
+  errorMessage?: string | null;
+}
+
+export interface ModelLabRunDetail extends ModelLabRunSummary {
+  result: PredictionResult | null;
+  rawOutput: string;
+}
+
+export interface ModelLabStatsTopModel {
+  modelId: string;
+  model: string;
+  count: number;
+  avgDurationMs: number;
+}
+
+export interface ModelLabStatsDailyPoint {
+  date: string;
+  count: number;
+}
+
+export interface ModelLabStats {
+  totalRuns: number;
+  recentRuns7d: number;
+  avgDurationMs: number;
+  totalRowsProcessed: number;
+  dailyTrend: ModelLabStatsDailyPoint[];
+  topModels: ModelLabStatsTopModel[];
+}
+
+// ---- BI Datasets (member retention / member recall import) ----
+
+export type BiDatasetSlot = "member_retention" | "member_recall";
+
+export interface BiDatasetSummary {
+  id: string;
+  slot: BiDatasetSlot;
+  filename: string;
+  rowCount: number;
+  columnCount: number;
+  sizeBytes: number;
+  uploadedAt: number;
+  active: number;
+}
+
+export interface BiDatasetDetail extends BiDatasetSummary {
+  columns: string[];
+  rows: Array<Record<string, unknown>>;
+}
+
 export type FlowRunStatus = "running" | "success" | "failed" | "aborted";
 
 export interface FlowRun {
@@ -150,6 +251,20 @@ export interface FlowRun {
 
 export type EvaluationStatus = "running" | "success" | "failed";
 export type EvaluationResultStatus = "pending" | "running" | "success" | "failed";
+export type EvaluationErrorCode =
+  | "workspace_not_found"
+  | "flow_not_found"
+  | "workflow_invalid"
+  | "process_exit"
+  | "judge_failed"
+  | "unknown";
+
+export interface EvaluationError {
+  code: EvaluationErrorCode;
+  message: string;
+  hint?: string;
+  cause?: string;
+}
 
 export interface EvaluationFlowConfig {
   defaultModel?: string;
@@ -168,7 +283,7 @@ export interface WorkflowEvaluation {
   status: EvaluationStatus;
   createdAt: number;
   endedAt: number | null;
-  error: string | null;
+  error: EvaluationError | null;
 }
 
 export interface WorkflowEvaluationResult {
@@ -186,7 +301,7 @@ export interface WorkflowEvaluationResult {
   toolCalls: number;
   outputChars: number;
   output: string;
-  error: string | null;
+  error: EvaluationError | null;
   judgeScore: number | null;
   judgeDetails: string;
 }
@@ -195,10 +310,306 @@ export interface WorkflowEvaluationDetail extends WorkflowEvaluation {
   results: WorkflowEvaluationResult[];
 }
 
+// ---- Skill evaluations ----
+
+export interface SkillVariant {
+  id: string;
+  label: string;
+  skillPaths: string[];
+  retrievalMode?: boolean;
+  retrievalTopK?: number;
+}
+
+export interface SkillEvalTask {
+  id: string;
+  prompt: string;
+  expectedPoints?: string[];
+  rubric?: string;
+}
+
+export interface SkillEvalSet {
+  id: string;
+  workspaceId: string;
+  name: string;
+  tasks: SkillEvalTask[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SkillActivationEvidence {
+  kind: "output_keyword" | "event_path";
+  skillPath: string;
+  value: string;
+}
+
+export interface SkillActivationResult {
+  activated: boolean;
+  matchedKeywords: string[];
+  matchedSkillPaths: string[];
+  evidence: SkillActivationEvidence[];
+}
+
+export interface SkillEvaluationRunResult {
+  id: string;
+  variantId: string;
+  variantLabel: string;
+  taskId: string;
+  attempt: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  skillPaths: string[];
+  totalTokens: number;
+  totalCost: number;
+  toolCalls: number;
+  outputChars: number;
+  output: string;
+  activation: SkillActivationResult;
+  pairwise: SkillPairwiseResult | null;
+  error: EvaluationError | null;
+}
+
+export type SkillPairwiseVerdict = "win" | "tie" | "loss" | "not_judged";
+
+export interface SkillPairwiseResult {
+  baselineResultId: string;
+  variantResultId: string;
+  taskId: string;
+  attempt: number;
+  verdict: SkillPairwiseVerdict;
+  scoreDelta: number | null;
+  baselineScore: number | null;
+  variantScore: number | null;
+  confidence: number | null;
+  reason: string;
+  error: EvaluationError | null;
+  judgeRuns?: SkillPairwiseResult[];
+}
+
+export interface SkillVariantSummary {
+  variantId: string;
+  variantLabel: string;
+  total: number;
+  success: number;
+  failed: number;
+  activationRate: number;
+  avgDurationSec: number;
+  avgTotalTokens: number;
+  avgTotalCost: number;
+  avgToolCalls: number;
+  avgOutputChars: number;
+}
+
+export interface SkillTaskSummary {
+  taskId: string;
+  total: number;
+  success: number;
+  failed: number;
+  activationRate: number;
+}
+
+export interface SkillPairwiseSummary {
+  variantId: string;
+  variantLabel: string;
+  judged: number;
+  skipped: number;
+  win: number;
+  tie: number;
+  loss: number;
+  avgScoreDelta: number;
+  avgConfidence: number | null;
+}
+
+export interface SkillEvaluation {
+  evaluationId: string;
+  workspaceId: string;
+  model: string;
+  repeat: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  variants: SkillVariant[];
+  tasks: SkillEvalTask[];
+  contextPrefix: string;
+  variantSummaries: SkillVariantSummary[];
+  taskSummaries: SkillTaskSummary[];
+  pairwiseSummaries: SkillPairwiseSummary[];
+}
+
+export interface SkillEvaluationDetail extends SkillEvaluation {
+  results: SkillEvaluationRunResult[];
+}
+
+// ---- Tool evaluations ----
+
+export type ToolExpectation =
+  | { kind: "golden"; goldenDir: string; ignorePaths?: string[]; normalizeWhitespace?: boolean }
+  | { kind: "schema"; jsonPath: string; schema: Record<string, unknown> }
+  | { kind: "field-presence"; jsonPath: string; requiredKeys: string[] }
+  | { kind: "must-fail"; expectedErrorPattern?: string }
+  | { kind: "llm-judge"; rubric: string; model: string; minScore?: number };
+
+export interface ToolEvalCase {
+  id: string;
+  name: string;
+  inputPath: string;
+  expected: ToolExpectation;
+  timeoutMs?: number;
+}
+
+export interface ToolCaseSet {
+  id: string;
+  workspaceId: string;
+  name: string;
+  toolId: string;
+  cases: ToolEvalCase[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ToolRunSummary {
+  success?: number;
+  failed?: number;
+  error?: string;
+  results?: Array<{ outputs?: string[]; error?: string; [key: string]: unknown }>;
+  [key: string]: unknown;
+}
+
+export interface ToolEvaluationRunResult {
+  id: string;
+  caseId: string;
+  caseName: string;
+  attempt: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  inputPath: string;
+  outputPath: string;
+  stdout: string;
+  stderr: string;
+  summary: ToolRunSummary | null;
+  expectation: ToolExpectation;
+  error: EvaluationError | null;
+}
+
+export interface ToolCaseSummary {
+  caseId: string;
+  caseName: string;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationSec: number;
+}
+
+export interface ToolEvaluation {
+  evaluationId: string;
+  workspaceId: string;
+  toolId: string;
+  repeat: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  caseSummaries: ToolCaseSummary[];
+  cases: ToolEvalCase[];
+}
+
+export interface ToolEvaluationDetail extends ToolEvaluation {
+  results: ToolEvaluationRunResult[];
+}
+
+export interface ToolEvaluationRunSummary extends ToolEvaluationDetail {
+}
+
+export interface EvaluationArchiveResult {
+  markdownPath: string;
+  jsonPath: string;
+}
+
+// ---- Skill curation ----
+
+export type SkillCurationProposalType = "create" | "update";
+
+export interface SkillCurationProposal {
+  type: SkillCurationProposalType;
+  targetPath: string;
+  suggestedContent: string;
+  rationale: string;
+  confidence: number;
+  evidence: string[];
+}
+
+export interface SkillCurationResult {
+  proposals: SkillCurationProposal[];
+  analysisText: string;
+  error?: string;
+}
+
+export interface SkillCurationApplyResult {
+  applied: string[];
+  errors: string[];
+}
+
+export interface RetrievedSkill {
+  path: string;
+  name: string;
+  score: number;
+  snippet: string;
+}
+
+export interface AutonomousRunResult {
+  output: string;
+  skillsUsed: RetrievedSkill[];
+  durationSec: number;
+  error?: string;
+}
+
+export type SkillCurationProposalStatus = "pending" | "approved" | "rejected" | "applied";
+
+export interface SkillCurationProposalRecord extends SkillCurationProposal {
+  id: string;
+  workspaceId: string;
+  evaluationId: string;
+  status: SkillCurationProposalStatus;
+  createdAt: number;
+}
+
 // ---- Token usage / cache stats ----
 
 export interface SessionTokenStats {
   sessionId: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  turnCount: number;
+  totalCost: number;
+  /** cacheReadTokens / (inputTokens + cacheReadTokens + cacheWriteTokens) */
+  cacheHitRate: number;
+  updatedAt: number;
+}
+
+export type TokenUsageTargetKind =
+  | "session"
+  | "flow"
+  | "flow_run"
+  | "toc"
+  | "decision_tree"
+  | "golden_strategy"
+  | "business_requirement"
+  | "report_version"
+  | "workflow_promotion"
+  | "evaluation"
+  | "repair";
+
+export interface TokenUsageStats {
+  workspaceId: string;
+  targetKind: TokenUsageTargetKind;
+  targetId: string;
+  title: string;
   inputTokens: number;
   outputTokens: number;
   cacheReadTokens: number;
@@ -262,12 +673,135 @@ export interface TraceRuleSuggestion {
   createdAt: number;
 }
 
+export type MemoryProposalStatus = "pending" | "approved" | "rejected";
+export type MemoryProposalKind = "rule";
+
+export interface MemoryProposalRiskFlag {
+  code: "instruction_injection" | "pii" | "weak_evidence" | "overbroad";
+  severity: "low" | "medium" | "high";
+  message: string;
+}
+
+export interface MemoryProposal {
+  id: string;
+  workspaceId: string;
+  kind: MemoryProposalKind;
+  title: string;
+  evidence: string;
+  source: "trace" | "manual";
+  severity: "low" | "medium" | "high";
+  scope: RuleMemoryScope;
+  sourceEventIds: string[];
+  confidence: number;
+  riskFlags: MemoryProposalRiskFlag[];
+  status: MemoryProposalStatus;
+  rejectionReason: string;
+  approvedRuleId: string | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export interface TraceTrendPoint {
   day: string;
   sessions: number;
   runs: number;
   failures: number;
   events: number;
+}
+
+export type MemorySourceKind = "businessContext" | "rules" | "standards" | "cases" | "knowledgeGraph";
+
+export interface MemorySourceSnapshot {
+  kind: MemorySourceKind;
+  label: string;
+  count: number;
+  updatedAt: number | null;
+  charCount: number;
+  tokenEstimate: number;
+  promptHash: string | null;
+  injected: boolean;
+  selected?: boolean;
+  selectionReason?: string;
+  omittedReason?: string | null;
+  usage?: MemoryUsageStats | null;
+  itemIds?: string[];
+  meta?: Record<string, number | string | null>;
+}
+
+export interface MemoryInjectionSnapshot {
+  requested: boolean;
+  targetScope: "chat" | "workflow";
+  injected: boolean;
+  promptHash: string | null;
+  charCount: number;
+  tokenEstimate: number;
+  tokenBudget?: number;
+  sourceCount: number;
+  sources: MemorySourceSnapshot[];
+}
+
+export interface MemoryUsageStats {
+  workspaceId: string;
+  sourceKind: MemorySourceKind;
+  sourceId: string;
+  usedCount: number;
+  lastUsedAt: number | null;
+  positiveSignals: number;
+  negativeSignals: number;
+  staleAfterDays: number;
+  updatedAt: number;
+}
+
+export interface MemoryInjectionRecord {
+  eventId: string;
+  workspaceId: string;
+  targetKind: string;
+  targetId: string;
+  target: string;
+  status: string;
+  createdAt: number;
+  snapshot: MemoryInjectionSnapshot;
+}
+
+export type MemoryEvalVariant = "baseline" | "memory";
+
+export interface MemoryEvaluation {
+  id: string;
+  workspaceId: string;
+  prompt: string;
+  rubric: string;
+  model: string;
+  judgeModel: string;
+  targetScope: "chat" | "workflow";
+  repeat: number;
+  status: EvaluationStatus;
+  createdAt: number;
+  endedAt: number | null;
+  error: EvaluationError | null;
+}
+
+export interface MemoryEvaluationResult {
+  id: string;
+  evaluationId: string;
+  variant: MemoryEvalVariant;
+  attempt: number;
+  status: EvaluationResultStatus;
+  startedAt: number | null;
+  endedAt: number | null;
+  durationSec: number;
+  totalTokens: number;
+  totalCost: number;
+  toolCalls: number;
+  outputChars: number;
+  output: string;
+  error: EvaluationError | null;
+  judgeScore: number | null;
+  judgeDetails: string;
+  memorySnapshot: MemoryInjectionSnapshot | null;
+}
+
+export interface MemoryEvaluationDetail extends MemoryEvaluation {
+  results: MemoryEvaluationResult[];
 }
 
 export type RuleMemoryScope = "global" | "chat" | "workflow";
@@ -281,8 +815,35 @@ export interface RuleMemory {
   severity: "low" | "medium" | "high";
   scope: RuleMemoryScope;
   enabled: boolean;
+  version: number;
+  supersedesRuleId: string | null;
+  changeReason: string;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface RuleConflict {
+  id: string;
+  workspaceId: string;
+  ruleAId: string;
+  ruleBId: string;
+  reason: string;
+  severity: "low" | "medium" | "high";
+  status: "open" | "ignored" | "resolved";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MemoryFailureAttribution {
+  id: string;
+  workspaceId: string;
+  targetKind: string;
+  targetId: string;
+  cause: "rule_missing" | "rule_wrong" | "case_misleading" | "business_context_stale" | "kg_wrong" | "model_noncompliance";
+  sourceKind: MemorySourceKind | null;
+  sourceId: string | null;
+  note: string;
+  createdAt: number;
 }
 
 // ---- analysis standards (指标体系) ----
@@ -314,6 +875,125 @@ export interface AnalysisStandard {
 export interface CreateRuleResult {
   rule: RuleMemory;
   created: boolean;
+}
+
+// ---- AnaX hypothesis library (归档飞轮沉淀的实证假设) ----
+export type HypothesisVerdict = "confirmed" | "rejected" | "partial";
+
+export interface HypothesisEntry {
+  id: string;
+  workspaceId: string;
+  scene: string;        // 业务场景，如 "留存率下降"
+  hypothesis: string;   // 假设陈述
+  verdict: HypothesisVerdict;
+  evidence: string;     // 证据/结论摘要
+  impact: string;       // 业务影响（金额/用户数），可空
+  source: "archive" | "manual";
+  enabled: boolean;
+  /** Number of times this hypothesis was confirmed across runs (archive source only). */
+  confirmCount: number;
+  /** Number of times this hypothesis was rejected across runs. */
+  rejectCount: number;
+  /** Number of times this hypothesis was partially confirmed across runs. */
+  partialCount: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface HypothesisEntryInput {
+  scene: string;
+  hypothesis: string;
+  verdict: HypothesisVerdict;
+  evidence: string;
+  impact: string;
+}
+
+// ---- AnaX P3 change management ----
+export type ChangeProposalStatus = "proposed" | "approved" | "applied" | "rejected";
+
+export interface ChangeProposal {
+  id: string;
+  workspaceId: string;
+  runId: string | null;
+  sourceNodeId: string | null;
+  title: string;
+  description: string;
+  expectedImpact: string;
+  status: ChangeProposalStatus;
+  appliedResult: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ChangeProposalInput {
+  runId?: string | null;
+  sourceNodeId?: string | null;
+  title: string;
+  description: string;
+  expectedImpact: string;
+}
+
+export type StaleNodeReason = "data_changed" | "manual_edit";
+
+export interface StaleNode {
+  id: number;
+  runId: string;
+  nodeId: string;
+  reason: StaleNodeReason;
+  triggeredAt: number;
+}
+
+export interface AnaxGateConfig {
+  workspaceId: string;
+  minConfidence: "low" | "medium" | "high";
+  minEvidenceCount: number;
+  minDataQualityScore: number;
+}
+
+// ---- business context (业务环境) ----
+// "agent 不知道但做决策必须知道" 的业务事实背景。与 rules（约束）、
+// analysis_standards（指标定义）并列，作为第三类记忆注入到 system prompt。
+// 固定 6 个分类，引导用户填全关键维度，并利于结构化注入。
+export type BusinessContextCategory =
+  | "org" // 组织/主体
+  | "status" // 业务现状
+  | "glossary" // 术语/口径
+  | "constraint" // 约束/红线
+  | "history" // 历史/背景
+  | "goal"; // 目标/期望
+
+export interface BusinessContext {
+  id: string;
+  workspaceId: string;
+  category: BusinessContextCategory;
+  title: string;
+  content: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// ---- analysis cases (分析案例库) ----
+
+export interface AnalysisCase {
+  id: string;
+  workspaceId: string;
+  title: string;
+  category: string;
+  scenario: string;
+  approach: string;
+  conclusion: string;
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface AnalysisCaseInput {
+  title: string;
+  category: string;
+  scenario: string;
+  approach: string;
+  conclusion: string;
 }
 
 // ---- pi cli `--mode json` NDJSON event envelope (observed from pi 0.77.0) ----
@@ -370,14 +1050,16 @@ export type PiEvent =
 // ---- WebSocket protocol: client <-> gateway ----
 
 export type ClientMessage =
-  | { type: "send"; sessionId: string; text: string; model?: string; skillPaths?: string[]; injectRulesPrompt?: boolean }
+  | { type: "send"; sessionId: string; text: string; model?: string; skillPaths?: string[]; injectRulesPrompt?: boolean; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }
   | { type: "abort"; sessionId: string }
   | { type: "send_flow"; flowId: string; text: string; model?: string; systemPrompt?: string; skillPaths?: string[]; injectRulesPrompt?: boolean }
   | { type: "abort_flow"; flowId: string }
   | { type: "abort_multi_agent"; flowId: string; runId: string }
   | { type: "execute_flow"; flowId: string; runId: string; text: string; model?: string; injectRulesPrompt?: boolean }
-  | { type: "execute_multi_agent"; flowId: string; runId: string; inputs?: Record<string, string>; model?: string; injectRulesPrompt?: boolean }
-  | { type: "subscribe"; sessionId: string };
+  | { type: "execute_multi_agent"; flowId: string; runId: string; inputs?: Record<string, string>; model?: string; injectRulesPrompt?: boolean; resumeFromNodeId?: string; previousRunId?: string }
+  | { type: "subscribe"; sessionId: string }
+  | { type: "execute_anax_precheck"; precheckId: string; workspaceId: string; data_files: string; model?: string }
+  | { type: "abort_anax_precheck"; precheckId: string };
 
 export type ServerMessage =
   | { type: "pi_event"; sessionId: string; event: PiEvent }
@@ -390,4 +1072,55 @@ export type ServerMessage =
   | { type: "agent_step_start"; flowId: string; runId: string; nodeId: string }
   | { type: "agent_step_end"; flowId: string; runId: string; nodeId: string; code: number | null }
   | { type: "agent_event"; flowId: string; runId: string; nodeId: string; event: PiEvent }
-  | { type: "blackboard_update"; flowId: string; runId: string; key: string; value: string };
+  | { type: "blackboard_update"; flowId: string; runId: string; key: string; value: string }
+  | { type: "agent_gate"; flowId: string; runId: string; nodeId: string; verdict: GateVerdict }
+  | { type: "anax_precheck_event"; precheckId: string; event: PiEvent }
+  | { type: "anax_precheck_done"; precheckId: string; score: number | null; pass: boolean; summary: string }
+  | { type: "anax_precheck_error"; precheckId: string; message: string };
+
+// ---- Knowledge Graph ----
+
+export type KgNodeType = "rule" | "metric" | "ref_file" | "biz_ctx" | "report" | "concept";
+export type KgRelation = "related_to" | "references" | "supports" | "derived_from";
+
+export interface KgNode {
+  id: string;
+  workspaceId: string;
+  type: KgNodeType;
+  /** Stable key: e.g. "rule:{id}", "standard:{id}", "biz_ctx:{id}", "report:{path}" */
+  sourceKey: string;
+  title: string;
+  summary: string;
+  tags: string[];
+  contentHash: string | null;
+  /** contentHash value at the time AI extraction last ran for this report node. Null = never extracted. */
+  aiExtractedHash: string | null;
+  hidden: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface KgEdge {
+  id: string;
+  workspaceId: string;
+  fromId: string;
+  toId: string;
+  relation: KgRelation;
+  weight: number;
+  auto: boolean;
+  createdAt: number;
+}
+
+export interface KgSyncResult {
+  nodeCount: number;
+  edgeCount: number;
+  syncedAt: number;
+}
+
+export interface KgExtractResult {
+  newNodes: number;
+  newEdges: number;
+  processedReports: number;
+  skippedReports: number;
+  extractedAt: number;
+}

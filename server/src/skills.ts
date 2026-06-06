@@ -18,6 +18,12 @@ interface SkillRoot {
   source: SkillSource;
 }
 
+export type SkillValidationMode = "strict" | "lenient";
+
+export interface ValidateSkillPathOptions {
+  mode?: SkillValidationMode;
+}
+
 export function listSkills(workspaceRoot: string): PiSkill[] {
   const roots: SkillRoot[] = [
     { path: join(homedir(), ".pi", "agent", "skills"), source: "global" },
@@ -31,8 +37,13 @@ export function listSkills(workspaceRoot: string): PiSkill[] {
   return skills.sort((a, b) => a.name.localeCompare(b.name, "zh"));
 }
 
-export function validateSkillPaths(workspaceRoot: string, requested?: string[]): string[] | undefined {
+export function validateSkillPaths(
+  workspaceRoot: string,
+  requested?: string[],
+  options: ValidateSkillPathOptions = {},
+): string[] | undefined {
   if (requested === undefined) return undefined;
+  const mode = options.mode ?? "strict";
   const available = new Map(
     listSkills(workspaceRoot)
       .filter((skill) => skill.available)
@@ -41,7 +52,10 @@ export function validateSkillPaths(workspaceRoot: string, requested?: string[]):
   const validated: string[] = [];
   for (const rawPath of requested) {
     const path = available.get(resolve(rawPath));
-    if (!path) throw new Error(`skill is not available: ${rawPath}`);
+    if (!path) {
+      if (mode === "strict") throw new Error(`skill is not available: ${rawPath}`);
+      continue;
+    }
     if (!validated.includes(path)) validated.push(path);
   }
   return validated;

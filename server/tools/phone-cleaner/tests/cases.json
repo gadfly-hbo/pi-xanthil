@@ -1,0 +1,25 @@
+{
+  "cases": [
+    {
+      "id": "phone-minimal-golden-log",
+      "name": "Minimal CSV golden log",
+      "inputPath": "tests/fixtures/minimal.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "golden",
+        "goldenDir": "tests/golden/minimal",
+        "normalizeWhitespace": true
+      }
+    },
+    {
+      "id": "phone-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    }
+  ]
+}

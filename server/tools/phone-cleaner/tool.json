@@ -1,0 +1,18 @@
+{
+  "id": "phone-cleaner",
+  "name": "会员手机号清洗与人群包导出",
+  "version": "1.0.0",
+  "description": "批量读取 Excel/CSV 中的会员手机号，清洗去重后生成小红书、天猫和京东、抖音三种营销平台的人群包文件（含 MD5 加密）。原始明细不会发送到 LLM。",
+  "entry": "phone_exporter.py",
+  "runtime": "python3",
+  "input": {
+    "accept": [".xlsx", ".xls", ".csv"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".csv", ".zip", ".txt"],
+  "resultColumns": [
+    { "key": "totalRows", "label": "原始行" },
+    { "key": "validPhones", "label": "有效号" },
+    { "key": "uniquePhones", "label": "去重号" }
+  ]
+}

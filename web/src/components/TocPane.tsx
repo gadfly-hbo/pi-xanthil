@@ -1,4 +1,4 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   Background,
   Controls,
@@ -10,7 +10,7 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { AlertTriangle, FileText, Gauge, GitFork, Loader2, RefreshCw, Sparkles, Target } from "lucide-react";
+import { AlertTriangle, Download, Gauge, GitFork, Loader2, RefreshCw, Sparkles, Target } from "lucide-react";
 import { api, type TocGraphItem } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { Flow, FlowTreeNode, PiModel } from "@/types";
@@ -134,6 +134,99 @@ function defaultModelId(models: PiModel[]): string {
     ?? DEFAULT_TOC_MODEL;
 }
 
+// ---- HTML generation ----
+
+function escapeHtml(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;");
+}
+
+function generateTocHtml(graph: TocGraphItem[]): string {
+  const { nodes, edges } = toFlowNodes(graph);
+  const NODE_W = 256;
+  const NODE_MID_Y = 55;
+  const PAD = 60;
+
+  const xs = nodes.map((n) => n.position.x);
+  const ys = nodes.map((n) => n.position.y);
+  const minX = Math.min(...xs) - PAD;
+  const minY = Math.min(...ys) - PAD;
+  const maxX = Math.max(...xs) + NODE_W + PAD;
+  const maxY = Math.max(...ys) + NODE_MID_Y * 2 + PAD;
+  const W = maxX - minX;
+  const H = maxY - minY;
+
+  const nodeMap = new Map(nodes.map((n) => [n.id, n]));
+
+  const edgePaths = edges.map((e) => {
+    const src = nodeMap.get(e.source);
+    const tgt = nodeMap.get(e.target);
+    if (!src || !tgt) return "";
+    const x1 = src.position.x + NODE_W - minX;
+    const y1 = src.position.y + NODE_MID_Y - minY;
+    const x2 = tgt.position.x - minX;
+    const y2 = tgt.position.y + NODE_MID_Y - minY;
+    const mx = (x1 + x2) / 2;
+    const stroke = e.animated ? "#7c3aed" : "#94a3b8";
+    const dash = e.animated ? 'stroke-dasharray="6 3"' : "";
+    return `<path d="M${x1},${y1} C${mx},${y1} ${mx},${y2} ${x2},${y2}" fill="none" stroke="${stroke}" stroke-width="1.5" ${dash}/>`;
+  }).join("\n      ");
+
+  const nodeHtml = nodes.map((n) => {
+    const d = n.data as unknown as NodeData;
+    const cls =
+      d.kind === "goal" ? "kind-goal"
+      : d.kind === "constraint" ? "kind-constraint"
+      : d.kind === "root_cause" ? "kind-root-cause"
+      : d.kind === "action" ? "kind-action"
+      : d.kind === "monitor" ? "kind-monitor"
+      : "kind-default";
+    const left = n.position.x - minX;
+    const top = n.position.y - minY;
+    const body = escapeHtml(String(d.body ?? "")).replace(/\n/g, "<br>");
+    return `  <div class="node ${cls}" style="left:${left}px;top:${top}px">
+    <div class="node-title">${escapeHtml(String(d.title ?? ""))}</div>
+    <div class="node-body">${body}</div>
+  </div>`;
+  }).join("\n");
+
+  return `<!DOCTYPE html>
+<html lang="zh">
+<head>
+<meta charset="UTF-8">
+<title>TOC约束推理图</title>
+<style>
+  body { margin: 0; padding: 24px; background: #f9fafb; }
+  .canvas { position: relative; width: ${W}px; height: ${H}px; }
+  .node {
+    position: absolute; width: 256px; border-radius: 10px;
+    padding: 10px 12px; border: 1.5px solid; box-sizing: border-box;
+    box-shadow: 0 1px 3px rgba(0,0,0,.08);
+    font-family: -apple-system, BlinkMacSystemFont, 'PingFang SC', 'Noto Sans CJK SC', 'Helvetica Neue', Arial, sans-serif;
+  }
+  .node-title { font-size: 12px; font-weight: 600; line-height: 1.4; }
+  .node-body { font-size: 11px; line-height: 1.5; opacity: .8; margin-top: 6px; white-space: pre-wrap; }
+  .kind-goal { border-color: #bae6fd; background: #f0f9ff; color: #0c4a6e; }
+  .kind-constraint { border-color: #fecaca; background: #fef2f2; color: #7f1d1d; }
+  .kind-root-cause { border-color: #fde68a; background: #fffbeb; color: #78350f; }
+  .kind-action { border-color: #a7f3d0; background: #ecfdf5; color: #064e3b; }
+  .kind-monitor { border-color: #ddd6fe; background: #f5f3ff; color: #3b0764; }
+  .kind-default { border-color: #e5e7eb; background: #ffffff; color: #1f2937; }
+  .edges { position: absolute; top: 0; left: 0; pointer-events: none; overflow: visible; }
+</style>
+</head>
+<body>
+<div class="canvas">
+  <svg class="edges" width="${W}" height="${H}">
+    ${edgePaths}
+  </svg>
+${nodeHtml}
+</div>
+</body>
+</html>`;
+}
+
+// ---- component ----
+
 export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) {
   const [reports, setReports] = useState<ReportOption[]>([]);
   const [selectedReportId, setSelectedReportId] = useState("");
@@ -143,9 +236,19 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
   const [loadingReports, setLoadingReports] = useState(false);
   const [loadingContent, setLoadingContent] = useState(false);
   const [generating, setGenerating] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [saveMsg, setSaveMsg] = useState("");
   const [error, setError] = useState("");
+  // Keep latest scope in ref so callbacks don't recreate on every parent render
+  const scopeRef = useRef(scope);
+  scopeRef.current = scope;
 
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
+
+  // Stable primitives extracted from scope — avoids object-reference churn
+  const scopeType = scope.type;
+  const scopeSessionId = scope.type === "session" ? scope.sessionId : null;
+  const scopeFlowId = scope.type === "flow" ? scope.flow?.id ?? null : null;
 
   useEffect(() => {
     if (models.some((item) => item.id === model)) return;
@@ -153,6 +256,7 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
   }, [model, models]);
 
   const loadReports = useCallback(async () => {
+    const sc = scopeRef.current;
     setLoadingReports(true);
     setError("");
     setReports([]);
@@ -160,9 +264,9 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
     setContent("");
     setGraph([]);
     try {
-      if (scope.type === "session") {
-        if (!scope.sessionId) return;
-        const artifacts = await api.sessionArtifactTree(scope.sessionId);
+      if (sc.type === "session") {
+        if (!sc.sessionId) return;
+        const artifacts = await api.sessionArtifactTree(sc.sessionId);
         const next = flattenFiles(artifacts.tree)
           .filter(isReportFile)
           .map((file) => ({
@@ -175,11 +279,11 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
         setSelectedReportId(next[0]?.id ?? "");
         return;
       }
-      if (!scope.flow) return;
-      const runs = await api.listFlowRuns(scope.flow.id);
+      if (!sc.flow) return;
+      const runs = await api.listFlowRuns(sc.flow.id);
       const found = await Promise.all(
         runs.map(async (run) => {
-          const runTree = await api.flowRunTree(scope.flow!.id, run.id);
+          const runTree = await api.flowRunTree(sc.flow!.id, run.id);
           return flattenFiles(runTree)
             .filter(isReportFile)
             .map((file) => ({
@@ -199,7 +303,8 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
     } finally {
       setLoadingReports(false);
     }
-  }, [scope]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [scopeType, scopeSessionId, scopeFlowId]);
 
   useEffect(() => {
     void loadReports();
@@ -209,20 +314,23 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
     setContent("");
     setGraph([]);
     if (!selectedReport) return;
+    const sc = scopeRef.current;
     setLoadingContent(true);
     setError("");
     const req =
       selectedReport.source === "session"
-        ? scope.type === "session" && scope.sessionId
-          ? api.sessionArtifactFileGet(scope.sessionId, selectedReport.path).then((result) => result.content ?? "")
+        ? sc.type === "session" && sc.sessionId
+          ? api.sessionArtifactFileGet(sc.sessionId, selectedReport.path).then((result) => result.content ?? "")
           : Promise.resolve("")
-        : scope.type === "flow" && scope.flow && selectedReport.runId
-          ? api.flowRunFileGet(scope.flow.id, selectedReport.runId, selectedReport.path).then((result) => result.content)
+        : sc.type === "flow" && sc.flow && selectedReport.runId
+          ? api.flowRunFileGet(sc.flow.id, selectedReport.runId, selectedReport.path).then((result) => result.content)
           : Promise.resolve("");
     req.then(setContent).catch((err) => setError(String(err))).finally(() => setLoadingContent(false));
-  }, [scope, selectedReport]);
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [selectedReport?.id]);
 
   const generate = useCallback(async () => {
+    const sc = scopeRef.current;
     if (!selectedReport || !content.trim() || generating) return;
     setGenerating(true);
     setError("");
@@ -231,8 +339,8 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
         reportName: basenamePath(selectedReport.path),
         content,
         model: model || DEFAULT_TOC_MODEL,
-        sessionId: scope.type === "session" ? scope.sessionId ?? undefined : undefined,
-        flowId: scope.type === "flow" ? scope.flow?.id : undefined,
+        sessionId: sc.type === "session" ? sc.sessionId ?? undefined : undefined,
+        flowId: sc.type === "flow" ? sc.flow?.id : undefined,
       });
       setGraph(result.nodes);
       if (result.model) setModel(result.model);
@@ -241,7 +349,38 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
     } finally {
       setGenerating(false);
     }
-  }, [content, generating, model, scope, selectedReport]);
+  }, [content, generating, model, selectedReport]);
+
+  const saveAsImage = useCallback(async () => {
+    if (graph.length === 0) return;
+    const sc = scopeRef.current;
+    setSaving(true);
+    setSaveMsg("");
+    setError("");
+    try {
+      const paths =
+        sc.type === "session" && sc.sessionId
+          ? await api.listSessionPaths(sc.sessionId, "report")
+          : sc.type === "flow" && sc.flow
+            ? await api.listFlowPaths(sc.flow.id, "report")
+            : [];
+      const dir = paths.find((p) => p.kind === "dir") ?? paths[0];
+      if (!dir) {
+        setError("未配置报告输出路径，请先在「报告输出」tab 添加文件夹");
+        return;
+      }
+      const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+      const base = selectedReport ? basenamePath(selectedReport.path).replace(/\.[^.]+$/, "") : "report";
+      const relPath = `graphs/toc_${base}_${ts}.html`;
+      const html = generateTocHtml(graph);
+      const result = await api.workspacePathFilePut(dir.id, relPath, html);
+      setSaveMsg(`已保存 → ${result.path}`);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSaving(false);
+    }
+  }, [graph, selectedReport]);
 
   const emptyHint =
     scope.type === "session"
@@ -292,6 +431,15 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
           刷新
         </button>
         <button
+          onClick={() => void saveAsImage()}
+          disabled={graph.length === 0 || saving}
+          title="保存为 SVG 图片到报告输出路径"
+          className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] text-neutral-500 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        >
+          {saving ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Download className="h-3.5 w-3.5" strokeWidth={1.75} />}
+          保存图片
+        </button>
+        <button
           onClick={() => void generate()}
           disabled={!selectedReport || !content.trim() || loadingContent || generating}
           className="inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
@@ -307,24 +455,14 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
           {error}
         </div>
       )}
+      {saveMsg && (
+        <div className="flex items-center gap-1.5 border-b border-emerald-100 bg-emerald-50 px-4 py-2 text-[12px] text-emerald-700 dark:border-emerald-950 dark:bg-emerald-950/30 dark:text-emerald-300">
+          {saveMsg}
+        </div>
+      )}
 
-      <div className="flex min-h-0 flex-1">
-        <aside className="w-80 shrink-0 border-r border-neutral-200 p-4 dark:border-neutral-800">
-          <div className="flex items-center gap-2 text-[12px] font-medium text-neutral-700 dark:text-neutral-200">
-            <FileText className="h-3.5 w-3.5 text-neutral-400" strokeWidth={1.75} />
-            报告内容预览
-          </div>
-          <div className="mt-3 h-[calc(100%-2rem)] overflow-y-auto rounded-lg border border-neutral-200 bg-neutral-50 p-3 text-[11.5px] leading-5 text-neutral-600 dark:border-neutral-800 dark:bg-neutral-900/60 dark:text-neutral-300">
-            {loadingContent ? (
-              <Loader2 className="mx-auto mt-12 h-5 w-5 animate-spin text-neutral-400" />
-            ) : content ? (
-              content.slice(0, 3000)
-            ) : (
-              "请选择报告后生成 TOC 约束推理图。"
-            )}
-          </div>
-        </aside>
-        <main className="min-w-0 flex-1">
+      <div className="min-h-0 flex-1">
+        <main className="h-full min-w-0">
           {graph.length > 0 ? (
             <TocCanvas graph={graph} />
           ) : (

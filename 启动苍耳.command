@@ -1,5 +1,6 @@
-#!/bin/zsh
+#!/bin/zsh -f
 # 苍耳 pi-Xanthil 一键启动 — 双击运行
+# -f 跳过 ~/.zshrc，避免 oh-my-zsh 更新提示等交互吞掉脚本路径首字符。
 # 启动 gateway(:8787) + web(:5173)，就绪后自动打开浏览器；关闭本窗口即停止服务。
 
 cd "$(dirname "$0")" || exit 1
@@ -12,6 +13,14 @@ is_ready() {
     curl -fsS -o /dev/null "$GATEWAY_HEALTH_URL" 2>/dev/null
 }
 
+# 优先用 Chrome，其次系统默认；强制前台并新建窗口，避免被旧 Chrome 窗口"静默复用"。
+open_browser() {
+  if open -a "Google Chrome" --fresh "$WEB_URL" 2>/dev/null; then
+    return 0
+  fi
+  open "$WEB_URL"
+}
+
 kill_port_listeners() {
   lsof -ti "tcp:$1" 2>/dev/null | xargs kill 2>/dev/null || true
 }
@@ -20,6 +29,7 @@ kill_port_listeners() {
 if ! command -v npm >/dev/null 2>&1; then
   export PATH="/usr/local/bin:/opt/homebrew/bin:$HOME/.nvm/versions/node/*/bin:$PATH"
 fi
+export PATH="$HOME/.antigravity/antigravity/bin:$PATH"
 if ! command -v npm >/dev/null 2>&1; then
   echo "❌ 找不到 npm，请确认 Node.js 已安装并在 PATH 中。"
   echo "按回车关闭…"; read; exit 1
@@ -28,7 +38,7 @@ fi
 # 前后端都健康时直接复用现有实例。
 if is_ready; then
   echo "✅ 检测到 苍耳 已在运行，直接打开浏览器…"
-  open "$WEB_URL"
+  open_browser
   exit 0
 fi
 
@@ -55,17 +65,24 @@ cleanup() {
 }
 trap cleanup INT TERM EXIT
 
-# 等待前后端就绪（最多 60s）后打开浏览器
+# 等待前后端就绪（最多 120s）后打开浏览器；超时也兜底打开一次。
 echo -n "⏳ 等待服务就绪"
-for i in {1..60}; do
+READY=0
+for i in {1..120}; do
   if is_ready; then
     echo " 就绪！"
-    open "$WEB_URL"
+    READY=1
+    open_browser
     break
   fi
   echo -n "."
   sleep 1
 done
+
+if [ "$READY" -eq 0 ]; then
+  echo "\n⚠️ 等待超时（120s），仍未检测到服务就绪。已尝试打开浏览器，请稍后手动刷新：$WEB_URL"
+  open_browser
+fi
 
 echo "\n———————————————————————————————"
 echo "  苍耳运行中：$WEB_URL"

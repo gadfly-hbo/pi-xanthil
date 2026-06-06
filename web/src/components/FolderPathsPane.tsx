@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { Check, ChevronDown, ChevronRight, CircleAlert, Copy, FileText, Folder, FolderOpen, Plus, ShieldAlert, Trash2 } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, CircleAlert, Copy, FileText, Folder, FolderOpen, Loader2, Plus, RefreshCw, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
-import type { FlowTreeNode, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "@/types";
+import type { FlowTreeNode, PiModel, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "@/types";
 
 type Scope =
   | { type: "workspace"; workspaceId: string }
@@ -24,6 +24,7 @@ const META: Record<WorkspaceFolderName, { title: string; hint: string }> = {
 interface PreviewState {
   entryId: number;
   name: string;
+  relPath?: string;
   size: number;
   loading: boolean;
   previewable: boolean;
@@ -87,29 +88,58 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [addError, setAddError] = useState("");
   const [copiedPathId, setCopiedPathId] = useState<number | null>(null);
+  const [loadingPaths, setLoadingPaths] = useState(false);
 
-  const load = useCallback(() => {
+  const [models, setModels] = useState<PiModel[]>([]);
+  const [selectedModel, setSelectedModel] = useState("");
+  const [htmlGenerating, setHtmlGenerating] = useState(false);
+  const [htmlGenerateResult, setHtmlGenerateResult] = useState<{ path: string } | null>(null);
+  const [htmlGenerateError, setHtmlGenerateError] = useState("");
+
+  const load = useCallback(async () => {
     if (!scope) return;
     const updatePaths = (nextPaths: WorkspacePath[]) => {
       setPaths(nextPaths);
       onPathsChange?.(nextPaths);
     };
-    switch (scope.type) {
-      case "workspace":
-        api.listWorkspacePaths(scope.workspaceId, folder).then(updatePaths).catch(() => updatePaths([]));
-        break;
-      case "session":
-        api.listSessionPaths(scope.sessionId, folder).then(updatePaths).catch(() => updatePaths([]));
-        break;
-      case "flow":
-        api.listFlowPaths(scope.flowId, folder).then(updatePaths).catch(() => updatePaths([]));
-        break;
+    setLoadingPaths(true);
+    try {
+      switch (scope.type) {
+        case "workspace":
+          updatePaths(await api.listWorkspacePaths(scope.workspaceId, folder));
+          break;
+        case "session":
+          updatePaths(await api.listSessionPaths(scope.sessionId, folder));
+          break;
+        case "flow":
+          updatePaths(await api.listFlowPaths(scope.flowId, folder));
+          break;
+      }
+    } catch {
+      updatePaths([]);
+    } finally {
+      setLoadingPaths(false);
     }
   }, [scope, folder, onPathsChange]);
 
   useEffect(() => {
-    load();
+    void load();
   }, [load]);
+
+  useEffect(() => {
+    if (folder === "report") {
+      api.listModels().then((list) => {
+        setModels(list);
+        const def = list.find((m) => m.isDefault) || list[0];
+        if (def) setSelectedModel(def.id);
+      }).catch(() => {});
+    }
+  }, [folder]);
+
+  useEffect(() => {
+    setHtmlGenerateResult(null);
+    setHtmlGenerateError("");
+  }, [preview?.entryId, preview?.name]);
 
   const startAdding = (kind: WorkspacePathKind) => {
     setDraft("");
@@ -134,7 +164,7 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
       }
       setDraft("");
       setAddingKind(null);
-      load();
+      void load();
     } catch (err) {
       setAddError(String(err));
     }
@@ -174,7 +204,41 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
       next.delete(id);
       return next;
     });
+    setTrees((cur) => {
+      const next = { ...cur };
+      delete next[id];
+      return next;
+    });
+    setTreeErrors((cur) => {
+      const next = { ...cur };
+      delete next[id];
+      return next;
+    });
     setPreview((cur) => cur?.entryId === id ? null : cur);
+  };
+
+  const refreshOpenTrees = async (ids: number[]) => {
+    const nextTrees: Record<number, FlowTreeNode> = {};
+    const nextErrors: Record<number, string> = {};
+    await Promise.all(ids.map(async (id) => {
+      try {
+        nextTrees[id] = await api.workspacePathTree(id);
+      } catch (err) {
+        nextErrors[id] = String(err);
+      }
+    }));
+    setTrees((cur) => ({ ...cur, ...nextTrees }));
+    setTreeErrors((cur) => {
+      const next = { ...cur };
+      for (const id of ids) delete next[id];
+      return { ...next, ...nextErrors };
+    });
+  };
+
+  const refreshAll = async () => {
+    await load();
+    const ids = Array.from(openDirs);
+    if (ids.length > 0) await refreshOpenTrees(ids);
   };
 
   const copyPath = async (path: WorkspacePath) => {
@@ -186,12 +250,12 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
   };
 
   const previewFile = async (entryId: number, path = "") => {
-    setPreview({ entryId, name: path || "加载中", size: 0, loading: true, previewable: true, truncated: false });
+    setPreview({ entryId, name: path || "加载中", relPath: path, size: 0, loading: true, previewable: true, truncated: false });
     try {
       const file = await api.workspacePathFileGet(entryId, path);
-      setPreview({ entryId, ...file, loading: false });
+      setPreview({ entryId, ...file, relPath: path, loading: false });
     } catch (err) {
-      setPreview({ entryId, name: path || "无法预览", size: 0, loading: false, previewable: false, truncated: false, error: String(err) });
+      setPreview({ entryId, name: path || "无法预览", relPath: path, size: 0, loading: false, previewable: false, truncated: false, error: String(err) });
     }
   };
 
@@ -205,10 +269,14 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
       return;
     }
     setOpenDirs((cur) => new Set(cur).add(entryId));
-    if (trees[entryId]) return;
     try {
       const tree = await api.workspacePathTree(entryId);
       setTrees((cur) => ({ ...cur, [entryId]: tree }));
+      setTreeErrors((cur) => {
+        const next = { ...cur };
+        delete next[entryId];
+        return next;
+      });
     } catch (err) {
       setTreeErrors((cur) => ({ ...cur, [entryId]: String(err) }));
     }
@@ -245,6 +313,14 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
           )}
         </div>
         <div className="flex gap-2">
+          <button
+            onClick={() => void refreshAll()}
+            disabled={loadingPaths}
+            title="刷新路径和文件树"
+            className="inline-flex h-8 shrink-0 items-center justify-center rounded-md border border-neutral-200 bg-white px-2.5 text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            <RefreshCw className={`h-3.5 w-3.5 ${loadingPaths ? "animate-spin" : ""}`} strokeWidth={1.75} />
+          </button>
           <button
             onClick={() => startAdding("file")}
             className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12.5px] font-medium text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200"
@@ -318,6 +394,12 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
                   ) : <span className="w-3.5 shrink-0" />}
                   {p.kind === "dir" ? <Folder className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.75} /> : <FileText className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.75} />}
                   <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-neutral-800 dark:text-neutral-200">{p.path}</span>
+                  {p.status === "missing" && (
+                    <span className="shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[10.5px] text-red-600 dark:bg-red-950/40 dark:text-red-400">路径不存在</span>
+                  )}
+                  {p.status === "kind_mismatch" && (
+                    <span className="shrink-0 rounded bg-amber-50 px-1.5 py-0.5 text-[10.5px] text-amber-700 dark:bg-amber-950/40 dark:text-amber-300">类型已变化</span>
+                  )}
                 </button>
                 <button
                   onClick={() => void copyPath(p)}
@@ -366,6 +448,79 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
             <p className="text-[12.5px] text-neutral-400">正在读取...</p>
           ) : (
             <>
+              {folder === "report" && isMarkdown(preview.name) && (
+                <div className="mb-4 rounded-lg border border-violet-100 bg-violet-50/50 p-3.5 dark:border-violet-950/40 dark:bg-violet-950/20">
+                  <div className="flex flex-col gap-2.5 sm:flex-row sm:items-center sm:justify-between">
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
+                      <div>
+                        <h3 className="text-[12.5px] font-semibold text-violet-900 dark:text-violet-200">生成高质量交互 HTML 报告</h3>
+                        <p className="text-[11px] text-violet-600 dark:text-violet-400">使用专业排版和交互动效美化此 Markdown 报告</p>
+                      </div>
+                    </div>
+                    
+                    <div className="flex flex-wrap items-center gap-2">
+                      <select
+                        value={selectedModel}
+                        onChange={(e) => setSelectedModel(e.target.value)}
+                        disabled={htmlGenerating}
+                        className="h-8 rounded-md border border-violet-200 bg-white px-2 text-[12px] text-neutral-700 outline-none disabled:opacity-50 dark:border-violet-800 dark:bg-neutral-900 dark:text-neutral-200"
+                      >
+                        {models.map((m) => (
+                          <option key={m.id} value={m.id}>{m.id}</option>
+                        ))}
+                      </select>
+                      <button
+                        onClick={async () => {
+                          setHtmlGenerating(true);
+                          setHtmlGenerateError("");
+                          setHtmlGenerateResult(null);
+                          try {
+                            const result = await api.generateHighQualityHtmlReport({
+                              pathId: preview.entryId,
+                              relPath: preview.relPath,
+                              model: selectedModel || undefined,
+                            });
+                            setHtmlGenerateResult(result);
+                            void refreshAll();
+                          } catch (err) {
+                            setHtmlGenerateError(String(err));
+                          } finally {
+                            setHtmlGenerating(false);
+                          }
+                        }}
+                        disabled={htmlGenerating}
+                        className="inline-flex h-8 items-center gap-1.5 rounded-md bg-violet-600 px-3 text-[12px] font-medium text-white hover:bg-violet-700 disabled:opacity-50 dark:bg-violet-700 dark:hover:bg-violet-600"
+                      >
+                        {htmlGenerating ? (
+                          <Loader2 className="h-3.5 w-3.5 animate-spin" />
+                        ) : (
+                          <Sparkles className="h-3.5 w-3.5" />
+                        )}
+                        {htmlGenerating ? "生成中..." : "生成 HTML 报告"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {htmlGenerateError && (
+                    <p className="mt-2 text-[11.5px] text-red-500">{htmlGenerateError}</p>
+                  )}
+
+                  {htmlGenerateResult && (
+                    <div className="mt-2.5 flex items-center justify-between rounded bg-emerald-50 px-2.5 py-1.5 text-[11.5px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
+                      <span className="truncate">🎉 生成成功：{htmlGenerateResult.path}</span>
+                      <button
+                        onClick={async () => {
+                          await navigator.clipboard.writeText(htmlGenerateResult.path);
+                        }}
+                        className="ml-2 shrink-0 text-emerald-600 underline hover:text-emerald-800 dark:text-emerald-400"
+                      >
+                        复制路径
+                      </button>
+                    </div>
+                  )}
+                </div>
+              )}
               <div className="mb-3 border-b border-neutral-200 pb-2 dark:border-neutral-800">
                 <p className="truncate font-mono text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">{preview.name}</p>
                 <p className="mt-1 text-[11px] text-neutral-400">

@@ -73,6 +73,12 @@ export const BLOCK_FILE_ANALYSIS = [
  * Keeping blocks 1–3 byte-identical across every turn of every session
  * maximises provider prefix-cache hits.
  */
+export function buildDataContextBlock(paths: string[]): string {
+  if (paths.length === 0) return "";
+  const lines = paths.map((p) => `- ${p}`).join("\n");
+  return `[已登记的聚合数据路径 — 本次任务可读取，符合全局数据安全约束]\n${lines}`;
+}
+
 export function assembleSystemPrompt(additionalPrompt?: string): string {
   const blocks: string[] = [BLOCK_SAFETY, BLOCK_BASE_BEHAVIOR, BLOCK_FILE_ANALYSIS];
   const extra = additionalPrompt?.trim();

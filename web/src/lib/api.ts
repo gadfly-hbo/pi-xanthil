@@ -1,4 +1,4 @@
-import type { CreateRuleResult, DecisionTreeResult, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, PiModel, PiSkill, RuleMemory, Session, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, StoredFlowMessage, StoredMessage, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
+import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlQueryResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
 
 export interface TocGraphItem {
   id: string;
@@ -21,6 +21,116 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     }).then(json<{ nodes: TocGraphItem[]; model: string }>),
+  generatePresentationVersion: (payload: { pathId: number; relPath?: string; prompt: string; model?: string; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }) =>
+    fetch("/api/report-versions/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ path: string; content: string; storylinePath: string; storylineHtml: string; model: string }>),
+  generateHighQualityHtmlReport: (payload: { pathId: number; relPath?: string; model?: string }) =>
+    fetch("/api/html-reports/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ path: string; content: string; model: string }>),
+
+  generateBusinessRequirement: (payload: {
+    pathId: number;
+    documents?: Array<
+      | { source: "workspace_path"; pathId: number; relPath?: string }
+      | { source: "local_path"; path: string }
+    >;
+    requirement: {
+      projectName: string;
+      businessBackground: string;
+      businessGoal: string;
+      businessQuestions: string;
+      decisionScenario: string;
+      stakeholders: string;
+      knownData: string;
+      constraints: string;
+      outputPreference: string;
+      extraPrompt: string;
+    };
+    model?: string;
+  }) =>
+    fetch("/api/business-requirements/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ path: string; jsonPath: string; content: string; structured: unknown; model: string }>),
+  previewBusinessRequirementDocuments: (payload: {
+    documents: Array<
+      | { source: "workspace_path"; pathId: number; relPath?: string }
+      | { source: "local_path"; path: string }
+    >;
+  }) =>
+    fetch("/api/business-requirements/documents/preview", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ documents: Array<{ name: string; path: string; size: number; mtimeMs: number; source: "workspace_path" | "local_path"; extension: string; content: string; truncated: boolean; error?: string }> }>),
+  extractBusinessRequirementDraft: (payload: {
+    pathId: number;
+    documents: Array<
+      | { source: "workspace_path"; pathId: number; relPath?: string }
+      | { source: "local_path"; path: string }
+    >;
+    model?: string;
+  }) =>
+    fetch("/api/business-requirements/extract", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ draft: {
+      projectName: string;
+      businessBackground: string;
+      businessGoal: string;
+      businessQuestions: string;
+      decisionScenario: string;
+      stakeholders: string;
+      knownData: string;
+      constraints: string;
+      outputPreference: string;
+      extraPrompt: string;
+    }; model: string }>),
+  generateBusinessRequirementClarifyingQuestions: (payload: {
+    pathId?: number;
+    documents?: Array<
+      | { source: "workspace_path"; pathId: number; relPath?: string }
+      | { source: "local_path"; path: string }
+    >;
+    requirement: {
+      projectName: string;
+      businessBackground: string;
+      businessGoal: string;
+      businessQuestions: string;
+      decisionScenario: string;
+      stakeholders: string;
+      knownData: string;
+      constraints: string;
+      outputPreference: string;
+      extraPrompt: string;
+    };
+    model?: string;
+  }) =>
+    fetch("/api/business-requirements/clarify", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ content: string; model: string }>),
+  listBusinessRequirementVersions: (pathId: number) =>
+    fetch(`/api/business-requirements/versions?pathId=${encodeURIComponent(pathId)}`)
+      .then(json<{ versions: Array<{ id: string; projectName: string; markdownPath: string; jsonPath: string; generatedAt: number; model: string; sourceDocumentCount: number; markdownEditedAt: number | null; jsonStale: boolean; jsonStaleReason: string | null }> }>),
+  getBusinessRequirementVersion: (payload: { pathId: number; markdownPath: string; jsonPath?: string }) =>
+    fetch(`/api/business-requirements/version?pathId=${encodeURIComponent(payload.pathId)}&markdownPath=${encodeURIComponent(payload.markdownPath)}${payload.jsonPath ? `&jsonPath=${encodeURIComponent(payload.jsonPath)}` : ""}`)
+      .then(json<{ content: string; structured: unknown }>),
+  updateBusinessRequirementVersion: (payload: { pathId: number; markdownPath: string; content: string }) =>
+    fetch("/api/business-requirements/version", {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ ok: true; path: string }>),
   listWorkspaceSkills: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/skills`).then(json<PiSkill[]>),
   listFlowSkills: (flowId: string) =>
@@ -47,6 +157,87 @@ export const api = {
   deleteRule: (id: string) => fetch(`/api/rules/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
   getRulesPrompt: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/rules-prompt`).then(json<{ prompt: string; count: number; updatedAt: number | null }>),
+  listRuleConflicts: (workspaceId: string, status?: "open" | "ignored" | "resolved") =>
+    fetch(`/api/workspaces/${workspaceId}/rule-conflicts${status ? `?status=${status}` : ""}`).then(json<RuleConflict[]>),
+  detectRuleConflicts: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/rule-conflicts/detect`, { method: "POST" }).then(json<RuleConflict[]>),
+  updateRuleConflictStatus: (id: string, status: "open" | "ignored" | "resolved") =>
+    fetch(`/api/rule-conflicts/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ status }) }).then(json<{ ok: true }>),
+  listMemoryProposals: (workspaceId: string, status?: MemoryProposalStatus) =>
+    fetch(`/api/workspaces/${workspaceId}/memory/proposals${status ? `?status=${status}` : ""}`).then(json<MemoryProposal[]>),
+  createMemoryProposalsFromTraceRules: (workspaceId: string, rules: TraceRuleSuggestion[]) =>
+    fetch(`/api/workspaces/${workspaceId}/memory/proposals/from-trace-rules`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ rules }),
+    }).then(json<MemoryProposal[]>),
+  approveMemoryProposal: (id: string) =>
+    fetch(`/api/memory/proposals/${id}/approve`, { method: "POST" }).then(json<CreateRuleResult>),
+  rejectMemoryProposal: (id: string, reason = "") =>
+    fetch(`/api/memory/proposals/${id}/reject`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ reason }) }).then(json<{ ok: true }>),
+  listMemoryUsageStats: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/memory/usage`).then(json<MemoryUsageStats[]>),
+  recordMemoryFeedback: (workspaceId: string, payload: { sourceKind: MemorySourceKind; signal: "positive" | "negative"; sourceId?: string }) =>
+    fetch(`/api/workspaces/${workspaceId}/memory/feedback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<MemoryUsageStats>),
+  listMemoryFailureAttributions: (workspaceId: string, target?: { targetKind: string; targetId: string }) =>
+    fetch(`/api/workspaces/${workspaceId}/memory/failure-attributions${target ? `?targetKind=${encodeURIComponent(target.targetKind)}&targetId=${encodeURIComponent(target.targetId)}` : ""}`).then(json<MemoryFailureAttribution[]>),
+  createMemoryFailureAttribution: (workspaceId: string, payload: { targetKind: string; targetId: string; cause: MemoryFailureAttribution["cause"]; sourceKind?: MemorySourceKind | null; sourceId?: string | null; note?: string }) =>
+    fetch(`/api/workspaces/${workspaceId}/memory/failure-attributions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<MemoryFailureAttribution>),
+
+  listBusinessContexts: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/business-contexts`).then(json<BusinessContext[]>),
+  createBusinessContext: (workspaceId: string, payload: { category: BusinessContextCategory; title: string; content: string }) =>
+    fetch(`/api/workspaces/${workspaceId}/business-contexts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<BusinessContext>),
+  updateBusinessContext: (id: string, payload: { category: BusinessContextCategory; title: string; content: string }) =>
+    fetch(`/api/business-contexts/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<{ ok: true }>),
+  updateBusinessContextEnabled: (id: string, enabled: boolean) =>
+    fetch(`/api/business-contexts/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) }).then(json<{ ok: true }>),
+  updateBusinessContextsEnabled: (workspaceId: string, ids: string[], enabled: boolean) =>
+    fetch(`/api/workspaces/${workspaceId}/business-contexts`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids, enabled }) }).then(json<{ ok: true }>),
+  deleteBusinessContext: (id: string) => fetch(`/api/business-contexts/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  getBusinessContextPrompt: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/business-context-prompt`).then(json<{ prompt: string; count: number; updatedAt: number | null }>),
+
+  listCases: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/cases`).then(json<AnalysisCase[]>),
+  createCase: (workspaceId: string, payload: { title: string; category: string; scenario: string; approach: string; conclusion: string }) =>
+    fetch(`/api/workspaces/${workspaceId}/cases`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<AnalysisCase>),
+  updateCase: (id: string, payload: { title: string; category: string; scenario: string; approach: string; conclusion: string }) =>
+    fetch(`/api/cases/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<{ ok: true }>),
+  updateCaseEnabled: (id: string, enabled: boolean) =>
+    fetch(`/api/cases/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) }).then(json<{ ok: true }>),
+  deleteCase: (id: string) => fetch(`/api/cases/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  getCasesPrompt: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/cases-prompt`).then(json<{ prompt: string; count: number; updatedAt: number | null }>),
+
+  listStandards: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/standards`).then(json<AnalysisStandard[]>),
+  createStandard: (workspaceId: string, payload: AnalysisStandardInput) =>
+    fetch(`/api/workspaces/${workspaceId}/standards`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<AnalysisStandard>),
+  updateStandard: (id: string, payload: AnalysisStandardInput) =>
+    fetch(`/api/standards/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<{ ok: true }>),
+  updateStandardEnabled: (id: string, enabled: boolean) =>
+    fetch(`/api/standards/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) }).then(json<{ ok: true }>),
+  deleteStandard: (id: string) =>
+    fetch(`/api/standards/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  getStandardsPrompt: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/standards-prompt`).then(json<{ prompt: string; count: number; updatedAt: number | null }>),
+  listHypotheses: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/hypotheses`).then(json<HypothesisEntry[]>),
+  createHypothesis: (workspaceId: string, payload: HypothesisEntryInput) =>
+    fetch(`/api/workspaces/${workspaceId}/hypotheses`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<HypothesisEntry>),
+  updateHypothesisEnabled: (id: string, enabled: boolean) =>
+    fetch(`/api/hypotheses/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) }).then(json<{ ok: true }>),
+  deleteHypothesis: (id: string) =>
+    fetch(`/api/hypotheses/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
   createSession: (workspaceId: string, title: string, workflowId?: string) =>
     fetch(`/api/workspaces/${workspaceId}/sessions`, {
       method: "POST",
@@ -65,8 +256,10 @@ export const api = {
     fetch(`/api/sessions/${sessionId}/token-stats`).then(json<SessionTokenStats>),
   getWorkspaceTokenStats: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/token-stats`).then(json<SessionTokenStats>),
+  getWorkspaceTodayTokenStats: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/token-stats/today`).then(json<SessionTokenStats>),
   getWorkspaceTokenStatsBySession: (workspaceId: string) =>
-    fetch(`/api/workspaces/${workspaceId}/token-stats-by-session`).then(json<(SessionTokenStats & { title: string })[]>),
+    fetch(`/api/workspaces/${workspaceId}/token-stats-by-session`).then(json<TokenUsageStats[]>),
   getTraceOverview: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/trace/overview`).then(json<TraceOverview>),
   listTraceRecentEvents: (workspaceId: string, limit = 30) =>
@@ -79,6 +272,20 @@ export const api = {
     fetch(`/api/workspaces/${workspaceId}/trace/failures?limit=${limit}`).then(json<TraceFailure[]>),
   generateTraceRuleSuggestions: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/trace/rule-suggestions`, { method: "POST" }).then(json<TraceRuleSuggestion[]>),
+  pruneTraceEvents: (workspaceId: string, retainDays: number) =>
+    fetch(`/api/workspaces/${workspaceId}/trace/events?retainDays=${retainDays}`, { method: "DELETE" }).then(json<{ deleted: number; retainedDays: number }>),
+  listMemoryInjectionRecords: (workspaceId: string, limit = 50) =>
+    fetch(`/api/workspaces/${workspaceId}/memory/injections?limit=${limit}`).then(json<MemoryInjectionRecord[]>),
+  listMemoryEvaluations: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/memory-evaluations`).then(json<MemoryEvaluation[]>),
+  getMemoryEvaluation: (evaluationId: string) =>
+    fetch(`/api/memory-evaluations/${evaluationId}`).then(json<MemoryEvaluationDetail>),
+  createMemoryEvaluation: (workspaceId: string, payload: { prompt: string; rubric?: string; model?: string; judgeModel?: string; targetScope?: "chat" | "workflow"; repeat?: number }) =>
+    fetch(`/api/workspaces/${workspaceId}/memory-evaluations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<MemoryEvaluationDetail>),
   sessionArtifactTree: (sessionId: string) =>
     fetch(`/api/sessions/${sessionId}/artifacts/tree`).then(json<SessionArtifactTree>),
   sessionArtifactFileGet: (sessionId: string, path: string) =>
@@ -115,6 +322,18 @@ export const api = {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name, kind }),
+    }).then(json<Flow>),
+  instantiateAnax: (workspaceId: string, name?: string) =>
+    fetch(`/api/workspaces/${workspaceId}/anax/instantiate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then(json<Flow>),
+  instantiateAnaxQuick: (workspaceId: string, name?: string) =>
+    fetch(`/api/workspaces/${workspaceId}/anax/instantiate-quick`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
     }).then(json<Flow>),
   renameFlow: (id: string, name: string) =>
     fetch(`/api/flows/${id}`, {
@@ -198,14 +417,45 @@ export const api = {
       body: JSON.stringify({ mode }),
     }).then(json<{ path: string }>),
 
+  // ---- SQL connections ----
+  listSqlConnections: () => fetch("/api/sql-connections").then(json<SqlConnection[]>),
+  createSqlConnection: (data: Omit<SqlConnection, "id" | "createdAt">) =>
+    fetch("/api/sql-connections", { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }).then(json<SqlConnection>),
+  updateSqlConnection: (id: string, data: Partial<SqlConnection>) =>
+    fetch(`/api/sql-connections/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(data) }).then(json<SqlConnection>),
+  deleteSqlConnection: (id: string) =>
+    fetch(`/api/sql-connections/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  testSqlConnection: (id: string) =>
+    fetch(`/api/sql-connections/${id}/test`, { method: "POST" }).then(json<{ ok: boolean; message: string; latencyMs: number }>),
+  getSqlSchema: (id: string) =>
+    fetch(`/api/sql-connections/${id}/schema`).then(json<{ tables: SchemaTable[] }>),
+  querySql: (id: string, sql: string, params?: Record<string, unknown>) =>
+    fetch(`/api/sql-connections/${id}/query`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql, params }) }).then(json<SqlQueryResult>),
+  exportSql: (id: string, sql: string, outputPath: string, params?: Record<string, unknown>, watermark?: { column: string }) =>
+    fetch(`/api/sql-connections/${id}/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql, outputPath, params, watermark }) }).then(json<{ path: string; rowCount: number; appended: boolean }>),
+
+  // ---- direct LLM prompt (tool-free channel) ----
+  directLlmPrompt: (payload: { text: string; model?: string; systemPrompt?: string }) =>
+    fetch("/api/llm/prompt", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ text: string; model: string }>),
+
   // ---- local extraction tools ----
   listExtractionTools: () => fetch("/api/extraction-tools").then(json<ExtractionTool[]>),
-  runExtractionTool: (id: string, inputPath: string, outputPath: string) =>
+  listExtractionToolTestCases: (id: string) =>
+    fetch(`/api/extraction-tools/${encodeURIComponent(id)}/test-cases`).then(json<ToolEvalCaseTemplateList>),
+  runExtractionTool: (id: string, inputPath: string, outputPath: string, params?: Record<string, string | number | boolean>) =>
     fetch(`/api/extraction-tools/${encodeURIComponent(id)}/run`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ inputPath, outputPath }),
+      body: JSON.stringify({ inputPath, outputPath, params }),
     }).then(json<ExtractionRun>),
+  previewExtractionFile: (path: string, outputRoot: string) =>
+    fetch(`/api/extraction-tools/preview?path=${encodeURIComponent(path)}&outputRoot=${encodeURIComponent(outputRoot)}`).then(
+      json<{ name: string; size: number; previewable: boolean; truncated: boolean; content?: string }>,
+    ),
 
   // ---- session-level paths ----
   listSessionPaths: (sessionId: string, folder?: string) =>
@@ -240,6 +490,12 @@ export const api = {
     fetch(`/api/workspace-paths/${pathId}/file?path=${encodeURIComponent(path)}`).then(
       json<{ name: string; size: number; previewable: boolean; truncated: boolean; content?: string }>,
     ),
+  workspacePathFilePut: (pathId: number, path: string, content: string) =>
+    fetch(`/api/workspace-paths/${pathId}/file`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, content }),
+    }).then(json<{ ok: true; path: string }>),
 
   listFlowRuns: (flowId: string) =>
     fetch(`/api/flows/${flowId}/runs`).then(json<FlowRun[]>),
@@ -262,6 +518,18 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     }).then(json<DecisionTreeResult>),
+  generateGoldenStrategy: (payload: { source: "session" | "flow-run"; sessionId?: string; flowId?: string; runId?: string; path: string; analysisModel: GoldenStrategyModelId; prompt?: string; model: string; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }) =>
+    fetch("/api/golden-strategy/generate", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<GoldenStrategyResult>),
+  generateGoldenStrategyBatch: (payload: { source: "session" | "flow-run"; sessionId?: string; flowId?: string; runId?: string; path: string; analysisModels: GoldenStrategyModelId[]; prompt?: string; model: string; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }) =>
+    fetch("/api/golden-strategy/generate-batch", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<GoldenStrategyBatchResult>),
 
   listWorkflowEvaluations: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/evaluations`).then(json<WorkflowEvaluation[]>),
@@ -276,4 +544,224 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     }).then(json<WorkflowEvaluationDetail>),
+  listSkillEvaluations: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-evaluations`).then(json<SkillEvaluation[]>),
+  listSkillEvalSets: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-eval-sets`).then(json<SkillEvalSet[]>),
+  createSkillEvalSet: (workspaceId: string, payload: { name: string; tasks: SkillEvalTask[] }) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-eval-sets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<SkillEvalSet>),
+  updateSkillEvalSet: (id: string, payload: { name?: string; tasks?: SkillEvalTask[] }) =>
+    fetch(`/api/skill-eval-sets/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<SkillEvalSet>),
+  deleteSkillEvalSet: (id: string) =>
+    fetch(`/api/skill-eval-sets/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  getSkillEvaluation: (evaluationId: string) =>
+    fetch(`/api/skill-evaluations/${evaluationId}`).then(json<SkillEvaluationDetail>),
+  runSkillEvaluation: (
+    workspaceId: string,
+    payload: { model: string; repeat: number; judgeRepeat?: number; variants: SkillVariant[]; tasks: SkillEvalTask[]; contextPrefix?: string; dataContextPaths?: string[] },
+  ) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-evaluations/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<SkillEvaluationDetail>),
+  runToolEvaluation: (
+    workspaceId: string,
+    payload: { toolId: string; repeat: number; cases: ToolEvalCase[] },
+  ) =>
+    fetch(`/api/workspaces/${workspaceId}/tool-evaluations/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<ToolEvaluationDetail>),
+  listToolEvaluations: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/tool-evaluations`).then(json<ToolEvaluation[]>),
+  listToolCaseSets: (workspaceId: string, toolId?: string) =>
+    fetch(`/api/workspaces/${workspaceId}/tool-case-sets${toolId ? `?toolId=${encodeURIComponent(toolId)}` : ""}`).then(json<ToolCaseSet[]>),
+  createToolCaseSet: (workspaceId: string, payload: { name: string; toolId: string; cases: ToolEvalCase[] }) =>
+    fetch(`/api/workspaces/${workspaceId}/tool-case-sets`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<ToolCaseSet>),
+  updateToolCaseSet: (id: string, payload: { name?: string; toolId?: string; cases?: ToolEvalCase[] }) =>
+    fetch(`/api/tool-case-sets/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<ToolCaseSet>),
+  deleteToolCaseSet: (id: string) =>
+    fetch(`/api/tool-case-sets/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  getToolEvaluation: (evaluationId: string) =>
+    fetch(`/api/tool-evaluations/${evaluationId}`).then(json<ToolEvaluationDetail>),
+  archiveEvaluation: (kind: "skill" | "tool", evaluationId: string) =>
+    fetch(`/api/evaluations/${kind}/${evaluationId}/archive`, { method: "POST" }).then(json<EvaluationArchiveResult>),
+  listEvaluationArchives: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/evaluation-archives`).then(json<EvaluationArchiveIndexItem[]>),
+  getEvaluationArchiveFile: (workspaceId: string, baseName: string, format: "md" | "json") =>
+    fetch(`/api/workspaces/${workspaceId}/evaluation-archives/${encodeURIComponent(baseName)}/${format}`).then(async (res) => {
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      return res.text();
+    }),
+  saveCustomModel: (modelId: string, payload: import("@/data/models").ModelDef) =>
+    fetch(`/api/model-lab/models/${encodeURIComponent(modelId)}`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload)
+    }).then(async res => {
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      return res.json();
+    }),
+  listCustomModels: () =>
+    fetch("/api/model-lab/models").then(json<import("@/data/models").ModelDef[]>),
+  predictModel: (payload: { modelId: string; mappings: Record<string, string>; rows: Record<string, unknown>[]; model?: string }) =>
+    fetch("/api/model-lab/predict", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<PredictionResult>),
+  listModelLabRuns: (limit = 30) =>
+    fetch(`/api/model-lab/runs?limit=${encodeURIComponent(limit)}`).then(json<ModelLabRunSummary[]>),
+  getModelLabRun: (id: string) =>
+    fetch(`/api/model-lab/runs/${encodeURIComponent(id)}`).then(json<ModelLabRunDetail>),
+  getModelLabStats: () =>
+    fetch(`/api/model-lab/stats`).then(json<ModelLabStats>),
+  deleteModelLabRun: (id: string) =>
+    fetch(`/api/model-lab/runs/${encodeURIComponent(id)}`, { method: "DELETE" }).then(async (res) => {
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      return res.json() as Promise<{ success: boolean; deleted: number }>;
+    }),
+  deleteModelLabRunsBefore: (olderThanDays: number, onlyFailed = true) =>
+    fetch(`/api/model-lab/runs?olderThanDays=${encodeURIComponent(olderThanDays)}&onlyFailed=${onlyFailed ? "true" : "false"}`, { method: "DELETE" }).then(async (res) => {
+      if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+      return res.json() as Promise<{ success: boolean; deleted: number; beforeTs: number; onlyFailed: boolean }>;
+    }),
+
+  // ---- BI datasets (member retention / member recall import) ----
+  uploadBiDataset: async (slot: BiDatasetSlot, file: File) => {
+    const fd = new FormData();
+    fd.append("slot", slot);
+    fd.append("file", file, file.name);
+    const res = await fetch("/api/bi-datasets/upload", { method: "POST", body: fd });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return res.json() as Promise<{ success: boolean; dataset: BiDatasetDetail }>;
+  },
+  listBiDatasets: (slot?: BiDatasetSlot) =>
+    fetch(`/api/bi-datasets${slot ? `?slot=${encodeURIComponent(slot)}` : ""}`).then(json<BiDatasetSummary[]>),
+  getActiveBiDataset: async (slot: BiDatasetSlot): Promise<BiDatasetDetail | null> => {
+    const res = await fetch(`/api/bi-datasets/active?slot=${encodeURIComponent(slot)}`);
+    if (res.status === 404) return null;
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return res.json() as Promise<BiDatasetDetail>;
+  },
+  getBiDataset: (id: string) =>
+    fetch(`/api/bi-datasets/${encodeURIComponent(id)}`).then(json<BiDatasetDetail>),
+  activateBiDataset: async (id: string, slot: BiDatasetSlot) => {
+    const res = await fetch(`/api/bi-datasets/${encodeURIComponent(id)}/activate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ slot }),
+    });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return res.json() as Promise<{ success: boolean }>;
+  },
+  deleteBiDataset: async (id: string) => {
+    const res = await fetch(`/api/bi-datasets/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`${res.status} ${await res.text()}`);
+    return res.json() as Promise<{ success: boolean }>;
+  },
+
+  // ---- AnaX P3 change management ----
+  listChangeProposals: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/change-proposals`).then(json<ChangeProposal[]>),
+  createChangeProposal: (workspaceId: string, payload: { runId?: string | null; sourceNodeId?: string | null; title: string; description: string; expectedImpact: string }) =>
+    fetch(`/api/workspaces/${workspaceId}/change-proposals`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<ChangeProposal>),
+  updateChangeProposal: (id: string, payload: { status?: ChangeProposalStatus; appliedResult?: string; title?: string; description?: string; expectedImpact?: string }) =>
+    fetch(`/api/change-proposals/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ ok: true }>),
+  deleteChangeProposal: (id: string) =>
+    fetch(`/api/change-proposals/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  getStaleNodes: (runId: string) =>
+    fetch(`/api/runs/${runId}/stale-nodes`).then(json<StaleNode[]>),
+  cascadeFromNode: (runId: string, fromNodeId: string) =>
+    fetch(`/api/runs/${runId}/cascade`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ fromNodeId }),
+    }).then(json<{ ok: true; markedNodes: string[] }>),
+  getAnaxGateConfig: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/anax-gate-config`).then(json<AnaxGateConfig>),
+  updateAnaxGateConfig: (workspaceId: string, payload: Partial<Pick<AnaxGateConfig, "minConfidence" | "minEvidenceCount" | "minDataQualityScore">>) =>
+    fetch(`/api/workspaces/${workspaceId}/anax-gate-config`, {
+      method: "PUT",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<AnaxGateConfig>),
+  curateSkillEvaluation: (evaluationId: string, model: string) =>
+    fetch(`/api/skill-evaluations/${evaluationId}/curate`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ model }),
+    }).then(json<SkillCurationResult>),
+  applySkillCurationProposals: (workspaceId: string, proposals: SkillCurationProposal[]) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-curator/apply`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ proposals }),
+    }).then(json<SkillCurationApplyResult>),
+  listSkillCurationProposals: (workspaceId: string, status?: SkillCurationProposalStatus) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-curation-proposals${status ? `?status=${status}` : ""}`).then(json<SkillCurationProposalRecord[]>),
+  updateSkillCurationProposalStatus: (id: string, status: SkillCurationProposalStatus) =>
+    fetch(`/api/skill-curation-proposals/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status }),
+    }).then(json<{ ok: true }>),
+  applyApprovedCurationProposals: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-curation-proposals/apply`, { method: "POST" }).then(json<SkillCurationApplyResult>),
+  retrieveSkills: (workspaceId: string, query: string, topK?: number) =>
+    fetch(`/api/workspaces/${workspaceId}/skills/retrieve`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, topK }),
+    }).then(json<RetrievedSkill[]>),
+  runAutonomousTask: (workspaceId: string, query: string, model?: string, topK?: number) =>
+    fetch(`/api/workspaces/${workspaceId}/autonomous-run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, model, topK }),
+    }).then(json<AutonomousRunResult>),
+
+  // ---- Knowledge Graph ----
+  listKgNodes: (workspaceId: string, includeHidden = false) =>
+    fetch(`/api/workspaces/${workspaceId}/kg/nodes${includeHidden ? "?includeHidden=true" : ""}`).then(json<KgNode[]>),
+  listKgEdges: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/kg/edges`).then(json<KgEdge[]>),
+  syncKnowledgeGraph: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/kg/sync`, { method: "POST" }).then(json<KgSyncResult>),
+  extractKgEntities: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/kg/extract`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }).then(json<import("@/types").KgExtractResult>),
+  setKgNodeHidden: (nodeId: string, hidden: boolean) =>
+    fetch(`/api/kg/nodes/${nodeId}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ hidden }) }).then(json<{ ok: true }>),
+  addKgEdge: (workspaceId: string, fromId: string, toId: string, relation: import("@/types").KgRelation) =>
+    fetch(`/api/workspaces/${workspaceId}/kg/edges`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ fromId, toId, relation }) }).then(json<KgEdge>),
+  deleteKgEdge: (edgeId: string) =>
+    fetch(`/api/kg/edges/${edgeId}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  getKgPrompt: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/kg-prompt`).then(json<{ prompt: string; count: number; reportCount: number; edgeCount: number; updatedAt: number | null }>),
 };

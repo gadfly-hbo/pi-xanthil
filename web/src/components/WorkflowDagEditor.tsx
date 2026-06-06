@@ -69,10 +69,17 @@ function autoLayout(
   }
   const byLevel = new Map<number, string[]>();
   for (const [id, lv] of level) byLevel.set(lv, [...(byLevel.get(lv) ?? []), id]);
+  // Linear chains (all levels have 1 node, 4+ levels) get vertical layout to avoid
+  // extreme aspect ratio that makes fitView zoom out too much.
+  const isLinearChain = byLevel.size >= 4 && [...byLevel.values()].every((ids) => ids.length === 1);
   const pos = new Map<string, { x: number; y: number }>();
   for (const [lv, ids] of byLevel) {
-    const offset = -((ids.length - 1) * ROW_GAP) / 2;
-    ids.forEach((id, idx) => pos.set(id, { x: lv * COL_GAP, y: offset + idx * ROW_GAP }));
+    if (isLinearChain) {
+      ids.forEach((id) => pos.set(id, { x: 0, y: lv * ROW_GAP }));
+    } else {
+      const offset = -((ids.length - 1) * ROW_GAP) / 2;
+      ids.forEach((id, idx) => pos.set(id, { x: lv * COL_GAP, y: offset + idx * ROW_GAP }));
+    }
   }
   nodes.forEach((n, i) => {
     if (!pos.has(n.id)) pos.set(n.id, { x: 0, y: i * ROW_GAP });

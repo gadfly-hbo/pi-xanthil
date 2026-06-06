@@ -1,19 +1,26 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, ChevronDown, ChevronRight, Cpu, Gauge, Loader2, RefreshCw, Square, Workflow } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronRight, Cpu, FileText, Gauge, Loader2, RefreshCw, Square, Workflow } from "lucide-react";
 import { hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
 import { SkillSelector } from "@/components/SkillSelector";
+import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
 import { cn } from "@/lib/cn";
 import { textOf, type PiModel, type SessionRuntime } from "@/types";
+
+type FolderScope =
+  | { type: "workspace"; workspaceId: string }
+  | { type: "session"; sessionId: string }
+  | { type: "flow"; flowId: string };
 
 interface Props {
   messages: UiMessage[];
   running: boolean;
   disabled: boolean;
   workspaceId: string | null;
+  folderScope: FolderScope | null;
   model: string;
   models: PiModel[];
   onModelChange: (m: string) => void;
-  onSend: (text: string, skillPaths?: string[]) => void;
+  onSend: (text: string, skillPaths?: string[], businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string }) => void;
   onStop: () => void;
   runtime: SessionRuntime | null;
   compacting: boolean;
@@ -53,6 +60,12 @@ function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: st
 export function ChatPane(p: Props) {
   const [input, setInput] = useState("");
   const [selectedSkillPaths, setSelectedSkillPaths] = useState<string[]>([]);
+  const {
+    contexts: businessRequirementContexts,
+    selectedId: selectedBusinessRequirementId,
+    setSelectedId: setSelectedBusinessRequirementId,
+    selectedContext: selectedBusinessRequirement,
+  } = useBusinessRequirementContexts(p.folderScope);
   const [showTrace, setShowTrace] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
@@ -71,7 +84,15 @@ export function ChatPane(p: Props) {
   function submit() {
     const text = input.trim();
     if (!text || p.running || p.disabled) return;
-    p.onSend(text, selectedSkillPaths.length > 0 ? selectedSkillPaths : undefined);
+    p.onSend(
+      text,
+      selectedSkillPaths.length > 0 ? selectedSkillPaths : undefined,
+      selectedBusinessRequirement ? {
+        pathId: selectedBusinessRequirement.pathId,
+        markdownPath: selectedBusinessRequirement.markdownPath,
+        jsonPath: selectedBusinessRequirement.jsonPath,
+      } : undefined,
+    );
     setInput("");
     requestAnimationFrame(autosize);
   }
@@ -216,6 +237,22 @@ export function ChatPane(p: Props) {
                   selectedPaths={selectedSkillPaths}
                   onChange={setSelectedSkillPaths}
                 />
+                {businessRequirementContexts.length > 0 && (
+                  <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
+                    <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                    <select
+                      value={selectedBusinessRequirementId}
+                      onChange={(event) => setSelectedBusinessRequirementId(event.target.value)}
+                      title="将业务需求作为本轮分析上下文"
+                      className="max-w-[260px] rounded-md bg-transparent px-1 py-0.5 text-[12px] outline-none focus:bg-neutral-100 dark:focus:bg-neutral-800"
+                    >
+                      <option value="">业务需求</option>
+                      {businessRequirementContexts.map((item) => (
+                        <option key={item.id} value={item.id}>{item.label}</option>
+                      ))}
+                    </select>
+                  </label>
+                )}
               </div>
               <button
                 onClick={p.running ? p.onStop : submit}

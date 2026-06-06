@@ -323,7 +323,7 @@ export function Sidebar(p: Props) {
               </button>
             </SectionHeader>
             <div className="space-y-0.5">
-              {p.flows.filter((f) => f.kind === "multi").map((f) =>
+              {p.flows.filter((f) => f.kind === "multi" && f.sourceName !== "AnaX v3.0" && f.sourceName !== "AnaX v3.0 Quick").map((f) =>
                 editing?.kind === "flow" && editing.id === f.id ? (
                   <div key={f.id} className="px-2 py-0.5">
                     <input

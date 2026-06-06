@@ -1,0 +1,28 @@
+{
+  "id": "user_churn",
+  "name": "用户流失预测",
+  "description": "基于登录频次、购买记录、最近活跃等行为数据预测流失风险，输出整体风险评级与逐用户流失概率",
+  "tags": ["用户运营", "留存", "会员"],
+  "icon": "Users",
+  "defaultSortAsc": false,
+  "problem": "识别未来 30 天可能流失的用户，定位高风险人群，配合挽回触达策略减少用户流失。",
+  "fields": [
+    { "key": "user_id", "label": "用户ID", "required": true, "description": "用户唯一标识", "type": "string", "example": "U10001" },
+    { "key": "days_since_last_active", "label": "最近活跃天数", "required": true, "description": "距最近一次活跃的天数（越大风险越高）", "type": "number", "example": 45 },
+    { "key": "login_frequency_30d", "label": "近30日登录次数", "required": true, "description": "过去30天登录次数（越少风险越高）", "type": "number", "example": 2 },
+    { "key": "purchase_count_90d", "label": "近90日购买次数", "required": true, "description": "过去90天订单数（越少风险越高）", "type": "number", "example": 0 },
+    { "key": "total_spend_90d", "label": "近90日消费金额", "required": false, "description": "过去90天总消费（元，可选）", "type": "number", "example": 0 },
+    { "key": "is_member", "label": "是否会员", "required": false, "description": "0/1 或 true/false（可选）", "type": "boolean", "example": 1 }
+  ],
+  "output": {
+    "scoreMeaning": "0-1 之间的流失概率，越接近 1 越可能流失",
+    "kpis": ["整体高风险流失率", "预计流失总金额（元）", "主要流失原因归类"],
+    "tiers": [
+      { "label": "极高风险", "color": "red", "range": "> 0.7", "meaning": "极大概率流失，需立刻人工或强利益触达" },
+      { "label": "高风险", "color": "orange", "range": "0.4-0.7", "meaning": "活跃下降明显，需自动挽回策略" },
+      { "label": "中等风险", "color": "amber", "range": "0.1-0.4", "meaning": "正常衰退，建议常规日常促活" },
+      { "label": "安全", "color": "green", "range": "< 0.1", "meaning": "粘性高，无流失倾向" }
+    ]
+  },
+  "promptTemplate": "分析以下 {{rowsCount}} 条用户行为数据，预测用户流失风险。\n\n字段说明：\n- user_id：用户唯一标识\n- days_since_last_active：距最近活跃天数（越大风险越高）\n- login_frequency_30d：近30日登录次数（越少风险越高）\n- purchase_count_90d：近90日购买次数（越少风险越高）\n- total_spend_90d：近90日消费金额（元，可选）\n- is_member：是否会员 0/1（可选）\n\ntier 分级（score = 流失概率 0-1）：\n- critical (red)：score > 0.7，极高流失风险，tierLabel = \"极高风险\"\n- high (orange)：score 0.4 - 0.7，高流失风险，tierLabel = \"高风险\"\n- medium (amber)：score 0.1 - 0.4，中等风险，tierLabel = \"中等风险\"\n- safe (green)：score < 0.1，安全，tierLabel = \"安全\"\n\n数据如下：\n{{rowsJson}}\n\n{{outputSchema}}"
+}

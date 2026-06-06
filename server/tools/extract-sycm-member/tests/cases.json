@@ -1,0 +1,25 @@
+{
+  "cases": [
+    {
+      "id": "sycm-minimal-fields",
+      "name": "Minimal HTML required fields",
+      "inputPath": "tests/fixtures/minimal.html",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["pageTitle", "sourceFile", "coreMetrics", "goodsRanking"]
+      }
+    },
+    {
+      "id": "sycm-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    }
+  ]
+}

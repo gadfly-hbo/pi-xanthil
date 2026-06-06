@@ -1,0 +1,115 @@
+{
+  "fileName": "minimal",
+  "aiContent": "该人群以年轻女性为主，关注母婴、旅游和美妆内容。",
+  "labels": {
+    "gender": [
+      {
+        "label": "女性",
+        "ratio": 61.5,
+        "tgi": null
+      },
+      {
+        "label": "男性",
+        "ratio": 38.5,
+        "tgi": null
+      }
+    ],
+    "age": [
+      {
+        "label": "26-30岁",
+        "ratio": 32,
+        "tgi": null
+      },
+      {
+        "label": "31-35岁",
+        "ratio": 24,
+        "tgi": null
+      }
+    ],
+    "marry": [
+      {
+        "label": "未婚",
+        "ratio": 45,
+        "tgi": null
+      },
+      {
+        "label": "已婚",
+        "ratio": 55,
+        "tgi": null
+      }
+    ],
+    "region": [
+      {
+        "label": "广东",
+        "ratio": 20,
+        "tgi": null
+      },
+      {
+        "label": "浙江",
+        "ratio": 12,
+        "tgi": null
+      },
+      {
+        "label": "江苏",
+        "ratio": 10,
+        "tgi": null
+      }
+    ],
+    "cityLevel": [
+      {
+        "label": "一线城市",
+        "ratio": 18,
+        "tgi": null
+      },
+      {
+        "label": "新一线城市",
+        "ratio": 26,
+        "tgi": null
+      }
+    ],
+    "consumption": [],
+    "interests": [
+      {
+        "label": "母婴",
+        "tgi": 150,
+        "ratio": 12
+      },
+      {
+        "label": "旅游",
+        "tgi": 150,
+        "ratio": null
+      },
+      {
+        "label": "美妆",
+        "tgi": 150,
+        "ratio": null
+      }
+    ],
+    "keywords": [
+      {
+        "label": "孕妈",
+        "tgi": 188,
+        "ratio": null
+      },
+      {
+        "label": "美甲",
+        "tgi": 130,
+        "ratio": null
+      }
+    ],
+    "searchTerms": [],
+    "bloggers": [],
+    "lifestyle": [
+      {
+        "label": "好孕预备役",
+        "tgi": 166,
+        "ratio": null
+      },
+      {
+        "label": "浪漫喜事",
+        "tgi": 8,
+        "ratio": 144
+      }
+    ]
+  }
+}
