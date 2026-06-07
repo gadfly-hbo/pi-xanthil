@@ -398,7 +398,7 @@ export function ModelLabPane({ model, mode = "prediction", restoreRunId, onResto
                 <div className="mb-3 flex items-center justify-between gap-3">
                   <div className="flex items-center gap-2 text-[13px] font-semibold text-neutral-800 dark:text-neutral-200">
                     <History className="h-4 w-4 text-neutral-400" strokeWidth={1.75} />
-                    运行历史
+                    模型历史
                   </div>
                   <button onClick={() => void refreshHistory()} className="text-[12px] text-neutral-500 hover:text-neutral-900 dark:text-neutral-400 dark:hover:text-neutral-100">
                     {historyLoading ? "刷新中" : "刷新"}

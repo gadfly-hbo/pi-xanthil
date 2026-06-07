@@ -1,11 +1,15 @@
 // LLM_FORBIDDEN: this module must never call any LLM API.
 // Pure-frontend column profiling report.
 
-import type { ColumnProfile } from "@/lib/profiling";
+import type { ColumnProfile, FieldKind } from "@/lib/profiling";
+
+const KIND_OPTIONS: FieldKind[] = ["number", "datetime", "boolean", "category", "text", "id"];
 
 interface Props {
   rowCount: number;
   columns: ColumnProfile[];
+  // #6: manual column-type override (re-profiles the table). Omit to disable.
+  onChangeKind?: (column: string, kind: FieldKind) => void;
 }
 
 function fmtNum(n: number | null | undefined, digits = 2): string {
@@ -19,7 +23,7 @@ function fmtRatio(r: number): string {
   return `${(r * 100).toFixed(1)}%`;
 }
 
-export function ProfileReport({ rowCount, columns }: Props) {
+export function ProfileReport({ rowCount, columns, onChangeKind }: Props) {
   return (
     <div className="flex h-full flex-col overflow-y-auto p-4">
       <div className="mb-4 flex items-baseline gap-4 text-[12px] text-neutral-600 dark:text-neutral-400">
@@ -32,9 +36,22 @@ export function ProfileReport({ rowCount, columns }: Props) {
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <span className="text-[13px] font-medium text-neutral-900 dark:text-neutral-100">{col.name}</span>
-                <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] uppercase text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
-                  {col.kind}
-                </span>
+                {onChangeKind ? (
+                  <select
+                    value={col.kind}
+                    onChange={(e) => onChangeKind(col.name, e.target.value as FieldKind)}
+                    className="rounded border border-neutral-300 bg-white px-1 py-0.5 text-[10px] uppercase text-neutral-600 outline-none focus:border-blue-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
+                    title="手动修正列类型（将重新剖析该表）"
+                  >
+                    {KIND_OPTIONS.map((k) => (
+                      <option key={k} value={k}>{k}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] uppercase text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400">
+                    {col.kind}
+                  </span>
+                )}
                 <span className="text-[10px] text-neutral-400">{col.sqlType}</span>
               </div>
               <div className="text-[11px] text-neutral-500">

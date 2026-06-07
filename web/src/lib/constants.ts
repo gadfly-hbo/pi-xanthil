@@ -1,6 +1,6 @@
 import type { Tab } from '@/components/MainHeader';
 
-export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'readme' | 'hypothesis' | 'extraction' | 'draw_data' | 'clean_data' | 'data_exploration' | 'report' | 'presentation_version' | 'golden_strategy' | 'decision_tree' | 'toc' | 'skill' | 'tool' | 'model' | 'rules' | 'indicators' | 'cases' | 'trace' | 'token_stats' | 'the-crowd' | 'digital_life' | 'sql_connect' | 'operational_model' | 'change_mgmt' | 'knowledge_graph' | 'run_history';
+export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'readme' | 'hypothesis' | 'extraction' | 'draw_data' | 'clean_data' | 'data_exploration' | 'report' | 'presentation_version' | 'golden_strategy' | 'decision_tree' | 'toc' | 'skill' | 'tool' | 'model' | 'rules' | 'indicators' | 'cases' | 'trace' | 'token_stats' | 'the-crowd' | 'digital_life' | 'weather' | 'business_district' | 'sql_connect' | 'operational_model' | 'change_mgmt' | 'knowledge_graph' | 'model_history' | 'report_history';
 
 export const SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'golden_strategy', label: '黄金策' }];
 
@@ -12,11 +12,11 @@ export const LAB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', labe
 
 export const RULE_MEMORY_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'rules', label: 'rules' }, { id: 'business_context', label: '业务环境' }, { id: 'indicators', label: '指标体系' }, { id: 'cases', label: '分析案例库' }, { id: 'trace', label: 'trace' }, { id: 'knowledge_graph', label: '知识图谱' }];
 
-export const XAN_DB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'the-crowd', label: 'the-crowd' }, { id: 'digital_life', label: '数字生命体' }];
+export const XAN_DB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'the-crowd', label: 'the-crowd' }, { id: 'digital_life', label: '数字生命体' }, { id: 'weather', label: '天气' }, { id: 'business_district', label: '商圈' }];
 
 export const ANAX_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
 
-export const DASHBOARD_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: 'BI' }, { id: 'run_history', label: '运行历史' }];
+export const DASHBOARD_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: 'BI' }, { id: 'report_history', label: '报告历史' }, { id: 'model_history', label: '模型历史' }];
 
 export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'aggregate') return AGGREGATE_SUB_TABS;

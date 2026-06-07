@@ -27,12 +27,12 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     }).then(json<{ path: string; content: string; storylinePath: string; storylineHtml: string; model: string }>),
-  generateHighQualityHtmlReport: (payload: { pathId: number; relPath?: string; model?: string }) =>
+  generateHighQualityHtmlReport: (payload: { pathId: number; relPath?: string }) =>
     fetch("/api/html-reports/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
-    }).then(json<{ path: string; content: string; model: string }>),
+    }).then(json<{ path: string; absPath: string; content: string }>),
 
   generateBusinessRequirement: (payload: {
     pathId: number;
@@ -431,8 +431,16 @@ export const api = {
     fetch(`/api/sql-connections/${id}/schema`).then(json<{ tables: SchemaTable[] }>),
   querySql: (id: string, sql: string, params?: Record<string, unknown>) =>
     fetch(`/api/sql-connections/${id}/query`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql, params }) }).then(json<SqlQueryResult>),
-  exportSql: (id: string, sql: string, outputPath: string, params?: Record<string, unknown>, watermark?: { column: string }) =>
+  exportSql: (id: string, sql: string, outputPath: string, params?: Record<string, unknown>, watermark?: { column: string; initialValue?: unknown }) =>
     fetch(`/api/sql-connections/${id}/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql, outputPath, params, watermark }) }).then(json<{ path: string; rowCount: number; appended: boolean }>),
+  getExportState: (path: string) =>
+    fetch(`/api/sql-connections/export-state?path=${encodeURIComponent(path)}`).then(json<{ exists: boolean; lastWatermark?: unknown }>),
+  updateExportState: (path: string, lastWatermark?: unknown) =>
+    fetch(`/api/sql-connections/export-state`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path, lastWatermark }),
+    }).then(json<{ exists: boolean; lastWatermark?: unknown }>),
 
   // ---- direct LLM prompt (tool-free channel) ----
   directLlmPrompt: (payload: { text: string; model?: string; systemPrompt?: string }) =>
@@ -764,4 +772,52 @@ export const api = {
     fetch(`/api/kg/edges/${edgeId}`, { method: "DELETE" }).then(json<{ ok: true }>),
   getKgPrompt: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/kg-prompt`).then(json<{ prompt: string; count: number; reportCount: number; edgeCount: number; updatedAt: number | null }>),
+
+  // ---- Report History ----
+  scanReports: () =>
+    fetch(`/api/reports/scan`).then(json<{ entries: import("@/types").ReportEntry[]; scannedAt: number }>),
+  addReportFavorite: async (id: string) => {
+    const res = await fetch(`/api/reports/favorite`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ id }),
+    });
+    if (!res.ok) throw new Error(`POST favorite ${res.status}`);
+    return res.json() as Promise<{ success: boolean }>;
+  },
+  removeReportFavorite: async (id: string) => {
+    const res = await fetch(`/api/reports/favorite/${encodeURIComponent(id)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`DELETE favorite ${res.status}`);
+    return res.json() as Promise<{ success: boolean }>;
+  },
+  getReportFileContent: async (path: string) => {
+    const res = await fetch(`/api/reports/file?path=${encodeURIComponent(path)}`);
+    if (!res.ok) throw new Error(`GET file ${res.status}: ${await res.text()}`);
+    return res.text();
+  },
+  openReportInFinder: async (path: string) => {
+    const res = await fetch(`/api/reports/open`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ path }),
+    });
+    if (!res.ok) throw new Error(`POST open ${res.status}`);
+    return res.json() as Promise<{ success: boolean }>;
+  },
+  listReportTags: () =>
+    fetch(`/api/reports/tags`).then(json<Array<{ tag: string; count: number }>>),
+  addReportTag: async (reportId: string, tag: string) => {
+    const res = await fetch(`/api/reports/${encodeURIComponent(reportId)}/tags`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tag }),
+    });
+    if (!res.ok) throw new Error(`POST tag ${res.status}: ${await res.text()}`);
+    return res.json() as Promise<{ success: boolean }>;
+  },
+  removeReportTag: async (reportId: string, tag: string) => {
+    const res = await fetch(`/api/reports/${encodeURIComponent(reportId)}/tags/${encodeURIComponent(tag)}`, { method: "DELETE" });
+    if (!res.ok) throw new Error(`DELETE tag ${res.status}`);
+    return res.json() as Promise<{ success: boolean }>;
+  },
 };

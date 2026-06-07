@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelRightOpen, CircleAlert, Database, TriangleAlert } from "lucide-react";
+import { PanelRightOpen, CircleAlert, Database, TriangleAlert, CloudSun, Store } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/Sidebar";
 import { ChatPane } from "@/components/ChatPane";
@@ -11,7 +11,6 @@ import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useTabVisibility } from "@/lib/useTabVisibility";
 import { getSubTabsForTab, type SubTab } from "@/lib/constants";
-import { WorkflowPickerPane, type WorkflowTemplate } from "@/components/WorkflowPickerPane";
 import { Placeholder } from "@/components/Placeholder";
 import { ResearchLabPane } from "@/components/ResearchLabPane";
 import { SkillLabPane } from "@/components/SkillLabPane";
@@ -30,6 +29,7 @@ import { AnaXPane } from "@/components/AnaXPane";
 import { ModelLabPane } from "@/components/ModelLabPane";
 import { BiDashboardPane } from "@/components/BiDashboardPane";
 import { ModelRunHistoryDashboard } from "@/components/ModelRunHistoryDashboard";
+import { ReportHistoryPane } from "@/components/ReportHistoryPane";
 import { KnowledgeGraphPane } from "@/components/KnowledgeGraphPane";
 import { AnaXReadmePane } from "@/components/AnaXReadmePane";
 import { HypothesisPane } from "@/components/HypothesisPane";
@@ -40,7 +40,7 @@ import { PresentationVersionPane } from "@/components/PresentationVersionPane";
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
-import { asBlocks, textOf, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type WorkflowFavorite, type Workspace, type WorkspacePath } from "@/types";
+import { asBlocks, textOf, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type WorkflowFavorite, type Workspace, type WorkspacePath } from "@/types";
 
 let uid = 0;
 const nextId = () => `m${++uid}`;
@@ -81,8 +81,9 @@ export default function App() {
   const [previewOpen, setPreviewOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("explore");
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("view");
+  // One-way seed: 业务需求 → 数据探索 (field-name hints only, never data).
+  const [exploreSeed, setExploreSeed] = useState<ExploreSeed | null>(null);
   const [pendingRestoreRunId, setPendingRestoreRunId] = useState<string | null>(null);
-  const [showWorkflowPicker, setShowWorkflowPicker] = useState(true);
   const [hasReportPath, setHasReportPath] = useState(false);
   const [promoteOpen, setPromoteOpen] = useState(false);
   const [promoteName, setPromoteName] = useState("");
@@ -175,13 +176,7 @@ export default function App() {
     if (!activeWorkspaceId) return;
     api.listSessions(activeWorkspaceId).then((s) => {
       setSessions(s);
-      if (s[0]) {
-        setActiveSessionId(s[0].id);
-        setShowWorkflowPicker(false);
-      } else {
-        setActiveSessionId(null);
-        setShowWorkflowPicker(true);
-      }
+      setActiveSessionId(s[0]?.id ?? null);
     });
     api.listFlows(activeWorkspaceId).then((f) => {
       setFlows(f);
@@ -296,28 +291,20 @@ export default function App() {
     setActiveWorkspaceId(ws.id);
   }, []);
 
-  const newSession = useCallback(() => {
-    setShowWorkflowPicker(true);
-    setActiveTab("explore");
-    setActiveSubTab("view");
-  }, []);
-
-  const handleSelectSession = useCallback((id: string) => {
-    setActiveSessionId(id);
-    setShowWorkflowPicker(false);
-    setActiveTab("explore");
-    setActiveSubTab("view");
-  }, []);
-
-  const onSelectWorkflow = useCallback(async (template: WorkflowTemplate) => {
+  const newSession = useCallback(async () => {
     if (!activeWorkspaceId) return;
-    const s = await api.createSession(activeWorkspaceId, template.name, template.id);
+    const s = await api.createSession(activeWorkspaceId, "新会话");
     setSessions((cur) => [s, ...cur]);
     setActiveSessionId(s.id);
-    setShowWorkflowPicker(false);
     setActiveTab("explore");
     setActiveSubTab("view");
   }, [activeWorkspaceId]);
+
+  const handleSelectSession = useCallback((id: string) => {
+    setActiveSessionId(id);
+    setActiveTab("explore");
+    setActiveSubTab("view");
+  }, []);
 
   const renameWorkspace = useCallback(async (id: string, name: string) => {
     await api.renameWorkspace(id, name);
@@ -405,12 +392,9 @@ export default function App() {
   }, []);
 
   const handleTabChange = useCallback((tab: Tab) => {
-    if (tab === "explore" && activeTab === "explore") {
-      setShowWorkflowPicker(true);
-    }
     setActiveTab(tab);
     setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : "view");
-  }, [activeTab]);
+  }, []);
 
   const handleRequestRestoreRun = useCallback((runId: string) => {
     setPendingRestoreRunId(runId);
@@ -675,10 +659,7 @@ export default function App() {
         <div className="flex min-h-0 flex-1">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             {/* Explore tab */}
-            {activeTab === "explore" && activeSubTab === "view" && showWorkflowPicker && (
-              <WorkflowPickerPane onSelectWorkflow={onSelectWorkflow} />
-            )}
-            {activeTab === "explore" && activeSubTab === "view" && !showWorkflowPicker && (
+            {activeTab === "explore" && activeSubTab === "view" && (
               <ChatPane
                 messages={messages}
                 running={running}
@@ -700,7 +681,7 @@ export default function App() {
               />
             )}
             {activeTab === "explore" && activeSubTab === "business_requirement" && (
-              <BusinessRequirementPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} onBusinessContextChanged={() => void refreshRulesPromptInfo()} />
+              <BusinessRequirementPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} onBusinessContextChanged={() => void refreshRulesPromptInfo()} onExploreFields={(fieldHints, source) => { setExploreSeed({ fieldHints, source }); setActiveSubTab("data_exploration"); }} />
             )}
             {activeTab === "explore" && activeSubTab === "draw_data" && (
               <FolderPathsPane scope={folderScope} folder="draw_data" />
@@ -709,7 +690,7 @@ export default function App() {
               <FolderPathsPane scope={folderScope} folder="clean_data" />
             )}
             {activeTab === "explore" && activeSubTab === "data_exploration" && (
-              <DataExplorationPane scope={folderScope} />
+              <DataExplorationPane scope={folderScope} seed={exploreSeed} onSeedDismiss={() => setExploreSeed(null)} />
             )}
             {activeTab === "explore" && activeSubTab === "report" && (
               <FolderPathsPane scope={folderScope} folder="report" onPathsChange={handleReportPathsChange} />
@@ -733,7 +714,7 @@ export default function App() {
               />
             )}
             {activeTab === "multi" && activeSubTab === "business_requirement" && (
-              <BusinessRequirementPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} onBusinessContextChanged={() => void refreshRulesPromptInfo()} />
+              <BusinessRequirementPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} onBusinessContextChanged={() => void refreshRulesPromptInfo()} onExploreFields={(fieldHints, source) => { setExploreSeed({ fieldHints, source }); setActiveSubTab("data_exploration"); }} />
             )}
             {activeTab === "multi" && activeSubTab === "draw_data" && (
               <FolderPathsPane scope={folderScope} folder="draw_data" />
@@ -742,7 +723,7 @@ export default function App() {
               <FolderPathsPane scope={folderScope} folder="clean_data" />
             )}
             {activeTab === "multi" && activeSubTab === "data_exploration" && (
-              <DataExplorationPane scope={folderScope} />
+              <DataExplorationPane scope={folderScope} seed={exploreSeed} onSeedDismiss={() => setExploreSeed(null)} />
             )}
             {activeTab === "multi" && activeSubTab === "report" && (
               <FolderPathsPane scope={folderScope} folder="report" onPathsChange={handleReportPathsChange} />
@@ -802,6 +783,20 @@ export default function App() {
                 hint="数字生命体数据库管理，即将推出"
               />
             )}
+            {activeTab === "xan_db" && activeSubTab === "weather" && (
+              <Placeholder
+                icon={CloudSun}
+                title="天气"
+                hint="天气数据管理，即将推出"
+              />
+            )}
+            {activeTab === "xan_db" && activeSubTab === "business_district" && (
+              <Placeholder
+                icon={Store}
+                title="商圈"
+                hint="商圈数据管理，即将推出"
+              />
+            )}
             {/* Research Lab tab */}
             {activeTab === "research_lab" && activeSubTab === "view" && (
               <ResearchLabPane
@@ -852,13 +847,15 @@ export default function App() {
             )}
             {/* Dashboard tab -> BI 看板 */}
             {activeTab === "dashboard" && activeSubTab === "view" && <BiDashboardPane />}
-            {/* Dashboard tab -> 运行历史（模型工坊调用统计） */}
-            {activeTab === "dashboard" && activeSubTab === "run_history" && (
+            {/* Dashboard tab -> 报告历史 */}
+            {activeTab === "dashboard" && activeSubTab === "report_history" && <ReportHistoryPane />}
+            {/* Dashboard tab -> 模型历史（模型工坊调用统计） */}
+            {activeTab === "dashboard" && activeSubTab === "model_history" && (
               <ModelRunHistoryDashboard onRequestRestore={handleRequestRestoreRun} />
             )}
           </div>
 
-          {activeTab === "explore" && !showWorkflowPicker && activeSubTab === "view" &&
+          {activeTab === "explore" && activeSessionId && activeSubTab === "view" &&
             (previewOpen ? (
               <PreviewPane sessionId={activeSessionId!} report={report} running={running} refreshKey={artifactRefreshKey} onCollapse={() => setPreviewOpen(false)} />
             ) : (

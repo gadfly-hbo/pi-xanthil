@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, DatabaseZap, FolderOpen, Loader2, Play, Plus, ShieldCheck, Trash2, Wifi, WifiOff } from "lucide-react";
+import { ChevronDown, ChevronRight, DatabaseZap, FolderOpen, Loader2, Play, Plus, RefreshCw, Save, ShieldCheck, Trash2, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
-import type { DbType, SchemaTable, SqlConnection, SqlQueryResult } from "@/types";
+import type { DbType, SavedQuery, SchemaTable, SqlConnection, SqlQueryResult, ToolParameter } from "@/types";
 
 // ---- Connection Form ----
 
@@ -198,6 +198,35 @@ function ExportPanel({ connId, sql, params, workspaceId }: ExportPanelProps) {
   const [registering, setRegistering] = useState(false);
   const [registered, setRegistered] = useState(false);
 
+  const [watermarkState, setWatermarkState] = useState<{ exists: boolean; lastWatermark?: unknown } | null>(null);
+  const [initialWatermark, setInitialWatermark] = useState("");
+
+  const refreshWatermarkState = useCallback((path: string) => {
+    api.getExportState(path)
+      .then(setWatermarkState)
+      .catch(() => setWatermarkState(null));
+  }, []);
+
+  useEffect(() => {
+    if (!outputDir || !filename.trim()) {
+      setWatermarkState(null);
+      return;
+    }
+    const path = outputDir.replace(/\/$/, "") + "/" + filename.trim();
+    refreshWatermarkState(path);
+  }, [outputDir, filename, refreshWatermarkState]);
+
+  const resetWatermark = async () => {
+    if (!outputDir || !filename.trim()) return;
+    const path = outputDir.replace(/\/$/, "") + "/" + filename.trim();
+    try {
+      await api.updateExportState(path, null);
+      refreshWatermarkState(path);
+    } catch (err) {
+      setError(String(err));
+    }
+  };
+
   const pickDir = async () => {
     const { path } = await api.pickLocalPath("dir");
     setOutputDir(path);
@@ -208,8 +237,20 @@ function ExportPanel({ connId, sql, params, workspaceId }: ExportPanelProps) {
     setExporting(true); setError(""); setResult(null); setRegistered(false);
     try {
       const outputPath = outputDir.replace(/\/$/, "") + "/" + filename.trim();
-      const res = await api.exportSql(connId, sql, outputPath, params, useWatermark && watermarkColumn.trim() ? { column: watermarkColumn.trim() } : undefined);
+      const res = await api.exportSql(
+        connId,
+        sql,
+        outputPath,
+        params,
+        useWatermark && watermarkColumn.trim()
+          ? {
+              column: watermarkColumn.trim(),
+              initialValue: (!watermarkState || !watermarkState.exists) ? initialWatermark.trim() || undefined : undefined
+            }
+          : undefined
+      );
       setResult(res);
+      refreshWatermarkState(outputPath);
     } catch (err) { setError(String(err)); } finally { setExporting(false); }
   };
 
@@ -251,13 +292,30 @@ function ExportPanel({ connId, sql, params, workspaceId }: ExportPanelProps) {
         <input value={filename} onChange={(e) => setFilename(e.target.value)} className="mt-1 h-8 w-full rounded border border-neutral-200 bg-transparent px-2 font-mono text-[11px] outline-none focus:border-neutral-400 dark:border-neutral-700" />
       </label>
 
-      <div className="flex items-center gap-4 py-1">
+      <div className="flex flex-col gap-2 py-1">
         <label className="flex cursor-pointer items-center gap-1.5">
           <input type="checkbox" checked={useWatermark} onChange={(e) => setUseWatermark(e.target.checked)} />
           <span className="font-medium text-neutral-700 dark:text-neutral-300">增量导出 (Watermark)</span>
         </label>
         {useWatermark && (
-          <input value={watermarkColumn} onChange={(e) => setWatermarkColumn(e.target.value)} placeholder="水印字段 (如 id或updated_at)" className="h-8 w-40 rounded border border-neutral-200 bg-transparent px-2 font-mono text-[11px] outline-none focus:border-neutral-400 dark:border-neutral-700" />
+          <div className="ml-5 flex flex-wrap items-center gap-2">
+            <input value={watermarkColumn} onChange={(e) => setWatermarkColumn(e.target.value)} placeholder="水印字段 (如 id或updated_at)" className="h-8 w-40 rounded border border-neutral-200 bg-transparent px-2 font-mono text-[11px] outline-none focus:border-neutral-400 dark:border-neutral-700" />
+            {watermarkState?.exists ? (
+              <div className="flex items-center gap-2 text-[11px] text-neutral-500 bg-neutral-100 px-2 py-1 rounded dark:bg-neutral-800">
+                <span>当前水位线: <strong className="font-mono text-neutral-800 dark:text-neutral-200">{String(watermarkState.lastWatermark)}</strong></span>
+                <button onClick={() => void resetWatermark()} className="text-red-500 hover:text-red-700 flex items-center gap-0.5">
+                  <RefreshCw className="h-3 w-3" /> 重置
+                </button>
+              </div>
+            ) : (
+              <input
+                value={initialWatermark}
+                onChange={(e) => setInitialWatermark(e.target.value)}
+                placeholder="初始水位线 (可选)"
+                className="h-8 w-40 rounded border border-neutral-200 bg-transparent px-2 font-mono text-[11px] outline-none focus:border-neutral-400 dark:border-neutral-700"
+              />
+            )}
+          </div>
         )}
       </div>
 
@@ -308,6 +366,11 @@ export function SqlConnectPane({ workspaceId }: Props) {
   const [queryError, setQueryError] = useState("");
   const [showExport, setShowExport] = useState(false);
 
+  const [queriesOpen, setQueriesOpen] = useState(false);
+  const [activeQuery, setActiveQuery] = useState<SavedQuery | null>(null);
+  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [saveModalData, setSaveModalData] = useState<{ id?: string; name: string; description: string; parameters: ToolParameter[] }>({ name: "", description: "", parameters: [] });
+
   const extractedParams = Array.from(new Set(Array.from(sql.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g)).map(m => m[1] as string)));
 
   const selected = connections.find((c) => c.id === selectedId) ?? null;
@@ -323,11 +386,98 @@ export function SqlConnectPane({ workspaceId }: Props) {
     setShowForm(null);
     setSchema(null);
     setSchemaOpen(false);
+    setQueriesOpen(false);
+    setActiveQuery(null);
     setQueryResult(null);
     setQueryError("");
     setShowExport(false);
     setTestResult(null);
     setSql("");
+    setSqlParams({});
+  };
+
+  const loadSavedQuery = (q: SavedQuery) => {
+    setSql(q.sql);
+    setActiveQuery(q);
+    const initialParams: Record<string, string> = {};
+    if (q.parameters) {
+      for (const p of q.parameters) {
+        initialParams[p.name] = String(p.default ?? "");
+      }
+    }
+    setSqlParams(initialParams);
+  };
+
+  const openSaveQueryModal = (q?: SavedQuery) => {
+    const extracted = Array.from(new Set(Array.from(sql.matchAll(/\{\{([a-zA-Z0-9_]+)\}\}/g)).map(m => m[1] as string)));
+    if (q) {
+      const existingParams = q.parameters || [];
+      const mergedParams = extracted.map(name => {
+        const found = existingParams.find(p => p.name === name);
+        return found ? { ...found } : { name, label: name, type: "string" as const, default: "" };
+      });
+      setSaveModalData({
+        id: q.id,
+        name: q.name,
+        description: q.description || "",
+        parameters: mergedParams
+      });
+    } else {
+      const mergedParams = extracted.map(name => ({
+        name, label: name, type: "string" as const, default: ""
+      }));
+      setSaveModalData({
+        name: "",
+        description: "",
+        parameters: mergedParams
+      });
+    }
+    setShowSaveModal(true);
+  };
+
+  const handleSaveQuery = async () => {
+    if (!selected) return;
+    if (!saveModalData.name.trim()) return;
+
+    const queries = selected.queries ? [...selected.queries] : [];
+    const queryData: SavedQuery = {
+      id: saveModalData.id || Math.random().toString(36).slice(2, 9),
+      name: saveModalData.name.trim(),
+      sql: sql,
+      description: saveModalData.description.trim() || undefined,
+      parameters: saveModalData.parameters.length > 0 ? saveModalData.parameters : undefined
+    };
+
+    if (saveModalData.id) {
+      const idx = queries.findIndex(q => q.id === saveModalData.id);
+      if (idx !== -1) queries[idx] = queryData;
+    } else {
+      queries.push(queryData);
+    }
+
+    try {
+      const updated = await api.updateSqlConnection(selected.id, { queries });
+      setConnections(prev => prev.map(c => c.id === selected.id ? updated : c));
+      setActiveQuery(queryData);
+      setShowSaveModal(false);
+    } catch (err) {
+      alert("保存失败：" + String(err));
+    }
+  };
+
+  const deleteSavedQuery = async (queryId: string) => {
+    if (!selected || !selected.queries) return;
+    if (!confirm("确定删除该保存的查询吗？")) return;
+    const queries = selected.queries.filter(q => q.id !== queryId);
+    try {
+      const updated = await api.updateSqlConnection(selected.id, { queries });
+      setConnections(prev => prev.map(c => c.id === selected.id ? updated : c));
+      if (activeQuery?.id === queryId) {
+        setActiveQuery(null);
+      }
+    } catch (err) {
+      alert("删除失败：" + String(err));
+    }
   };
 
   const doTest = async () => {
@@ -490,6 +640,37 @@ export function SqlConnectPane({ workspaceId }: Props) {
               )}
             </div>
 
+            {/* Saved queries panel */}
+            <div className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+              <button onClick={() => setQueriesOpen(!queriesOpen)} className="flex w-full items-center gap-2 px-4 py-3 text-[12px] font-semibold hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
+                {queriesOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                已保存查询
+                {selected.queries && <span className="ml-1 text-[11px] font-normal text-neutral-400">{selected.queries.length} 个</span>}
+              </button>
+              {queriesOpen && (
+                <div className="border-t border-neutral-100 px-4 py-3 dark:border-neutral-800">
+                  {!selected.queries || selected.queries.length === 0 ? (
+                    <p className="text-[12px] text-neutral-400 text-center py-2">暂无已保存的查询</p>
+                  ) : (
+                    <div className="space-y-2">
+                      {selected.queries.map((q) => (
+                        <div key={q.id} className="flex items-center justify-between rounded border border-neutral-100 p-2 dark:border-neutral-800">
+                          <button onClick={() => loadSavedQuery(q)} className="flex-1 text-left">
+                            <div className="font-semibold text-[12px] text-neutral-800 dark:text-neutral-200">{q.name}</div>
+                            {q.description && <div className="text-[11px] text-neutral-400">{q.description}</div>}
+                          </button>
+                          <div className="flex items-center gap-2 shrink-0">
+                            <button onClick={() => openSaveQueryModal(q)} className="text-[11px] text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">编辑</button>
+                            <button onClick={() => void deleteSavedQuery(q.id)} className="text-[11px] text-red-500 hover:text-red-700">删除</button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+                </div>
+              )}
+            </div>
+
             {/* SQL editor */}
             <div className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
               <div className="flex items-center justify-between">
@@ -498,14 +679,64 @@ export function SqlConnectPane({ workspaceId }: Props) {
               </div>
               <textarea
                 value={sql}
-                onChange={(e) => setSql(e.target.value)}
+                onChange={(e) => {
+                  setSql(e.target.value);
+                  if (activeQuery && e.target.value !== activeQuery.sql) {
+                    setActiveQuery(null);
+                  }
+                }}
                 onKeyDown={(e) => { if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); void runQuery(); } }}
                 placeholder={`SELECT * FROM your_table LIMIT 100`}
                 className="mt-3 h-32 w-full resize-y rounded border border-neutral-200 bg-neutral-50 p-3 font-mono text-[12px] leading-5 outline-none focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-950"
                 spellCheck={false}
               />
               
-              {extractedParams.length > 0 && (
+              {activeQuery && activeQuery.parameters && activeQuery.parameters.length > 0 ? (
+                <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30 text-[12px]">
+                  <h4 className="mb-2 text-[11px] font-semibold text-amber-700 dark:text-amber-500">
+                    {activeQuery.name} — 查询变量配置
+                  </h4>
+                  <div className="grid grid-cols-2 gap-3">
+                    {activeQuery.parameters.map((p) => (
+                      <label key={p.name} className="flex items-center gap-2">
+                        <span className="font-mono text-[11px] text-amber-700 dark:text-amber-500 w-24 text-right truncate" title={p.label || p.name}>
+                          {p.label || p.name}
+                        </span>
+                        {p.type === "boolean" ? (
+                          <input
+                            type="checkbox"
+                            checked={sqlParams[p.name] === "true"}
+                            onChange={(e) => setSqlParams((prev) => ({ ...prev, [p.name]: e.target.checked ? "true" : "false" }))}
+                            className="h-4 w-4 rounded border-amber-200 dark:border-amber-800"
+                          />
+                        ) : p.type === "date" ? (
+                          <input
+                            type="date"
+                            value={sqlParams[p.name] || ""}
+                            onChange={(e) => setSqlParams((prev) => ({ ...prev, [p.name]: e.target.value }))}
+                            className="flex-1 rounded border border-amber-200 bg-white/50 px-2 py-1 font-mono text-[11px] outline-none focus:border-amber-400 dark:border-amber-800 dark:bg-black/20"
+                          />
+                        ) : p.type === "number" ? (
+                          <input
+                            type="number"
+                            value={sqlParams[p.name] || ""}
+                            onChange={(e) => setSqlParams((prev) => ({ ...prev, [p.name]: e.target.value }))}
+                            className="flex-1 rounded border border-amber-200 bg-white/50 px-2 py-1 font-mono text-[11px] outline-none focus:border-amber-400 dark:border-amber-800 dark:bg-black/20"
+                          />
+                        ) : (
+                          <input
+                            type="text"
+                            value={sqlParams[p.name] || ""}
+                            onChange={(e) => setSqlParams((prev) => ({ ...prev, [p.name]: e.target.value }))}
+                            placeholder={String(p.default ?? "")}
+                            className="flex-1 rounded border border-amber-200 bg-white/50 px-2 py-1 font-mono text-[11px] outline-none focus:border-amber-400 dark:border-amber-800 dark:bg-black/20"
+                          />
+                        )}
+                      </label>
+                    ))}
+                  </div>
+                </div>
+              ) : extractedParams.length > 0 ? (
                 <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30">
                   <h4 className="mb-2 text-[11px] font-semibold text-amber-700 dark:text-amber-500">检测到 SQL 变量</h4>
                   <div className="grid grid-cols-2 gap-3">
@@ -522,16 +753,26 @@ export function SqlConnectPane({ workspaceId }: Props) {
                     ))}
                   </div>
                 </div>
-              )}
+              ) : null}
 
-              <button
-                onClick={() => void runQuery()}
-                disabled={querying || !sql.trim()}
-                className="mt-3 inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-[12px] font-medium text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
-              >
-                {querying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
-                {querying ? "执行中…" : "执行（⌘ Enter）"}
-              </button>
+              <div className="mt-3 flex items-center gap-2">
+                <button
+                  onClick={() => void runQuery()}
+                  disabled={querying || !sql.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-[12px] font-medium text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"
+                >
+                  {querying ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Play className="h-3.5 w-3.5" />}
+                  {querying ? "执行中…" : "执行（⌘ Enter）"}
+                </button>
+                <button
+                  onClick={() => openSaveQueryModal(activeQuery || undefined)}
+                  disabled={!sql.trim()}
+                  className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-2 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
+                >
+                  <Save className="h-3.5 w-3.5" />
+                  {activeQuery ? "保存修改" : "保存查询"}
+                </button>
+              </div>
             </div>
 
             {/* Results */}
@@ -559,6 +800,91 @@ export function SqlConnectPane({ workspaceId }: Props) {
           </div>
         )}
       </div>
+
+      {/* Save query modal */}
+      {showSaveModal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4">
+          <div className="w-full max-w-md rounded-lg border border-neutral-200 bg-white p-5 text-[12px] shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
+            <h3 className="mb-3 text-[13px] font-semibold">{saveModalData.id ? "编辑已保存的查询" : "保存当前查询"}</h3>
+            <div className="space-y-3">
+              <label className="block">
+                <span className="font-medium">查询名称</span>
+                <input
+                  value={saveModalData.name}
+                  onChange={(e) => setSaveModalData(prev => ({ ...prev, name: e.target.value }))}
+                  className="mt-1 h-8 w-full rounded border border-neutral-200 bg-transparent px-2 outline-none focus:border-neutral-400 dark:border-neutral-700"
+                  placeholder="例如：每周销售额统计"
+                />
+              </label>
+              <label className="block">
+                <span className="font-medium">描述</span>
+                <textarea
+                  value={saveModalData.description}
+                  onChange={(e) => setSaveModalData(prev => ({ ...prev, description: e.target.value }))}
+                  className="mt-1 h-14 w-full rounded border border-neutral-200 bg-transparent p-2 outline-none focus:border-neutral-400 dark:border-neutral-700"
+                  placeholder="输入对此查询的描述..."
+                />
+              </label>
+
+              {saveModalData.parameters.length > 0 && (
+                <div className="space-y-2.5">
+                  <span className="font-medium text-neutral-700 dark:text-neutral-300">配置参数</span>
+                  <div className="max-h-40 overflow-y-auto space-y-2 pr-1">
+                    {saveModalData.parameters.map((param, index) => (
+                      <div key={param.name} className="rounded border border-neutral-100 p-2 space-y-1.5 dark:border-neutral-800">
+                        <div className="flex items-center justify-between">
+                          <span className="font-mono text-[11px] font-semibold text-neutral-500">{"{{"}{param.name}{"}}"}</span>
+                          <select
+                            value={param.type}
+                            onChange={(e) => {
+                              const newParams = [...saveModalData.parameters];
+                              newParams[index]!.type = e.target.value as any;
+                              setSaveModalData(prev => ({ ...prev, parameters: newParams }));
+                            }}
+                            className="h-6 rounded border border-neutral-200 bg-transparent px-1 text-[11px] dark:border-neutral-700"
+                          >
+                            <option value="string">文本 (String)</option>
+                            <option value="number">数字 (Number)</option>
+                            <option value="date">日期 (Date)</option>
+                            <option value="boolean">布尔 (Boolean)</option>
+                          </select>
+                        </div>
+                        <div className="grid grid-cols-2 gap-2">
+                          <input
+                            value={param.label}
+                            onChange={(e) => {
+                              const newParams = [...saveModalData.parameters];
+                              newParams[index]!.label = e.target.value;
+                              setSaveModalData(prev => ({ ...prev, parameters: newParams }));
+                            }}
+                            placeholder="参数显示名 (Label)"
+                            className="h-7 rounded border border-neutral-200 bg-transparent px-1.5 text-[11px] dark:border-neutral-700"
+                          />
+                          <input
+                            value={String(param.default ?? "")}
+                            onChange={(e) => {
+                              const newParams = [...saveModalData.parameters];
+                              newParams[index]!.default = e.target.value;
+                              setSaveModalData(prev => ({ ...prev, parameters: newParams }));
+                            }}
+                            placeholder="默认值 (Default)"
+                            className="h-7 rounded border border-neutral-200 bg-transparent px-1.5 text-[11px] dark:border-neutral-700"
+                          />
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <div className="mt-4 flex justify-end gap-2">
+              <button onClick={() => setShowSaveModal(false)} className="h-8 rounded px-3 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">取消</button>
+              <button onClick={() => void handleSaveQuery()} className="h-8 rounded bg-neutral-900 px-3 font-medium text-white dark:bg-neutral-100 dark:text-neutral-900">确定</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

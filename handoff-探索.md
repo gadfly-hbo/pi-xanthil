@@ -2,6 +2,111 @@
 
 ---
 
+## 📌 Session 20 — 2026-06-07
+
+### 0. 本次更新摘要（Changelog）
+
+**本次推进**: 一口气打通「探索 tab 三梯队」改进——①业务需求→数据探索单向字段联动 + 图表导出/复制；②数据探索 Layer 2 自动洞察（相关性矩阵/η²/数据质量）+ 跨表多文件 JOIN；③xlsx 多 sheet 选择器 + 手动改列类型。全部纯前端/纯算法，严守数据探索"零 LLM"契约。
+**关键决策**: ①跨表 JOIN **物化成真实 duckdb 表**（`__joined_<ts>`）而非泛化 ChartCanvas SQL → 出图/剖析/洞察管线零改动复用；②业务需求→探索**只传字段名 string[]**，不带数据、不自动选文件/不自动映射；③手动改列类型走**重新 profile + override map**，profileTable 统计分支按真实 SQL 类型 guard，避免误判崩溃。
+**新增阻塞/问题**: 全部 typecheck/build/数据安全 grep 通过；**未跑真实 dev server smoke**（仍是 Session 18 遗留 P0）。另外顺手修了他人并发编辑引入的 `ReportPreviewDrawer.tsx` 类型错误（已授权）。
+**下一步重点**: 真实浏览器端 smoke（多文件→JOIN→洞察→多 sheet→改类型全链路）；评估第三梯队之外是否还要做 Spearman / 把发现导出到报告的更强联动。
+
+### 1. 项目元信息
+
+项目名称: 苍耳 pi-Xanthil（数据分析 AI 工作台）
+项目类型: 代码开发
+Session 编号: 第 20 次交接
+本次 Session 起止: 从「Session 19 报告 HTML 线（实际已演进为确定性 marked 渲染 + 报告历史面板）」推进到「探索 tab 三梯队 7 项功能全部落地并通过 typecheck/build/安全 grep」
+最后更新: 2026-06-07
+
+### 2. 项目目标（North Star）
+
+延续既有目标，无变化。本 session 聚焦让数据探索从「被动出图」升级为「主动发现关系 + 跨表分析 + 与业务需求联动」，且全程不触碰数据安全红线。
+
+### 3. 当前进度全景
+
+| 模块/任务 | 状态 | 关键产出/位置 | 备注 |
+|---|---|---|---|
+| 业务需求→数据探索 字段联动 | ✅完成 | `web/src/types.ts`(ExploreSeed)、`App.tsx`(exploreSeed state+四处接线)、`BusinessRequirementPane.tsx`(collectExploreFieldHints+「在数据探索中验证」按钮)、`DataExplorationPane.tsx`(待验证字段横幅+命中✓) | 单向，仅字段名 |
+| 图表导出 PNG + 复制结论 | ✅完成 | `data-exploration/ChartCanvas.tsx` | getDataURL 导出；复制 Markdown(图表描述+聚合表，截断100行) |
+| L2 自动洞察(纯算法) | ✅完成 | `web/src/lib/insights.ts`、`data-exploration/InsightsReport.tsx` | corr 矩阵/η²/质量提示；手动触发；新增 `insights` viewTab |
+| 跨表多文件 JOIN | ✅完成 | `web/src/lib/joins.ts`、`data-exploration/JoinBuilder.tsx`、`DataExplorationPane.tsx`(多表状态)、`FileSelector.tsx`(多选) | 物化成真实表复用全管线 |
+| xlsx 多 sheet 选择器 | ✅完成 | `DataExplorationPane.tsx`(sheet select+changeSheet) | 切 sheet=re-fetch+re-register+re-profile |
+| 手动改列类型 | ✅完成 | `lib/profiling.ts`(kindOverrides 参数)、`ProfileReport.tsx`(每列 kind 下拉) | 重新 profile，stats 按真实 SQL 类型 guard |
+| 修复 ReportPreviewDrawer 类型错误 | ✅完成 | `web/src/components/ReportPreviewDrawer.tsx:214` | 他人并发文件，已授权；`RefObject<HTMLInputElement \| null>`→去掉 `\| null` |
+| typecheck / build / 安全 grep | ✅完成 | — | build 通过；探索子树+新 lib LLM grep 0 匹配 |
+| 真实 dev server smoke | ⏳待启动 | — | 三梯队功能均未在浏览器实跑 |
+
+### 4. 关键决策与权衡 ⭐
+
+**决策 35: 跨表 JOIN 物化成真实表，不泛化 ChartCanvas SQL**
+- 选择: JoinBuilder 调 `lib/joins.ts` 的 `materializeJoin()` 执行 `CREATE TABLE __joined_<ts> AS SELECT … JOIN …`（列名冲突别名 `表.列`），再 `profileTable` 当普通表。
+- 备选: 让 ChartCanvas 的 buildSql 支持多表限定列 + JOIN（否决：列身份/别名/聚合极易错，改动面大）。
+- 理由: 物化后 FieldList/ConfigPanel/ChartCanvas/ProfileReport/InsightsReport **零改动**即可作用于 join 结果。
+- 影响范围: duckdb 单例里会累积 `__joined_*` 表；移除 joined 表只 DROP 自身（与源表独立）。
+- 可逆性: 中。
+
+**决策 36: 业务需求→数据探索 只传字段名，不带数据/不自动选文件**
+- 选择: 业务需求按钮收集 `metrics[].name+dimensions[]+dataNeeds[].fields` 去重，经 App 级 `exploreSeed` 传入探索模块，显示为「待验证字段」横幅；加载文件后列名命中标 ✓。
+- 备选: ①自动预选数据文件（否决：业务需求不知对应哪个文件）；②自动把字段映射进图表配置（否决：业务术语≠列名，不可靠）。
+- 理由: 既串起「业务假设→数据验证」叙事，又严格单向、不把任何数据带回 LLM（符合 AGENTS.md 决策 34）。
+- 可逆性: 高。
+
+**决策 37: 手动改列类型走"重新 profile + override map"且按 SQL 类型 guard**
+- 选择: `profileTable(tableName, maxColumns, kindOverrides?)`，override 优先于 inferKind；数值/日期统计分支额外要求**真实 SQL base type** 匹配（`NUMERIC_SQL_TYPES`/`DATETIME_SQL_TYPES`）。
+- 备选: 仅改 FieldSchema.kind 标签不重算（否决：剖析统计与新 kind 不一致，且数值列降级为类别拿不到 TOP 值）。
+- 理由: 重新 profile 能给出与新 kind 匹配的统计；SQL 类型 guard 确保「text 误改 number」不会让 `AVG(varchar)` 崩溃，而是回退到 TOP 值。
+- 可逆性: 高（再改回即可）。
+
+### 5. 技术/方案细节快照
+
+- **数据探索新文件树**：
+  - `web/src/lib/insights.ts`：`computeCorrelationMatrix`(duckdb 原生 `corr()` 单查询算所有数值列对)、`computeCategoryNumericAssociation`(η²=SS_between/SS_total)、`detectDataQualityFlags`(纯 JS 复用 ColumnProfile)。
+  - `web/src/lib/joins.ts`：`materializeJoin(baseTable, steps, tableColumns)`、`detectJoinCandidates(tables, minOverlap=0.3)`(去重值重叠率，CAST VARCHAR 跨类型兼容)。
+  - `data-exploration/JoinBuilder.tsx`、`data-exploration/InsightsReport.tsx`：均带 `// LLM_FORBIDDEN` 头。
+- **DataExplorationPane 状态升级**：单表 → `loadedTables: LoadedTable[]` + `activeTableName`；`LoadedTable` 含 `choice/sheets/currentSheet/kindOverrides/isJoined`。切表用 `useEffect([activeTableName])` 重置 config。
+- **关键约束（必读）**：
+  - 探索子树 + `lib/insights.ts` + `lib/joins.ts` **禁止** import 任何 `chat*/generate*/extract*/clarify*/sink*/distill*`；当前唯一允许的 api.ts 调用仍只在 `FileSelector.tsx`（`listWorkspacePaths/listSessionPaths/listFlowPaths/workspacePathTree` 路径元数据）。
+  - 校验命令（AGENTS.md，已扩展含新 lib）：
+    ```bash
+    grep -rnE "(generate|chat|extract|clarify|sink|distill).*api\." \
+      web/src/components/DataExplorationPane.tsx web/src/components/data-exploration/ \
+      web/src/lib/insights.ts web/src/lib/joins.ts web/src/lib/profiling.ts
+    ```
+- **验证结果**：`npm run build`(tsc+vite) ✅；LLM grep ✅ exit 1（0 匹配）；server typecheck 仍有 `db.ts`/`memory-governance.test.ts` 无关报错（规则记忆模块他人脏改动，本 session 未碰）。
+
+### 6. 未完成事项与下一步（Action Items）
+
+- [ ] **真实 dev server smoke check（三梯队全链路）** — P0
+  - 上下文: 三梯队功能均只过了静态校验，未在浏览器实跑。
+  - 步骤: 多选 ≥2 个 csv → 已加载表 chips 切换 → 「检测关联候选」→ 点选填入 → 「应用关联」生成 join 表并出图 → 「自动洞察」看相关矩阵/η²/质量提示 → 选 xlsx 切 sheet → 剖析 tab 改某列类型看统计变化 → 业务需求点「在数据探索中验证」看横幅+命中。
+  - 完成标准: 全链路无报错；duckdb CDN 正常；join/洞察结果数值合理。
+  - 潜在难点: duckdb-wasm CDN 国内速度；超大 xlsx 切 sheet re-fetch 耗时；η² 在多类别×多数值时查询数较多（已按 catCols≤10/numCols≤15 截断）。
+
+- [ ] **第三梯队之外的增强（按需）** — P2
+  - L2 加 Spearman（rank 变换后复用 corr）；探索发现→报告更强联动（如把洞察结论一键写入报告 md）。
+
+### 7. 开放问题与待确认事项
+
+- ❓ **是否需要把超出 handoff 的报告线改动补记 + 提交**：Session 19 实际已从 LLM HTML 生成演进为确定性 marked 渲染，并新增整套「报告历史」面板（`server/src/reports.ts`、`html-report.ts`、`ReportHistoryPane.tsx` 等），但这些及本 session 探索改动**均未 git commit**。
+  - 当前倾向: 等用户指示是否提交。
+- ❓ **`/api/reports/file` 两个已知问题**（本 session 仅对账未修）：①对所有文件返回 `text/plain` 导致 iframe/浏览器打开 HTML 显示源码（content-type bug）；②读取范围仅限 WORKSPACES_ROOT 不限 report 目录。
+  - 阻塞了什么: 报告 HTML 预览体验；不阻塞探索功能。
+
+### 8. 上下文与约定
+
+无变化，延续既有约定。强调两条本 session 反复用到的：①数据探索任何改动后必跑扩展版 LLM grep；②仓库大量他人 modified/untracked（`db.ts`、`memory-governance.test.ts`、报告线文件等）不要回滚，本 session 修 `ReportPreviewDrawer.tsx` 是用户明确授权的例外。
+
+### 9. 下一个 Session 启动指令
+
+> 先读 `AGENTS.md`（数据安全分级）+ 本 Session 顶部「摘要」「关键决策」。
+> 跑 `npm run build` 确认现状（server typecheck 的 db.ts 报错是无关脏改动，忽略）。
+> 最紧迫：**真实 dev server smoke**，按「未完成事项 P0」的步骤走通三梯队全链路。
+> 绝对不要在数据探索模块（含 `lib/insights.ts`/`lib/joins.ts`）加任何 LLM 调用，改完跑扩展版 grep。
+> 如要提交代码或处理报告线 content-type bug，先与用户确认（见开放问题）。
+
+---
+
 ## 📌 Session 19 — 2026-06-07
 
 ### 0. 本次更新摘要（Changelog）

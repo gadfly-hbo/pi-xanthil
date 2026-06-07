@@ -2,7 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, ChevronDown, ChevronRight, CircleAlert, Copy, FileText, Folder, FolderOpen, Loader2, Plus, RefreshCw, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
-import type { FlowTreeNode, PiModel, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "@/types";
+import type { FlowTreeNode, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "@/types";
 
 type Scope =
   | { type: "workspace"; workspaceId: string }
@@ -90,8 +90,6 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
   const [copiedPathId, setCopiedPathId] = useState<number | null>(null);
   const [loadingPaths, setLoadingPaths] = useState(false);
 
-  const [models, setModels] = useState<PiModel[]>([]);
-  const [selectedModel, setSelectedModel] = useState("");
   const [htmlGenerating, setHtmlGenerating] = useState(false);
   const [htmlGenerateResult, setHtmlGenerateResult] = useState<{ path: string } | null>(null);
   const [htmlGenerateError, setHtmlGenerateError] = useState("");
@@ -125,16 +123,6 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
   useEffect(() => {
     void load();
   }, [load]);
-
-  useEffect(() => {
-    if (folder === "report") {
-      api.listModels().then((list) => {
-        setModels(list);
-        const def = list.find((m) => m.isDefault) || list[0];
-        if (def) setSelectedModel(def.id);
-      }).catch(() => {});
-    }
-  }, [folder]);
 
   useEffect(() => {
     setHtmlGenerateResult(null);
@@ -454,22 +442,12 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
                     <div className="flex items-center gap-2">
                       <Sparkles className="h-4 w-4 text-violet-500 shrink-0" />
                       <div>
-                        <h3 className="text-[12.5px] font-semibold text-violet-900 dark:text-violet-200">生成高质量交互 HTML 报告</h3>
-                        <p className="text-[11px] text-violet-600 dark:text-violet-400">使用专业排版和交互动效美化此 Markdown 报告</p>
+                        <h3 className="text-[12.5px] font-semibold text-violet-900 dark:text-violet-200">生成高质量 HTML 报告</h3>
+                        <p className="text-[11px] text-violet-600 dark:text-violet-400">将此 Markdown 报告渲染为带侧边栏目录的精美 HTML 页面</p>
                       </div>
                     </div>
-                    
+
                     <div className="flex flex-wrap items-center gap-2">
-                      <select
-                        value={selectedModel}
-                        onChange={(e) => setSelectedModel(e.target.value)}
-                        disabled={htmlGenerating}
-                        className="h-8 rounded-md border border-violet-200 bg-white px-2 text-[12px] text-neutral-700 outline-none disabled:opacity-50 dark:border-violet-800 dark:bg-neutral-900 dark:text-neutral-200"
-                      >
-                        {models.map((m) => (
-                          <option key={m.id} value={m.id}>{m.id}</option>
-                        ))}
-                      </select>
                       <button
                         onClick={async () => {
                           setHtmlGenerating(true);
@@ -479,9 +457,21 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
                             const result = await api.generateHighQualityHtmlReport({
                               pathId: preview.entryId,
                               relPath: preview.relPath,
-                              model: selectedModel || undefined,
                             });
                             setHtmlGenerateResult(result);
+                            if (scope && result.absPath) {
+                              try {
+                                if (scope.type === "workspace") {
+                                  await api.addWorkspacePath(scope.workspaceId, "report", result.absPath, "file");
+                                } else if (scope.type === "session") {
+                                  await api.addSessionPath(scope.sessionId, "report", result.absPath, "file");
+                                } else if (scope.type === "flow") {
+                                  await api.addFlowPath(scope.flowId, "report", result.absPath, "file");
+                                }
+                              } catch (addErr) {
+                                console.error("Failed to auto-register generated report path:", addErr);
+                              }
+                            }
                             void refreshAll();
                           } catch (err) {
                             setHtmlGenerateError(String(err));

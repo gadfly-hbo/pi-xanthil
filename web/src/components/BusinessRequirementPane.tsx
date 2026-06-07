@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, ClipboardList, FileText, FolderOpen, Loader2, Pencil, RefreshCw, Save, Sparkles, X } from "lucide-react";
+import { AlertTriangle, ClipboardList, Compass, FileText, FolderOpen, Loader2, Pencil, RefreshCw, Save, Sparkles, X } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
 import type { BusinessContextCategory, FlowTreeNode, WorkspacePath } from "@/types";
@@ -14,6 +14,8 @@ interface Props {
   model?: string;
   onGenerated?: () => void;
   onBusinessContextChanged?: () => void;
+  // One-way: 业务需求 → 数据探索. Passes field-name hints only (never data).
+  onExploreFields?: (fieldHints: string[], source: string) => void;
 }
 
 interface RequirementDraft {
@@ -327,6 +329,25 @@ function listText(items: string[] | undefined): string {
   return (items ?? []).filter(Boolean).map((item) => `- ${item}`).join("\n");
 }
 
+// Collect field-name hints (metrics / dimensions / dataNeeds.fields) to seed
+// 数据探索. Deduped & trimmed; these are business terms, not actual column names.
+function collectExploreFieldHints(structured: BusinessRequirementStructuredOutput): string[] {
+  const raw: string[] = [
+    ...(structured.metrics ?? []).map((m) => m.name),
+    ...(structured.dimensions ?? []),
+    ...(structured.dataNeeds ?? []).flatMap((d) => d.fields ?? []),
+  ];
+  const seen = new Set<string>();
+  const hints: string[] = [];
+  for (const item of raw) {
+    const name = (item ?? "").trim();
+    if (!name || seen.has(name)) continue;
+    seen.add(name);
+    hints.push(name);
+  }
+  return hints;
+}
+
 function buildBusinessContextDrafts(structured: BusinessRequirementStructuredOutput): BusinessContextDraft[] {
   const drafts: BusinessContextDraft[] = [];
   const facts = listText(structured.businessFacts);
@@ -388,7 +409,7 @@ function buildLineDiff(previous: string, current: string): string {
   return out.join("\n");
 }
 
-export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessContextChanged }: Props) {
+export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessContextChanged, onExploreFields }: Props) {
   const [paths, setPaths] = useState<WorkspacePath[]>([]);
   const [selectedPathId, setSelectedPathId] = useState("");
   const [documentOptions, setDocumentOptions] = useState<RequirementDocumentOption[]>([]);
@@ -1244,6 +1265,17 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
                           编辑
                         </button>
                       </>
+                    )}
+                    {onExploreFields && generatedStructured && !structuredJsonStale && collectExploreFieldHints(generatedStructured).length > 0 && (
+                      <button
+                        onClick={() => onExploreFields(collectExploreFieldHints(generatedStructured), generatedStructured.projectName)}
+                        disabled={editingFramework}
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-blue-200 px-2.5 text-[12px] font-medium text-blue-700 hover:bg-blue-50 disabled:opacity-50 dark:border-blue-900/60 dark:text-blue-300 dark:hover:bg-blue-950/40"
+                        title="把指标/维度/数据需求字段名带入数据探索（仅字段名，不携带数据）"
+                      >
+                        <Compass className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        在数据探索中验证
+                      </button>
                     )}
                     <button
                       onClick={() => void sinkToBusinessContext()}

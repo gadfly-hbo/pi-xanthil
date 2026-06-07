@@ -139,7 +139,9 @@
       "Bash(curl -s http://localhost:8787/api/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/flows)",
       "Bash(curl -s http://localhost:8787/api/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/flows/90ef75f9-6d6a-4da3-8b93-fc6ebb781d45/runs)",
       "Bash(curl -sv http://localhost:8787/api/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/flows/90ef75f9-6d6a-4da3-8b93-fc6ebb781d45/runs)",
-      "Bash(curl -s http://localhost:8787/api/flows/90ef75f9-6d6a-4da3-8b93-fc6ebb781d45/runs)"
+      "Bash(curl -s http://localhost:8787/api/flows/90ef75f9-6d6a-4da3-8b93-fc6ebb781d45/runs)",
+      "Bash(git -C /Users/huangbo/Dev/Projects/pi-xanthil diff server/src/index.ts)",
+      "Bash(pi -p --mode json --no-extensions --model \"volcengine-plan/deepseek-v4-pro\" --system-prompt \"你是一个简洁的助手。\" \"只回复两个字：你好\")"
     ]
   }
 }

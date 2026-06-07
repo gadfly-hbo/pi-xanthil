@@ -106,7 +106,11 @@ export async function listColumns(tableName: string): Promise<{ name: string; sq
     .filter((col) => col.name);
 }
 
-export async function profileTable(tableName: string, maxColumns = 100): Promise<{
+export async function profileTable(
+  tableName: string,
+  maxColumns = 100,
+  kindOverrides?: Record<string, FieldKind>,
+): Promise<{
   rowCount: number;
   fields: FieldSchema[];
   columns: ColumnProfile[];
@@ -133,8 +137,10 @@ export async function profileTable(tableName: string, maxColumns = 100): Promise
     const distinctCount = Number(statsRow?.distinct_count ?? 0);
     const nullRatio = rowCount > 0 ? nullCount / rowCount : 0;
 
-    const kind = inferKind(col.sqlType, col.name, distinctCount, rowCount);
+    // A user override (#6 manual type fix) wins over auto inference.
+    const kind = kindOverrides?.[col.name] ?? inferKind(col.sqlType, col.name, distinctCount, rowCount);
     fields.push({ name: col.name, sqlType: col.sqlType, kind });
+    const baseType = baseSqlType(col.sqlType);
 
     const profile: ColumnProfile = {
       name: col.name,
@@ -146,7 +152,9 @@ export async function profileTable(tableName: string, maxColumns = 100): Promise
       distinctCount,
     };
 
-    if (isNumberKind(kind)) {
+    // Guard stats by the real SQL type so a kind override (e.g. text→number)
+    // can never trigger an invalid aggregate; incompatible overrides fall to top-values.
+    if (isNumberKind(kind) && NUMERIC_SQL_TYPES.has(baseType)) {
       const numRow = (await runQuery(
         `SELECT
           MIN(${colIdent}) AS mn,
@@ -194,7 +202,7 @@ export async function profileTable(tableName: string, maxColumns = 100): Promise
           count: Number(row.c ?? 0),
         }));
       }
-    } else if (isDatetimeKind(kind)) {
+    } else if (isDatetimeKind(kind) && DATETIME_SQL_TYPES.has(baseType)) {
       const dtRow = (await runQuery(
         `SELECT MIN(${colIdent}) AS mn, MAX(${colIdent}) AS mx FROM ${ident} WHERE ${colIdent} IS NOT NULL`,
       ))[0] as QueryRow | undefined;

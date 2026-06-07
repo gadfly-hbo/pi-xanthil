@@ -2,7 +2,7 @@
 // File selector: picks csv/xlsx from registered draw_data / clean_data paths only.
 
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, FileText, Folder, RefreshCw } from "lucide-react";
+import { Check, ChevronDown, ChevronRight, FileText, Folder, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import type { FlowTreeNode, WorkspaceFolderName, WorkspacePath } from "@/types";
 
@@ -21,8 +21,8 @@ export interface FileChoice {
 
 interface Props {
   scope: Scope | null;
-  onSelect: (choice: FileChoice) => void;
-  selected?: FileChoice | null;
+  onToggle: (choice: FileChoice) => void;
+  loadedKeys: Set<string>; // keys = `${pathId}:${relativePath}`
 }
 
 const ALLOWED_EXTENSIONS = [".csv", ".tsv", ".xlsx", ".xls"];
@@ -49,28 +49,31 @@ interface FileTreeProps {
   folder: WorkspaceFolderName;
   node: FlowTreeNode;
   depth: number;
-  onSelect: (choice: FileChoice) => void;
-  selected?: FileChoice | null;
+  onToggle: (choice: FileChoice) => void;
+  loadedKeys: Set<string>;
 }
 
-function FileTree({ pathId, pathLabel, folder, node, depth, onSelect, selected }: FileTreeProps) {
+function FileTree({ pathId, pathLabel, folder, node, depth, onToggle, loadedKeys }: FileTreeProps) {
   const [open, setOpen] = useState(depth < 1);
   const paddingLeft = `${8 + depth * 14}px`;
 
   if (node.kind === "file") {
     if (!hasAllowedExtension(node.name)) return null;
-    const isSelected = selected?.pathId === pathId && selected?.relativePath === node.path;
+    const isLoaded = loadedKeys.has(`${pathId}:${node.path}`);
     return (
       <button
-        onClick={() => onSelect({ pathId, pathLabel, folder, fileName: node.name, relativePath: node.path })}
+        onClick={() => onToggle({ pathId, pathLabel, folder, fileName: node.name, relativePath: node.path })}
         style={{ paddingLeft }}
         className={`flex w-full items-center gap-1.5 rounded py-1 pr-2 text-left text-[12px] ${
-          isSelected
+          isLoaded
             ? "bg-blue-50 text-blue-700 dark:bg-blue-950 dark:text-blue-300"
             : "text-neutral-700 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
         }`}
+        title={isLoaded ? "已加载（点击移除）" : "点击加载"}
       >
-        <FileText className="h-3.5 w-3.5 shrink-0 text-neutral-400" strokeWidth={1.75} />
+        {isLoaded
+          ? <Check className="h-3.5 w-3.5 shrink-0 text-blue-600 dark:text-blue-400" strokeWidth={2.25} />
+          : <FileText className="h-3.5 w-3.5 shrink-0 text-neutral-400" strokeWidth={1.75} />}
         <span className="truncate">{node.name}</span>
       </button>
     );
@@ -86,8 +89,8 @@ function FileTree({ pathId, pathLabel, folder, node, depth, onSelect, selected }
         folder={folder}
         node={child}
         depth={depth + 1}
-        onSelect={onSelect}
-        selected={selected}
+        onToggle={onToggle}
+        loadedKeys={loadedKeys}
       />
     ))
     .filter(Boolean);
@@ -110,7 +113,7 @@ function FileTree({ pathId, pathLabel, folder, node, depth, onSelect, selected }
   );
 }
 
-export function FileSelector({ scope, onSelect, selected }: Props) {
+export function FileSelector({ scope, onToggle, loadedKeys }: Props) {
   const [paths, setPaths] = useState<{ entry: WorkspacePath; tree: FlowTreeNode | null; error?: string }[]>([]);
   const [loading, setLoading] = useState(false);
 
@@ -178,8 +181,8 @@ export function FileSelector({ scope, onSelect, selected }: Props) {
                   folder={entry.folder}
                   node={tree}
                   depth={0}
-                  onSelect={onSelect}
-                  selected={selected}
+                  onToggle={onToggle}
+                  loadedKeys={loadedKeys}
                 />
               )}
             </div>

@@ -511,6 +511,18 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_bi_datasets_slot_uploaded ON bi_datasets(slot, uploaded_at DESC);
   CREATE INDEX IF NOT EXISTS idx_bi_datasets_slot_active ON bi_datasets(slot, active);
+  CREATE TABLE IF NOT EXISTS report_favorites (
+    id          TEXT PRIMARY KEY,
+    created_at  INTEGER NOT NULL
+  );
+  CREATE TABLE IF NOT EXISTS report_tags (
+    report_id   TEXT NOT NULL,
+    tag         TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    PRIMARY KEY (report_id, tag)
+  );
+  CREATE INDEX IF NOT EXISTS idx_report_tags_tag ON report_tags(tag);
+  CREATE INDEX IF NOT EXISTS idx_report_tags_report ON report_tags(report_id);
 `);
 
 try {
@@ -3824,4 +3836,47 @@ export function setActiveBiDataset(slot: BiDatasetSlot, id: string): boolean {
     throw err;
   }
   return true;
+}
+
+// ---- Report Favorites (Dashboard Report History) ----
+export function listReportFavoriteIds(): string[] {
+  const rows = db.prepare("SELECT id FROM report_favorites").all() as Array<{ id: string }>;
+  return rows.map((r) => r.id);
+}
+
+export function addReportFavorite(id: string): void {
+  db.prepare("INSERT OR IGNORE INTO report_favorites (id, created_at) VALUES (?, ?)").run(id, Date.now());
+}
+
+export function removeReportFavorite(id: string): boolean {
+  const info = db.prepare("DELETE FROM report_favorites WHERE id = ?").run(id);
+  return Number(info.changes) > 0;
+}
+
+// ---- Report Tags (Dashboard Report History V2) ----
+export function listAllReportTags(): Array<{ tag: string; count: number }> {
+  const rows = db.prepare("SELECT tag, COUNT(*) AS cnt FROM report_tags GROUP BY tag ORDER BY cnt DESC, tag ASC").all() as Array<{ tag: string; cnt: number }>;
+  return rows.map((r) => ({ tag: r.tag, count: Number(r.cnt) }));
+}
+
+export function listTagsForReports(): Map<string, string[]> {
+  const rows = db.prepare("SELECT report_id, tag FROM report_tags ORDER BY tag ASC").all() as Array<{ report_id: string; tag: string }>;
+  const map = new Map<string, string[]>();
+  for (const r of rows) {
+    const arr = map.get(r.report_id) ?? [];
+    arr.push(r.tag);
+    map.set(r.report_id, arr);
+  }
+  return map;
+}
+
+export function addReportTag(reportId: string, tag: string): void {
+  const cleaned = tag.trim();
+  if (!cleaned) return;
+  db.prepare("INSERT OR IGNORE INTO report_tags (report_id, tag, created_at) VALUES (?, ?, ?)").run(reportId, cleaned, Date.now());
+}
+
+export function removeReportTag(reportId: string, tag: string): boolean {
+  const info = db.prepare("DELETE FROM report_tags WHERE report_id = ? AND tag = ?").run(reportId, tag);
+  return Number(info.changes) > 0;
 }

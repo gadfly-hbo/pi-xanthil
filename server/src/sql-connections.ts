@@ -7,6 +7,24 @@ import { SQL_CONNECTIONS_PATH } from "./config.ts";
 
 export type DbType = "sqlite" | "postgresql" | "mysql";
 
+export interface ToolParameter {
+  name: string;
+  label: string;
+  type: "string" | "number" | "boolean" | "select" | "date";
+  required?: boolean;
+  default?: string | number | boolean;
+  options?: string[];
+  description?: string;
+}
+
+export interface SavedQuery {
+  id: string;
+  name: string;
+  sql: string;
+  description?: string;
+  parameters?: ToolParameter[];
+}
+
 export interface SqlConnection {
   id: string;
   name: string;
@@ -21,6 +39,7 @@ export interface SqlConnection {
   lastTestedAt?: number;
   lastTestOk?: boolean;
   createdAt: number;
+  queries?: SavedQuery[];
 }
 
 export interface SchemaColumn {
@@ -310,6 +329,7 @@ function toCsvRow(values: unknown[]): string {
 
 export interface WatermarkConfig {
   column: string;
+  initialValue?: unknown;
 }
 
 export async function exportQueryToCsv(
@@ -324,14 +344,19 @@ export async function exportQueryToCsv(
   const appending = !!watermark && existsSync(outputPath) && existsSync(statePath);
   let effectiveParams = params ?? {};
 
+  let watermarkVal: unknown = undefined;
   if (appending) {
     try {
       const state = JSON.parse(readFileSync(statePath, "utf8")) as { lastWatermark?: unknown };
-      if (state.lastWatermark !== undefined) {
-        finalSql = `SELECT * FROM (${sql}) AS __watermark_wrapper WHERE __watermark_wrapper.${watermark.column} > {{__last_watermark}} ORDER BY __watermark_wrapper.${watermark.column} ASC`;
-        effectiveParams = { ...effectiveParams, __last_watermark: state.lastWatermark };
-      }
+      watermarkVal = state.lastWatermark;
     } catch { /* ignore */ }
+  } else if (watermark && watermark.initialValue !== undefined && watermark.initialValue !== "") {
+    watermarkVal = watermark.initialValue;
+  }
+
+  if (watermark && watermarkVal !== undefined && watermarkVal !== null) {
+    finalSql = `SELECT * FROM (${sql}) AS __watermark_wrapper WHERE __watermark_wrapper.${watermark.column} > {{__last_watermark}} ORDER BY __watermark_wrapper.${watermark.column} ASC`;
+    effectiveParams = { ...effectiveParams, __last_watermark: watermarkVal };
   } else if (watermark) {
     finalSql = `SELECT * FROM (${sql}) AS __watermark_wrapper ORDER BY __watermark_wrapper.${watermark.column} ASC`;
   }

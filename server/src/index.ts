@@ -1,4 +1,4 @@
-import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, writeFileSync } from "node:fs";
+import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { execFile, execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
@@ -9,7 +9,7 @@ import multer from "multer";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import { WebSocketServer, type WebSocket } from "ws";
-import { BI_DATASETS_ROOT, DIRECT_LLM_ROOT, EXTRACTION_RUNS_ROOT, FAVORITES_ROOT, PORT, UPLOAD_TMP_ROOT, ensureDirs } from "./config.ts";
+import { BI_DATASETS_ROOT, DIRECT_LLM_ROOT, EXTRACTION_RUNS_ROOT, FAVORITES_ROOT, PORT, UPLOAD_TMP_ROOT, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
 import {
   addFlowMessage,
   addMessage,
@@ -152,9 +152,18 @@ import {
   updateSkillCurationProposalStatus,
   updateRuleConflictStatus,
   rejectMemoryProposal,
+  listReportFavoriteIds,
+  addReportFavorite,
+  removeReportFavorite,
+  listAllReportTags,
+  listTagsForReports,
+  addReportTag,
+  removeReportTag,
 } from "./db.ts";
+import { scanAllReports } from "./reports.ts";
 import { getDownstreamNodeIds } from "./change-management.ts";
 import { computeFileHash } from "./file-hash.ts";
+import { renderMarkdownReportToHtml } from "./html-report.ts";
 import { runWorkflowEvaluation } from "./evaluation-runner.ts";
 import { runMemoryEvaluation } from "./memory-evaluation-runner.ts";
 import { archiveSkillEvaluation, archiveToolEvaluation, listEvaluationArchives } from "./evaluation-archive.ts";
@@ -1782,8 +1791,11 @@ function stripMarkdownFence(content: string): string {
 
 function stripHtmlFence(content: string): string {
   const trimmed = content.trim();
-  const match = trimmed.match(/^```(?:html)?\s*([\s\S]*?)```$/i);
-  return (match?.[1] ?? trimmed).trim();
+  // Extract the contents of a ```html fence even when the model prefixes it
+  // with explanatory text (the old anchored ^...$ regex failed on any prefix).
+  const fenceMatch = trimmed.match(/```(?:html)?\s*\n([\s\S]*?)\n?```/i);
+  if (fenceMatch?.[1]) return fenceMatch[1].trim();
+  return trimmed;
 }
 
 interface BusinessRequirementInput {
@@ -2591,58 +2603,6 @@ ${sanitizeReportForLlm(reportContent).slice(0, 80_000)}`;
   }
 }
 
-async function generateHighQualityHtmlReportWithLlm(
-  reportName: string,
-  reportContent: string,
-  workspaceRoot: string,
-  model: string,
-  usageTarget?: { workspaceId: string; targetKind: TokenUsageTargetKind; targetId: string; title: string },
-): Promise<string> {
-  const prompt = `请将下面的 Markdown 报告，转换成一份极富美感、排版高级、支持现代浏览器直接预览的完整自包含高质量 HTML 报告。
-
-[视觉设计要求]
-1. 采用高品质的现代审美设计，提供令人惊艳的视觉享受。
-2. 主体配色选用现代科技感或优雅商务的冷灰色调与柔和的强调色（例如柔和的蓝紫色、翡翠绿或琥珀橙，避免刺眼的原色）。
-3. 支持优雅的明暗主题（可以通过右上角切换，或默认提供带有玻璃态质感(glassmorphism)和渐变效果的高级深色/浅色背景）。
-4. 拥有清晰美观的字体排版体系。字体优先使用：system-ui, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, "Helvetica Neue", Arial, sans-serif。行高、字距和各级标题要经过精心微调。
-5. 整体布局要具有良好的响应式设计。可包含：
-   - 侧边栏导航：点击可平滑滚动到对应的报告章节。
-   - 顶部概览卡片：以高亮数字、徽章(badge)形式呈现核心指标。
-   - 精美的列表与卡片：分段落组织内容，层次分明，带有温和的圆角(border-radius: 12px)、微妙的阴影(box-shadow)。
-   - 可折叠/展开的内容区块（如折叠面板 accordion），用于隐藏/展现详细数据。
-6. 微动效：按钮悬浮时轻微缩放、导航链接 hover 时有下划线平滑拉伸过渡、卡片悬浮时轻微上浮等。
-7. 数据表格必须优雅：斑马纹、悬停高亮、表头锁定、文字溢出截断提示等。
-
-[内容和结构要求]
-1. 完整保留原 Markdown 报告的所有实质性结论、核心数据、图表表格逻辑（如果原报告有表格，转为漂亮的 HTML <table> 样式）。
-2. 在原报告结构基础上进行合理视觉排版，但不得编造报告里不存在的数据或结论。
-3. 如有风险提示或关键结论，使用高亮的通知框（Alert Callout）来做视觉强调。
-
-[技术限制要求]
-1. 必须是单文件完整自包含 HTML，包含 <!DOCTYPE html>，<html>，<head>，<style> 样式，和 <body>。
-2. 绝对禁止使用外部 CSS（如 bootstrap, tailwind cdn 链接）或任何外部 font 外链；所有的 CSS 必须写在内联 <style> 标签内。
-3. 绝对禁止使用任何外部图片链接或任何远程 icon 库（如 font-awesome, bootstrap-icons cdn），如果需要图标，请直接使用内联 SVG。
-4. 可以包含内联的轻量级 JavaScript 用于页面内交互逻辑（例如主题切换、目录折叠、侧边栏收起、卡片切换等），但不能有外部引入的 script。
-5. 只输出纯 HTML 内容本身，不要用 markdown 格式的 \`\`\`html 围栏包裹。请从 <!DOCTYPE html> 开始输出，并以 </html> 结束。
-
-报告文件名：${reportName}
-
-原报告内容：
-${reportContent}
-`;
-
-  const output = await runPiPrompt({
-    workspaceRoot,
-    text: prompt,
-    model,
-    systemPrompt: "你是资深前端交互与报告排版专家。你的任务是把 Markdown 报告转换为自包含的、极富视觉美感、支持轻量级交互的高质量 HTML 报告。",
-    timeoutMs: 180_000,
-    onEvent: (event) => trackUsageEvent(usageTarget ?? null, event),
-  });
-
-  return stripHtmlFence(output);
-}
-
 app.post("/api/business-requirements/generate", async (req, res) => {
   const pathId = Number(req.body?.pathId);
   if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
@@ -2902,19 +2862,14 @@ app.post("/api/report-versions/generate", async (req, res) => {
 app.post("/api/html-reports/generate", async (req, res) => {
   const pathId = Number(req.body?.pathId);
   const relPath = String(req.body?.relPath ?? "");
-  const requestedModel = req.body?.model;
-  
+
   if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
-  
+
   try {
     const entry = getWorkspacePath(pathId);
     if (!entry) return res.status(404).json({ error: "path not found" });
     if (entry.folder !== "report") return res.status(400).json({ error: "only report output paths can generate html reports" });
 
-    const workspace = getWorkspace(entry.workspaceId);
-    if (!workspace) return res.status(404).json({ error: "workspace not found" });
-
-    const model = resolveRequestedModel(requestedModel, DEFAULT_PRESENTATION_VERSION_MODEL);
     const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
     const sourceRelPath = entry.kind === "dir" ? relPath : basename(entry.path);
     if (entry.kind === "dir" && !sourceRelPath) return res.status(400).json({ error: "relPath required for directory report paths" });
@@ -2923,28 +2878,24 @@ app.post("/api/html-reports/generate", async (req, res) => {
 
     const report = readFlowFile(outputDir, sourceRelPath);
     const sourceName = sourceRelPath ? basename(sourceRelPath) : basename(entry.path);
-    
+
     if (!TEXT_PREVIEW_EXTENSIONS.has(extname(sourceName).toLowerCase())) {
       return res.status(400).json({ error: "selected report is not a text or markdown file" });
     }
 
-    const htmlContent = await generateHighQualityHtmlReportWithLlm(sourceName, report.content, workspace.rootPath, model, {
-      workspaceId: workspace.id,
-      targetKind: "report_version",
-      targetId: `hq-html:${pathId}:${sourceRelPath}`,
-      title: `高质量 HTML 报告：${sourceName}`,
-    });
+    // Deterministic Markdown -> HTML rendering (no LLM): instant and 100% reliable.
+    const htmlContent = renderMarkdownReportToHtml(sourceName, report.content);
 
     const timestamp = timestampForFilename();
     const cleanName = sanitizeFilenamePart(sourceName.replace(/\.(md|markdown|txt)$/i, ""));
     const outputRelPath = `high_quality_reports/${cleanName}-高质量报告-${timestamp}.html`;
-    
+
     writeFlowFile(outputDir, outputRelPath, htmlContent.endsWith("\n") ? htmlContent : `${htmlContent}\n`);
 
     res.json({
       path: outputRelPath,
+      absPath: resolve(outputDir, outputRelPath),
       content: htmlContent,
-      model,
     });
   } catch (err) {
     res.status(500).json({ error: String(err) });
@@ -4107,12 +4058,47 @@ app.post("/api/sql-connections/:id/export", (req, res) => {
   const sql = String(req.body?.sql ?? "").trim();
   const outputPath = String(req.body?.outputPath ?? "").trim();
   const params = typeof req.body?.params === "object" && req.body.params !== null ? req.body.params as Record<string, unknown> : undefined;
-  const watermark = typeof req.body?.watermark === "object" && req.body.watermark !== null ? req.body.watermark as { column: string } : undefined;
+  const watermark = typeof req.body?.watermark === "object" && req.body.watermark !== null ? req.body.watermark as { column: string; initialValue?: unknown } : undefined;
   if (!sql) return res.status(400).json({ error: "sql required" });
   if (!outputPath) return res.status(400).json({ error: "outputPath required" });
   exportQueryToCsv(conn, sql, resolve(outputPath), params, watermark)
     .then((result) => res.json({ ...result, path: resolve(outputPath) }))
     .catch((err) => res.status(500).json({ error: String(err) }));
+});
+
+app.get("/api/sql-connections/export-state", (req, res) => {
+  const outputPath = String(req.query.path ?? "").trim();
+  if (!outputPath) return res.status(400).json({ error: "path required" });
+  const statePath = `${resolve(outputPath)}.state`;
+  if (!existsSync(statePath)) {
+    return res.json({ exists: false });
+  }
+  try {
+    const state = JSON.parse(readFileSync(statePath, "utf8")) as { lastWatermark?: unknown };
+    res.json({ exists: true, lastWatermark: state.lastWatermark });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/sql-connections/export-state", (req, res) => {
+  const outputPath = String(req.body?.path ?? "").trim();
+  const lastWatermark = req.body?.lastWatermark;
+  if (!outputPath) return res.status(400).json({ error: "path required" });
+  const statePath = `${resolve(outputPath)}.state`;
+  try {
+    if (lastWatermark === undefined || lastWatermark === null) {
+      if (existsSync(statePath)) {
+        unlinkSync(statePath);
+      }
+      res.json({ exists: false });
+    } else {
+      writeFileSync(statePath, JSON.stringify({ lastWatermark }), "utf8");
+      res.json({ exists: true, lastWatermark });
+    }
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 // ---- direct LLM prompt (tool-free channel) ----
@@ -4452,6 +4438,110 @@ app.delete("/api/bi-datasets/:id", (req, res) => {
   if (storagePath) {
     try { rmSync(storagePath); } catch { /* ignore */ }
   }
+  res.json({ success: true });
+});
+
+// ---- Report History (Dashboard 二级 tab) ----
+app.get("/api/reports/scan", (_req, res) => {
+  try {
+    const workspaces = listWorkspaces().map((w) => ({ id: w.id, name: w.name }));
+    const entries = scanAllReports(workspaces);
+    const favoriteIds = new Set(listReportFavoriteIds());
+    const tagsMap = listTagsForReports();
+    const enriched = entries.map((e) => ({
+      ...e,
+      isFavorite: favoriteIds.has(e.id),
+      tags: tagsMap.get(e.id) ?? [],
+    }));
+    enriched.sort((a, b) => b.createdAt - a.createdAt);
+    res.json({ entries: enriched, scannedAt: Date.now() });
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error)?.message ?? err) });
+  }
+});
+
+app.post("/api/reports/favorite", (req, res) => {
+  const id = String(req.body?.id ?? "").trim();
+  if (!id) return res.status(400).json({ error: "missing id" });
+  addReportFavorite(id);
+  res.json({ success: true });
+});
+
+app.delete("/api/reports/favorite/:id", (req, res) => {
+  const id = String(req.params.id ?? "").trim();
+  if (!id) return res.status(400).json({ error: "missing id" });
+  const ok = removeReportFavorite(id);
+  if (!ok) return res.status(404).json({ error: "favorite not found" });
+  res.json({ success: true });
+});
+
+app.get("/api/reports/file", (req, res) => {
+  const path = String(req.query.path ?? "");
+  if (!path) return res.status(400).json({ error: "missing path" });
+  // 安全校验: 必须在 WORKSPACES_ROOT 下
+  const abs = resolve(path);
+  if (!abs.startsWith(WORKSPACES_ROOT + sep)) {
+    return res.status(403).json({ error: "path outside workspaces root" });
+  }
+  if (!existsSync(abs)) return res.status(404).json({ error: "file not found" });
+  try {
+    const content = readFileSync(abs, "utf-8");
+    res.type("text/plain; charset=utf-8").send(content);
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error)?.message ?? err) });
+  }
+});
+
+app.post("/api/reports/open", (req, res) => {
+  const path = String(req.body?.path ?? "");
+  if (!path) return res.status(400).json({ error: "missing path" });
+  if (process.platform !== "darwin") {
+    return res.status(400).json({ error: "open in Finder only supported on macOS" });
+  }
+  const abs = resolve(path);
+  if (!abs.startsWith(WORKSPACES_ROOT + sep)) {
+    return res.status(403).json({ error: "path outside workspaces root" });
+  }
+  if (!existsSync(abs)) return res.status(404).json({ error: "file not found" });
+  try {
+    execFile("open", ["-R", abs], (err) => {
+      if (err) return res.status(500).json({ error: String(err.message) });
+      res.json({ success: true });
+    });
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error)?.message ?? err) });
+  }
+});
+
+// ---- Report Tags ----
+app.get("/api/reports/tags", (_req, res) => {
+  try {
+    res.json(listAllReportTags());
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error)?.message ?? err) });
+  }
+});
+
+app.post("/api/reports/:id/tags", (req, res) => {
+  const id = String(req.params.id ?? "").trim();
+  const tag = String(req.body?.tag ?? "").trim();
+  if (!id) return res.status(400).json({ error: "missing id" });
+  if (!tag) return res.status(400).json({ error: "missing tag" });
+  if (tag.length > 32) return res.status(400).json({ error: "tag too long (max 32 chars)" });
+  try {
+    addReportTag(id, tag);
+    res.json({ success: true });
+  } catch (err) {
+    res.status(500).json({ error: String((err as Error)?.message ?? err) });
+  }
+});
+
+app.delete("/api/reports/:id/tags/:tag", (req, res) => {
+  const id = String(req.params.id ?? "").trim();
+  const tag = decodeURIComponent(String(req.params.tag ?? "")).trim();
+  if (!id || !tag) return res.status(400).json({ error: "missing id or tag" });
+  const ok = removeReportTag(id, tag);
+  if (!ok) return res.status(404).json({ error: "tag not found on report" });
   res.json({ success: true });
 });
 

@@ -1259,7 +1259,7 @@ export function ModelRunHistoryDashboard({ onRequestRestore }: ModelRunHistoryDa
           <div>
             <div className="text-[11px] font-semibold uppercase tracking-[0.18em] text-neutral-400">Model Lab</div>
             <h1 className="mt-1 text-[20px] font-semibold tracking-tight text-neutral-950 dark:text-neutral-50">
-              运行历史
+              模型历史
             </h1>
             <p className="mt-1 text-[12.5px] text-neutral-500 dark:text-neutral-400">
               28 个模型的调用统计与趋势 · 聚合指标仅含成功运行，最近运行包含失败

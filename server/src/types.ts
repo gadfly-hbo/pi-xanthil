@@ -1124,3 +1124,34 @@ export interface KgExtractResult {
   skippedReports: number;
   extractedAt: number;
 }
+
+// ---- Report History (Dashboard 二级 tab) ----
+export type ReportFileType =
+  | "final_summary"
+  | "draft"
+  | "supplement"
+  | "handoff_log"
+  | "sample_report"
+  | "research_report"
+  | "presentation"
+  | "other";
+
+export type ReportSource = "flow_run" | "workspace_root";
+
+export interface ReportEntry {
+  id: string;
+  workspaceId: string;
+  workspaceName?: string;
+  source: ReportSource;
+  flowId?: string;
+  flowName?: string;
+  runId?: string;
+  filename: string;
+  relativePath: string;
+  absolutePath: string;
+  extension: "md" | "html";
+  reportType: ReportFileType;
+  sizeBytes: number;
+  createdAt: number;
+}
+

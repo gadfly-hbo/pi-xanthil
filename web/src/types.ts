@@ -3,6 +3,14 @@
 // ---- SQL connections ----
 export type DbType = "sqlite" | "postgresql" | "mysql";
 
+export interface SavedQuery {
+  id: string;
+  name: string;
+  sql: string;
+  description?: string;
+  parameters?: ToolParameter[];
+}
+
 export interface SqlConnection {
   id: string;
   name: string;
@@ -17,6 +25,7 @@ export interface SqlConnection {
   lastTestedAt?: number;
   lastTestOk?: boolean;
   createdAt: number;
+  queries?: SavedQuery[];
 }
 
 export interface SchemaColumn { name: string; type: string; nullable: boolean }
@@ -59,7 +68,7 @@ export interface FileAnalysis {
 export interface ToolParameter {
   name: string;
   label: string;
-  type: "string" | "number" | "boolean" | "select";
+  type: "string" | "number" | "boolean" | "select" | "date";
   required?: boolean;
   default?: string | number | boolean;
   options?: string[];
@@ -1384,4 +1393,44 @@ export function textOf(content: unknown[]): string {
     .filter((b): b is PiTextBlock => typeof b === "object" && b !== null && (b as PiTextBlock).type === "text")
     .map((b) => b.text)
     .join("");
+}
+
+// ---- Report History (Dashboard 二级 tab) ----
+export type ReportFileType =
+  | "final_summary"
+  | "draft"
+  | "supplement"
+  | "handoff_log"
+  | "sample_report"
+  | "research_report"
+  | "presentation"
+  | "other";
+
+export type ReportSource = "flow_run" | "workspace_root";
+
+export interface ReportEntry {
+  id: string;
+  workspaceId: string;
+  workspaceName?: string;
+  source: ReportSource;
+  flowId?: string;
+  flowName?: string;
+  runId?: string;
+  filename: string;
+  relativePath: string;
+  absolutePath: string;
+  extension: "md" | "html";
+  reportType: ReportFileType;
+  sizeBytes: number;
+  createdAt: number;
+  isFavorite: boolean;
+  tags: string[];
+}
+
+// ---- frontend-only UI types (not a server protocol mirror) ----
+
+// One-way seed passed from 业务需求 → 数据探索: only field-name hints, never data.
+export interface ExploreSeed {
+  fieldHints: string[];
+  source: string;
 }

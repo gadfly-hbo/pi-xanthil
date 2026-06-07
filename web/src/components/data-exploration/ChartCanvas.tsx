@@ -1,8 +1,56 @@
 // LLM_FORBIDDEN: this module must never call any LLM API.
 import { useEffect, useMemo, useRef, useState } from "react";
+import { Download, Copy, Check } from "lucide-react";
 import { quoteIdent, quoteString, runQuery, type QueryRow } from "@/lib/duckdb";
 import type { ChartConfig } from "./ConfigPanel";
 import type { FieldSchema } from "@/lib/profiling";
+
+const CHART_TYPE_LABELS: Record<string, string> = {
+  bar: "柱状图", line: "折线图", area: "面积图", scatter: "散点图",
+  heatmap: "热力图", boxplot: "箱线图", pie: "饼图", table: "表格",
+};
+
+const AGG_LABELS: Record<string, string> = {
+  sum: "求和", avg: "均值", count: "计数", min: "最小值", max: "最大值", count_distinct: "去重计数",
+};
+
+const MAX_COPY_ROWS = 100;
+
+// Build a Markdown snippet (chart description + aggregated data table) for the
+// user to paste into a report. Pure client-side; data values stay local.
+function buildConclusionMarkdown(tableName: string, config: ChartConfig, rows: QueryRow[]): string {
+  const { chartType, xField, yField, colorField, aggregation } = config;
+  const parts: string[] = [];
+  parts.push(`类型=${CHART_TYPE_LABELS[chartType] ?? chartType}`);
+  if (xField) parts.push(`X=${xField.name}`);
+  if (chartType !== "scatter" && chartType !== "table") {
+    parts.push(`Y=${AGG_LABELS[aggregation] ?? aggregation}(${yField?.name ?? "*"})`);
+  } else if (yField) {
+    parts.push(`Y=${yField.name}`);
+  }
+  if (colorField) parts.push(`颜色=${colorField.name}`);
+  const activeFilters = config.filters.filter((f) => f.value?.trim());
+  if (activeFilters.length > 0) {
+    parts.push(`筛选=${activeFilters.map((f) => `${f.field} ${f.op} ${f.value}`).join("; ")}`);
+  }
+
+  const lines: string[] = [`### ${tableName} · ${parts.join(" · ")}`, ""];
+
+  if (rows.length > 0) {
+    const columns = Object.keys(rows[0]!);
+    const fmt = (v: unknown) => (v === null || v === undefined ? "" : String(v).replace(/\|/g, "\\|"));
+    lines.push(`| ${columns.join(" | ")} |`);
+    lines.push(`| ${columns.map(() => "---").join(" | ")} |`);
+    for (const row of rows.slice(0, MAX_COPY_ROWS)) {
+      lines.push(`| ${columns.map((c) => fmt(row[c])).join(" | ")} |`);
+    }
+    if (rows.length > MAX_COPY_ROWS) {
+      lines.push("");
+      lines.push(`> 仅复制前 ${MAX_COPY_ROWS} 行，共 ${rows.length} 行。`);
+    }
+  }
+  return lines.join("\n");
+}
 
 interface Props {
   tableName: string;
@@ -247,6 +295,25 @@ export function ChartCanvas({ tableName, config, fieldsByName }: Props) {
   const [loading, setLoading] = useState(false);
   const containerRef = useRef<HTMLDivElement | null>(null);
   const echartsInstanceRef = useRef<unknown>(null);
+  const [copied, setCopied] = useState(false);
+
+  const handleExportPng = () => {
+    const inst = echartsInstanceRef.current as { getDataURL?: (o: object) => string } | null;
+    const url = inst?.getDataURL?.({ type: "png", pixelRatio: 2, backgroundColor: "#fff" });
+    if (!url) return;
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${tableName}-${config.chartType}-${Date.now()}.png`;
+    a.click();
+  };
+
+  const handleCopyConclusion = () => {
+    const md = buildConclusionMarkdown(tableName, config, rows);
+    void navigator.clipboard.writeText(md).then(() => {
+      setCopied(true);
+      setTimeout(() => setCopied(false), 1500);
+    });
+  };
 
   useEffect(() => {
     if (!sql) {
@@ -361,5 +428,27 @@ export function ChartCanvas({ tableName, config, fieldsByName }: Props) {
     );
   }
 
-  return <div ref={containerRef} className="min-h-0 flex-1" style={{ minHeight: 360 }} />;
+  return (
+    <div className="flex min-h-0 flex-1 flex-col">
+      <div className="flex items-center justify-end gap-1.5 border-b border-neutral-200 px-3 py-1.5 dark:border-neutral-800">
+        <button
+          onClick={handleExportPng}
+          className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          title="导出当前图表为 PNG"
+        >
+          <Download className="h-3.5 w-3.5" strokeWidth={1.75} />
+          导出 PNG
+        </button>
+        <button
+          onClick={handleCopyConclusion}
+          className="inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] text-neutral-600 hover:bg-neutral-100 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          title="复制图表描述 + 聚合数据表（Markdown），可粘贴进报告"
+        >
+          {copied ? <Check className="h-3.5 w-3.5 text-emerald-600" strokeWidth={2} /> : <Copy className="h-3.5 w-3.5" strokeWidth={1.75} />}
+          {copied ? "已复制" : "复制结论"}
+        </button>
+      </div>
+      <div ref={containerRef} className="min-h-0 flex-1" style={{ minHeight: 360 }} />
+    </div>
+  );
 }
