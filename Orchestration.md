@@ -219,7 +219,9 @@ web/src/
 ### 旧 skill 处置 + 项目命令
 `handoff-generate` / `handoff-load`（全局 skill，他项目仍用）→ **本项目停用**，不再生成单链 handoff。
 本项目改用两个**项目级 slash command**（`.claude/commands/`，仅本项目生效、不影响全局）自动执行上述 SOP：
-- **`/wrapup [域]`** — Session 收尾（校验→commit/PR→覆盖 notes §0→沉淀长效知识）
-- **`/resume [域]`** — Session 开场（拉取→读状态/背景/任务→定位上次改动→给起步计划）
+- **`/px-wrapup [域]`** — Session 收尾（校验→commit/PR→覆盖 notes §0→沉淀长效知识）
+- **`/px-resume [域]`** — Session 开场（拉取→读状态/背景/任务→定位上次改动→给起步计划）
+
+> 命名带 `px-` 前缀：避免与 Claude Code 内置 `/resume`（恢复历史会话）等命令混淆。
 
 域参数留空时按当前 git 分支推断。三个外部 agent（opencode/codex/antigravity）读不到 `.claude/commands/`，可直接复制这两个 `.md` 正文作为 prompt 使用（其中 `!`git…`` 预取行需自行手动跑）。
