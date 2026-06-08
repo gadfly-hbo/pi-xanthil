@@ -158,6 +158,34 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
     }
   }, [uniqueTableName]);
 
+  // Drag-and-drop upload: bytes come directly from the browser, zero server involvement.
+  const handleUpload = useCallback(async (fileName: string, bytes: Uint8Array) => {
+    setLoading(true);
+    setError(null);
+    try {
+      const tableName = uniqueTableName(sanitizeTableName(fileName));
+      const reg = await registerFile({ tableName, fileName, bytes });
+      const profile = await profileTable(tableName);
+      setLoadedTables((prev) => [
+        ...prev,
+        {
+          tableName,
+          label: fileName,
+          sourceKey: `upload:${fileName}`,
+          sheets: reg.sheets,
+          currentSheet: reg.sheets?.[0],
+          kindOverrides: {},
+          ...profile,
+        },
+      ]);
+      setActiveTableName(tableName);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setLoading(false);
+    }
+  }, [uniqueTableName]);
+
   const toggleFile = useCallback((choice: FileChoice) => {
     const key = fileKey(choice);
     const existing = loadedTables.find((t) => t.sourceKey === key);
@@ -295,7 +323,7 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
 
         <div className="flex min-h-0 flex-1">
           <div className="w-64 shrink-0">
-            <FileSelector scope={scope} onToggle={toggleFile} loadedKeys={loadedKeys} />
+            <FileSelector scope={scope} onToggle={toggleFile} loadedKeys={loadedKeys} onUpload={handleUpload} />
           </div>
 
           <div className="flex min-w-0 flex-1 flex-col">

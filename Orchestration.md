@@ -227,3 +227,31 @@ web/src/
 - **通用 prompt（任意 agent 复制即用）**：`docs/prompts/px-wrapup.prompt.md`、`docs/prompts/px-resume.prompt.md`（纯文本、无 git、无 Claude Code 特性）。三个外部 agent（opencode/codex/antigravity）直接复制正文使用。
 - **Claude Code 项目命令**：`/px-wrapup [域]`、`/px-resume [域]`（`.claude/commands/`，用 `@` 引用上面同一份 prompt → 单一来源不重复）。`px-` 前缀避免与内置 `/resume` 混淆。
 - 旧 `handoff-generate` / `handoff-load`（全局 skill，他项目仍用）→ **本项目停用**。
+
+---
+
+## 十一、需求协作闭环（机制 A：单目录顺序喂）
+
+新需求的完整流转是**环形**，不是单向：
+
+```
+① 新需求 ──[用户]──▶ 主控(Claude)
+② 主控拆解为 D/E/V 按域 brief（目标/文件边界/验收/约束/要建表和路由/跨域依赖）
+   · 跨域依赖 → 先定接口契约(types.ts)
+   · 拆解结果同步写入任务派发页 docs/wiki.html（每域一键复制）
+③ ──[用户从 wiki.html 一键复制各域 brief]──▶ 手动分发给三个 agent
+④ 三个 agent 在【同一工作目录顺序开发】：各域改不同 slot 文件(物理隔离)→ 顺序做也零冲突；全程不碰 git
+⑤ 产物回流主控：逐域代码终审 + 跨域集成验证(typecheck+build+接口对接) → 返回「可提交」结论 + 改动清单
+⑥ ──[用户手动 git commit]──▶ 落库（时机/粒度自定）
+```
+
+**要点**：
+- **机制 A = 单一工作目录 + 顺序喂任务**。接缝重构的 slot 物理隔离保证顺序开发互不覆盖；集成几乎免费（主控直接看工作目录全量 diff 终审）。
+- **⑤ 回流终审是质量关口，不可跳过**：三份独立产物必须经主控验证能拼合（接口对接 / typecheck / build 全绿）才算完成——这是总控"代码终审"职责所在。
+- **任务派发 + 版本历史统一在 `docs/wiki.html`**：可一键复制各域任务 brief + 浏览项目迭代 changelog。每次主控拆解新需求 → 更新该页任务区；每次发版 → 追加 changelog。
+
+### 任务生命周期与归档（wiki.html）
+任务三态：`todo`(待派发) → `doing`(进行中) → `done`(已完成)。归档分两步，**由总控执行**：
+1. **日常折叠**：⑤ 回流终审确认完成 → 把该任务 `status` 改 `done`，自动折叠进 wiki「✓ 已完成」区，移出活跃派发区。
+2. **阶段归档**：一个阶段（如 P0）全部 `done`、要进下阶段时 → 把这批 done 的成果汇总成 `CHANGELOG` 一条版本记录（发版），再从 `TASKS` 删除这些 done 条目。
+原则：派发区只放"还要做的"，完成的沉淀为"已经做的"（版本档案）——看板永不膨胀（与 handoff 治理同思路：活跃状态 vs 历史归档分离）。

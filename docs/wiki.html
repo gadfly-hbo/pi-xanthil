@@ -1,0 +1,318 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>苍耳 pi-Xanthil · 项目 Wiki</title>
+<style>
+  :root {
+    --bg: #0e0f11; --panel: #17181b; --panel2: #1d1f23; --border: #2a2d33;
+    --fg: #e6e8ea; --muted: #9aa0a6; --faint: #6b7178;
+    --d: #38bdf8; --e: #34d399; --v: #a78bfa; --x: #fbbf24;
+    --accent: #38bdf8;
+  }
+  * { box-sizing: border-box; }
+  body { margin: 0; background: var(--bg); color: var(--fg);
+    font-family: "PingFang SC","Noto Sans CJK SC","Helvetica Neue",Arial,sans-serif;
+    line-height: 1.6; -webkit-font-smoothing: antialiased; }
+  .wrap { max-width: 1100px; margin: 0 auto; padding: 32px 24px 80px; }
+  header { display: flex; align-items: baseline; gap: 14px; flex-wrap: wrap; margin-bottom: 6px; }
+  h1 { font-size: 24px; margin: 0; letter-spacing: .5px; }
+  .ver { background: linear-gradient(135deg,#0ea5e9,#6366f1); color: #fff;
+    font-size: 13px; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
+  .tagline { color: var(--muted); font-size: 14px; margin: 0 0 24px; }
+  .tabs { display: flex; gap: 8px; margin-bottom: 28px; border-bottom: 1px solid var(--border); }
+  .tab { background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer;
+    padding: 10px 16px; border-bottom: 2px solid transparent; font-family: inherit; }
+  .tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
+  .view { display: none; } .view.active { display: block; }
+
+  .grid { display: grid; grid-template-columns: repeat(auto-fit,minmax(330px,1fr)); gap: 18px; }
+  .card { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    overflow: hidden; display: flex; flex-direction: column; }
+  .card.is-done { opacity: .55; }
+  .card-top { height: 4px; }
+  .card-body { padding: 18px 18px 16px; display: flex; flex-direction: column; gap: 10px; flex: 1; }
+  .dom { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+  .chip { font-size: 11px; font-weight: 700; padding: 2px 9px; border-radius: 6px; color: #06121f; }
+  .agent { color: var(--faint); font-size: 12px; }
+  .st { font-size: 11px; padding: 1px 8px; border-radius: 5px; font-weight: 600; margin-left: auto; }
+  .st-todo { background: #26282c; color: #9aa0a6; }
+  .st-doing { background: #0c2a3d; color: #38bdf8; }
+  .st-done { background: #10331f; color: #4ade80; }
+  .task-title { font-size: 16px; font-weight: 650; margin: 2px 0; }
+  pre.brief { background: var(--panel2); border: 1px solid var(--border); border-radius: 8px;
+    padding: 12px; font-size: 12px; color: #c5cad0; max-height: 230px; overflow: auto;
+    white-space: pre-wrap; word-break: break-word; margin: 0;
+    font-family: "SF Mono",ui-monospace,Menlo,Consolas,monospace; }
+  .copy { margin-top: auto; background: var(--panel2); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 9px; font-size: 14px; cursor: pointer; font-family: inherit;
+    transition: all .15s; }
+  .copy:hover { background: #2a2d33; }
+  .copy.done { background: #10331f; border-color: #1f6b3b; color: #4ade80; }
+  details.done-sec { margin-top: 28px; }
+  details.done-sec summary { cursor: pointer; color: var(--muted); font-size: 14px; padding: 8px 0;
+    border-top: 1px dashed var(--border); }
+
+  .cl-item { background: var(--panel); border: 1px solid var(--border); border-radius: 12px;
+    padding: 18px 20px; margin-bottom: 16px; }
+  .cl-head { display: flex; align-items: baseline; gap: 12px; margin-bottom: 8px; flex-wrap: wrap; }
+  .cl-ver { font-size: 18px; font-weight: 700; }
+  .cl-cur { background: #10331f; color: #4ade80; font-size: 11px; font-weight: 700;
+    padding: 2px 8px; border-radius: 6px; }
+  .cl-date { color: var(--faint); font-size: 13px; }
+  .cl-title { color: var(--muted); font-size: 14px; }
+  .cl-item ul { margin: 8px 0 0; padding-left: 20px; }
+  .cl-item li { font-size: 14px; color: #cdd2d7; margin: 4px 0; }
+  .note { color: var(--faint); font-size: 13px; margin-top: 20px; }
+  .legend { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
+  code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+</style>
+</head>
+<body>
+<div class="wrap">
+  <header>
+    <h1>苍耳 pi-Xanthil</h1>
+    <span class="ver" id="verBadge">v2.0</span>
+  </header>
+  <p class="tagline">本地优先的 AI 数据分析工作台 · 多 Agent 协同开发 Wiki（任务派发 + 版本历史）</p>
+
+  <div class="tabs">
+    <button class="tab active" data-view="dispatch">📋 任务派发</button>
+    <button class="tab" data-view="prompts">🧩 常用 prompts</button>
+    <button class="tab" data-view="changelog">📖 版本历史</button>
+  </div>
+
+  <section id="dispatch" class="view active">
+    <p class="legend">当前阶段 <b>P0</b>。机制 A：单工作目录顺序喂。点「复制任务」把对应域 brief 整段贴给该 agent。<span style="color:var(--d)">■</span> 数据基座(opencode) <span style="color:var(--e)">■</span> 智能引擎(codex) <span style="color:var(--v)">■</span> 可视交付(antigravity) <span style="color:var(--x)">■</span> 总控(Claude)</p>
+    <div class="grid" id="taskGrid"></div>
+    <details class="done-sec" id="doneWrap">
+      <summary>✓ 已完成（待阶段结束时归档进版本历史）</summary>
+      <div class="grid" id="doneGrid" style="margin-top:14px"></div>
+    </details>
+  </section>
+
+  <section id="prompts" class="view">
+    <p class="legend">本项目 Session 开场/收尾通用 prompt（无 git，任意 agent 复制即用）。Claude Code 里也可直接用 <code>/px-resume</code>、<code>/px-wrapup</code> 命令。</p>
+    <div class="grid" id="promptList"></div>
+    <script type="text/plain" id="src-resume"># pi-xanthil · Session 开场 SOP（通用 prompt，适用任意 agent）
+
+你正在为 pi-xanthil 开始一个开发 session。目标域 ∈ {data, engine, viz, infra}（不确定就问用户）。
+
+依次执行：
+
+1. **读状态**：读 `docs/notes-<域>.md` 的「## 0. 当前状态」（上次进度 + 下一步 + 阻塞）与 `Orchestration.md §八`（全局里程碑）。
+2. **读背景与任务**：读 `docs/notes-<域>.md` 正文（领域约束/决策/踩坑）+ `KICKOFF-P0.md`（当前阶段任务）+ `AGENTS.md`（数据安全/工程约定）。
+3. **确认接续点**：结合 §0「下一步」与相关文件当前内容，确定从哪接续（无需 git）。
+4. **先汇报，不要立刻写代码**：用 5–8 行向用户说明 ① 本域当前状态（来自 §0）② 上次进度与遗留 ③ 本次建议的「下一步」与第一步动作 ④ 阻塞 / 待确认。**用户确认后再开干。**
+
+⛔ **不要执行任何 git 操作**（pull / commit 等由用户手动）。
+约束：不碰接缝层骨架与他域文件。</script>
+    <script type="text/plain" id="src-wrapup"># pi-xanthil · Session 收尾 SOP（通用 prompt，适用任意 agent）
+
+你正在为 pi-xanthil 收尾本次开发 session。目标域 ∈ {data, engine, viz, infra}（按本次所改内容确定；不确定就问用户）。
+
+依次执行，每步简述结果：
+
+1. **校验**：跑 `npm run typecheck` 与 `npm run build`；若目标域=data，另跑数据探索 LLM 隔离 grep（见 `AGENTS.md`）。任一不绿 → 停下修复，不进入下一步。
+2. **覆盖状态**：用最新内容**覆盖** `docs/notes-<域>.md` 的「## 0. 当前状态」区（最近更新日期 / 进度 / 下一步 / 阻塞 / 开放问题）——覆盖旧内容，**不堆叠历史**。这是下个 session 接续的唯一可靠依据，务必写充分（尤其"下一步"和未完成点）。
+3. **沉淀长效知识**：若本次产生新踩坑 / 新决策（含"为什么/否决了什么"）/ 新约束 → 追加或修订到 `docs/notes-<域>.md` 正文对应小节。
+4. **上报开放问题**：需总控（Claude）拍板的事项写进 notes §0「开放问题」。
+5. **列改动清单**：列出本次改动/新增的文件，逐条一句话说明改了什么。
+
+⛔ **不要执行任何 git 操作**（add / commit / push / PR 等）。是否提交、何时提交、提交粒度——全部由用户在合适节点手动决定。最后提示用户："改动已就绪，可自行 review 后提交。"
+
+约束：只改本域文件；不碰他域文件 / 接缝层骨架（`index.ts` `db.ts` `App.tsx` `api.ts` `types.ts` `constants.ts`）/ `.claude/settings.local.json` / `.understand-anything/*`。涉及这些先停下问用户。</script>
+  </section>
+
+  <section id="changelog" class="view">
+    <div id="clList"></div>
+    <p class="note">1.x（pi-xanthil1.3 ~ 1.32）为单人开发阶段，历史见 <code>git tag</code>。2.0 起进入多 Agent 协同体系。</p>
+  </section>
+</div>
+
+<script>
+/* ════════════ 数据区（迭代时在此追加；渲染逻辑见下方） ════════════ */
+const VERSION = "2.0";
+
+const DOMAINS = {
+  D: { name: "数据基座", agent: "opencode (deepseek/glm)", color: "var(--d)" },
+  E: { name: "智能引擎", agent: "codex (GPT-5.5)",        color: "var(--e)" },
+  V: { name: "可视交付", agent: "antigravity (Gemini)",   color: "var(--v)" },
+  X: { name: "总控",     agent: "Claude (本人)",           color: "var(--x)" },
+};
+
+/* 任务生命周期 status: "todo"(待派发) | "doing"(进行中) | "done"(已完成)
+   ── 归档规则 ──
+   · 总控在回流终审确认完成 → 把该任务 status 改 "done"（自动折叠进下方「已完成」区）
+   · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
+     再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
+const TASKS = [
+  { dom: "D", status: "done", title: "P0-A 上传即用", brief:
+`✅ 已完成并通过总控终审（2026-06-08）。
+
+成果：拖拽/点击上传 CSV·Excel → 浏览器内 duckdb-wasm 直接建表画像（纯内存方案，数据零出浏览器，无需路径登记）。
+改动文件：web/src/components/DataExplorationPane.tsx、data-exploration/FileSelector.tsx（复用现有 registerFile/profileTable 管线，lib 未改）。
+终审：数据安全隔离 grep 无匹配、纯前端零 LLM、仅限 D 域 slot、typecheck+build 绿；收尾清理(isAllowedFile 简化 + ALLOWED_MIME 改 Set)已复审通过。
+范围说明：纯内存表，刷新即丢、不跨 session 复用（用户已接受；持久化如需可后续增强）。
+待整个 P0(D+E+V)完成时归档进版本历史。` },
+
+  { dom: "E", status: "todo", title: "P0-C E2E 验证补课", brief:
+`你是 pi-xanthil 项目的 Agent-E（智能引擎域）。
+开工必读：docs/notes-engine.md + AGENTS.md + Orchestration.md。
+规则：只改 E 域 slot，不碰接缝层骨架与他域文件；全程不执行任何 git。
+
+【任务 · P0-C E2E 验证补课】（头号产品风险：大量功能 build 绿但端到端未验证）
+1) AnaX 8 阶段真跑：准备真实留存聚合数据(综合评分≥7)登记到 clean_data → 一句话诉求跑完 business→…→archive，重点看 insight fan-out(concurrency:3) / 假设库 flywheel 写入 / 各 gate 裁决，确认不再卡 data_gate。
+2) skill 蒸馏全链路 smoke：对话 → 沉淀 skill → 提炼 → 预览/改名 → 保存 → 确认 listSkills 识别为 project skill + SkillSelector 出现（验证 LLM frontmatter 稳定性）。
+3) SQL 连接真实库：连 PostgreSQL/MySQL 实测取数 → 导出 → 注册路径。
+产出：修复清单（每条链路的 bug+fix）+ 验证报告（每条链路结论）。这是验证型任务，交付"可信的绿"，不是新代码量。
+收尾：typecheck + build 绿 → 覆盖 docs/notes-engine.md §0 → 列改动清单（不要 git）。` },
+
+  { dom: "V", status: "todo", title: "P0-B 看板画布", brief:
+`你是 pi-xanthil 项目的 Agent-V（可视交付域）。
+开工必读：docs/notes-viz.md + AGENTS.md + Orchestration.md。
+规则：只改 V 域 slot，不碰接缝层骨架与他域文件；全程不执行任何 git。
+
+【任务 · P0-B 看板画布】（首个用上批3 db 扩展点的功能）
+目标：Dashboard 从固定会员表 → 可拖拽多图看板画布 + 字段类型自动推荐图表 + 图表点击联动。
+前端：BiDashboardPane.tsx 画布(@dnd-kit 拖拽+网格)；echarts-for-react 图表组件(指标卡/折线/柱/饼/表起步)；按 profiling.ts 的 FieldKind 自动推荐图表。
+持久化(用批3扩展点)：db/viz.ts 的 initVizTables 建表 dashboards(id,workspace_id,name,layout_json,created_at,updated_at)【schema 先报总控审】；routes/viz.ts CRUD(GET/POST/PUT/DELETE /api/dashboards)；lib/api/viz.ts 加 vizApi 方法；tabs/VizTabs.tsx 接入。
+约束：报告/数据原文不送 LLM。
+验收：拖拽添加图表、配置维度/指标、保存看板、刷新恢复、点击联动。
+收尾：typecheck + build 绿 → 覆盖 docs/notes-viz.md §0 → 列改动清单（不要 git）。` },
+
+  { dom: "X", status: "doing", title: "P0 期间总控职责", brief:
+`总控（Claude）P0 期间职责（自留，不分发）：
+1. 评审三域回流产物：逐域代码终审 + 跨域集成验证(typecheck+build+接口对接)。
+2. P0 收口后定义 MetricDefinition 双侧契约(server/src/types.ts + web/src/types.ts)，供 D 实现、E/V 消费。
+3. 维护 Orchestration.md §八 里程碑 + 本 wiki 任务区与归档。
+4. 不碰 git；集成验证通过后返回"可提交"结论 + 改动清单，由用户手动提交。` },
+];
+
+/* 版本历史：每次发版 / 阶段归档时在数组顶部追加一条 */
+const CHANGELOG = [
+  { ver: "2.0", date: "2026-06-08", current: true, title: "多 Agent 协同体系建立", items: [
+    "确立总控(Claude) + 三域(D 数据基座 / E 智能引擎 / V 可视交付)分工，引入 opencode·codex·antigravity 协作",
+    "接缝重构(绞杀者)：index.ts→routes/、db.ts→db/、App.tsx→tabs/、api.ts→lib/api/，三域获独占 slot 可并行；清除全部 baseline typecheck 错误",
+    "文档治理：9 份单链巨型 handoff(~685KB) 蒸馏为 4 份按域活文档 docs/notes-*.md",
+    "Session 连续性 SOP + 项目命令 /px-resume /px-wrapup（无 git，纯文本 prompt 在 docs/prompts/）",
+    "需求协作闭环(机制 A：单目录顺序喂) + 任务派发/版本历史 Wiki（含任务生命周期与归档）",
+    "产品审计：对标 AI 数据分析工作台方案，定 P0(上传即用/E2E验证/看板画布)·P1(指标语义层/Notebook/报告交付)·P2(协作权限/治理) 路线",
+  ]},
+];
+
+/* ════════════ 渲染逻辑（一般无需改动） ════════════ */
+const STATUS = {
+  todo:  { label: "待派发", cls: "st-todo" },
+  doing: { label: "进行中", cls: "st-doing" },
+  done:  { label: "✓ 完成", cls: "st-done" },
+};
+
+document.getElementById("verBadge").textContent = "v" + VERSION;
+
+function buildCard(t, i) {
+  const d = DOMAINS[t.dom];
+  const st = STATUS[t.status] || STATUS.todo;
+  const card = document.createElement("div");
+  card.className = "card" + (t.status === "done" ? " is-done" : "");
+  card.innerHTML =
+    '<div class="card-top" style="background:' + d.color + '"></div>' +
+    '<div class="card-body">' +
+      '<div class="dom"><span class="chip" style="background:' + d.color + '">' + t.dom + '</span>' +
+        '<b>' + d.name + '</b><span class="agent">· ' + d.agent + '</span>' +
+        '<span class="st ' + st.cls + '">' + st.label + '</span></div>' +
+      '<div class="task-title">' + t.title + '</div>' +
+      '<pre class="brief"></pre>' +
+      '<button class="copy" data-i="' + i + '">📋 复制任务</button>' +
+    '</div>';
+  card.querySelector(".brief").textContent = t.brief;
+  return card;
+}
+
+const grid = document.getElementById("taskGrid");
+const doneGrid = document.getElementById("doneGrid");
+const doneWrap = document.getElementById("doneWrap");
+let doneN = 0;
+TASKS.forEach((t, i) => {
+  const card = buildCard(t, i);
+  if (t.status === "done") { doneGrid.appendChild(card); doneN++; }
+  else grid.appendChild(card);
+});
+const doneSum = doneWrap.querySelector("summary");
+if (doneN > 0) {
+  doneSum.textContent = "✓ 已完成 " + doneN + " 项（待阶段结束时归档进版本历史）";
+} else {
+  doneSum.textContent = "✓ 已完成 0 项（完成并经总控终审后归档至此）";
+  doneGrid.innerHTML = '<p style="color:var(--faint);font-size:13px;margin:6px 2px 0">暂无已完成任务 —— 三域 P0 完成并经回流终审后会出现在这里，阶段结束时并入版本历史。</p>';
+}
+
+document.body.addEventListener("click", (e) => {
+  const btn = e.target.closest(".copy");
+  if (!btn) return;
+  const isPrompt = !!btn.dataset.prompt;
+  const text = isPrompt
+    ? document.getElementById("src-" + btn.dataset.prompt).textContent.trim()
+    : TASKS[+btn.dataset.i].brief;
+  const label = isPrompt ? "📋 复制 prompt" : "📋 复制任务";
+  copyText(text).then(() => {
+    btn.textContent = "✓ 已复制"; btn.classList.add("done");
+    setTimeout(() => { btn.textContent = label; btn.classList.remove("done"); }, 1800);
+  });
+});
+
+const PROMPTS = [
+  { id: "resume", title: "/px-resume · Session 开场", desc: "读状态/背景/任务 → 先汇报再开干（无 git）" },
+  { id: "wrapup", title: "/px-wrapup · Session 收尾", desc: "校验 → 覆盖 notes §0 → 沉淀知识 → 列改动清单（无 git）" },
+];
+const promptList = document.getElementById("promptList");
+PROMPTS.forEach((p) => {
+  const src = document.getElementById("src-" + p.id);
+  const card = document.createElement("div");
+  card.className = "card";
+  card.innerHTML =
+    '<div class="card-top" style="background:var(--accent)"></div>' +
+    '<div class="card-body">' +
+      '<div class="task-title">' + p.title + '</div>' +
+      '<div style="color:var(--muted);font-size:13px;margin:-4px 0 2px">' + p.desc + '</div>' +
+      '<pre class="brief"></pre>' +
+      '<button class="copy" data-prompt="' + p.id + '">📋 复制 prompt</button>' +
+    '</div>';
+  card.querySelector(".brief").textContent = src ? src.textContent.trim() : "";
+  promptList.appendChild(card);
+});
+
+function copyText(text) {
+  if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
+  return new Promise((res) => {
+    const ta = document.createElement("textarea");
+    ta.value = text; ta.style.position = "fixed"; ta.style.opacity = "0";
+    document.body.appendChild(ta); ta.select();
+    try { document.execCommand("copy"); } catch (_) {}
+    document.body.removeChild(ta); res();
+  });
+}
+
+const cl = document.getElementById("clList");
+CHANGELOG.forEach((c) => {
+  const el = document.createElement("div");
+  el.className = "cl-item";
+  el.innerHTML =
+    '<div class="cl-head"><span class="cl-ver">v' + c.ver + '</span>' +
+      (c.current ? '<span class="cl-cur">当前</span>' : '') +
+      '<span class="cl-date">' + c.date + '</span><span class="cl-title">' + c.title + '</span></div>' +
+    '<ul>' + c.items.map((x) => '<li>' + x + '</li>').join("") + '</ul>';
+  cl.appendChild(el);
+});
+
+document.querySelectorAll(".tab").forEach((tab) => {
+  tab.addEventListener("click", () => {
+    document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
+    document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
+    tab.classList.add("active");
+    document.getElementById(tab.dataset.view).classList.add("active");
+  });
+});
+</script>
+</body>
+</html>

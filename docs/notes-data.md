@@ -8,9 +8,12 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-08 · 总控建档
-- 进度：P0-A「上传即用」待启动
-- 下一步：见 `KICKOFF-P0.md` → Agent-D P0-A
+- 最近更新：2026-06-08 · P0-A 代码清理完成
+- 进度：P0-A「上传即用」✅ — 拖拽 CSV/XLSX → duckdb-wasm 直接画像，无需路径登记
+- 代码清理（2026-06-08）：
+  - `FileSelector.tsx`: `ALLOWED_MIME` 从 `Record<string, string[]>` 简化为 `Set<string>`（value 数组从未使用）
+  - `FileSelector.tsx`: `isAllowedFile` 移除冗余的 `file.name.endsWith(...)` 串联（与 `hasAllowedExtension` 完全重复）
+- 下一步：待总控集成终审；P1 指标语义层（总控先定 MetricDefinition 契约）
 - 阻塞 / 待总控：无
 - 开放问题：无
 
