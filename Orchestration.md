@@ -216,5 +216,10 @@ web/src/
 - **域 agent**：自己域 `notes §0`（覆盖）+ 正文（追加长效）+ commit/PR。**不碰** Orchestration / 他域 notes / 接缝层。
 - **总控**：本章程 §八（跨域里程碑/集成状态）+ `notes-infra.md` + 跨域契约（types.ts）。
 
-### 旧 skill 处置
-`handoff-generate` / `handoff-load` **停用**（不再生成单链 handoff）。如要保留触发习惯，可改造为"读/写 `notes-<域>.md §0`"——是否改造由用户定。
+### 旧 skill 处置 + 项目命令
+`handoff-generate` / `handoff-load`（全局 skill，他项目仍用）→ **本项目停用**，不再生成单链 handoff。
+本项目改用两个**项目级 slash command**（`.claude/commands/`，仅本项目生效、不影响全局）自动执行上述 SOP：
+- **`/wrapup [域]`** — Session 收尾（校验→commit/PR→覆盖 notes §0→沉淀长效知识）
+- **`/resume [域]`** — Session 开场（拉取→读状态/背景/任务→定位上次改动→给起步计划）
+
+域参数留空时按当前 git 分支推断。三个外部 agent（opencode/codex/antigravity）读不到 `.claude/commands/`，可直接复制这两个 `.md` 正文作为 prompt 使用（其中 `!`git…`` 预取行需自行手动跑）。
