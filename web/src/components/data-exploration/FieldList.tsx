@@ -6,6 +6,8 @@ import type { FieldSchema } from "@/lib/profiling";
 
 interface Props {
   fields: FieldSchema[];
+  loading?: boolean;
+  activeTableExists?: boolean;
 }
 
 const KIND_ICON: Record<string, string> = {
@@ -52,7 +54,7 @@ function DraggableField({ field }: { field: FieldSchema }) {
   );
 }
 
-export function FieldList({ fields }: Props) {
+export function FieldList({ fields, loading, activeTableExists = true }: Props) {
   const groups: Record<string, FieldSchema[]> = {};
   for (const field of fields) {
     const key = field.kind;
@@ -67,8 +69,14 @@ export function FieldList({ fields }: Props) {
         字段列表
       </div>
       <div className="min-h-0 flex-1 overflow-y-auto p-2">
-        {fields.length === 0 && (
+        {loading && (
           <div className="px-2 py-4 text-[11px] text-neutral-500">加载中...</div>
+        )}
+        {!loading && !activeTableExists && (
+          <div className="px-2 py-4 text-[11px] text-neutral-400 italic">请选择数据源</div>
+        )}
+        {!loading && activeTableExists && fields.length === 0 && (
+          <div className="px-2 py-4 text-[11px] text-neutral-400 italic">无可用字段</div>
         )}
         {sortedKeys.map((kind) => (
           <div key={kind} className="mb-2">

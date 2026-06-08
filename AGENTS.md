@@ -87,8 +87,9 @@ grep -rE "(generate|chat|extract|clarify|sink|distill).*api\." web/src/component
 
 ---
 
-## 四、当前活跃约束（2026-06-06）
+## 四、当前活跃约束（2026-06-07）
 
 - 仓库存在大量 modified/untracked 文件，**不要清理或回滚**他人成果
 - 全局 `git diff --check` 可能因无关 trailing whitespace 失败（用户已明确跳过），**不要主动修无关文件**
 - 业务需求字段级来源引用采用 `sourceRefs` 字段路径 + quote 最小闭环，**不要擅自升级**为字符 offset 定位
+- **pi CLI 调用陷阱**：`runPiPrompt()` 不要用 `--no-extensions`（会禁用模型 provider 扩展导致 LLM 调用失败），用 `--no-skills`。`server/src/pi-adapter.ts:165` 已修复。

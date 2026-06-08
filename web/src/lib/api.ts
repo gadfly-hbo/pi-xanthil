@@ -1,4 +1,4 @@
-import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlQueryResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
+import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlQueryResult, SqlValidateResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
 
 export interface TocGraphItem {
   id: string;
@@ -33,6 +33,21 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     }).then(json<{ path: string; absPath: string; content: string }>),
+  reviewReport: (payload: { pathId: number; relPath?: string; prompt?: string; model?: string }) =>
+    fetch("/api/report-review/review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ content: string; annotations: Array<{ quote: string; issue: string; suggestion: string; severity: "P0" | "P1" | "P2" }>; totalScore: number; model: string; reportContent: string }>),
+  autoFixReport: (payload: { pathId: number; relPath?: string; reviewContent: string; prompt?: string; model?: string }) =>
+    fetch("/api/report-review/auto-fix", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ path: string; content: string; model: string }>),
+  listReviewHistory: (payload: { pathId: number; relPath?: string }) =>
+    fetch(`/api/report-review/history?pathId=${encodeURIComponent(payload.pathId)}${payload.relPath ? `&relPath=${encodeURIComponent(payload.relPath)}` : ""}`)
+      .then(json<{ entries: Array<{ id: string; reportName: string; reviewedAt: number; model: string; totalScore: number; pathId: number; relPath: string; reviewMarkdown: string; annotations: Array<{ quote: string; issue: string; suggestion: string; severity: "P0" | "P1" | "P2" }> }> }>),
 
   generateBusinessRequirement: (payload: {
     pathId: number;
@@ -298,6 +313,18 @@ export const api = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     }).then(json<Flow>),
+  distillSkill: (sessionId: string, payload: { scope: "latest_task" | "full_conversation"; model?: string }) =>
+    fetch(`/api/sessions/${sessionId}/distill-skill`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ content: string; name: string; model: string }>),
+  saveSkill: (sessionId: string, payload: { name: string; content: string }) =>
+    fetch(`/api/sessions/${sessionId}/save-skill`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ path: string; name: string; slug: string }>),
   renameWorkspace: (id: string, name: string) =>
     fetch(`/api/workspaces/${id}`, {
       method: "PATCH",
@@ -429,10 +456,12 @@ export const api = {
     fetch(`/api/sql-connections/${id}/test`, { method: "POST" }).then(json<{ ok: boolean; message: string; latencyMs: number }>),
   getSqlSchema: (id: string) =>
     fetch(`/api/sql-connections/${id}/schema`).then(json<{ tables: SchemaTable[] }>),
-  querySql: (id: string, sql: string, params?: Record<string, unknown>) =>
-    fetch(`/api/sql-connections/${id}/query`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql, params }) }).then(json<SqlQueryResult>),
-  exportSql: (id: string, sql: string, outputPath: string, params?: Record<string, unknown>, watermark?: { column: string; initialValue?: unknown }) =>
-    fetch(`/api/sql-connections/${id}/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql, outputPath, params, watermark }) }).then(json<{ path: string; rowCount: number; appended: boolean }>),
+  querySql: (id: string, sql: string, params?: Record<string, unknown>, workspaceId?: string) =>
+    fetch(`/api/sql-connections/${id}/query`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql, params, workspaceId }) }).then(json<SqlQueryResult>),
+  validateSql: (id: string, sql: string) =>
+    fetch(`/api/sql-connections/${id}/validate-sql`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql }) }).then(json<SqlValidateResult>),
+  exportSql: (id: string, sql: string, outputPath: string, params?: Record<string, unknown>, watermark?: { column: string; initialValue?: unknown }, workspaceId?: string) =>
+    fetch(`/api/sql-connections/${id}/export`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({ sql, outputPath, params, watermark, workspaceId }) }).then(json<{ path: string; rowCount: number; appended: boolean }>),
   getExportState: (path: string) =>
     fetch(`/api/sql-connections/export-state?path=${encodeURIComponent(path)}`).then(json<{ exists: boolean; lastWatermark?: unknown }>),
   updateExportState: (path: string, lastWatermark?: unknown) =>
@@ -454,11 +483,11 @@ export const api = {
   listExtractionTools: () => fetch("/api/extraction-tools").then(json<ExtractionTool[]>),
   listExtractionToolTestCases: (id: string) =>
     fetch(`/api/extraction-tools/${encodeURIComponent(id)}/test-cases`).then(json<ToolEvalCaseTemplateList>),
-  runExtractionTool: (id: string, inputPath: string, outputPath: string, params?: Record<string, string | number | boolean>) =>
+  runExtractionTool: (id: string, inputPath: string, outputPath: string, params?: Record<string, string | number | boolean>, workspaceId?: string) =>
     fetch(`/api/extraction-tools/${encodeURIComponent(id)}/run`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ inputPath, outputPath, params }),
+      body: JSON.stringify({ inputPath, outputPath, params, workspaceId }),
     }).then(json<ExtractionRun>),
   previewExtractionFile: (path: string, outputRoot: string) =>
     fetch(`/api/extraction-tools/preview?path=${encodeURIComponent(path)}&outputRoot=${encodeURIComponent(outputRoot)}`).then(

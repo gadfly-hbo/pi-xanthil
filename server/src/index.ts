@@ -172,6 +172,7 @@ import { parseSkillEvaluationRunRequest } from "./skill-evaluation-api.ts";
 import { applySkillCurationProposals, autoTriggerCuration, curateSkillEvaluation } from "./skill-curator.ts";
 import { runToolEvaluation } from "./tool-evaluation-runner.ts";
 import { parseToolEvaluationCases, parseToolEvaluationRunRequest, resolveToolEvaluationCasePaths } from "./tool-evaluation-api.ts";
+import { DEFAULT_REVIEW_PROMPT, buildReviewPrompt, buildAutoFixPrompt, AUTO_FIX_SYSTEM_PROMPT, parseReviewScore, type ReviewAnnotation, type ReviewHistoryEntry } from "./report-review.ts";
 import { copyFlowSnapshot, copyLocalFolderIntoFlow, inferWorkflow, moveAllFiles, readFlowFile, readTree, safeResolve, writeFlowFile } from "./flow-fs.ts";
 import { compactPiSession, getPiSessionStats, runPiPrompt, runPiTurn, type PiRun } from "./pi-adapter.ts";
 
@@ -181,6 +182,7 @@ import { buildModelLabPrompt, SUPPORTED_MODELS, type ModelLabId } from "./model-
 import { buildRegisteredPathContext, resolveOutputTarget } from "./output-paths.ts";
 import { listSkills, validateSkillPaths } from "./skills.ts";
 import { retrieveSkills } from "./skill-retrieval.ts";
+import { buildSkillDistillationPrompt, extractSkillMarkdown, parseSkillName, SKILL_DISTILL_SYSTEM_PROMPT, slugifySkillName } from "./skill-distillation.ts";
 import { runAutonomousTask } from "./autonomous-runner.ts";
 import { getSessionTokenStats, getWorkspaceTodayTokenStats, getWorkspaceTokenStats, listWorkspaceTokenUsageStats, trackSessionWorkspaceUsage, trackWorkspaceUsage } from "./cache.ts";
 import { buildKgPrompt, extractKgEntitiesFromReports, syncKnowledgeGraph } from "./knowledge-graph.ts";
@@ -2902,7 +2904,174 @@ app.post("/api/html-reports/generate", async (req, res) => {
   }
 });
 
+app.post("/api/report-review/review", async (req, res) => {
+  const pathId = Number(req.body?.pathId);
+  const relPath = String(req.body?.relPath ?? "");
+  const userPrompt = String(req.body?.prompt ?? "").trim();
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
+  try {
+    const entry = getWorkspacePath(pathId);
+    if (!entry) return res.status(404).json({ error: "path not found" });
+    if (entry.folder !== "report") return res.status(400).json({ error: "only report output paths can be reviewed" });
 
+    const workspace = getWorkspace(entry.workspaceId);
+    if (!workspace) return res.status(404).json({ error: "workspace not found" });
+    const model = resolveRequestedModel(req.body?.model, DEFAULT_PRESENTATION_VERSION_MODEL);
+    const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+    const sourceRelPath = entry.kind === "dir" ? relPath : basename(entry.path);
+    if (entry.kind === "dir" && !sourceRelPath) return res.status(400).json({ error: "relPath required for directory report paths" });
+    if (entry.kind === "file" && relPath) return res.status(400).json({ error: "file report paths do not accept relPath" });
+    validateArtifactPath(sourceRelPath, "报告 tab 登记路径");
+    const report = readFlowFile(outputDir, sourceRelPath);
+    const sourceName = sourceRelPath ? basename(sourceRelPath) : basename(entry.path);
+    if (!TEXT_PREVIEW_EXTENSIONS.has(extname(sourceName).toLowerCase())) {
+      return res.status(400).json({ error: "selected report is not a text file" });
+    }
+
+    const prompt = buildReviewPrompt(sanitizeReportForLlm(report.content), userPrompt || DEFAULT_REVIEW_PROMPT);
+    const rawOutput = await runPiPrompt({
+      workspaceRoot: workspace.rootPath,
+      text: prompt,
+      model,
+      systemPrompt: "你是资深数据分析报告评审专家。请基于评审标准对报告进行结构化评审，输出严格 JSON 格式的评审结果。所有评审内容必须使用简体中文，仅代码、数字、JSON 字段名和技术缩写保留英文。",
+      timeoutMs: 180_000,
+      onEvent: (event) => trackUsageEvent({
+        workspaceId: workspace.id,
+        targetKind: "report_version",
+        targetId: `${pathId}:${sourceRelPath}`,
+        title: `报告评审：${sourceName}`,
+      }, event),
+    });
+
+    let reviewMarkdown = rawOutput;
+    let annotations: ReviewAnnotation[] = [];
+    let totalScore = 0;
+    try {
+      const parsed = extractJsonObject(rawOutput) as Record<string, unknown>;
+      if (typeof parsed.reviewMarkdown === "string") reviewMarkdown = parsed.reviewMarkdown;
+      if (Array.isArray(parsed.annotations)) {
+        annotations = parsed.annotations.filter((a: unknown) =>
+          typeof a === "object" && a !== null &&
+          typeof (a as Record<string, unknown>).quote === "string" &&
+          typeof (a as Record<string, unknown>).issue === "string" &&
+          typeof (a as Record<string, unknown>).suggestion === "string"
+        ).map((a: unknown) => {
+          const item = a as Record<string, unknown>;
+          return {
+            quote: String(item.quote),
+            issue: String(item.issue),
+            suggestion: String(item.suggestion),
+            severity: (item.severity === "P0" || item.severity === "P1" || item.severity === "P2") ? item.severity as "P0" | "P1" | "P2" : "P1",
+          };
+        });
+      }
+      if (typeof parsed.totalScore === "number") totalScore = parsed.totalScore;
+    } catch {
+      totalScore = parseReviewScore(reviewMarkdown);
+    }
+
+    const historyEntry: ReviewHistoryEntry = {
+      id: randomUUID(),
+      reportName: sourceName,
+      reviewedAt: Date.now(),
+      model,
+      totalScore,
+      pathId,
+      relPath: sourceRelPath,
+      reviewMarkdown,
+      annotations,
+    };
+    const historyRelPath = `review_history/${sanitizeFilenamePart(sourceName)}-审核-${timestampForFilename()}.json`;
+    writeFlowFile(outputDir, historyRelPath, `${JSON.stringify(historyEntry, null, 2)}\n`);
+
+    res.json({ content: reviewMarkdown, annotations, totalScore, model, reportContent: report.content });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/report-review/auto-fix", async (req, res) => {
+  const pathId = Number(req.body?.pathId);
+  const relPath = String(req.body?.relPath ?? "");
+  const reviewContent = String(req.body?.reviewContent ?? "");
+  const userPrompt = String(req.body?.prompt ?? "").trim();
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
+  if (!reviewContent) return res.status(400).json({ error: "reviewContent required" });
+  try {
+    const entry = getWorkspacePath(pathId);
+    if (!entry) return res.status(404).json({ error: "path not found" });
+    if (entry.folder !== "report") return res.status(400).json({ error: "only report output paths can be auto-fixed" });
+
+    const workspace = getWorkspace(entry.workspaceId);
+    if (!workspace) return res.status(404).json({ error: "workspace not found" });
+    const model = resolveRequestedModel(req.body?.model, DEFAULT_PRESENTATION_VERSION_MODEL);
+    const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+    const sourceRelPath = entry.kind === "dir" ? relPath : basename(entry.path);
+    if (entry.kind === "dir" && !sourceRelPath) return res.status(400).json({ error: "relPath required for directory report paths" });
+    if (entry.kind === "file" && relPath) return res.status(400).json({ error: "file report paths do not accept relPath" });
+    validateArtifactPath(sourceRelPath, "报告 tab 登记路径");
+    const report = readFlowFile(outputDir, sourceRelPath);
+    const sourceName = sourceRelPath ? basename(sourceRelPath) : basename(entry.path);
+    const ext = extname(sourceName).toLowerCase();
+    if (!TEXT_PREVIEW_EXTENSIONS.has(ext) && ext !== ".docx" && ext !== ".xlsx") {
+      return res.status(400).json({ error: `unsupported file format: ${ext}` });
+    }
+
+    const formatLabel = ext === ".md" || ext === ".markdown" ? "Markdown" : ext === ".html" ? "HTML" : ext === ".docx" ? "Word (docx)" : ext === ".xlsx" ? "Excel (xlsx)" : "纯文本";
+    const fixPrompt = buildAutoFixPrompt(sanitizeReportForLlm(report.content), reviewContent, formatLabel);
+    const fixedContent = await runPiPrompt({
+      workspaceRoot: workspace.rootPath,
+      text: fixPrompt,
+      model,
+      systemPrompt: AUTO_FIX_SYSTEM_PROMPT,
+      timeoutMs: 300_000,
+      onEvent: (event) => trackUsageEvent({
+        workspaceId: workspace.id,
+        targetKind: "report_version",
+        targetId: `fix:${pathId}:${sourceRelPath}`,
+        title: `报告自动修改：${sourceName}`,
+      }, event),
+    });
+
+    const timestamp = timestampForFilename();
+    const cleanName = sanitizeFilenamePart(sourceName.replace(/\.[^.]+$/, ""));
+    const outputRelPath = `reviewed_versions/${cleanName}-审核修改-${timestamp}${ext}`;
+    writeFlowFile(outputDir, outputRelPath, fixedContent.endsWith("\n") ? fixedContent : `${fixedContent}\n`);
+
+    res.json({ path: outputRelPath, content: fixedContent, model });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.get("/api/report-review/history", (req, res) => {
+  const pathId = Number(req.query.pathId);
+  const relPath = String(req.query.relPath ?? "");
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
+  try {
+    const entry = getWorkspacePath(pathId);
+    if (!entry) return res.status(404).json({ error: "path not found" });
+    if (entry.folder !== "report") return res.status(400).json({ error: "only report output paths have review history" });
+    const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+    const historyDir = safeResolve(outputDir, "review_history");
+    const entries: ReviewHistoryEntry[] = [];
+    if (existsSync(historyDir)) {
+      for (const name of readdirSync(historyDir)) {
+        if (!name.endsWith(".json")) continue;
+        try {
+          const raw = readFileSync(join(historyDir, name), "utf8");
+          const entry = JSON.parse(raw) as ReviewHistoryEntry;
+          if (relPath && entry.relPath !== relPath) continue;
+          entries.push(entry);
+        } catch { /* skip corrupted files */ }
+      }
+    }
+    entries.sort((a, b) => b.reviewedAt - a.reviewedAt);
+    res.json({ entries });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
 
 function resolveRequestedModel(model: unknown, fallback: string): string {
   const requested = typeof model === "string" && model.trim() ? model.trim() : fallback;
@@ -3116,6 +3285,62 @@ app.post("/api/sessions/:id/promote-to-flow", (req, res) => {
   addFlowMessage(flow.id, "user", [{ type: "text", text: `从探索会话「${session.title}」沉淀可复用工作流。` }]);
   res.json(flow);
   void compileSessionWorkflow(flow.id, session.id, scope, model);
+});
+
+// Distill a completed exploration conversation into a reusable SKILL.md.
+// Returns the generated markdown for preview/editing; saving is a separate step.
+app.post("/api/sessions/:id/distill-skill", async (req, res) => {
+  const session = getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  const workspace = getWorkspace(session.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const scope: PromoteScope = req.body?.scope === "full_conversation" ? "full_conversation" : "latest_task";
+  const model = String(req.body?.model ?? "").trim() || undefined;
+  const transcript = buildPromoteTranscript(session.id, scope);
+  if (!transcript.trim()) {
+    return res.status(400).json({ error: "session has no conversation to distill" });
+  }
+  try {
+    const rawOutput = await runPiPrompt({
+      workspaceRoot: workspace.rootPath,
+      text: buildSkillDistillationPrompt(transcript),
+      model,
+      systemPrompt: SKILL_DISTILL_SYSTEM_PROMPT,
+      timeoutMs: 180_000,
+      onEvent: (event) => trackUsageEvent({
+        workspaceId: workspace.id,
+        targetKind: "session",
+        targetId: session.id,
+        title: `沉淀 Skill：${session.title}`,
+      }, event),
+    });
+    const content = extractSkillMarkdown(rawOutput);
+    res.json({ content, name: parseSkillName(content) ?? "", model: model ?? "" });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// Persist an (optionally hand-edited) SKILL.md under <workspace>/.pi/skills/<slug>/
+// so listSkills() can discover it as a project-scoped skill.
+app.post("/api/sessions/:id/save-skill", (req, res) => {
+  const session = getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  const workspace = getWorkspace(session.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const content = String(req.body?.content ?? "");
+  if (!content.trim()) return res.status(400).json({ error: "skill content required" });
+  const name = String(req.body?.name ?? "").trim() || parseSkillName(content) || "";
+  if (!name) return res.status(400).json({ error: "skill name required" });
+  const slug = slugifySkillName(name);
+  const skillDir = join(workspace.rootPath, ".pi", "skills", slug);
+  const skillFile = join(skillDir, "SKILL.md");
+  if (existsSync(skillFile)) {
+    return res.status(409).json({ error: `skill already exists: ${slug}` });
+  }
+  mkdirSync(skillDir, { recursive: true });
+  writeFileSync(skillFile, content.endsWith("\n") ? content : `${content}\n`, "utf8");
+  res.json({ path: skillFile, name, slug });
 });
 
 // ---- REST: flows ----
@@ -3998,7 +4223,7 @@ app.post("/api/pick-path", (req, res) => {
 });
 
 // ---- SQL connections ----
-import { deleteConnection, executeQuery, exportQueryToCsv, getConnection, getSchema, listConnections, testConnection, upsertConnection } from "./sql-connections.ts";
+import { deleteConnection, executeQuery, exportQueryToCsv, getConnection, getSchema, listConnections, testConnection, upsertConnection, validateSql } from "./sql-connections.ts";
 
 app.get("/api/sql-connections", (_req, res) => {
   res.json(listConnections().map((c) => ({ ...c, password: c.password ? "***" : undefined })));
@@ -4043,13 +4268,55 @@ app.get("/api/sql-connections/:id/schema", (req, res) => {
   getSchema(conn).then((tables) => res.json({ tables })).catch((err) => res.status(500).json({ error: String(err) }));
 });
 
+app.post("/api/sql-connections/:id/validate-sql", (req, res) => {
+  const conn = getConnection(String(req.params.id));
+  if (!conn) return res.status(404).json({ error: "connection not found" });
+  const sql = String(req.body?.sql ?? "").trim();
+  if (!sql) return res.status(400).json({ error: "sql required" });
+  res.json(validateSql(sql));
+});
+
 app.post("/api/sql-connections/:id/query", (req, res) => {
   const conn = getConnection(String(req.params.id));
   if (!conn) return res.status(404).json({ error: "connection not found" });
   const sql = String(req.body?.sql ?? "").trim();
   if (!sql) return res.status(400).json({ error: "sql required" });
+  const validation = validateSql(sql);
+  if (!validation.safe) {
+    return res.status(400).json({ error: "SQL 包含危险操作", validation });
+  }
+  const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined;
   const params = typeof req.body?.params === "object" && req.body.params !== null ? req.body.params as Record<string, unknown> : undefined;
-  executeQuery(conn, sql, undefined, params).then((result) => res.json(result)).catch((err) => res.status(500).json({ error: String(err) }));
+  const startMs = Date.now();
+  executeQuery(conn, sql, undefined, params).then((result) => {
+    if (workspaceId) {
+      addTraceEvent({
+        workspaceId,
+        targetKind: "sql_connection",
+        targetId: conn.id,
+        type: "sql_query",
+        target: conn.name,
+        status: "success",
+        detail: `查询返回 ${result.rowCount} 行 · ${result.executionMs}ms${result.capped ? " (已截断)" : ""}`,
+        payload: { sql: sql.slice(0, 500), rowCount: result.rowCount, executionMs: result.executionMs, capped: result.capped, riskLevel: validation.riskLevel },
+      });
+    }
+    res.json({ ...result, validation });
+  }).catch((err) => {
+    if (workspaceId) {
+      addTraceEvent({
+        workspaceId,
+        targetKind: "sql_connection",
+        targetId: conn.id,
+        type: "sql_query",
+        target: conn.name,
+        status: "failed",
+        detail: String(err).slice(0, 500),
+        payload: { sql: sql.slice(0, 500), riskLevel: validation.riskLevel },
+      });
+    }
+    res.status(500).json({ error: String(err) });
+  });
 });
 
 app.post("/api/sql-connections/:id/export", (req, res) => {
@@ -4059,11 +4326,44 @@ app.post("/api/sql-connections/:id/export", (req, res) => {
   const outputPath = String(req.body?.outputPath ?? "").trim();
   const params = typeof req.body?.params === "object" && req.body.params !== null ? req.body.params as Record<string, unknown> : undefined;
   const watermark = typeof req.body?.watermark === "object" && req.body.watermark !== null ? req.body.watermark as { column: string; initialValue?: unknown } : undefined;
+  const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined;
   if (!sql) return res.status(400).json({ error: "sql required" });
   if (!outputPath) return res.status(400).json({ error: "outputPath required" });
+  const validation = validateSql(sql);
+  if (!validation.safe) {
+    return res.status(400).json({ error: "SQL 包含危险操作", validation });
+  }
   exportQueryToCsv(conn, sql, resolve(outputPath), params, watermark)
-    .then((result) => res.json({ ...result, path: resolve(outputPath) }))
-    .catch((err) => res.status(500).json({ error: String(err) }));
+    .then((result) => {
+      if (workspaceId) {
+        addTraceEvent({
+          workspaceId,
+          targetKind: "sql_connection",
+          targetId: conn.id,
+          type: "sql_export",
+          target: conn.name,
+          status: "success",
+          detail: `导出 ${result.rowCount} 行 → ${outputPath}${result.appended ? " (追加)" : ""}`,
+          payload: { sql: sql.slice(0, 500), outputPath, rowCount: result.rowCount, appended: result.appended, riskLevel: "L2" },
+        });
+      }
+      res.json({ ...result, path: resolve(outputPath) });
+    })
+    .catch((err) => {
+      if (workspaceId) {
+        addTraceEvent({
+          workspaceId,
+          targetKind: "sql_connection",
+          targetId: conn.id,
+          type: "sql_export",
+          target: conn.name,
+          status: "failed",
+          detail: String(err).slice(0, 500),
+          payload: { sql: sql.slice(0, 500), outputPath },
+        });
+      }
+      res.status(500).json({ error: String(err) });
+    });
 });
 
 app.get("/api/sql-connections/export-state", (req, res) => {
@@ -4571,6 +4871,7 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
   if (!tool) return res.status(404).json({ error: "extraction tool not found" });
   const inputPath = resolve(String(req.body?.inputPath ?? ""));
   const outputPath = resolve(String(req.body?.outputPath ?? ""));
+  const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined;
   try {
     if (!String(req.body?.inputPath ?? "").trim()) throw new Error("inputPath required");
     if (!String(req.body?.outputPath ?? "").trim()) throw new Error("outputPath required");
@@ -4599,6 +4900,7 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
     }
   }
 
+  const startMs = Date.now();
   const child = execFile(
     tool.runtime,
     toolArgs,
@@ -4623,6 +4925,19 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
             return absolute === outputPath || absolute.startsWith(normalizedOutputRoot);
           });
         }
+        const durationMs = Date.now() - startMs;
+        if (workspaceId) {
+          addTraceEvent({
+            workspaceId,
+            targetKind: "extraction_tool",
+            targetId: tool.id,
+            type: "tool_run",
+            target: tool.name,
+            status: err ? "failed" : "success",
+            detail: `成功 ${summary.success ?? 0} · 失败 ${summary.failed ?? 0} · ${durationMs}ms`,
+            payload: { runId, toolId: tool.id, inputPath, outputPath, success: summary.success, failed: summary.failed, durationMs },
+          });
+        }
         res.status(err ? 400 : 200).json({
           runId,
           toolId: tool.id,
@@ -4631,6 +4946,18 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
           ...summary,
         });
       } catch (summaryError) {
+        if (workspaceId) {
+          addTraceEvent({
+            workspaceId,
+            targetKind: "extraction_tool",
+            targetId: tool.id,
+            type: "tool_run",
+            target: tool.name,
+            status: "failed",
+            detail: String(err ?? summaryError).slice(0, 500),
+            payload: { runId, toolId: tool.id, inputPath, outputPath },
+          });
+        }
         res.status(500).json({ error: `extraction failed: ${String(err ?? summaryError)}`, stdout, stderr });
       }
     },

@@ -1,0 +1,63 @@
+{
+  "nodes": [
+    {
+      "id": "config:.understand-anything/fingerprints.json",
+      "type": "config",
+      "name": "fingerprints.json",
+      "filePath": ".understand-anything/fingerprints.json",
+      "summary": "Auto-generated summary for .understand-anything/fingerprints.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:.understand-anything/knowledge-graph.json",
+      "type": "config",
+      "name": "knowledge-graph.json",
+      "filePath": ".understand-anything/knowledge-graph.json",
+      "summary": "Auto-generated summary for .understand-anything/knowledge-graph.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:.understand-anything/meta.json",
+      "type": "config",
+      "name": "meta.json",
+      "filePath": ".understand-anything/meta.json",
+      "summary": "Auto-generated summary for .understand-anything/meta.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "config:.understand-anything/fingerprints.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:.understand-anything/knowledge-graph.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:.understand-anything/meta.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

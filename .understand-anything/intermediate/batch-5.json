@@ -1,0 +1,1252 @@
+{
+  "nodes": [
+    {
+      "id": "file:web/src/components/DataExplorationPane.tsx",
+      "type": "file",
+      "name": "DataExplorationPane.tsx",
+      "filePath": "web/src/components/DataExplorationPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/DataExplorationPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/DataExplorationPane.tsx:fetchBinary",
+      "type": "function",
+      "name": "fetchBinary",
+      "lineRange": [
+        64,
+        74
+      ],
+      "summary": "Auto-generated summary for function fetchBinary",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/DataExplorationPane.tsx:DataExplorationPane",
+      "type": "function",
+      "name": "DataExplorationPane",
+      "lineRange": [
+        76,
+        446
+      ],
+      "summary": "Auto-generated summary for function DataExplorationPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "type": "file",
+      "name": "ChartCanvas.tsx",
+      "filePath": "web/src/components/data-exploration/ChartCanvas.tsx",
+      "summary": "Auto-generated summary for web/src/components/data-exploration/ChartCanvas.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ChartCanvas.tsx:buildConclusionMarkdown",
+      "type": "function",
+      "name": "buildConclusionMarkdown",
+      "lineRange": [
+        21,
+        53
+      ],
+      "summary": "Auto-generated summary for function buildConclusionMarkdown",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ChartCanvas.tsx:aggExpr",
+      "type": "function",
+      "name": "aggExpr",
+      "lineRange": [
+        61,
+        73
+      ],
+      "summary": "Auto-generated summary for function aggExpr",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ChartCanvas.tsx:timeBucketExpr",
+      "type": "function",
+      "name": "timeBucketExpr",
+      "lineRange": [
+        75,
+        85
+      ],
+      "summary": "Auto-generated summary for function timeBucketExpr",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ChartCanvas.tsx:buildWhereClause",
+      "type": "function",
+      "name": "buildWhereClause",
+      "lineRange": [
+        87,
+        112
+      ],
+      "summary": "Auto-generated summary for function buildWhereClause",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ChartCanvas.tsx:buildSql",
+      "type": "function",
+      "name": "buildSql",
+      "lineRange": [
+        114,
+        158
+      ],
+      "summary": "Auto-generated summary for function buildSql",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ChartCanvas.tsx:buildChartOption",
+      "type": "function",
+      "name": "buildChartOption",
+      "lineRange": [
+        160,
+        289
+      ],
+      "summary": "Auto-generated summary for function buildChartOption",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ChartCanvas.tsx:ChartCanvas",
+      "type": "function",
+      "name": "ChartCanvas",
+      "lineRange": [
+        291,
+        454
+      ],
+      "summary": "Auto-generated summary for function ChartCanvas",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/data-exploration/ConfigPanel.tsx",
+      "type": "file",
+      "name": "ConfigPanel.tsx",
+      "filePath": "web/src/components/data-exploration/ConfigPanel.tsx",
+      "summary": "Auto-generated summary for web/src/components/data-exploration/ConfigPanel.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ConfigPanel.tsx:DropSlot",
+      "type": "function",
+      "name": "DropSlot",
+      "lineRange": [
+        36,
+        65
+      ],
+      "summary": "Auto-generated summary for function DropSlot",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ConfigPanel.tsx:ConfigPanel",
+      "type": "function",
+      "name": "ConfigPanel",
+      "lineRange": [
+        101,
+        248
+      ],
+      "summary": "Auto-generated summary for function ConfigPanel",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/data-exploration/FieldList.tsx",
+      "type": "file",
+      "name": "FieldList.tsx",
+      "filePath": "web/src/components/data-exploration/FieldList.tsx",
+      "summary": "Auto-generated summary for web/src/components/data-exploration/FieldList.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/FieldList.tsx:DraggableField",
+      "type": "function",
+      "name": "DraggableField",
+      "lineRange": [
+        31,
+        55
+      ],
+      "summary": "Auto-generated summary for function DraggableField",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/FieldList.tsx:FieldList",
+      "type": "function",
+      "name": "FieldList",
+      "lineRange": [
+        57,
+        94
+      ],
+      "summary": "Auto-generated summary for function FieldList",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/data-exploration/InsightsReport.tsx",
+      "type": "file",
+      "name": "InsightsReport.tsx",
+      "filePath": "web/src/components/data-exploration/InsightsReport.tsx",
+      "summary": "Auto-generated summary for web/src/components/data-exploration/InsightsReport.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/InsightsReport.tsx:InsightsReport",
+      "type": "function",
+      "name": "InsightsReport",
+      "lineRange": [
+        41,
+        186
+      ],
+      "summary": "Auto-generated summary for function InsightsReport",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/InsightsReport.tsx:Section",
+      "type": "function",
+      "name": "Section",
+      "lineRange": [
+        188,
+        198
+      ],
+      "summary": "Auto-generated summary for function Section",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/data-exploration/JoinBuilder.tsx",
+      "type": "file",
+      "name": "JoinBuilder.tsx",
+      "filePath": "web/src/components/data-exploration/JoinBuilder.tsx",
+      "summary": "Auto-generated summary for web/src/components/data-exploration/JoinBuilder.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/JoinBuilder.tsx:JoinBuilder",
+      "type": "function",
+      "name": "JoinBuilder",
+      "lineRange": [
+        29,
+        236
+      ],
+      "summary": "Auto-generated summary for function JoinBuilder",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/data-exploration/ProfileReport.tsx",
+      "type": "file",
+      "name": "ProfileReport.tsx",
+      "filePath": "web/src/components/data-exploration/ProfileReport.tsx",
+      "summary": "Auto-generated summary for web/src/components/data-exploration/ProfileReport.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/ProfileReport.tsx:ProfileReport",
+      "type": "function",
+      "name": "ProfileReport",
+      "lineRange": [
+        26,
+        108
+      ],
+      "summary": "Auto-generated summary for function ProfileReport",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/lib/duckdb.ts",
+      "type": "file",
+      "name": "duckdb.ts",
+      "filePath": "web/src/lib/duckdb.ts",
+      "summary": "Auto-generated summary for web/src/lib/duckdb.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:initDuckDB",
+      "type": "function",
+      "name": "initDuckDB",
+      "lineRange": [
+        9,
+        22
+      ],
+      "summary": "Auto-generated summary for function initDuckDB",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:getDuckDB",
+      "type": "function",
+      "name": "getDuckDB",
+      "lineRange": [
+        24,
+        27
+      ],
+      "summary": "Auto-generated summary for function getDuckDB",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:openConnection",
+      "type": "function",
+      "name": "openConnection",
+      "lineRange": [
+        29,
+        32
+      ],
+      "summary": "Auto-generated summary for function openConnection",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:registerCsv",
+      "type": "function",
+      "name": "registerCsv",
+      "lineRange": [
+        52,
+        65
+      ],
+      "summary": "Auto-generated summary for function registerCsv",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:registerXlsx",
+      "type": "function",
+      "name": "registerXlsx",
+      "lineRange": [
+        67,
+        109
+      ],
+      "summary": "Auto-generated summary for function registerXlsx",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:finalizeTable",
+      "type": "function",
+      "name": "finalizeTable",
+      "lineRange": [
+        111,
+        127
+      ],
+      "summary": "Auto-generated summary for function finalizeTable",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:registerFile",
+      "type": "function",
+      "name": "registerFile",
+      "lineRange": [
+        129,
+        143
+      ],
+      "summary": "Auto-generated summary for function registerFile",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:runQuery",
+      "type": "function",
+      "name": "runQuery",
+      "lineRange": [
+        147,
+        155
+      ],
+      "summary": "Auto-generated summary for function runQuery",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:quoteIdent",
+      "type": "function",
+      "name": "quoteIdent",
+      "lineRange": [
+        157,
+        159
+      ],
+      "summary": "Auto-generated summary for function quoteIdent",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/duckdb.ts:quoteString",
+      "type": "function",
+      "name": "quoteString",
+      "lineRange": [
+        161,
+        163
+      ],
+      "summary": "Auto-generated summary for function quoteString",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/insights.ts",
+      "type": "file",
+      "name": "insights.ts",
+      "filePath": "web/src/lib/insights.ts",
+      "summary": "Auto-generated summary for web/src/lib/insights.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/insights.ts:computeCorrelationMatrix",
+      "type": "function",
+      "name": "computeCorrelationMatrix",
+      "lineRange": [
+        23,
+        53
+      ],
+      "summary": "Auto-generated summary for function computeCorrelationMatrix",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/insights.ts:computeCategoryNumericAssociation",
+      "type": "function",
+      "name": "computeCategoryNumericAssociation",
+      "lineRange": [
+        63,
+        98
+      ],
+      "summary": "Auto-generated summary for function computeCategoryNumericAssociation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/insights.ts:detectDataQualityFlags",
+      "type": "function",
+      "name": "detectDataQualityFlags",
+      "lineRange": [
+        112,
+        137
+      ],
+      "summary": "Auto-generated summary for function detectDataQualityFlags",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/joins.ts",
+      "type": "file",
+      "name": "joins.ts",
+      "filePath": "web/src/lib/joins.ts",
+      "summary": "Auto-generated summary for web/src/lib/joins.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/joins.ts:materializeJoin",
+      "type": "function",
+      "name": "materializeJoin",
+      "lineRange": [
+        28,
+        61
+      ],
+      "summary": "Auto-generated summary for function materializeJoin",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/joins.ts:detectJoinCandidates",
+      "type": "function",
+      "name": "detectJoinCandidates",
+      "lineRange": [
+        87,
+        117
+      ],
+      "summary": "Auto-generated summary for function detectJoinCandidates",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/joins.ts:distinctOverlap",
+      "type": "function",
+      "name": "distinctOverlap",
+      "lineRange": [
+        119,
+        140
+      ],
+      "summary": "Auto-generated summary for function distinctOverlap",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/profiling.ts",
+      "type": "file",
+      "name": "profiling.ts",
+      "filePath": "web/src/lib/profiling.ts",
+      "summary": "Auto-generated summary for web/src/lib/profiling.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/lib/profiling.ts:inferKind",
+      "type": "function",
+      "name": "inferKind",
+      "lineRange": [
+        55,
+        70
+      ],
+      "summary": "Auto-generated summary for function inferKind",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/profiling.ts:listColumns",
+      "type": "function",
+      "name": "listColumns",
+      "lineRange": [
+        99,
+        107
+      ],
+      "summary": "Auto-generated summary for function listColumns",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/profiling.ts:profileTable",
+      "type": "function",
+      "name": "profileTable",
+      "lineRange": [
+        109,
+        231
+      ],
+      "summary": "Auto-generated summary for function profileTable",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "function:web/src/components/DataExplorationPane.tsx:fetchBinary",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "function:web/src/components/DataExplorationPane.tsx:DataExplorationPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "function:web/src/components/DataExplorationPane.tsx:DataExplorationPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/components/data-exploration/ConfigPanel.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/components/data-exploration/FieldList.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/components/data-exploration/FileSelector.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/components/data-exploration/InsightsReport.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/components/data-exploration/JoinBuilder.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/components/data-exploration/ProfileReport.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/lib/duckdb.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/DataExplorationPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "function:web/src/components/data-exploration/ChartCanvas.tsx:buildConclusionMarkdown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "function:web/src/components/data-exploration/ChartCanvas.tsx:aggExpr",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "function:web/src/components/data-exploration/ChartCanvas.tsx:timeBucketExpr",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "function:web/src/components/data-exploration/ChartCanvas.tsx:buildWhereClause",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "function:web/src/components/data-exploration/ChartCanvas.tsx:buildSql",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "function:web/src/components/data-exploration/ChartCanvas.tsx:buildChartOption",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "function:web/src/components/data-exploration/ChartCanvas.tsx:ChartCanvas",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "function:web/src/components/data-exploration/ChartCanvas.tsx:ChartCanvas",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "file:web/src/components/data-exploration/ConfigPanel.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "file:web/src/lib/duckdb.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ChartCanvas.tsx",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ConfigPanel.tsx",
+      "target": "function:web/src/components/data-exploration/ConfigPanel.tsx:DropSlot",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ConfigPanel.tsx",
+      "target": "function:web/src/components/data-exploration/ConfigPanel.tsx:ConfigPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ConfigPanel.tsx",
+      "target": "function:web/src/components/data-exploration/ConfigPanel.tsx:ConfigPanel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ConfigPanel.tsx",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FieldList.tsx",
+      "target": "function:web/src/components/data-exploration/FieldList.tsx:DraggableField",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FieldList.tsx",
+      "target": "function:web/src/components/data-exploration/FieldList.tsx:FieldList",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FieldList.tsx",
+      "target": "function:web/src/components/data-exploration/FieldList.tsx:FieldList",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FieldList.tsx",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/InsightsReport.tsx",
+      "target": "function:web/src/components/data-exploration/InsightsReport.tsx:InsightsReport",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/InsightsReport.tsx",
+      "target": "function:web/src/components/data-exploration/InsightsReport.tsx:InsightsReport",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/data-exploration/InsightsReport.tsx",
+      "target": "function:web/src/components/data-exploration/InsightsReport.tsx:Section",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/InsightsReport.tsx",
+      "target": "file:web/src/lib/insights.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/InsightsReport.tsx",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/JoinBuilder.tsx",
+      "target": "function:web/src/components/data-exploration/JoinBuilder.tsx:JoinBuilder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/JoinBuilder.tsx",
+      "target": "function:web/src/components/data-exploration/JoinBuilder.tsx:JoinBuilder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/data-exploration/JoinBuilder.tsx",
+      "target": "file:web/src/lib/joins.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/JoinBuilder.tsx",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ProfileReport.tsx",
+      "target": "function:web/src/components/data-exploration/ProfileReport.tsx:ProfileReport",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ProfileReport.tsx",
+      "target": "function:web/src/components/data-exploration/ProfileReport.tsx:ProfileReport",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/data-exploration/ProfileReport.tsx",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:initDuckDB",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:getDuckDB",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:getDuckDB",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:openConnection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:openConnection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:registerCsv",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:registerXlsx",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:finalizeTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:registerFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:registerFile",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:runQuery",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:runQuery",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:quoteIdent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:quoteIdent",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:quoteString",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/duckdb.ts",
+      "target": "function:web/src/lib/duckdb.ts:quoteString",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/insights.ts",
+      "target": "function:web/src/lib/insights.ts:computeCorrelationMatrix",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/insights.ts",
+      "target": "function:web/src/lib/insights.ts:computeCorrelationMatrix",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/insights.ts",
+      "target": "function:web/src/lib/insights.ts:computeCategoryNumericAssociation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/insights.ts",
+      "target": "function:web/src/lib/insights.ts:computeCategoryNumericAssociation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/insights.ts",
+      "target": "function:web/src/lib/insights.ts:detectDataQualityFlags",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/insights.ts",
+      "target": "function:web/src/lib/insights.ts:detectDataQualityFlags",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/insights.ts",
+      "target": "file:web/src/lib/duckdb.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/insights.ts",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/joins.ts",
+      "target": "function:web/src/lib/joins.ts:materializeJoin",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/joins.ts",
+      "target": "function:web/src/lib/joins.ts:materializeJoin",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/joins.ts",
+      "target": "function:web/src/lib/joins.ts:detectJoinCandidates",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/joins.ts",
+      "target": "function:web/src/lib/joins.ts:detectJoinCandidates",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/joins.ts",
+      "target": "function:web/src/lib/joins.ts:distinctOverlap",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/joins.ts",
+      "target": "file:web/src/lib/duckdb.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/joins.ts",
+      "target": "file:web/src/lib/profiling.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/profiling.ts",
+      "target": "function:web/src/lib/profiling.ts:inferKind",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/profiling.ts",
+      "target": "function:web/src/lib/profiling.ts:inferKind",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/profiling.ts",
+      "target": "function:web/src/lib/profiling.ts:listColumns",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/profiling.ts",
+      "target": "function:web/src/lib/profiling.ts:listColumns",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/profiling.ts",
+      "target": "function:web/src/lib/profiling.ts:profileTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/profiling.ts",
+      "target": "function:web/src/lib/profiling.ts:profileTable",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/profiling.ts",
+      "target": "file:web/src/lib/duckdb.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

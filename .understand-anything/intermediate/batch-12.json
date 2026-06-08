@@ -1,0 +1,56 @@
+{
+  "nodes": [
+    {
+      "id": "file:web/index.html",
+      "type": "file",
+      "name": "index.html",
+      "filePath": "web/index.html",
+      "summary": "Auto-generated summary for web/index.html",
+      "tags": [
+        "markup",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:web/package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "web/package.json",
+      "summary": "Auto-generated summary for web/package.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:web/tsconfig.json",
+      "type": "config",
+      "name": "tsconfig.json",
+      "filePath": "web/tsconfig.json",
+      "summary": "Auto-generated summary for web/tsconfig.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "config:web/package.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:web/tsconfig.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

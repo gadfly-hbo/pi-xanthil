@@ -1,1 +1,1960 @@
-{"name":"pi-xanthil","description":"苍耳 pi-Xanthil — 数据分析 AI 工作台 (pi cli 套壳)","languages":["javascript","typescript","json","markdown","html","css","yaml","shell"],"frameworks":["vite","tailwindcss","playwright","concurrently"],"files":[{"path":".claude/settings.local.json","language":"json","sizeLines":101,"fileCategory":"config"},{"path":".obsidian/app.json","language":"json","sizeLines":0,"fileCategory":"config"},{"path":".obsidian/appearance.json","language":"json","sizeLines":0,"fileCategory":"config"},{"path":".obsidian/core-plugins.json","language":"json","sizeLines":32,"fileCategory":"config"},{"path":".obsidian/workspace.json","language":"json","sizeLines":208,"fileCategory":"config"},{"path":"启动苍耳.command","language":"command","sizeLines":92,"fileCategory":"code"},{"path":"AGENTS.md","language":"markdown","sizeLines":94,"fileCategory":"docs"},{"path":"docs/workflow-schema-compat.md","language":"markdown","sizeLines":70,"fileCategory":"docs"},{"path":"extract.cjs","language":"javascript","sizeLines":47,"fileCategory":"code"},{"path":"fix_injection.cjs","language":"javascript","sizeLines":141,"fileCategory":"code"},{"path":"generate_100_models.cjs","language":"javascript","sizeLines":173,"fileCategory":"code"},{"path":"handoff- Dashboard.md","language":"markdown","sizeLines":713,"fileCategory":"docs"},{"path":"handoff-工作流.md","language":"markdown","sizeLines":1464,"fileCategory":"docs"},{"path":"handoff-规则记忆.md","language":"markdown","sizeLines":896,"fileCategory":"docs"},{"path":"handoff-缓存命中.md","language":"markdown","sizeLines":189,"fileCategory":"docs"},{"path":"handoff-计算工具.md","language":"markdown","sizeLines":496,"fileCategory":"docs"},{"path":"handoff-实验室.md","language":"markdown","sizeLines":1876,"fileCategory":"docs"},{"path":"handoff-探索.md","language":"markdown","sizeLines":1323,"fileCategory":"docs"},{"path":"handoff-AnaX.md","language":"markdown","sizeLines":701,"fileCategory":"docs"},{"path":"package.json","language":"json","sizeLines":25,"fileCategory":"config"},{"path":"server/package.json","language":"json","sizeLines":30,"fileCategory":"config"},{"path":"server/src/anax-gate.test.ts","language":"typescript","sizeLines":107,"fileCategory":"code"},{"path":"server/src/anax-gate.ts","language":"typescript","sizeLines":210,"fileCategory":"code"},{"path":"server/src/anax-template.ts","language":"typescript","sizeLines":427,"fileCategory":"code"},{"path":"server/src/autonomous-runner.ts","language":"typescript","sizeLines":53,"fileCategory":"code"},{"path":"server/src/cache.ts","language":"typescript","sizeLines":121,"fileCategory":"code"},{"path":"server/src/change-management.ts","language":"typescript","sizeLines":19,"fileCategory":"code"},{"path":"server/src/child-processes.test.ts","language":"typescript","sizeLines":51,"fileCategory":"code"},{"path":"server/src/child-processes.ts","language":"typescript","sizeLines":54,"fileCategory":"code"},{"path":"server/src/config.ts","language":"typescript","sizeLines":28,"fileCategory":"code"},{"path":"server/src/db.ts","language":"typescript","sizeLines":3357,"fileCategory":"code"},{"path":"server/src/eval-set-api-smoke.test.ts","language":"typescript","sizeLines":247,"fileCategory":"code"},{"path":"server/src/evaluation-archive.test.ts","language":"typescript","sizeLines":119,"fileCategory":"code"},{"path":"server/src/evaluation-archive.ts","language":"typescript","sizeLines":288,"fileCategory":"code"},{"path":"server/src/evaluation-common.ts","language":"typescript","sizeLines":125,"fileCategory":"code"},{"path":"server/src/evaluation-errors.test.ts","language":"typescript","sizeLines":24,"fileCategory":"code"},{"path":"server/src/evaluation-errors.ts","language":"typescript","sizeLines":63,"fileCategory":"code"},{"path":"server/src/evaluation-runner.ts","language":"typescript","sizeLines":164,"fileCategory":"code"},{"path":"server/src/file-hash.ts","language":"typescript","sizeLines":26,"fileCategory":"code"},{"path":"server/src/flow-fs.ts","language":"typescript","sizeLines":381,"fileCategory":"code"},{"path":"server/src/hypothesis-pruning.test.ts","language":"typescript","sizeLines":94,"fileCategory":"code"},{"path":"server/src/index.ts","language":"typescript","sizeLines":5093,"fileCategory":"code"},{"path":"server/src/knowledge-graph.ts","language":"typescript","sizeLines":456,"fileCategory":"code"},{"path":"server/src/memory-evaluation-runner.ts","language":"typescript","sizeLines":132,"fileCategory":"code"},{"path":"server/src/memory-evaluation.test.ts","language":"typescript","sizeLines":72,"fileCategory":"code"},{"path":"server/src/memory-injection.test.ts","language":"typescript","sizeLines":116,"fileCategory":"code"},{"path":"server/src/memory-injection.ts","language":"typescript","sizeLines":103,"fileCategory":"code"},{"path":"server/src/memory-proposal.test.ts","language":"typescript","sizeLines":64,"fileCategory":"code"},{"path":"server/src/model-lab.ts","language":"typescript","sizeLines":838,"fileCategory":"code"},{"path":"server/src/multi-agent-runner.test-helpers.ts","language":"typescript","sizeLines":115,"fileCategory":"code"},{"path":"server/src/multi-agent-runner.test.ts","language":"typescript","sizeLines":664,"fileCategory":"code"},{"path":"server/src/multi-agent-runner.ts","language":"typescript","sizeLines":660,"fileCategory":"code"},{"path":"server/src/output-paths.ts","language":"typescript","sizeLines":130,"fileCategory":"code"},{"path":"server/src/pi-adapter.ts","language":"typescript","sizeLines":309,"fileCategory":"code"},{"path":"server/src/process-env.ts","language":"typescript","sizeLines":28,"fileCategory":"code"},{"path":"server/src/prompt-blocks.ts","language":"typescript","sizeLines":87,"fileCategory":"code"},{"path":"server/src/skill-activation.test.ts","language":"typescript","sizeLines":68,"fileCategory":"code"},{"path":"server/src/skill-activation.ts","language":"typescript","sizeLines":120,"fileCategory":"code"},{"path":"server/src/skill-curator.ts","language":"typescript","sizeLines":219,"fileCategory":"code"},{"path":"server/src/skill-evaluation-api.test.ts","language":"typescript","sizeLines":46,"fileCategory":"code"},{"path":"server/src/skill-evaluation-api.ts","language":"typescript","sizeLines":81,"fileCategory":"code"},{"path":"server/src/skill-evaluation-runner.test.ts","language":"typescript","sizeLines":389,"fileCategory":"code"},{"path":"server/src/skill-evaluation-runner.ts","language":"typescript","sizeLines":665,"fileCategory":"code"},{"path":"server/src/skill-retrieval.ts","language":"typescript","sizeLines":84,"fileCategory":"code"},{"path":"server/src/skills.test.ts","language":"typescript","sizeLines":70,"fileCategory":"code"},{"path":"server/src/skills.ts","language":"typescript","sizeLines":161,"fileCategory":"code"},{"path":"server/src/sql-connections.ts","language":"typescript","sizeLines":365,"fileCategory":"code"},{"path":"server/src/tool-evaluation-api.test.ts","language":"typescript","sizeLines":114,"fileCategory":"code"},{"path":"server/src/tool-evaluation-api.ts","language":"typescript","sizeLines":112,"fileCategory":"code"},{"path":"server/src/tool-evaluation-runner.test.ts","language":"typescript","sizeLines":351,"fileCategory":"code"},{"path":"server/src/tool-evaluation-runner.ts","language":"typescript","sizeLines":654,"fileCategory":"code"},{"path":"server/src/types.ts","language":"typescript","sizeLines":1058,"fileCategory":"code"},{"path":"server/tools/extract-sycm-member/extract_sycm_member.py","language":"python","sizeLines":573,"fileCategory":"code"},{"path":"server/tools/extract-sycm-member/tests/cases.json","language":"json","sizeLines":25,"fileCategory":"config"},{"path":"server/tools/extract-sycm-member/tests/fixtures/invalid.txt","language":"txt","sizeLines":0,"fileCategory":"docs"},{"path":"server/tools/extract-sycm-member/tests/fixtures/minimal.html","language":"html","sizeLines":25,"fileCategory":"markup"},{"path":"server/tools/extract-sycm-member/tool.json","language":"json","sizeLines":20,"fileCategory":"config"},{"path":"server/tools/extract-tmall-profile/天猫标签分类对应表.md","language":"markdown","sizeLines":1473,"fileCategory":"docs"},{"path":"server/tools/extract-tmall-profile/extract_tmall.py","language":"python","sizeLines":226,"fileCategory":"code"},{"path":"server/tools/extract-tmall-profile/tests/cases.json","language":"json","sizeLines":27,"fileCategory":"config"},{"path":"server/tools/extract-tmall-profile/tests/fixtures/minimal.html","language":"html","sizeLines":23,"fileCategory":"markup"},{"path":"server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json","language":"json","sizeLines":47,"fileCategory":"config"},{"path":"server/tools/extract-tmall-profile/tool.json","language":"json","sizeLines":18,"fileCategory":"config"},{"path":"server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv","language":"csv","sizeLines":6093,"fileCategory":"data"},{"path":"server/tools/extract-xhs-insight/extract_xhs_insight.py","language":"python","sizeLines":565,"fileCategory":"code"},{"path":"server/tools/extract-xhs-insight/tests/cases.json","language":"json","sizeLines":35,"fileCategory":"config"},{"path":"server/tools/extract-xhs-insight/tests/fixtures/minimal.html","language":"html","sizeLines":22,"fileCategory":"markup"},{"path":"server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json","language":"json","sizeLines":115,"fileCategory":"config"},{"path":"server/tools/extract-xhs-insight/tool.json","language":"json","sizeLines":18,"fileCategory":"config"},{"path":"server/tools/phone-cleaner/phone_exporter.py","language":"python","sizeLines":299,"fileCategory":"code"},{"path":"server/tools/phone-cleaner/tests/cases.json","language":"json","sizeLines":25,"fileCategory":"config"},{"path":"server/tools/phone-cleaner/tests/fixtures/invalid.txt","language":"txt","sizeLines":1,"fileCategory":"docs"},{"path":"server/tools/phone-cleaner/tests/fixtures/minimal.csv","language":"csv","sizeLines":6,"fileCategory":"data"},{"path":"server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt","language":"txt","sizeLines":6,"fileCategory":"docs"},{"path":"server/tools/phone-cleaner/tool.json","language":"json","sizeLines":18,"fileCategory":"config"},{"path":"server/tools/registry.ts","language":"typescript","sizeLines":106,"fileCategory":"code"},{"path":"server/tsconfig.json","language":"json","sizeLines":17,"fileCategory":"config"},{"path":"web/index.html","language":"html","sizeLines":20,"fileCategory":"markup"},{"path":"web/package.json","language":"json","sizeLines":42,"fileCategory":"config"},{"path":"web/postcss.config.js","language":"javascript","sizeLines":6,"fileCategory":"code"},{"path":"web/src/App.tsx","language":"typescript","sizeLines":908,"fileCategory":"code"},{"path":"web/src/components/AgentFlowPane.tsx","language":"typescript","sizeLines":207,"fileCategory":"code"},{"path":"web/src/components/AggregatePane.tsx","language":"typescript","sizeLines":255,"fileCategory":"code"},{"path":"web/src/components/AnaXPane.tsx","language":"typescript","sizeLines":1147,"fileCategory":"code"},{"path":"web/src/components/AnaXReadmePane.tsx","language":"typescript","sizeLines":206,"fileCategory":"code"},{"path":"web/src/components/BiDashboardPane.tsx","language":"typescript","sizeLines":123,"fileCategory":"code"},{"path":"web/src/components/BusinessContextPane.tsx","language":"typescript","sizeLines":237,"fileCategory":"code"},{"path":"web/src/components/BusinessRequirementPane.tsx","language":"typescript","sizeLines":1347,"fileCategory":"code"},{"path":"web/src/components/CasesPane.tsx","language":"typescript","sizeLines":358,"fileCategory":"code"},{"path":"web/src/components/ChangeManagementPane.tsx","language":"typescript","sizeLines":343,"fileCategory":"code"},{"path":"web/src/components/ChatPane.tsx","language":"typescript","sizeLines":280,"fileCategory":"code"},{"path":"web/src/components/CopyButton.tsx","language":"typescript","sizeLines":24,"fileCategory":"code"},{"path":"web/src/components/CreationPane.tsx","language":"typescript","sizeLines":648,"fileCategory":"code"},{"path":"web/src/components/data-exploration/ChartCanvas.tsx","language":"typescript","sizeLines":365,"fileCategory":"code"},{"path":"web/src/components/data-exploration/ConfigPanel.tsx","language":"typescript","sizeLines":248,"fileCategory":"code"},{"path":"web/src/components/data-exploration/FieldList.tsx","language":"typescript","sizeLines":85,"fileCategory":"code"},{"path":"web/src/components/data-exploration/FileSelector.tsx","language":"typescript","sizeLines":191,"fileCategory":"code"},{"path":"web/src/components/data-exploration/ProfileReport.tsx","language":"typescript","sizeLines":91,"fileCategory":"code"},{"path":"web/src/components/DataExplorationPane.tsx","language":"typescript","sizeLines":207,"fileCategory":"code"},{"path":"web/src/components/DecisionTreePane.tsx","language":"typescript","sizeLines":470,"fileCategory":"code"},{"path":"web/src/components/ExecutionPane.tsx","language":"typescript","sizeLines":285,"fileCategory":"code"},{"path":"web/src/components/ExtractionPane.tsx","language":"typescript","sizeLines":364,"fileCategory":"code"},{"path":"web/src/components/FlowChatPane.tsx","language":"typescript","sizeLines":278,"fileCategory":"code"},{"path":"web/src/components/FlowEditorPane.tsx","language":"typescript","sizeLines":742,"fileCategory":"code"},{"path":"web/src/components/FlowWorkflowPane.tsx","language":"typescript","sizeLines":425,"fileCategory":"code"},{"path":"web/src/components/FolderPathsPane.tsx","language":"typescript","sizeLines":451,"fileCategory":"code"},{"path":"web/src/components/GoldenStrategyPane.tsx","language":"typescript","sizeLines":571,"fileCategory":"code"},{"path":"web/src/components/HypothesisPane.tsx","language":"typescript","sizeLines":237,"fileCategory":"code"},{"path":"web/src/components/IndicatorsPane.tsx","language":"typescript","sizeLines":234,"fileCategory":"code"},{"path":"web/src/components/KnowledgeGraphPane.tsx","language":"typescript","sizeLines":611,"fileCategory":"code"},{"path":"web/src/components/MainHeader.tsx","language":"typescript","sizeLines":129,"fileCategory":"code"},{"path":"web/src/components/Markdown.tsx","language":"typescript","sizeLines":39,"fileCategory":"code"},{"path":"web/src/components/MessageRow.tsx","language":"typescript","sizeLines":99,"fileCategory":"code"},{"path":"web/src/components/ModelInfoCard.tsx","language":"typescript","sizeLines":205,"fileCategory":"code"},{"path":"web/src/components/ModelLabPane.tsx","language":"typescript","sizeLines":734,"fileCategory":"code"},{"path":"web/src/components/ModelRunHistoryDashboard.tsx","language":"typescript","sizeLines":260,"fileCategory":"code"},{"path":"web/src/components/MultiAgentExecutionPane.tsx","language":"typescript","sizeLines":1295,"fileCategory":"code"},{"path":"web/src/components/NewMemberRetentionPane.tsx","language":"typescript","sizeLines":286,"fileCategory":"code"},{"path":"web/src/components/OldMemberRecallPane.tsx","language":"typescript","sizeLines":388,"fileCategory":"code"},{"path":"web/src/components/OperationalModelPane.tsx","language":"typescript","sizeLines":369,"fileCategory":"code"},{"path":"web/src/components/Placeholder.tsx","language":"typescript","sizeLines":14,"fileCategory":"code"},{"path":"web/src/components/PresentationVersionPane.tsx","language":"typescript","sizeLines":290,"fileCategory":"code"},{"path":"web/src/components/PreviewPane.tsx","language":"typescript","sizeLines":192,"fileCategory":"code"},{"path":"web/src/components/ProcessTrace.tsx","language":"typescript","sizeLines":77,"fileCategory":"code"},{"path":"web/src/components/ResearchLabPane.tsx","language":"typescript","sizeLines":329,"fileCategory":"code"},{"path":"web/src/components/RulesPane.tsx","language":"typescript","sizeLines":208,"fileCategory":"code"},{"path":"web/src/components/RunOutputPanel.tsx","language":"typescript","sizeLines":345,"fileCategory":"code"},{"path":"web/src/components/SettingsModal.tsx","language":"typescript","sizeLines":92,"fileCategory":"code"},{"path":"web/src/components/Sidebar.tsx","language":"typescript","sizeLines":424,"fileCategory":"code"},{"path":"web/src/components/SkillLabPane.tsx","language":"typescript","sizeLines":1175,"fileCategory":"code"},{"path":"web/src/components/SkillSelector.tsx","language":"typescript","sizeLines":140,"fileCategory":"code"},{"path":"web/src/components/SqlConnectPane.tsx","language":"typescript","sizeLines":564,"fileCategory":"code"},{"path":"web/src/components/TocPane.tsx","language":"typescript","sizeLines":477,"fileCategory":"code"},{"path":"web/src/components/TokenStatsPane.tsx","language":"typescript","sizeLines":298,"fileCategory":"code"},{"path":"web/src/components/ToolLabPane.tsx","language":"typescript","sizeLines":889,"fileCategory":"code"},{"path":"web/src/components/TracePane.tsx","language":"typescript","sizeLines":266,"fileCategory":"code"},{"path":"web/src/components/ui/button.tsx","language":"typescript","sizeLines":33,"fileCategory":"code"},{"path":"web/src/components/useBusinessRequirementContexts.ts","language":"typescript","sizeLines":75,"fileCategory":"code"},{"path":"web/src/components/WorkflowDagEditor.tsx","language":"typescript","sizeLines":544,"fileCategory":"code"},{"path":"web/src/components/WorkflowPickerPane.tsx","language":"typescript","sizeLines":168,"fileCategory":"code"},{"path":"web/src/data/models.ts","language":"typescript","sizeLines":2320,"fileCategory":"code"},{"path":"web/src/index.css","language":"css","sizeLines":87,"fileCategory":"markup"},{"path":"web/src/lib/aggregate.ts","language":"typescript","sizeLines":197,"fileCategory":"code"},{"path":"web/src/lib/api.ts","language":"typescript","sizeLines":683,"fileCategory":"code"},{"path":"web/src/lib/cn.ts","language":"typescript","sizeLines":6,"fileCategory":"code"},{"path":"web/src/lib/constants.ts","language":"typescript","sizeLines":30,"fileCategory":"code"},{"path":"web/src/lib/duckdb.ts","language":"typescript","sizeLines":163,"fileCategory":"code"},{"path":"web/src/lib/evaluation-export.ts","language":"typescript","sizeLines":344,"fileCategory":"code"},{"path":"web/src/lib/profiling.ts","language":"typescript","sizeLines":223,"fileCategory":"code"},{"path":"web/src/lib/theme.ts","language":"typescript","sizeLines":24,"fileCategory":"code"},{"path":"web/src/lib/useTabVisibility.ts","language":"typescript","sizeLines":23,"fileCategory":"code"},{"path":"web/src/lib/ws.ts","language":"typescript","sizeLines":44,"fileCategory":"code"},{"path":"web/src/main.tsx","language":"typescript","sizeLines":10,"fileCategory":"code"},{"path":"web/src/shims.d.ts","language":"typescript","sizeLines":6,"fileCategory":"code"},{"path":"web/src/types.ts","language":"typescript","sizeLines":1321,"fileCategory":"code"},{"path":"web/tailwind.config.js","language":"javascript","sizeLines":37,"fileCategory":"code"},{"path":"web/tsconfig.json","language":"json","sizeLines":22,"fileCategory":"config"},{"path":"web/vite.config.ts","language":"typescript","sizeLines":26,"fileCategory":"code"}],"totalFiles":178,"filteredByIgnore":0,"estimatedComplexity":"large","importMap":{".claude/settings.local.json":[],".obsidian/app.json":[],".obsidian/appearance.json":[],".obsidian/core-plugins.json":[],".obsidian/workspace.json":[],"启动苍耳.command":[],"AGENTS.md":[],"docs/workflow-schema-compat.md":[],"extract.cjs":[],"fix_injection.cjs":[],"generate_100_models.cjs":[],"handoff- Dashboard.md":[],"handoff-工作流.md":[],"handoff-规则记忆.md":[],"handoff-缓存命中.md":[],"handoff-计算工具.md":[],"handoff-实验室.md":[],"handoff-探索.md":[],"handoff-AnaX.md":[],"package.json":[],"server/package.json":[],"server/src/anax-gate.test.ts":["server/src/anax-gate.ts"],"server/src/anax-gate.ts":[],"server/src/anax-template.ts":["server/src/multi-agent-runner.ts"],"server/src/autonomous-runner.ts":["server/src/evaluation-common.ts","server/src/pi-adapter.ts","server/src/skill-retrieval.ts","server/src/types.ts"],"server/src/cache.ts":["server/src/db.ts","server/src/types.ts"],"server/src/change-management.ts":[],"server/src/child-processes.test.ts":["server/src/child-processes.ts"],"server/src/child-processes.ts":[],"server/src/config.ts":[],"server/src/db.ts":["server/src/config.ts","server/src/evaluation-errors.ts","server/src/types.ts"],"server/src/eval-set-api-smoke.test.ts":["server/src/types.ts"],"server/src/evaluation-archive.test.ts":["server/src/evaluation-archive.ts","server/src/types.ts"],"server/src/evaluation-archive.ts":["server/src/types.ts"],"server/src/evaluation-common.ts":["server/src/cache.ts","server/src/evaluation-errors.ts","server/src/output-paths.ts","server/src/pi-adapter.ts","server/src/types.ts"],"server/src/evaluation-errors.test.ts":["server/src/evaluation-errors.ts"],"server/src/evaluation-errors.ts":["server/src/types.ts"],"server/src/evaluation-runner.ts":["server/src/db.ts","server/src/evaluation-common.ts","server/src/evaluation-errors.ts","server/src/flow-fs.ts","server/src/multi-agent-runner.ts","server/src/output-paths.ts","server/src/pi-adapter.ts","server/src/types.ts"],"server/src/file-hash.ts":[],"server/src/flow-fs.ts":[],"server/src/hypothesis-pruning.test.ts":["server/src/db.ts","server/src/types.ts"],"server/src/index.ts":["server/src/anax-template.ts","server/src/autonomous-runner.ts","server/src/cache.ts","server/src/change-management.ts","server/src/child-processes.ts","server/src/config.ts","server/src/db.ts","server/src/evaluation-archive.ts","server/src/evaluation-runner.ts","server/src/file-hash.ts","server/src/flow-fs.ts","server/src/knowledge-graph.ts","server/src/memory-evaluation-runner.ts","server/src/memory-injection.ts","server/src/model-lab.ts","server/src/multi-agent-runner.ts","server/src/output-paths.ts","server/src/pi-adapter.ts","server/src/process-env.ts","server/src/skill-curator.ts","server/src/skill-evaluation-api.ts","server/src/skill-evaluation-runner.ts","server/src/skill-retrieval.ts","server/src/skills.ts","server/src/sql-connections.ts","server/src/tool-evaluation-api.ts","server/src/tool-evaluation-runner.ts","server/src/types.ts","server/tools/registry.ts"],"server/src/knowledge-graph.ts":["server/src/config.ts","server/src/db.ts","server/src/pi-adapter.ts","server/src/types.ts"],"server/src/memory-evaluation-runner.ts":["server/src/db.ts","server/src/evaluation-common.ts","server/src/evaluation-errors.ts","server/src/memory-injection.ts","server/src/output-paths.ts","server/src/pi-adapter.ts","server/src/types.ts"],"server/src/memory-evaluation.test.ts":[],"server/src/memory-injection.test.ts":[],"server/src/memory-injection.ts":["server/src/db.ts","server/src/knowledge-graph.ts","server/src/types.ts"],"server/src/memory-proposal.test.ts":[],"server/src/model-lab.ts":[],"server/src/multi-agent-runner.test-helpers.ts":["server/src/multi-agent-runner.ts","server/src/pi-adapter.ts","server/src/types.ts"],"server/src/multi-agent-runner.test.ts":["server/src/anax-gate.ts","server/src/multi-agent-runner.test-helpers.ts","server/src/multi-agent-runner.ts","server/src/types.ts","server/tools/registry.ts"],"server/src/multi-agent-runner.ts":["server/src/anax-gate.ts","server/src/child-processes.ts","server/src/pi-adapter.ts","server/src/tool-evaluation-runner.ts","server/src/types.ts","server/tools/registry.ts"],"server/src/output-paths.ts":["server/src/types.ts"],"server/src/pi-adapter.ts":["server/src/child-processes.ts","server/src/config.ts","server/src/prompt-blocks.ts","server/src/types.ts"],"server/src/process-env.ts":[],"server/src/prompt-blocks.ts":[],"server/src/skill-activation.test.ts":["server/src/skill-activation.ts","server/src/types.ts"],"server/src/skill-activation.ts":["server/src/types.ts"],"server/src/skill-curator.ts":["server/src/db.ts","server/src/evaluation-common.ts","server/src/pi-adapter.ts","server/src/skills.ts","server/src/types.ts"],"server/src/skill-evaluation-api.test.ts":["server/src/skill-evaluation-api.ts"],"server/src/skill-evaluation-api.ts":["server/src/skill-evaluation-runner.ts"],"server/src/skill-evaluation-runner.test.ts":["server/src/pi-adapter.ts","server/src/skill-evaluation-runner.ts","server/src/types.ts"],"server/src/skill-evaluation-runner.ts":["server/src/evaluation-common.ts","server/src/evaluation-errors.ts","server/src/output-paths.ts","server/src/pi-adapter.ts","server/src/prompt-blocks.ts","server/src/skill-activation.ts","server/src/types.ts"],"server/src/skill-retrieval.ts":["server/src/skills.ts","server/src/types.ts"],"server/src/skills.test.ts":["server/src/skills.ts"],"server/src/skills.ts":[],"server/src/sql-connections.ts":["server/src/config.ts"],"server/src/tool-evaluation-api.test.ts":["server/src/tool-evaluation-api.ts"],"server/src/tool-evaluation-api.ts":["server/src/tool-evaluation-runner.ts"],"server/src/tool-evaluation-runner.test.ts":["server/src/tool-evaluation-runner.ts","server/tools/registry.ts"],"server/src/tool-evaluation-runner.ts":["server/src/evaluation-common.ts","server/src/evaluation-errors.ts","server/src/process-env.ts","server/src/types.ts","server/tools/registry.ts"],"server/src/types.ts":["server/src/anax-gate.ts"],"server/tools/extract-sycm-member/extract_sycm_member.py":[],"server/tools/extract-sycm-member/tests/cases.json":[],"server/tools/extract-sycm-member/tests/fixtures/invalid.txt":[],"server/tools/extract-sycm-member/tests/fixtures/minimal.html":[],"server/tools/extract-sycm-member/tool.json":[],"server/tools/extract-tmall-profile/天猫标签分类对应表.md":[],"server/tools/extract-tmall-profile/extract_tmall.py":[],"server/tools/extract-tmall-profile/tests/cases.json":[],"server/tools/extract-tmall-profile/tests/fixtures/minimal.html":[],"server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json":[],"server/tools/extract-tmall-profile/tool.json":[],"server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv":[],"server/tools/extract-xhs-insight/extract_xhs_insight.py":[],"server/tools/extract-xhs-insight/tests/cases.json":[],"server/tools/extract-xhs-insight/tests/fixtures/minimal.html":[],"server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json":[],"server/tools/extract-xhs-insight/tool.json":[],"server/tools/phone-cleaner/phone_exporter.py":[],"server/tools/phone-cleaner/tests/cases.json":[],"server/tools/phone-cleaner/tests/fixtures/invalid.txt":[],"server/tools/phone-cleaner/tests/fixtures/minimal.csv":[],"server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt":[],"server/tools/phone-cleaner/tool.json":[],"server/tools/registry.ts":[],"server/tsconfig.json":[],"web/index.html":[],"web/package.json":[],"web/postcss.config.js":[],"web/src/App.tsx":["web/src/components/AggregatePane.tsx","web/src/components/AnaXPane.tsx","web/src/components/AnaXReadmePane.tsx","web/src/components/BiDashboardPane.tsx","web/src/components/BusinessContextPane.tsx","web/src/components/BusinessRequirementPane.tsx","web/src/components/CasesPane.tsx","web/src/components/ChangeManagementPane.tsx","web/src/components/ChatPane.tsx","web/src/components/DataExplorationPane.tsx","web/src/components/ExtractionPane.tsx","web/src/components/FolderPathsPane.tsx","web/src/components/GoldenStrategyPane.tsx","web/src/components/HypothesisPane.tsx","web/src/components/IndicatorsPane.tsx","web/src/components/KnowledgeGraphPane.tsx","web/src/components/MainHeader.tsx","web/src/components/MessageRow.tsx","web/src/components/ModelLabPane.tsx","web/src/components/ModelRunHistoryDashboard.tsx","web/src/components/MultiAgentExecutionPane.tsx","web/src/components/Placeholder.tsx","web/src/components/PresentationVersionPane.tsx","web/src/components/PreviewPane.tsx","web/src/components/ResearchLabPane.tsx","web/src/components/RulesPane.tsx","web/src/components/SettingsModal.tsx","web/src/components/Sidebar.tsx","web/src/components/SkillLabPane.tsx","web/src/components/SqlConnectPane.tsx","web/src/components/TokenStatsPane.tsx","web/src/components/ToolLabPane.tsx","web/src/components/TracePane.tsx","web/src/components/WorkflowPickerPane.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/constants.ts","web/src/lib/useTabVisibility.ts","web/src/lib/ws.ts","web/src/types.ts"],"web/src/components/AgentFlowPane.tsx":["web/src/components/FlowChatPane.tsx","web/src/components/FlowWorkflowPane.tsx","web/src/components/MessageRow.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/ws.ts","web/src/types.ts"],"web/src/components/AggregatePane.tsx":["web/src/components/Markdown.tsx","web/src/lib/aggregate.ts","web/src/lib/api.ts","web/src/types.ts"],"web/src/components/AnaXPane.tsx":["web/src/components/Markdown.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/ws.ts","web/src/types.ts"],"web/src/components/AnaXReadmePane.tsx":["web/src/lib/cn.ts"],"web/src/components/BiDashboardPane.tsx":["web/src/components/NewMemberRetentionPane.tsx","web/src/components/OldMemberRecallPane.tsx","web/src/lib/cn.ts"],"web/src/components/BusinessContextPane.tsx":["web/src/lib/api.ts","web/src/types.ts"],"web/src/components/BusinessRequirementPane.tsx":["web/src/components/Markdown.tsx","web/src/lib/api.ts","web/src/types.ts"],"web/src/components/CasesPane.tsx":["web/src/lib/api.ts","web/src/types.ts"],"web/src/components/ChangeManagementPane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/ChatPane.tsx":["web/src/components/MessageRow.tsx","web/src/components/SkillSelector.tsx","web/src/components/useBusinessRequirementContexts.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/CopyButton.tsx":[],"web/src/components/CreationPane.tsx":["web/src/components/MessageRow.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/ws.ts","web/src/types.ts"],"web/src/components/data-exploration/ChartCanvas.tsx":["web/src/components/data-exploration/ConfigPanel.tsx","web/src/lib/duckdb.ts","web/src/lib/profiling.ts"],"web/src/components/data-exploration/ConfigPanel.tsx":["web/src/lib/profiling.ts"],"web/src/components/data-exploration/FieldList.tsx":["web/src/lib/profiling.ts"],"web/src/components/data-exploration/FileSelector.tsx":["web/src/lib/api.ts","web/src/types.ts"],"web/src/components/data-exploration/ProfileReport.tsx":["web/src/lib/profiling.ts"],"web/src/components/DataExplorationPane.tsx":["web/src/components/data-exploration/ChartCanvas.tsx","web/src/components/data-exploration/ConfigPanel.tsx","web/src/components/data-exploration/FieldList.tsx","web/src/components/data-exploration/FileSelector.tsx","web/src/components/data-exploration/ProfileReport.tsx","web/src/lib/duckdb.ts","web/src/lib/profiling.ts"],"web/src/components/DecisionTreePane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/ExecutionPane.tsx":["web/src/components/Placeholder.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/ws.ts","web/src/types.ts"],"web/src/components/ExtractionPane.tsx":["web/src/components/Markdown.tsx","web/src/lib/api.ts","web/src/types.ts"],"web/src/components/FlowChatPane.tsx":["web/src/components/MessageRow.tsx","web/src/components/SkillSelector.tsx","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/FlowEditorPane.tsx":["web/src/components/Markdown.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/FlowWorkflowPane.tsx":["web/src/components/Placeholder.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/ws.ts","web/src/types.ts"],"web/src/components/FolderPathsPane.tsx":["web/src/components/Markdown.tsx","web/src/lib/api.ts","web/src/types.ts"],"web/src/components/GoldenStrategyPane.tsx":["web/src/components/useBusinessRequirementContexts.ts","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/HypothesisPane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/IndicatorsPane.tsx":["web/src/lib/api.ts","web/src/types.ts"],"web/src/components/KnowledgeGraphPane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/MainHeader.tsx":["web/src/lib/cn.ts"],"web/src/components/Markdown.tsx":[],"web/src/components/MessageRow.tsx":["web/src/components/CopyButton.tsx","web/src/components/Markdown.tsx","web/src/components/ProcessTrace.tsx","web/src/types.ts"],"web/src/components/ModelInfoCard.tsx":["web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/ModelLabPane.tsx":["web/src/components/ModelInfoCard.tsx","web/src/data/models.ts","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/ModelRunHistoryDashboard.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/MultiAgentExecutionPane.tsx":["web/src/components/CreationPane.tsx","web/src/components/Markdown.tsx","web/src/components/RunOutputPanel.tsx","web/src/components/WorkflowDagEditor.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/ws.ts","web/src/types.ts"],"web/src/components/NewMemberRetentionPane.tsx":["web/src/lib/cn.ts"],"web/src/components/OldMemberRecallPane.tsx":["web/src/lib/cn.ts"],"web/src/components/OperationalModelPane.tsx":["web/src/lib/cn.ts"],"web/src/components/Placeholder.tsx":[],"web/src/components/PresentationVersionPane.tsx":["web/src/components/Markdown.tsx","web/src/components/useBusinessRequirementContexts.ts","web/src/lib/api.ts","web/src/types.ts"],"web/src/components/PreviewPane.tsx":["web/src/components/Markdown.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/ProcessTrace.tsx":["web/src/types.ts"],"web/src/components/ResearchLabPane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/RulesPane.tsx":["web/src/lib/api.ts","web/src/types.ts"],"web/src/components/RunOutputPanel.tsx":["web/src/components/Markdown.tsx","web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/SettingsModal.tsx":["web/src/components/MainHeader.tsx","web/src/lib/cn.ts","web/src/lib/constants.ts"],"web/src/components/Sidebar.tsx":["web/src/lib/cn.ts","web/src/lib/theme.ts","web/src/types.ts"],"web/src/components/SkillLabPane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/evaluation-export.ts","web/src/types.ts"],"web/src/components/SkillSelector.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/SqlConnectPane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/TocPane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/TokenStatsPane.tsx":["web/src/lib/api.ts","web/src/types.ts"],"web/src/components/ToolLabPane.tsx":["web/src/lib/api.ts","web/src/lib/cn.ts","web/src/lib/evaluation-export.ts","web/src/types.ts"],"web/src/components/TracePane.tsx":["web/src/lib/api.ts","web/src/types.ts"],"web/src/components/ui/button.tsx":["web/src/lib/cn.ts"],"web/src/components/useBusinessRequirementContexts.ts":["web/src/lib/api.ts","web/src/types.ts"],"web/src/components/WorkflowDagEditor.tsx":["web/src/lib/cn.ts","web/src/types.ts"],"web/src/components/WorkflowPickerPane.tsx":[],"web/src/data/models.ts":["web/src/types.ts"],"web/src/index.css":[],"web/src/lib/aggregate.ts":[],"web/src/lib/api.ts":["web/src/types.ts"],"web/src/lib/cn.ts":[],"web/src/lib/constants.ts":["web/src/components/MainHeader.tsx"],"web/src/lib/duckdb.ts":[],"web/src/lib/evaluation-export.ts":["web/src/types.ts"],"web/src/lib/profiling.ts":["web/src/lib/duckdb.ts"],"web/src/lib/theme.ts":[],"web/src/lib/useTabVisibility.ts":[],"web/src/lib/ws.ts":["web/src/types.ts"],"web/src/main.tsx":["web/src/App.tsx","web/src/index.css"],"web/src/shims.d.ts":[],"web/src/types.ts":[],"web/tailwind.config.js":[],"web/tsconfig.json":[],"web/vite.config.ts":[]}}
+{
+  "name": "pi-xanthil",
+  "description": "苍耳 pi-Xanthil — 数据分析 AI 工作台 (pi cli 套壳) Note: this project has over 100 source files; consider scoping analysis to a subdirectory for faster results.",
+  "languages": [
+    "command",
+    "css",
+    "csv",
+    "db",
+    "html",
+    "javascript",
+    "json",
+    "markdown",
+    "python",
+    "txt",
+    "typescript"
+  ],
+  "frameworks": [
+    "Concurrently",
+    "Express",
+    "Playwright",
+    "React",
+    "Tailwind CSS",
+    "Vite"
+  ],
+  "files": [
+    {
+      "path": ".claude/settings.local.json",
+      "language": "json",
+      "sizeLines": 147,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".obsidian/app.json",
+      "language": "json",
+      "sizeLines": 0,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".obsidian/appearance.json",
+      "language": "json",
+      "sizeLines": 0,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".obsidian/core-plugins.json",
+      "language": "json",
+      "sizeLines": 32,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".obsidian/workspace.json",
+      "language": "json",
+      "sizeLines": 208,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".pi/models/user_churn.json",
+      "language": "json",
+      "sizeLines": 28,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".understand-anything/fingerprints.json",
+      "language": "json",
+      "sizeLines": 17030,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".understand-anything/intermediate/scan-result.json",
+      "language": "json",
+      "sizeLines": 0,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".understand-anything/knowledge-graph.json",
+      "language": "json",
+      "sizeLines": 0,
+      "fileCategory": "config"
+    },
+    {
+      "path": ".understand-anything/meta.json",
+      "language": "json",
+      "sizeLines": 0,
+      "fileCategory": "config"
+    },
+    {
+      "path": "启动苍耳.command",
+      "language": "command",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "AGENTS.md",
+      "language": "markdown",
+      "sizeLines": 95,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "docs/workflow-schema-compat.md",
+      "language": "markdown",
+      "sizeLines": 70,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff- Dashboard.md",
+      "language": "markdown",
+      "sizeLines": 2157,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff-工作流.md",
+      "language": "markdown",
+      "sizeLines": 1464,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff-规则记忆.md",
+      "language": "markdown",
+      "sizeLines": 896,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff-缓存命中.md",
+      "language": "markdown",
+      "sizeLines": 189,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff-计算工具.md",
+      "language": "markdown",
+      "sizeLines": 496,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff-实验室.md",
+      "language": "markdown",
+      "sizeLines": 1876,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff-探索.md",
+      "language": "markdown",
+      "sizeLines": 1681,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff-AnaX.md",
+      "language": "markdown",
+      "sizeLines": 994,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "handoff-Xan数据库.md",
+      "language": "markdown",
+      "sizeLines": 140,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "package.json",
+      "language": "json",
+      "sizeLines": 25,
+      "fileCategory": "config"
+    },
+    {
+      "path": "pi.db",
+      "language": "db",
+      "sizeLines": 0,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/package.json",
+      "language": "json",
+      "sizeLines": 31,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/resume-recommend.mjs",
+      "language": "javascript",
+      "sizeLines": 60,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/anax-gate.test.ts",
+      "language": "typescript",
+      "sizeLines": 107,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/anax-gate.ts",
+      "language": "typescript",
+      "sizeLines": 224,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/anax-template.ts",
+      "language": "typescript",
+      "sizeLines": 451,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/autonomous-runner.ts",
+      "language": "typescript",
+      "sizeLines": 53,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/cache.ts",
+      "language": "typescript",
+      "sizeLines": 121,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/change-management.ts",
+      "language": "typescript",
+      "sizeLines": 19,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/child-processes.test.ts",
+      "language": "typescript",
+      "sizeLines": 51,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/child-processes.ts",
+      "language": "typescript",
+      "sizeLines": 54,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/config.ts",
+      "language": "typescript",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/db.ts",
+      "language": "typescript",
+      "sizeLines": 3882,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/eval-set-api-smoke.test.ts",
+      "language": "typescript",
+      "sizeLines": 247,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/evaluation-archive.test.ts",
+      "language": "typescript",
+      "sizeLines": 119,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/evaluation-archive.ts",
+      "language": "typescript",
+      "sizeLines": 288,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/evaluation-common.ts",
+      "language": "typescript",
+      "sizeLines": 125,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/evaluation-errors.test.ts",
+      "language": "typescript",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/evaluation-errors.ts",
+      "language": "typescript",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/evaluation-runner.ts",
+      "language": "typescript",
+      "sizeLines": 164,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/file-hash.ts",
+      "language": "typescript",
+      "sizeLines": 26,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/flow-fs.ts",
+      "language": "typescript",
+      "sizeLines": 381,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/html-report.ts",
+      "language": "typescript",
+      "sizeLines": 154,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/hypothesis-pruning.test.ts",
+      "language": "typescript",
+      "sizeLines": 94,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/index.ts",
+      "language": "typescript",
+      "sizeLines": 5791,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/knowledge-graph.ts",
+      "language": "typescript",
+      "sizeLines": 456,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/memory-evaluation-runner.ts",
+      "language": "typescript",
+      "sizeLines": 132,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/memory-evaluation.test.ts",
+      "language": "typescript",
+      "sizeLines": 72,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/memory-governance.test.ts",
+      "language": "typescript",
+      "sizeLines": 83,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/memory-injection.test.ts",
+      "language": "typescript",
+      "sizeLines": 166,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/memory-injection.ts",
+      "language": "typescript",
+      "sizeLines": 179,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/memory-proposal.test.ts",
+      "language": "typescript",
+      "sizeLines": 64,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/memory-usage.test.ts",
+      "language": "typescript",
+      "sizeLines": 59,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/model-lab.ts",
+      "language": "typescript",
+      "sizeLines": 858,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/multi-agent-runner.test-helpers.ts",
+      "language": "typescript",
+      "sizeLines": 115,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/multi-agent-runner.test.ts",
+      "language": "typescript",
+      "sizeLines": 664,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/multi-agent-runner.ts",
+      "language": "typescript",
+      "sizeLines": 660,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/output-paths.ts",
+      "language": "typescript",
+      "sizeLines": 130,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/pi-adapter.ts",
+      "language": "typescript",
+      "sizeLines": 331,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/process-env.ts",
+      "language": "typescript",
+      "sizeLines": 28,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/prompt-blocks.ts",
+      "language": "typescript",
+      "sizeLines": 87,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/report-review.ts",
+      "language": "typescript",
+      "sizeLines": 176,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/reports.ts",
+      "language": "typescript",
+      "sizeLines": 205,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-activation.test.ts",
+      "language": "typescript",
+      "sizeLines": 68,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-activation.ts",
+      "language": "typescript",
+      "sizeLines": 120,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-curator.ts",
+      "language": "typescript",
+      "sizeLines": 219,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-distillation.ts",
+      "language": "typescript",
+      "sizeLines": 77,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-evaluation-api.test.ts",
+      "language": "typescript",
+      "sizeLines": 46,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-evaluation-api.ts",
+      "language": "typescript",
+      "sizeLines": 81,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-evaluation-runner.test.ts",
+      "language": "typescript",
+      "sizeLines": 389,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-evaluation-runner.ts",
+      "language": "typescript",
+      "sizeLines": 675,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skill-retrieval.ts",
+      "language": "typescript",
+      "sizeLines": 84,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skills.test.ts",
+      "language": "typescript",
+      "sizeLines": 70,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/skills.ts",
+      "language": "typescript",
+      "sizeLines": 161,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/sql-connections.ts",
+      "language": "typescript",
+      "sizeLines": 390,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/tool-evaluation-api.test.ts",
+      "language": "typescript",
+      "sizeLines": 114,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/tool-evaluation-api.ts",
+      "language": "typescript",
+      "sizeLines": 112,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/tool-evaluation-runner.test.ts",
+      "language": "typescript",
+      "sizeLines": 351,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/tool-evaluation-runner.ts",
+      "language": "typescript",
+      "sizeLines": 654,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/src/types.ts",
+      "language": "typescript",
+      "sizeLines": 1157,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/tools/extract-sycm-member/extract_sycm_member.py",
+      "language": "python",
+      "sizeLines": 573,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/tools/extract-sycm-member/tests/cases.json",
+      "language": "json",
+      "sizeLines": 25,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/extract-sycm-member/tests/fixtures/invalid.txt",
+      "language": "txt",
+      "sizeLines": 0,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "server/tools/extract-sycm-member/tests/fixtures/minimal.html",
+      "language": "html",
+      "sizeLines": 25,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "server/tools/extract-sycm-member/tool.json",
+      "language": "json",
+      "sizeLines": 20,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/extract-tmall-profile/天猫标签分类对应表.md",
+      "language": "markdown",
+      "sizeLines": 1473,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "server/tools/extract-tmall-profile/extract_tmall.py",
+      "language": "python",
+      "sizeLines": 226,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/tools/extract-tmall-profile/tests/cases.json",
+      "language": "json",
+      "sizeLines": 27,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/extract-tmall-profile/tests/fixtures/minimal.html",
+      "language": "html",
+      "sizeLines": 23,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+      "language": "json",
+      "sizeLines": 47,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/extract-tmall-profile/tool.json",
+      "language": "json",
+      "sizeLines": 18,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv",
+      "language": "csv",
+      "sizeLines": 6093,
+      "fileCategory": "data"
+    },
+    {
+      "path": "server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "language": "python",
+      "sizeLines": 565,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/tools/extract-xhs-insight/tests/cases.json",
+      "language": "json",
+      "sizeLines": 35,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/extract-xhs-insight/tests/fixtures/minimal.html",
+      "language": "html",
+      "sizeLines": 22,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+      "language": "json",
+      "sizeLines": 115,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/extract-xhs-insight/tool.json",
+      "language": "json",
+      "sizeLines": 18,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/phone-cleaner/phone_exporter.py",
+      "language": "python",
+      "sizeLines": 299,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/tools/phone-cleaner/tests/cases.json",
+      "language": "json",
+      "sizeLines": 25,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/phone-cleaner/tests/fixtures/invalid.txt",
+      "language": "txt",
+      "sizeLines": 1,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "server/tools/phone-cleaner/tests/fixtures/minimal.csv",
+      "language": "csv",
+      "sizeLines": 6,
+      "fileCategory": "data"
+    },
+    {
+      "path": "server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt",
+      "language": "txt",
+      "sizeLines": 6,
+      "fileCategory": "docs"
+    },
+    {
+      "path": "server/tools/phone-cleaner/tool.json",
+      "language": "json",
+      "sizeLines": 18,
+      "fileCategory": "config"
+    },
+    {
+      "path": "server/tools/registry.ts",
+      "language": "typescript",
+      "sizeLines": 106,
+      "fileCategory": "code"
+    },
+    {
+      "path": "server/tsconfig.json",
+      "language": "json",
+      "sizeLines": 17,
+      "fileCategory": "config"
+    },
+    {
+      "path": "web/index.html",
+      "language": "html",
+      "sizeLines": 20,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "web/package.json",
+      "language": "json",
+      "sizeLines": 42,
+      "fileCategory": "config"
+    },
+    {
+      "path": "web/postcss.config.js",
+      "language": "javascript",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/App.tsx",
+      "language": "typescript",
+      "sizeLines": 1073,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/AgentFlowPane.tsx",
+      "language": "typescript",
+      "sizeLines": 207,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/AggregatePane.tsx",
+      "language": "typescript",
+      "sizeLines": 255,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/AnaXPane.tsx",
+      "language": "typescript",
+      "sizeLines": 1147,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/AnaXReadmePane.tsx",
+      "language": "typescript",
+      "sizeLines": 206,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/BiDashboardPane.tsx",
+      "language": "typescript",
+      "sizeLines": 123,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/BiImportDialog.tsx",
+      "language": "typescript",
+      "sizeLines": 180,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/BusinessContextPane.tsx",
+      "language": "typescript",
+      "sizeLines": 237,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/BusinessRequirementPane.tsx",
+      "language": "typescript",
+      "sizeLines": 1379,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/CasesPane.tsx",
+      "language": "typescript",
+      "sizeLines": 358,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ChangeManagementPane.tsx",
+      "language": "typescript",
+      "sizeLines": 343,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ChatPane.tsx",
+      "language": "typescript",
+      "sizeLines": 291,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/CopyButton.tsx",
+      "language": "typescript",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/CreationPane.tsx",
+      "language": "typescript",
+      "sizeLines": 648,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/data-exploration/ChartCanvas.tsx",
+      "language": "typescript",
+      "sizeLines": 454,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/data-exploration/ConfigPanel.tsx",
+      "language": "typescript",
+      "sizeLines": 248,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/data-exploration/FieldList.tsx",
+      "language": "typescript",
+      "sizeLines": 93,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/data-exploration/FileSelector.tsx",
+      "language": "typescript",
+      "sizeLines": 194,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/data-exploration/InsightsReport.tsx",
+      "language": "typescript",
+      "sizeLines": 198,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/data-exploration/JoinBuilder.tsx",
+      "language": "typescript",
+      "sizeLines": 236,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/data-exploration/ProfileReport.tsx",
+      "language": "typescript",
+      "sizeLines": 108,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/DataExplorationPane.tsx",
+      "language": "typescript",
+      "sizeLines": 446,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/DecisionTreePane.tsx",
+      "language": "typescript",
+      "sizeLines": 470,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ExecutionPane.tsx",
+      "language": "typescript",
+      "sizeLines": 285,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ExtractionPane.tsx",
+      "language": "typescript",
+      "sizeLines": 364,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/FlowChatPane.tsx",
+      "language": "typescript",
+      "sizeLines": 278,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/FlowEditorPane.tsx",
+      "language": "typescript",
+      "sizeLines": 742,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/FlowWorkflowPane.tsx",
+      "language": "typescript",
+      "sizeLines": 425,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/FolderPathsPane.tsx",
+      "language": "typescript",
+      "sizeLines": 536,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/GoldenStrategyPane.tsx",
+      "language": "typescript",
+      "sizeLines": 571,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/HypothesisPane.tsx",
+      "language": "typescript",
+      "sizeLines": 237,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/IndicatorsPane.tsx",
+      "language": "typescript",
+      "sizeLines": 234,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/KnowledgeGraphPane.tsx",
+      "language": "typescript",
+      "sizeLines": 611,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/MainHeader.tsx",
+      "language": "typescript",
+      "sizeLines": 129,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/Markdown.tsx",
+      "language": "typescript",
+      "sizeLines": 39,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/MessageRow.tsx",
+      "language": "typescript",
+      "sizeLines": 99,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ModelBuilder.tsx",
+      "language": "typescript",
+      "sizeLines": 167,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ModelInfoCard.tsx",
+      "language": "typescript",
+      "sizeLines": 205,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ModelLabPane.tsx",
+      "language": "typescript",
+      "sizeLines": 832,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ModelRunHistoryDashboard.tsx",
+      "language": "typescript",
+      "sizeLines": 1456,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/MultiAgentExecutionPane.tsx",
+      "language": "typescript",
+      "sizeLines": 1295,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/NewMemberRetentionPane.tsx",
+      "language": "typescript",
+      "sizeLines": 301,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/OldMemberRecallPane.tsx",
+      "language": "typescript",
+      "sizeLines": 296,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/OperationalModelPane.tsx",
+      "language": "typescript",
+      "sizeLines": 369,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/Placeholder.tsx",
+      "language": "typescript",
+      "sizeLines": 14,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/PresentationVersionPane.tsx",
+      "language": "typescript",
+      "sizeLines": 290,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/PreviewPane.tsx",
+      "language": "typescript",
+      "sizeLines": 192,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ProcessTrace.tsx",
+      "language": "typescript",
+      "sizeLines": 77,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ReportHistoryPane.tsx",
+      "language": "typescript",
+      "sizeLines": 518,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ReportPreviewDrawer.tsx",
+      "language": "typescript",
+      "sizeLines": 316,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ReportReviewPane.tsx",
+      "language": "typescript",
+      "sizeLines": 558,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ResearchLabPane.tsx",
+      "language": "typescript",
+      "sizeLines": 329,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/RulesPane.tsx",
+      "language": "typescript",
+      "sizeLines": 208,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/RunOutputPanel.tsx",
+      "language": "typescript",
+      "sizeLines": 345,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/SettingsModal.tsx",
+      "language": "typescript",
+      "sizeLines": 92,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/Sidebar.tsx",
+      "language": "typescript",
+      "sizeLines": 424,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/SkillLabPane.tsx",
+      "language": "typescript",
+      "sizeLines": 1196,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/SkillSelector.tsx",
+      "language": "typescript",
+      "sizeLines": 140,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/SqlConnectPane.tsx",
+      "language": "typescript",
+      "sizeLines": 890,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/TocPane.tsx",
+      "language": "typescript",
+      "sizeLines": 477,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/TokenStatsPane.tsx",
+      "language": "typescript",
+      "sizeLines": 298,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ToolLabPane.tsx",
+      "language": "typescript",
+      "sizeLines": 889,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/TracePane.tsx",
+      "language": "typescript",
+      "sizeLines": 266,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/ui/button.tsx",
+      "language": "typescript",
+      "sizeLines": 33,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/useBusinessRequirementContexts.ts",
+      "language": "typescript",
+      "sizeLines": 75,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/WeatherPane.tsx",
+      "language": "typescript",
+      "sizeLines": 459,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/components/WorkflowDagEditor.tsx",
+      "language": "typescript",
+      "sizeLines": 544,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/data/models.ts",
+      "language": "typescript",
+      "sizeLines": 2320,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/index.css",
+      "language": "css",
+      "sizeLines": 87,
+      "fileCategory": "markup"
+    },
+    {
+      "path": "web/src/lib/aggregate.ts",
+      "language": "typescript",
+      "sizeLines": 197,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/api.ts",
+      "language": "typescript",
+      "sizeLines": 850,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/biDatasetParser.ts",
+      "language": "typescript",
+      "sizeLines": 120,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/cn.ts",
+      "language": "typescript",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/constants.ts",
+      "language": "typescript",
+      "sizeLines": 30,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/duckdb.ts",
+      "language": "typescript",
+      "sizeLines": 163,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/evaluation-export.ts",
+      "language": "typescript",
+      "sizeLines": 344,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/insights.ts",
+      "language": "typescript",
+      "sizeLines": 137,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/joins.ts",
+      "language": "typescript",
+      "sizeLines": 140,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/profiling.ts",
+      "language": "typescript",
+      "sizeLines": 231,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/reportTypeClassifier.ts",
+      "language": "typescript",
+      "sizeLines": 63,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/theme.ts",
+      "language": "typescript",
+      "sizeLines": 24,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/useBiDataset.ts",
+      "language": "typescript",
+      "sizeLines": 101,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/useReportHistory.ts",
+      "language": "typescript",
+      "sizeLines": 103,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/useTabVisibility.ts",
+      "language": "typescript",
+      "sizeLines": 23,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/lib/ws.ts",
+      "language": "typescript",
+      "sizeLines": 44,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/main.tsx",
+      "language": "typescript",
+      "sizeLines": 10,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/shims.d.ts",
+      "language": "typescript",
+      "sizeLines": 6,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/src/types.ts",
+      "language": "typescript",
+      "sizeLines": 1436,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/tailwind.config.js",
+      "language": "javascript",
+      "sizeLines": 37,
+      "fileCategory": "code"
+    },
+    {
+      "path": "web/tsconfig.json",
+      "language": "json",
+      "sizeLines": 22,
+      "fileCategory": "config"
+    },
+    {
+      "path": "web/vite.config.ts",
+      "language": "typescript",
+      "sizeLines": 31,
+      "fileCategory": "code"
+    }
+  ],
+  "totalFiles": 202,
+  "filteredByIgnore": 0,
+  "estimatedComplexity": "large",
+  "importMap": {
+    ".claude/settings.local.json": [],
+    ".obsidian/app.json": [],
+    ".obsidian/appearance.json": [],
+    ".obsidian/core-plugins.json": [],
+    ".obsidian/workspace.json": [],
+    ".pi/models/user_churn.json": [],
+    ".understand-anything/fingerprints.json": [],
+    ".understand-anything/intermediate/scan-result.json": [],
+    ".understand-anything/knowledge-graph.json": [],
+    ".understand-anything/meta.json": [],
+    "启动苍耳.command": [],
+    "AGENTS.md": [],
+    "docs/workflow-schema-compat.md": [],
+    "handoff- Dashboard.md": [],
+    "handoff-工作流.md": [],
+    "handoff-规则记忆.md": [],
+    "handoff-缓存命中.md": [],
+    "handoff-计算工具.md": [],
+    "handoff-实验室.md": [],
+    "handoff-探索.md": [],
+    "handoff-AnaX.md": [],
+    "handoff-Xan数据库.md": [],
+    "package.json": [],
+    "pi.db": [],
+    "server/package.json": [],
+    "server/resume-recommend.mjs": [],
+    "server/src/anax-gate.test.ts": [
+      "server/src/anax-gate.ts"
+    ],
+    "server/src/anax-gate.ts": [],
+    "server/src/anax-template.ts": [
+      "server/src/multi-agent-runner.ts"
+    ],
+    "server/src/autonomous-runner.ts": [
+      "server/src/evaluation-common.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/skill-retrieval.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/cache.ts": [
+      "server/src/db.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/change-management.ts": [],
+    "server/src/child-processes.test.ts": [
+      "server/src/child-processes.ts"
+    ],
+    "server/src/child-processes.ts": [],
+    "server/src/config.ts": [],
+    "server/src/db.ts": [
+      "server/src/config.ts",
+      "server/src/evaluation-errors.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/eval-set-api-smoke.test.ts": [
+      "server/src/types.ts"
+    ],
+    "server/src/evaluation-archive.test.ts": [
+      "server/src/evaluation-archive.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/evaluation-archive.ts": [
+      "server/src/types.ts"
+    ],
+    "server/src/evaluation-common.ts": [
+      "server/src/cache.ts",
+      "server/src/evaluation-errors.ts",
+      "server/src/output-paths.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/evaluation-errors.test.ts": [
+      "server/src/evaluation-errors.ts"
+    ],
+    "server/src/evaluation-errors.ts": [
+      "server/src/types.ts"
+    ],
+    "server/src/evaluation-runner.ts": [
+      "server/src/db.ts",
+      "server/src/evaluation-common.ts",
+      "server/src/evaluation-errors.ts",
+      "server/src/flow-fs.ts",
+      "server/src/multi-agent-runner.ts",
+      "server/src/output-paths.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/file-hash.ts": [],
+    "server/src/flow-fs.ts": [],
+    "server/src/html-report.ts": [],
+    "server/src/hypothesis-pruning.test.ts": [
+      "server/src/db.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/index.ts": [
+      "server/src/anax-template.ts",
+      "server/src/autonomous-runner.ts",
+      "server/src/cache.ts",
+      "server/src/change-management.ts",
+      "server/src/child-processes.ts",
+      "server/src/config.ts",
+      "server/src/db.ts",
+      "server/src/evaluation-archive.ts",
+      "server/src/evaluation-runner.ts",
+      "server/src/file-hash.ts",
+      "server/src/flow-fs.ts",
+      "server/src/html-report.ts",
+      "server/src/knowledge-graph.ts",
+      "server/src/memory-evaluation-runner.ts",
+      "server/src/memory-injection.ts",
+      "server/src/model-lab.ts",
+      "server/src/multi-agent-runner.ts",
+      "server/src/output-paths.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/process-env.ts",
+      "server/src/report-review.ts",
+      "server/src/reports.ts",
+      "server/src/skill-curator.ts",
+      "server/src/skill-distillation.ts",
+      "server/src/skill-evaluation-api.ts",
+      "server/src/skill-evaluation-runner.ts",
+      "server/src/skill-retrieval.ts",
+      "server/src/skills.ts",
+      "server/src/sql-connections.ts",
+      "server/src/tool-evaluation-api.ts",
+      "server/src/tool-evaluation-runner.ts",
+      "server/src/types.ts",
+      "server/tools/registry.ts"
+    ],
+    "server/src/knowledge-graph.ts": [
+      "server/src/config.ts",
+      "server/src/db.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/memory-evaluation-runner.ts": [
+      "server/src/db.ts",
+      "server/src/evaluation-common.ts",
+      "server/src/evaluation-errors.ts",
+      "server/src/memory-injection.ts",
+      "server/src/output-paths.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/memory-evaluation.test.ts": [],
+    "server/src/memory-governance.test.ts": [],
+    "server/src/memory-injection.test.ts": [],
+    "server/src/memory-injection.ts": [
+      "server/src/db.ts",
+      "server/src/knowledge-graph.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/memory-proposal.test.ts": [],
+    "server/src/memory-usage.test.ts": [],
+    "server/src/model-lab.ts": [],
+    "server/src/multi-agent-runner.test-helpers.ts": [
+      "server/src/multi-agent-runner.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/multi-agent-runner.test.ts": [
+      "server/src/anax-gate.ts",
+      "server/src/multi-agent-runner.test-helpers.ts",
+      "server/src/multi-agent-runner.ts",
+      "server/src/types.ts",
+      "server/tools/registry.ts"
+    ],
+    "server/src/multi-agent-runner.ts": [
+      "server/src/anax-gate.ts",
+      "server/src/child-processes.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/tool-evaluation-runner.ts",
+      "server/src/types.ts",
+      "server/tools/registry.ts"
+    ],
+    "server/src/output-paths.ts": [
+      "server/src/types.ts"
+    ],
+    "server/src/pi-adapter.ts": [
+      "server/src/child-processes.ts",
+      "server/src/config.ts",
+      "server/src/prompt-blocks.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/process-env.ts": [],
+    "server/src/prompt-blocks.ts": [],
+    "server/src/report-review.ts": [],
+    "server/src/reports.ts": [
+      "server/src/config.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/skill-activation.test.ts": [
+      "server/src/skill-activation.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/skill-activation.ts": [
+      "server/src/types.ts"
+    ],
+    "server/src/skill-curator.ts": [
+      "server/src/db.ts",
+      "server/src/evaluation-common.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/skills.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/skill-distillation.ts": [],
+    "server/src/skill-evaluation-api.test.ts": [
+      "server/src/skill-evaluation-api.ts"
+    ],
+    "server/src/skill-evaluation-api.ts": [
+      "server/src/skill-evaluation-runner.ts"
+    ],
+    "server/src/skill-evaluation-runner.test.ts": [
+      "server/src/pi-adapter.ts",
+      "server/src/skill-evaluation-runner.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/skill-evaluation-runner.ts": [
+      "server/src/evaluation-common.ts",
+      "server/src/evaluation-errors.ts",
+      "server/src/output-paths.ts",
+      "server/src/pi-adapter.ts",
+      "server/src/prompt-blocks.ts",
+      "server/src/skill-activation.ts",
+      "server/src/skill-retrieval.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/skill-retrieval.ts": [
+      "server/src/skills.ts",
+      "server/src/types.ts"
+    ],
+    "server/src/skills.test.ts": [
+      "server/src/skills.ts"
+    ],
+    "server/src/skills.ts": [],
+    "server/src/sql-connections.ts": [
+      "server/src/config.ts"
+    ],
+    "server/src/tool-evaluation-api.test.ts": [
+      "server/src/tool-evaluation-api.ts"
+    ],
+    "server/src/tool-evaluation-api.ts": [
+      "server/src/tool-evaluation-runner.ts"
+    ],
+    "server/src/tool-evaluation-runner.test.ts": [
+      "server/src/tool-evaluation-runner.ts",
+      "server/tools/registry.ts"
+    ],
+    "server/src/tool-evaluation-runner.ts": [
+      "server/src/evaluation-common.ts",
+      "server/src/evaluation-errors.ts",
+      "server/src/process-env.ts",
+      "server/src/types.ts",
+      "server/tools/registry.ts"
+    ],
+    "server/src/types.ts": [
+      "server/src/anax-gate.ts"
+    ],
+    "server/tools/extract-sycm-member/extract_sycm_member.py": [],
+    "server/tools/extract-sycm-member/tests/cases.json": [],
+    "server/tools/extract-sycm-member/tests/fixtures/invalid.txt": [],
+    "server/tools/extract-sycm-member/tests/fixtures/minimal.html": [],
+    "server/tools/extract-sycm-member/tool.json": [],
+    "server/tools/extract-tmall-profile/天猫标签分类对应表.md": [],
+    "server/tools/extract-tmall-profile/extract_tmall.py": [],
+    "server/tools/extract-tmall-profile/tests/cases.json": [],
+    "server/tools/extract-tmall-profile/tests/fixtures/minimal.html": [],
+    "server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json": [],
+    "server/tools/extract-tmall-profile/tool.json": [],
+    "server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv": [],
+    "server/tools/extract-xhs-insight/extract_xhs_insight.py": [],
+    "server/tools/extract-xhs-insight/tests/cases.json": [],
+    "server/tools/extract-xhs-insight/tests/fixtures/minimal.html": [],
+    "server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json": [],
+    "server/tools/extract-xhs-insight/tool.json": [],
+    "server/tools/phone-cleaner/phone_exporter.py": [],
+    "server/tools/phone-cleaner/tests/cases.json": [],
+    "server/tools/phone-cleaner/tests/fixtures/invalid.txt": [],
+    "server/tools/phone-cleaner/tests/fixtures/minimal.csv": [],
+    "server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt": [],
+    "server/tools/phone-cleaner/tool.json": [],
+    "server/tools/registry.ts": [],
+    "server/tsconfig.json": [],
+    "web/index.html": [],
+    "web/package.json": [],
+    "web/postcss.config.js": [],
+    "web/src/App.tsx": [
+      "web/src/components/AggregatePane.tsx",
+      "web/src/components/AnaXPane.tsx",
+      "web/src/components/AnaXReadmePane.tsx",
+      "web/src/components/BiDashboardPane.tsx",
+      "web/src/components/BusinessContextPane.tsx",
+      "web/src/components/BusinessRequirementPane.tsx",
+      "web/src/components/CasesPane.tsx",
+      "web/src/components/ChangeManagementPane.tsx",
+      "web/src/components/ChatPane.tsx",
+      "web/src/components/DataExplorationPane.tsx",
+      "web/src/components/ExtractionPane.tsx",
+      "web/src/components/FolderPathsPane.tsx",
+      "web/src/components/GoldenStrategyPane.tsx",
+      "web/src/components/HypothesisPane.tsx",
+      "web/src/components/IndicatorsPane.tsx",
+      "web/src/components/KnowledgeGraphPane.tsx",
+      "web/src/components/MainHeader.tsx",
+      "web/src/components/MessageRow.tsx",
+      "web/src/components/ModelLabPane.tsx",
+      "web/src/components/ModelRunHistoryDashboard.tsx",
+      "web/src/components/MultiAgentExecutionPane.tsx",
+      "web/src/components/Placeholder.tsx",
+      "web/src/components/PresentationVersionPane.tsx",
+      "web/src/components/PreviewPane.tsx",
+      "web/src/components/ReportHistoryPane.tsx",
+      "web/src/components/ReportReviewPane.tsx",
+      "web/src/components/ResearchLabPane.tsx",
+      "web/src/components/RulesPane.tsx",
+      "web/src/components/SettingsModal.tsx",
+      "web/src/components/Sidebar.tsx",
+      "web/src/components/SkillLabPane.tsx",
+      "web/src/components/SqlConnectPane.tsx",
+      "web/src/components/TokenStatsPane.tsx",
+      "web/src/components/ToolLabPane.tsx",
+      "web/src/components/TracePane.tsx",
+      "web/src/components/WeatherPane.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/constants.ts",
+      "web/src/lib/useTabVisibility.ts",
+      "web/src/lib/ws.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/AgentFlowPane.tsx": [
+      "web/src/components/FlowChatPane.tsx",
+      "web/src/components/FlowWorkflowPane.tsx",
+      "web/src/components/MessageRow.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/ws.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/AggregatePane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/aggregate.ts",
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/AnaXPane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/ws.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/AnaXReadmePane.tsx": [
+      "web/src/lib/cn.ts"
+    ],
+    "web/src/components/BiDashboardPane.tsx": [
+      "web/src/components/NewMemberRetentionPane.tsx",
+      "web/src/components/OldMemberRecallPane.tsx",
+      "web/src/lib/cn.ts"
+    ],
+    "web/src/components/BiImportDialog.tsx": [
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/BusinessContextPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/BusinessRequirementPane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/CasesPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ChangeManagementPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ChatPane.tsx": [
+      "web/src/components/MessageRow.tsx",
+      "web/src/components/SkillSelector.tsx",
+      "web/src/components/useBusinessRequirementContexts.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/CopyButton.tsx": [],
+    "web/src/components/CreationPane.tsx": [
+      "web/src/components/MessageRow.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/ws.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/data-exploration/ChartCanvas.tsx": [
+      "web/src/components/data-exploration/ConfigPanel.tsx",
+      "web/src/lib/duckdb.ts",
+      "web/src/lib/profiling.ts"
+    ],
+    "web/src/components/data-exploration/ConfigPanel.tsx": [
+      "web/src/lib/profiling.ts"
+    ],
+    "web/src/components/data-exploration/FieldList.tsx": [
+      "web/src/lib/profiling.ts"
+    ],
+    "web/src/components/data-exploration/FileSelector.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/data-exploration/InsightsReport.tsx": [
+      "web/src/lib/insights.ts",
+      "web/src/lib/profiling.ts"
+    ],
+    "web/src/components/data-exploration/JoinBuilder.tsx": [
+      "web/src/lib/joins.ts",
+      "web/src/lib/profiling.ts"
+    ],
+    "web/src/components/data-exploration/ProfileReport.tsx": [
+      "web/src/lib/profiling.ts"
+    ],
+    "web/src/components/DataExplorationPane.tsx": [
+      "web/src/components/data-exploration/ChartCanvas.tsx",
+      "web/src/components/data-exploration/ConfigPanel.tsx",
+      "web/src/components/data-exploration/FieldList.tsx",
+      "web/src/components/data-exploration/FileSelector.tsx",
+      "web/src/components/data-exploration/InsightsReport.tsx",
+      "web/src/components/data-exploration/JoinBuilder.tsx",
+      "web/src/components/data-exploration/ProfileReport.tsx",
+      "web/src/lib/duckdb.ts",
+      "web/src/lib/profiling.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/DecisionTreePane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ExecutionPane.tsx": [
+      "web/src/components/Placeholder.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/ws.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ExtractionPane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/FlowChatPane.tsx": [
+      "web/src/components/MessageRow.tsx",
+      "web/src/components/SkillSelector.tsx",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/FlowEditorPane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/FlowWorkflowPane.tsx": [
+      "web/src/components/Placeholder.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/ws.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/FolderPathsPane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/GoldenStrategyPane.tsx": [
+      "web/src/components/useBusinessRequirementContexts.ts",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/HypothesisPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/IndicatorsPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/KnowledgeGraphPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/MainHeader.tsx": [
+      "web/src/lib/cn.ts"
+    ],
+    "web/src/components/Markdown.tsx": [],
+    "web/src/components/MessageRow.tsx": [
+      "web/src/components/CopyButton.tsx",
+      "web/src/components/Markdown.tsx",
+      "web/src/components/ProcessTrace.tsx",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ModelBuilder.tsx": [
+      "web/src/data/models.ts"
+    ],
+    "web/src/components/ModelInfoCard.tsx": [
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ModelLabPane.tsx": [
+      "web/src/components/ModelBuilder.tsx",
+      "web/src/components/ModelInfoCard.tsx",
+      "web/src/data/models.ts",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ModelRunHistoryDashboard.tsx": [
+      "web/src/data/models.ts",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/MultiAgentExecutionPane.tsx": [
+      "web/src/components/CreationPane.tsx",
+      "web/src/components/Markdown.tsx",
+      "web/src/components/RunOutputPanel.tsx",
+      "web/src/components/WorkflowDagEditor.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/ws.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/NewMemberRetentionPane.tsx": [
+      "web/src/components/BiImportDialog.tsx",
+      "web/src/lib/biDatasetParser.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/useBiDataset.ts"
+    ],
+    "web/src/components/OldMemberRecallPane.tsx": [
+      "web/src/components/BiImportDialog.tsx",
+      "web/src/lib/biDatasetParser.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/useBiDataset.ts"
+    ],
+    "web/src/components/OperationalModelPane.tsx": [
+      "web/src/lib/cn.ts"
+    ],
+    "web/src/components/Placeholder.tsx": [],
+    "web/src/components/PresentationVersionPane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/components/useBusinessRequirementContexts.ts",
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/PreviewPane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ProcessTrace.tsx": [
+      "web/src/types.ts"
+    ],
+    "web/src/components/ReportHistoryPane.tsx": [
+      "web/src/components/ReportPreviewDrawer.tsx",
+      "web/src/lib/cn.ts",
+      "web/src/lib/reportTypeClassifier.ts",
+      "web/src/lib/useReportHistory.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ReportPreviewDrawer.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/reportTypeClassifier.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ReportReviewPane.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ResearchLabPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/RulesPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/RunOutputPanel.tsx": [
+      "web/src/components/Markdown.tsx",
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/SettingsModal.tsx": [
+      "web/src/components/MainHeader.tsx",
+      "web/src/lib/cn.ts",
+      "web/src/lib/constants.ts"
+    ],
+    "web/src/components/Sidebar.tsx": [
+      "web/src/lib/cn.ts",
+      "web/src/lib/theme.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/SkillLabPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/evaluation-export.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/SkillSelector.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/SqlConnectPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/TocPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/TokenStatsPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ToolLabPane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/lib/cn.ts",
+      "web/src/lib/evaluation-export.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/TracePane.tsx": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/ui/button.tsx": [
+      "web/src/lib/cn.ts"
+    ],
+    "web/src/components/useBusinessRequirementContexts.ts": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/components/WeatherPane.tsx": [
+      "web/src/lib/cn.ts"
+    ],
+    "web/src/components/WorkflowDagEditor.tsx": [
+      "web/src/lib/cn.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/data/models.ts": [
+      "web/src/types.ts"
+    ],
+    "web/src/index.css": [],
+    "web/src/lib/aggregate.ts": [],
+    "web/src/lib/api.ts": [
+      "web/src/types.ts"
+    ],
+    "web/src/lib/biDatasetParser.ts": [
+      "web/src/types.ts"
+    ],
+    "web/src/lib/cn.ts": [],
+    "web/src/lib/constants.ts": [
+      "web/src/components/MainHeader.tsx"
+    ],
+    "web/src/lib/duckdb.ts": [],
+    "web/src/lib/evaluation-export.ts": [
+      "web/src/types.ts"
+    ],
+    "web/src/lib/insights.ts": [
+      "web/src/lib/duckdb.ts",
+      "web/src/lib/profiling.ts"
+    ],
+    "web/src/lib/joins.ts": [
+      "web/src/lib/duckdb.ts",
+      "web/src/lib/profiling.ts"
+    ],
+    "web/src/lib/profiling.ts": [
+      "web/src/lib/duckdb.ts"
+    ],
+    "web/src/lib/reportTypeClassifier.ts": [
+      "web/src/types.ts"
+    ],
+    "web/src/lib/theme.ts": [],
+    "web/src/lib/useBiDataset.ts": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/lib/useReportHistory.ts": [
+      "web/src/lib/api.ts",
+      "web/src/types.ts"
+    ],
+    "web/src/lib/useTabVisibility.ts": [],
+    "web/src/lib/ws.ts": [
+      "web/src/types.ts"
+    ],
+    "web/src/main.tsx": [
+      "web/src/App.tsx",
+      "web/src/index.css"
+    ],
+    "web/src/shims.d.ts": [],
+    "web/src/types.ts": [],
+    "web/tailwind.config.js": [],
+    "web/tsconfig.json": [],
+    "web/vite.config.ts": []
+  }
+}

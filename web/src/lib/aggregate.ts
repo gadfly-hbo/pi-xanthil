@@ -195,3 +195,125 @@ export function buildPythonPrompt(columns: AggregateColumn[], requirement: strin
     requirement.trim() || "请根据用户后续补充的聚合需求生成代码。",
   ].join("\n");
 }
+
+// ---- data profiling ----
+
+export interface ColumnProfile {
+  name: string;
+  type: ColumnType;
+  nullCount: number;
+  nullRate: number;
+  uniqueCount: number;
+  cardinality: "low" | "medium" | "high";
+  topValues: Array<{ value: string; count: number }>;
+  min?: number;
+  max?: number;
+  mean?: number;
+  std?: number;
+  minDate?: string;
+  maxDate?: string;
+}
+
+export interface DatasetProfile {
+  rowCount: number;
+  columnCount: number;
+  duplicateRows: number;
+  totalCells: number;
+  missingCells: number;
+  missingRate: number;
+  columns: ColumnProfile[];
+  primaryKeyCandidates: string[];
+}
+
+function mean(values: number[]): number {
+  return values.reduce((a, b) => a + b, 0) / values.length;
+}
+
+function stddev(values: number[], avg: number): number {
+  if (values.length <= 1) return 0;
+  const variance = values.reduce((sum, v) => sum + (v - avg) ** 2, 0) / (values.length - 1);
+  return Math.sqrt(variance);
+}
+
+function freqTop(values: AggregateValue[], limit = 5): Array<{ value: string; count: number }> {
+  const freq = new Map<string, number>();
+  for (const v of values) {
+    if (isEmpty(v)) continue;
+    const key = String(v);
+    freq.set(key, (freq.get(key) ?? 0) + 1);
+  }
+  return [...freq.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .slice(0, limit)
+    .map(([value, count]) => ({ value, count }));
+}
+
+export function profileDataset(dataset: LocalDataset): DatasetProfile {
+  const { rows, columns } = dataset;
+  const rowCount = rows.length;
+  const columnCount = columns.length;
+  const totalCells = rowCount * columnCount;
+
+  const missingCells = columns.reduce((sum, c) => sum + c.nullCount, 0);
+  const missingRate = totalCells > 0 ? missingCells / totalCells : 0;
+
+  const serialized = rows.map((r) => JSON.stringify(r));
+  const uniqueSerialized = new Set(serialized);
+  const duplicateRows = rowCount - uniqueSerialized.size;
+
+  const colProfiles: ColumnProfile[] = columns.map((col) => {
+    const values = rows.map((r) => r[col.name] ?? null);
+    const nonNull = values.filter((v) => !isEmpty(v));
+    const uniqueCount = new Set(nonNull.map(String)).size;
+    const cardinality: ColumnProfile["cardinality"] =
+      uniqueCount <= 10 ? "low" : uniqueCount <= rowCount * 0.3 ? "medium" : "high";
+
+    const profile: ColumnProfile = {
+      name: col.name,
+      type: col.type,
+      nullCount: col.nullCount,
+      nullRate: rowCount > 0 ? col.nullCount / rowCount : 0,
+      uniqueCount,
+      cardinality,
+      topValues: freqTop(values),
+    };
+
+    if (col.type === "number") {
+      const nums = nonNull.filter((v): v is number => typeof v === "number" && Number.isFinite(v));
+      if (nums.length > 0) {
+        profile.min = Math.min(...nums);
+        profile.max = Math.max(...nums);
+        profile.mean = mean(nums);
+        profile.std = stddev(nums, profile.mean);
+      }
+    }
+
+    if (col.type === "date") {
+      const dates = nonNull
+        .map((v) => (v instanceof Date ? v : new Date(String(v))))
+        .filter((d) => !Number.isNaN(d.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+      if (dates.length > 0) {
+        profile.minDate = dates[0]!.toISOString().slice(0, 10);
+        profile.maxDate = dates[dates.length - 1]!.toISOString().slice(0, 10);
+      }
+    }
+
+    return profile;
+  });
+
+  const primaryKeyCandidates = colProfiles
+    .filter((c) => c.uniqueCount === rowCount && c.nullCount === 0)
+    .map((c) => c.name);
+
+  return {
+    rowCount,
+    columnCount,
+    duplicateRows,
+    totalCells,
+    missingCells,
+    missingRate,
+    columns: colProfiles,
+    primaryKeyCandidates,
+  };
+}

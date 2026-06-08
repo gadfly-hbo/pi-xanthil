@@ -1,0 +1,975 @@
+{
+  "nodes": [
+    {
+      "id": "config:.claude/settings.local.json",
+      "type": "config",
+      "name": "settings.local.json",
+      "filePath": ".claude/settings.local.json",
+      "summary": "Auto-generated summary for .claude/settings.local.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:.pi/models/user_churn.json",
+      "type": "config",
+      "name": "user_churn.json",
+      "filePath": ".pi/models/user_churn.json",
+      "summary": "Auto-generated summary for .pi/models/user_churn.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:.understand-anything/intermediate/scan-result.json",
+      "type": "config",
+      "name": "scan-result.json",
+      "filePath": ".understand-anything/intermediate/scan-result.json",
+      "summary": "Auto-generated summary for .understand-anything/intermediate/scan-result.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:启动苍耳.command",
+      "type": "file",
+      "name": "启动苍耳.command",
+      "filePath": "启动苍耳.command",
+      "summary": "Auto-generated summary for 启动苍耳.command",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:docs/workflow-schema-compat.md",
+      "type": "document",
+      "name": "workflow-schema-compat.md",
+      "filePath": "docs/workflow-schema-compat.md",
+      "summary": "workflow.json Schema 兼容策略",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:pi.db",
+      "type": "file",
+      "name": "pi.db",
+      "filePath": "pi.db",
+      "summary": "Auto-generated summary for pi.db",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "server/package.json",
+      "summary": "Auto-generated summary for server/package.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/resume-recommend.mjs",
+      "type": "file",
+      "name": "resume-recommend.mjs",
+      "filePath": "server/resume-recommend.mjs",
+      "summary": "Auto-generated summary for server/resume-recommend.mjs",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/src/memory-evaluation.test.ts",
+      "type": "file",
+      "name": "memory-evaluation.test.ts",
+      "filePath": "server/src/memory-evaluation.test.ts",
+      "summary": "Auto-generated summary for server/src/memory-evaluation.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/src/memory-governance.test.ts",
+      "type": "file",
+      "name": "memory-governance.test.ts",
+      "filePath": "server/src/memory-governance.test.ts",
+      "summary": "Auto-generated summary for server/src/memory-governance.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/src/memory-injection.test.ts",
+      "type": "file",
+      "name": "memory-injection.test.ts",
+      "filePath": "server/src/memory-injection.test.ts",
+      "summary": "Auto-generated summary for server/src/memory-injection.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/src/memory-proposal.test.ts",
+      "type": "file",
+      "name": "memory-proposal.test.ts",
+      "filePath": "server/src/memory-proposal.test.ts",
+      "summary": "Auto-generated summary for server/src/memory-proposal.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/src/memory-usage.test.ts",
+      "type": "file",
+      "name": "memory-usage.test.ts",
+      "filePath": "server/src/memory-usage.test.ts",
+      "summary": "Auto-generated summary for server/src/memory-usage.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "type": "file",
+      "name": "extract_sycm_member.py",
+      "filePath": "server/tools/extract-sycm-member/extract_sycm_member.py",
+      "summary": "Auto-generated summary for server/tools/extract-sycm-member/extract_sycm_member.py",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:clean_percent_trends",
+      "type": "function",
+      "name": "clean_percent_trends",
+      "lineRange": [
+        15,
+        31
+      ],
+      "summary": "Auto-generated summary for function clean_percent_trends",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:format_goods_cell",
+      "type": "function",
+      "name": "format_goods_cell",
+      "lineRange": [
+        33,
+        41
+      ],
+      "summary": "Auto-generated summary for function format_goods_cell",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_ai_analysis",
+      "type": "function",
+      "name": "extract_ai_analysis",
+      "lineRange": [
+        43,
+        94
+      ],
+      "summary": "Auto-generated summary for function extract_ai_analysis",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_core_metrics",
+      "type": "function",
+      "name": "extract_core_metrics",
+      "lineRange": [
+        96,
+        144
+      ],
+      "summary": "Auto-generated summary for function extract_core_metrics",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_asset_distribution",
+      "type": "function",
+      "name": "extract_asset_distribution",
+      "lineRange": [
+        146,
+        238
+      ],
+      "summary": "Auto-generated summary for function extract_asset_distribution",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_overview_metrics",
+      "type": "function",
+      "name": "extract_overview_metrics",
+      "lineRange": [
+        240,
+        299
+      ],
+      "summary": "Auto-generated summary for function extract_overview_metrics",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_goods_table",
+      "type": "function",
+      "name": "extract_goods_table",
+      "lineRange": [
+        301,
+        328
+      ],
+      "summary": "Auto-generated summary for function extract_goods_table",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:process_html_file",
+      "type": "function",
+      "name": "process_html_file",
+      "lineRange": [
+        330,
+        507
+      ],
+      "summary": "Auto-generated summary for function process_html_file",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:run",
+      "type": "function",
+      "name": "run",
+      "lineRange": [
+        510,
+        548
+      ],
+      "summary": "Auto-generated summary for function run",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:write_json",
+      "type": "function",
+      "name": "write_json",
+      "lineRange": [
+        551,
+        553
+      ],
+      "summary": "Auto-generated summary for function write_json",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-sycm-member/extract_sycm_member.py:main",
+      "type": "function",
+      "name": "main",
+      "lineRange": [
+        556,
+        569
+      ],
+      "summary": "Auto-generated summary for function main",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/extract-sycm-member/tests/cases.json",
+      "type": "config",
+      "name": "cases.json",
+      "filePath": "server/tools/extract-sycm-member/tests/cases.json",
+      "summary": "Auto-generated summary for server/tools/extract-sycm-member/tests/cases.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:server/tools/extract-sycm-member/tests/fixtures/invalid.txt",
+      "type": "document",
+      "name": "invalid.txt",
+      "filePath": "server/tools/extract-sycm-member/tests/fixtures/invalid.txt",
+      "summary": "Auto-generated summary for server/tools/extract-sycm-member/tests/fixtures/invalid.txt",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/tools/extract-sycm-member/tests/fixtures/minimal.html",
+      "type": "file",
+      "name": "minimal.html",
+      "filePath": "server/tools/extract-sycm-member/tests/fixtures/minimal.html",
+      "summary": "Auto-generated summary for server/tools/extract-sycm-member/tests/fixtures/minimal.html",
+      "tags": [
+        "markup",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/extract-sycm-member/tool.json",
+      "type": "config",
+      "name": "tool.json",
+      "filePath": "server/tools/extract-sycm-member/tool.json",
+      "summary": "Auto-generated summary for server/tools/extract-sycm-member/tool.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:server/tools/extract-tmall-profile/天猫标签分类对应表.md",
+      "type": "document",
+      "name": "天猫标签分类对应表.md",
+      "filePath": "server/tools/extract-tmall-profile/天猫标签分类对应表.md",
+      "summary": "天猫人群画像标签分类对应表",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "type": "file",
+      "name": "extract_tmall.py",
+      "filePath": "server/tools/extract-tmall-profile/extract_tmall.py",
+      "summary": "Auto-generated summary for server/tools/extract-tmall-profile/extract_tmall.py",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:load_mapping",
+      "type": "function",
+      "name": "load_mapping",
+      "lineRange": [
+        31,
+        41
+      ],
+      "summary": "Auto-generated summary for function load_mapping",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:extract_from_html",
+      "type": "function",
+      "name": "extract_from_html",
+      "lineRange": [
+        44,
+        104
+      ],
+      "summary": "Auto-generated summary for function extract_from_html",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:safe_filename",
+      "type": "function",
+      "name": "safe_filename",
+      "lineRange": [
+        107,
+        108
+      ],
+      "summary": "Auto-generated summary for function safe_filename",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:md_cell",
+      "type": "function",
+      "name": "md_cell",
+      "lineRange": [
+        111,
+        112
+      ],
+      "summary": "Auto-generated summary for function md_cell",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:generate_md_report",
+      "type": "function",
+      "name": "generate_md_report",
+      "lineRange": [
+        115,
+        141
+      ],
+      "summary": "Auto-generated summary for function generate_md_report",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:json_report",
+      "type": "function",
+      "name": "json_report",
+      "lineRange": [
+        144,
+        162
+      ],
+      "summary": "Auto-generated summary for function json_report",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:write_json",
+      "type": "function",
+      "name": "write_json",
+      "lineRange": [
+        165,
+        167
+      ],
+      "summary": "Auto-generated summary for function write_json",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:run",
+      "type": "function",
+      "name": "run",
+      "lineRange": [
+        170,
+        206
+      ],
+      "summary": "Auto-generated summary for function run",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-tmall-profile/extract_tmall.py:main",
+      "type": "function",
+      "name": "main",
+      "lineRange": [
+        209,
+        222
+      ],
+      "summary": "Auto-generated summary for function main",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/extract-tmall-profile/tests/cases.json",
+      "type": "config",
+      "name": "cases.json",
+      "filePath": "server/tools/extract-tmall-profile/tests/cases.json",
+      "summary": "Auto-generated summary for server/tools/extract-tmall-profile/tests/cases.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/tools/extract-tmall-profile/tests/fixtures/minimal.html",
+      "type": "file",
+      "name": "minimal.html",
+      "filePath": "server/tools/extract-tmall-profile/tests/fixtures/minimal.html",
+      "summary": "Auto-generated summary for server/tools/extract-tmall-profile/tests/fixtures/minimal.html",
+      "tags": [
+        "markup",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+      "type": "config",
+      "name": "测试人群_人群画像.json",
+      "filePath": "server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+      "summary": "Auto-generated summary for server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/extract-tmall-profile/tool.json",
+      "type": "config",
+      "name": "tool.json",
+      "filePath": "server/tools/extract-tmall-profile/tool.json",
+      "summary": "Auto-generated summary for server/tools/extract-tmall-profile/tool.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "endpoint:server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv",
+      "type": "endpoint",
+      "name": "小红书_标签类型_一级标签值.csv",
+      "filePath": "server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv",
+      "summary": "Auto-generated summary for server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv",
+      "tags": [
+        "data",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "config:.claude/settings.local.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:.pi/models/user_churn.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:.understand-anything/intermediate/scan-result.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:docs/workflow-schema-compat.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:server/package.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:clean_percent_trends",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:clean_percent_trends",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:format_goods_cell",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:format_goods_cell",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_ai_analysis",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_ai_analysis",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_core_metrics",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_core_metrics",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_asset_distribution",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_asset_distribution",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_overview_metrics",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_overview_metrics",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_goods_table",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:extract_goods_table",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:process_html_file",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:process_html_file",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:run",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:run",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:write_json",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:write_json",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-sycm-member/extract_sycm_member.py",
+      "target": "function:server/tools/extract-sycm-member/extract_sycm_member.py:main",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "config:server/tools/extract-sycm-member/tests/cases.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:server/tools/extract-sycm-member/tests/fixtures/invalid.txt",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:server/tools/extract-sycm-member/tool.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:server/tools/extract-tmall-profile/天猫标签分类对应表.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:load_mapping",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:load_mapping",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:extract_from_html",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:extract_from_html",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:safe_filename",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:safe_filename",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:md_cell",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:md_cell",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:generate_md_report",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:generate_md_report",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:json_report",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:json_report",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:write_json",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:write_json",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:run",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:run",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "target": "function:server/tools/extract-tmall-profile/extract_tmall.py:main",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "config:server/tools/extract-tmall-profile/tests/cases.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:server/tools/extract-tmall-profile/tool.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

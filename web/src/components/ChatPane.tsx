@@ -1,5 +1,5 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, ChevronDown, ChevronRight, Cpu, FileText, Gauge, Loader2, RefreshCw, Square, Workflow } from "lucide-react";
+import { ArrowUp, ChevronDown, ChevronRight, Cpu, FileText, Gauge, Loader2, RefreshCw, Sparkles, Square, Workflow } from "lucide-react";
 import { hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
@@ -29,6 +29,8 @@ interface Props {
   onRefreshRuntime: () => void;
   canPromoteToWorkflow: boolean;
   onPromoteToWorkflow: () => void;
+  canDistillSkill: boolean;
+  onDistillSkill: () => void;
 }
 
 function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (v: string) => void }) {
@@ -155,6 +157,15 @@ export function ChatPane(p: Props) {
         >
           <Workflow className="h-3.5 w-3.5" strokeWidth={1.75} />
           沉淀为工作流
+        </button>
+        <button
+          onClick={p.onDistillSkill}
+          disabled={!p.canDistillSkill}
+          title={p.canDistillSkill ? "将本次任务提炼为可复用 Skill（SKILL.md）" : "任务完成后可提炼 Skill"}
+          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2.5 text-[12px] text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+        >
+          <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />
+          沉淀 skill
         </button>
       </div>
 

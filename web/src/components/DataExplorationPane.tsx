@@ -389,7 +389,11 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
 
             <div className="flex min-h-0 flex-1">
               <div className="w-48 shrink-0 border-r border-neutral-200 dark:border-neutral-800">
-                <FieldList fields={activeTable?.fields ?? []} />
+                <FieldList
+                  fields={activeTable?.fields ?? []}
+                  loading={loading}
+                  activeTableExists={!!activeTable}
+                />
               </div>
 
               <div className="flex min-w-0 flex-1 flex-col">

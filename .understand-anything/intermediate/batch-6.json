@@ -1,0 +1,568 @@
+{
+  "nodes": [
+    {
+      "id": "file:web/src/components/BiDashboardPane.tsx",
+      "type": "file",
+      "name": "BiDashboardPane.tsx",
+      "filePath": "web/src/components/BiDashboardPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/BiDashboardPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/BiDashboardPane.tsx:BiDashboardPane",
+      "type": "function",
+      "name": "BiDashboardPane",
+      "lineRange": [
+        36,
+        123
+      ],
+      "summary": "Auto-generated summary for function BiDashboardPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/BiImportDialog.tsx",
+      "type": "file",
+      "name": "BiImportDialog.tsx",
+      "filePath": "web/src/components/BiImportDialog.tsx",
+      "summary": "Auto-generated summary for web/src/components/BiImportDialog.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/BiImportDialog.tsx:BiImportDialog",
+      "type": "function",
+      "name": "BiImportDialog",
+      "lineRange": [
+        26,
+        181
+      ],
+      "summary": "Auto-generated summary for function BiImportDialog",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "type": "file",
+      "name": "NewMemberRetentionPane.tsx",
+      "filePath": "web/src/components/NewMemberRetentionPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/NewMemberRetentionPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/NewMemberRetentionPane.tsx:NewMemberRetentionPane",
+      "type": "function",
+      "name": "NewMemberRetentionPane",
+      "lineRange": [
+        48,
+        248
+      ],
+      "summary": "Auto-generated summary for function NewMemberRetentionPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/NewMemberRetentionPane.tsx:KpiCard",
+      "type": "function",
+      "name": "KpiCard",
+      "lineRange": [
+        258,
+        277
+      ],
+      "summary": "Auto-generated summary for function KpiCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/NewMemberRetentionPane.tsx:InsightCard",
+      "type": "function",
+      "name": "InsightCard",
+      "lineRange": [
+        287,
+        301
+      ],
+      "summary": "Auto-generated summary for function InsightCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/OldMemberRecallPane.tsx",
+      "type": "file",
+      "name": "OldMemberRecallPane.tsx",
+      "filePath": "web/src/components/OldMemberRecallPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/OldMemberRecallPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/OldMemberRecallPane.tsx:OldMemberRecallPane",
+      "type": "function",
+      "name": "OldMemberRecallPane",
+      "lineRange": [
+        48,
+        243
+      ],
+      "summary": "Auto-generated summary for function OldMemberRecallPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/OldMemberRecallPane.tsx:KpiCard",
+      "type": "function",
+      "name": "KpiCard",
+      "lineRange": [
+        253,
+        272
+      ],
+      "summary": "Auto-generated summary for function KpiCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/OldMemberRecallPane.tsx:InsightCard",
+      "type": "function",
+      "name": "InsightCard",
+      "lineRange": [
+        282,
+        296
+      ],
+      "summary": "Auto-generated summary for function InsightCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/biDatasetParser.ts",
+      "type": "file",
+      "name": "biDatasetParser.ts",
+      "filePath": "web/src/lib/biDatasetParser.ts",
+      "summary": "Auto-generated summary for web/src/lib/biDatasetParser.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/biDatasetParser.ts:matchColumn",
+      "type": "function",
+      "name": "matchColumn",
+      "lineRange": [
+        10,
+        24
+      ],
+      "summary": "Auto-generated summary for function matchColumn",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/biDatasetParser.ts:toNumber",
+      "type": "function",
+      "name": "toNumber",
+      "lineRange": [
+        26,
+        35
+      ],
+      "summary": "Auto-generated summary for function toNumber",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/biDatasetParser.ts:toRatio",
+      "type": "function",
+      "name": "toRatio",
+      "lineRange": [
+        39,
+        46
+      ],
+      "summary": "Auto-generated summary for function toRatio",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/biDatasetParser.ts:parseRetentionRows",
+      "type": "function",
+      "name": "parseRetentionRows",
+      "lineRange": [
+        59,
+        76
+      ],
+      "summary": "Auto-generated summary for function parseRetentionRows",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/biDatasetParser.ts:parseRecallRows",
+      "type": "function",
+      "name": "parseRecallRows",
+      "lineRange": [
+        102,
+        121
+      ],
+      "summary": "Auto-generated summary for function parseRecallRows",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/useBiDataset.ts",
+      "type": "file",
+      "name": "useBiDataset.ts",
+      "filePath": "web/src/lib/useBiDataset.ts",
+      "summary": "Auto-generated summary for web/src/lib/useBiDataset.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/useBiDataset.ts:useBiDataset",
+      "type": "function",
+      "name": "useBiDataset",
+      "lineRange": [
+        5,
+        102
+      ],
+      "summary": "Auto-generated summary for function useBiDataset",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:web/src/components/BiDashboardPane.tsx",
+      "target": "function:web/src/components/BiDashboardPane.tsx:BiDashboardPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/BiDashboardPane.tsx",
+      "target": "function:web/src/components/BiDashboardPane.tsx:BiDashboardPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/BiDashboardPane.tsx",
+      "target": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/BiDashboardPane.tsx",
+      "target": "file:web/src/components/OldMemberRecallPane.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/BiDashboardPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/BiImportDialog.tsx",
+      "target": "function:web/src/components/BiImportDialog.tsx:BiImportDialog",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/BiImportDialog.tsx",
+      "target": "function:web/src/components/BiImportDialog.tsx:BiImportDialog",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/BiImportDialog.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/BiImportDialog.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "target": "function:web/src/components/NewMemberRetentionPane.tsx:NewMemberRetentionPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "target": "function:web/src/components/NewMemberRetentionPane.tsx:NewMemberRetentionPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "target": "function:web/src/components/NewMemberRetentionPane.tsx:KpiCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "target": "function:web/src/components/NewMemberRetentionPane.tsx:InsightCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "target": "file:web/src/components/BiImportDialog.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "target": "file:web/src/lib/biDatasetParser.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/NewMemberRetentionPane.tsx",
+      "target": "file:web/src/lib/useBiDataset.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/OldMemberRecallPane.tsx",
+      "target": "function:web/src/components/OldMemberRecallPane.tsx:OldMemberRecallPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/OldMemberRecallPane.tsx",
+      "target": "function:web/src/components/OldMemberRecallPane.tsx:OldMemberRecallPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/OldMemberRecallPane.tsx",
+      "target": "function:web/src/components/OldMemberRecallPane.tsx:KpiCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/OldMemberRecallPane.tsx",
+      "target": "function:web/src/components/OldMemberRecallPane.tsx:InsightCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/OldMemberRecallPane.tsx",
+      "target": "file:web/src/components/BiImportDialog.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/OldMemberRecallPane.tsx",
+      "target": "file:web/src/lib/biDatasetParser.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/OldMemberRecallPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/OldMemberRecallPane.tsx",
+      "target": "file:web/src/lib/useBiDataset.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:matchColumn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:matchColumn",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:toNumber",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:toNumber",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:toRatio",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:toRatio",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:parseRetentionRows",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:parseRetentionRows",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:parseRecallRows",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "function:web/src/lib/biDatasetParser.ts:parseRecallRows",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/biDatasetParser.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/useBiDataset.ts",
+      "target": "function:web/src/lib/useBiDataset.ts:useBiDataset",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/useBiDataset.ts",
+      "target": "function:web/src/lib/useBiDataset.ts:useBiDataset",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/useBiDataset.ts",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/useBiDataset.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

@@ -1,0 +1,164 @@
+{
+  "nodes": [
+    {
+      "id": "file:web/src/components/MainHeader.tsx",
+      "type": "file",
+      "name": "MainHeader.tsx",
+      "filePath": "web/src/components/MainHeader.tsx",
+      "summary": "Auto-generated summary for web/src/components/MainHeader.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/MainHeader.tsx:MainHeader",
+      "type": "function",
+      "name": "MainHeader",
+      "lineRange": [
+        35,
+        129
+      ],
+      "summary": "Auto-generated summary for function MainHeader",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/SettingsModal.tsx",
+      "type": "file",
+      "name": "SettingsModal.tsx",
+      "filePath": "web/src/components/SettingsModal.tsx",
+      "summary": "Auto-generated summary for web/src/components/SettingsModal.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/SettingsModal.tsx:SettingsModal",
+      "type": "function",
+      "name": "SettingsModal",
+      "lineRange": [
+        12,
+        92
+      ],
+      "summary": "Auto-generated summary for function SettingsModal",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/lib/constants.ts",
+      "type": "file",
+      "name": "constants.ts",
+      "filePath": "web/src/lib/constants.ts",
+      "summary": "Auto-generated summary for web/src/lib/constants.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/constants.ts:getSubTabsForTab",
+      "type": "function",
+      "name": "getSubTabsForTab",
+      "lineRange": [
+        21,
+        30
+      ],
+      "summary": "Auto-generated summary for function getSubTabsForTab",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:web/src/components/MainHeader.tsx",
+      "target": "function:web/src/components/MainHeader.tsx:MainHeader",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/MainHeader.tsx",
+      "target": "function:web/src/components/MainHeader.tsx:MainHeader",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/MainHeader.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SettingsModal.tsx",
+      "target": "function:web/src/components/SettingsModal.tsx:SettingsModal",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SettingsModal.tsx",
+      "target": "function:web/src/components/SettingsModal.tsx:SettingsModal",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/SettingsModal.tsx",
+      "target": "file:web/src/components/MainHeader.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SettingsModal.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SettingsModal.tsx",
+      "target": "file:web/src/lib/constants.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/constants.ts",
+      "target": "function:web/src/lib/constants.ts:getSubTabsForTab",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/constants.ts",
+      "target": "function:web/src/lib/constants.ts:getSubTabsForTab",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/constants.ts",
+      "target": "file:web/src/components/MainHeader.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

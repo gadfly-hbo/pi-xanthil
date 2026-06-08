@@ -2,6 +2,200 @@
 
 ---
 
+## 📌 Session 3 — 2026-06-08
+
+### 0. 本次更新摘要（Changelog）
+
+**本次推进**: 基于 Tool Use 方案设计，在计算工具模块落地 5 项 Tool Use 能力：SQL 安全校验（validate_sql + 风险等级 L0-L3）、工具执行 trace 写入 trace_events、工具契约扩展（manifest 新增 riskLevel/allowedUse/forbiddenUse 等字段）、数据质量探查（profile_dataset）、输出摘要化 + L2 审批确认。
+
+**关键决策**:
+1. **SQL 安全校验采用关键词 + 模式双重检测**：危险操作（DROP/DELETE/INSERT 等）直接拦截 400，警告模式（SELECT *、缺 LIMIT）仅提示不阻断。query 和 export 端点均自动校验。
+2. **trace 写入通过可选 `workspaceId` 参数触发**：SQL 查询/导出、提取工具运行在收到 `workspaceId` 时才写 trace_events，不强制耦合工作区。
+3. **风险等级分层映射**：L0 自动执行、L1 自动执行+trace、L2 需确认（导出/提取工具运行）、L3 默认禁止（危险 SQL）。提取工具 manifest 新增 `riskLevel` 字段。
+
+**新增阻塞/问题**: 无功能阻塞。SQL 连接模块 [未验证] 真实数据库端到端（延续 Session 2 遗留）。
+
+**下一步重点**:
+1. SQL 连接真实场景端到端验证（仍为 P0，Session 2 遗留）
+2. 接入第二个提取工具，验证扩展后的 manifest 协议
+
+---
+
+### 1. 项目元信息
+
+```
+项目名称: pi-xanthil — 计算工具模块
+项目类型: 代码开发
+Session 编号: 第 3 次交接
+本次 Session 起止: 从「Tool Use 方案讨论」推进到「5 项 Tool Use 能力全部落地」
+最后更新: 2026-06-08
+```
+
+### 2. 项目目标（North Star）
+
+延续 Session 2，新增 Tool Use 安全维度：
+
+- **一句话目标**: 提供本地优先、受控安全的数据准备能力（数据库取数 + 表格聚合 + 文档提取 + 数据探查），在安全校验、风险分层、执行追踪的框架下完成数据分析前的数据准备工作。
+- **成功标准**（新增）:
+  - SQL 查询/导出自动校验危险操作，危险 SQL 被拦截。✅
+  - 工具执行可追溯（trace_events），含风险等级。✅
+  - 工具 manifest 含完整契约（风险等级、适用/禁止场景、失败处理）。✅
+  - 数据质量探查一键生成（缺失率、重复行、基数、数值范围、主键候选）。✅
+- **明确的非目标**: 不做 Multi-Agent 权限分层（属工作流模块）；不做 Plan-and-Execute 集成（属工作流模块）；不做 Reflection 工具（属工作流/探索模块）。
+
+### 3. 当前进度全景
+
+| 模块/任务 | 状态 | 关键产出/位置 | 备注 |
+|---|---|---|---|
+| 顶部「计算工具」入口 | ✅完成 | `MainHeader.tsx` | Tab id = `aggregate` |
+| 二级 Tab：聚合计算 / 数据提取 / SQL连接 | ✅完成 | `constants.ts` | Session 2 |
+| 表格本地读取 + DSL 聚合 | ✅完成 | `web/src/lib/aggregate.ts` | Session 1 |
+| 聚合结果确认发送 LLM | ✅完成 | `AggregatePane.tsx` | Session 2 |
+| tool-free LLM 通道 | ✅完成 | `server/src/index.ts` | Session 2 |
+| 提取工具注册表 + API | ✅完成 | `server/tools/registry.ts` | Session 1 |
+| 提取产物页面内预览 | ✅完成 | `ExtractionPane.tsx` | Session 2 |
+| SQL连接 MVP | ✅完成 [未验证真实 DB] | `sql-connections.ts` `SqlConnectPane.tsx` | Session 2 |
+| **SQL 安全校验 + 风险等级** | ✅完成 | `sql-connections.ts:validateSql()` `SqlConnectPane.tsx` | Session 3 新增 |
+| **工具执行 trace 写入** | ✅完成 | `index.ts` SQL query/export/extraction 端点 | Session 3 新增 |
+| **工具契约扩展** | ✅完成 | `registry.ts` manifest 扩展 `tool.json` | Session 3 新增 |
+| **数据质量探查** | ✅完成 | `aggregate.ts:profileDataset()` `AggregatePane.tsx` | Session 3 新增 |
+| **输出摘要化 + L2 审批** | ✅完成 | `sql-connections.ts:computeSummary()` `SqlConnectPane.tsx` `ExtractionPane.tsx` | Session 3 新增 |
+| SQL连接 参数化查询 | ⏳待启动 | — | P1 |
+| SQL连接 增量取数 | ⏳待启动 | — | P1 |
+| Python 子进程隔离 | ⏳待启动 | — | P1 |
+| 聚合页 bundle 拆分 | ⏳待启动 | — | P2 |
+
+### 4. 关键决策与权衡 ⭐
+
+**决策 1: SQL 安全校验采用关键词 + 模式双重检测**
+- 选择: `validateSql()` 用正则检测 DROP/DELETE/UPDATE/INSERT/ALTER/CREATE/TRUNCATE/GRANT/REVOKE/EXEC/MERGE/REPLACE 等危险关键词，同时检测 SELECT *、缺 LIMIT、CROSS JOIN、前缀通配 LIKE 等警告模式
+- 备选 A: 用 SQL 解析器（如 node-sql-parser）做 AST 级别分析——太重，引入额外依赖，且对三种 DB 方言兼容性差
+- 备选 B: 只做关键词检测——无法发现 SELECT * 等性能问题
+- 理由: 关键词 + 模式双重检测覆盖了安全底线和性能建议，实现轻量（约 40 行），无额外依赖
+- 影响范围: query 和 export 端点自动校验，危险 SQL 返回 400；前端 SQL 编辑器实时显示校验结果（防抖 500ms）
+- 可逆性: 高（校验函数独立，未来可替换为 AST 解析器）
+
+**决策 2: trace 写入通过可选 `workspaceId` 参数触发**
+- 选择: SQL 查询/导出、提取工具运行在请求 body 中接收可选的 `workspaceId`，有值时写入 `trace_events`，无值时不写
+- 备选 A: 强制要求 workspaceId——计算工具作为独立模块不应强依赖工作区
+- 备选 B: 在 BFF 层自动关联——无可靠方式从请求中推断 workspaceId
+- 理由: 保持模块独立性，同时为有工作区上下文的调用提供追溯能力
+- 影响范围: 前端 `SqlConnectPane` 和 `ExtractionPane` 接收 `workspaceId` prop，传递给 API
+- 可逆性: 高
+
+**决策 3: 风险等级 L0-L3 分层映射**
+- 选择: L0=自动执行（预览产物）、L1=自动执行+trace（SQL 只读查询、数据探查、提取工具默认）、L2=需确认（SQL 导出、L2 提取工具）、L3=默认禁止（危险 SQL）
+- 备选: 所有工具统一 L1——无法区分导出等高风险操作
+- 理由: 与 Tool Use 方案的风险分层对齐，为后续 Multi-Agent 权限分层预留接口
+- 影响范围: manifest `riskLevel` 字段、前端风险徽章显示、提取工具 L2/L3 二次确认
+- 可逆性: 高
+
+### 5. 技术/方案细节快照（本 session 新增）
+
+**SQL 安全校验核心文件**
+
+- `server/src/sql-connections.ts:265-300`：`validateSql(sql)` 函数，返回 `{ safe, risks[], suggestions[], riskLevel }`
+- `server/src/index.ts:4271-4277`：`POST /api/sql-connections/:id/validate-sql` 端点
+- `server/src/index.ts:4279-4317`：query 端点自动校验，危险 SQL 返回 400
+- `server/src/index.ts:4322-4357`：export 端点自动校验，危险 SQL 返回 400
+- `web/src/components/SqlConnectPane.tsx`：SQL 编辑器下方实时显示校验结果（绿/红色卡片），防抖 500ms
+
+**Trace 写入**
+
+- SQL 查询 trace: `targetKind="sql_connection"`, `type="sql_query"`, payload 含 sql/rowCount/executionMs/riskLevel
+- SQL 导出 trace: `targetKind="sql_connection"`, `type="sql_export"`, payload 含 sql/outputPath/rowCount
+- 提取工具 trace: `targetKind="extraction_tool"`, `type="tool_run"`, payload 含 runId/toolId/success/failed/durationMs
+- 前端 API 签名变更: `querySql(id, sql, params?, workspaceId?)`, `exportSql(id, sql, outputPath, params?, watermark?, workspaceId?)`, `runExtractionTool(id, inputPath, outputPath, params?, workspaceId?)`
+
+**工具契约扩展**
+
+- `server/tools/registry.ts` `ExtractionToolManifest` 新增: `riskLevel?`, `allowedUse?`, `forbiddenUse?`, `failureHandling?`, `traceFields?`
+- `server/tools/extract-tmall-profile/tool.json` 已更新为新格式（风险等级 L1）
+- `web/src/components/ExtractionPane.tsx` 展示风险等级徽章（L0 绿/L1 蓝/L2 黄/L3 红）和适用/禁止说明
+
+**数据质量探查**
+
+- `web/src/lib/aggregate.ts:199-297`：`profileDataset(dataset)` 返回 `DatasetProfile`（rowCount/columnCount/duplicateRows/missingRate/columns[]/primaryKeyCandidates）
+- `ColumnProfile` 含: nullRate/uniqueCount/cardinality(low|medium|high)/topValues[]/数值范围 min-max-mean-std/日期范围
+- `web/src/components/AggregatePane.tsx`：新增「数据探查」tab（在 DSL 和 Python 之前），展示质量概览卡片 + 逐列详情表
+
+**输出摘要化**
+
+- `server/src/sql-connections.ts` `QueryResult` 新增 `summary?: QuerySummary`
+- `QuerySummary` 含: `numericColumns[]`（min/max/avg/sum）、`categoricalColumns[]`（uniqueCount/topValue）、`dateRange`
+- `computeSummary()` 在 `executeQuery()` 返回前自动计算
+- `web/src/components/SqlConnectPane.tsx`：结果表格上方展示摘要条（数值范围、时间范围、分类 top 值）
+
+**L2 审批确认**
+
+- `web/src/components/SqlConnectPane.tsx` ExportPanel：标题旁显示 "L2 · 需确认" 徽章 + 警告文案
+- `web/src/components/ExtractionPane.tsx`：L2/L3 工具首次点击执行时弹出确认卡片（显示风险等级、工具名、警告说明），确认后才真正执行
+
+### 6. 未完成事项与下一步
+
+- [ ] **SQL连接真实场景验证** — P0（Session 2 遗留）
+  - 上下文: MVP 代码已完成，但未接真实 PostgreSQL/MySQL 跑过端到端
+  - 完成标准: 能连接本机 PostgreSQL/MySQL/SQLite，执行 SELECT，预览结果含 summary，导出 CSV，注册到工作区路径，trace 写入成功
+  - 潜在难点: `pg` / `mysql2` ESM import 在 `--experimental-strip-types` 模式下是否有兼容性问题 [未验证]
+
+- [ ] **接入第二个提取工具** — P1
+  - 上下文: 当前仅 `extract-tmall-profile` 一个工具，需要验证扩展后的 manifest 协议在新工具接入时是否顺畅
+  - 完成标准: 新工具按新 manifest 格式注册，ExtractionPane 正确展示风险等级和契约信息
+
+- [ ] **SQL连接参数化查询** — P1（Session 2 遗留）
+  - 上下文: 周期性取数场景，需在 SQL 中嵌入 `{{start_date}}` 占位符
+  - 完成标准: manifest/query 支持参数定义，前端按参数自动渲染表单，替换后执行
+
+- [ ] **SQL连接增量取数** — P1（Session 2 遗留）
+  - 上下文: 避免每次全量导出，记录上次取数的 watermark
+  - 完成标准: ExportPanel 可选「增量追加」模式
+
+- [ ] **Python 子进程隔离** — P1（Session 2 遗留）
+  - 上下文: 注册工具的 Python 进程继承本机环境
+  - 完成标准: 确定审查流程文档（短期）；或增加超时 + 输出大小限制（中期）
+
+- [ ] **聚合页 bundle 拆分** — P2（Session 2 遗留）
+  - 上下文: SheetJS 进入主 bundle，Vite 提示 chunk > 500 kB
+  - 完成标准: `xlsx` 改为动态 import
+
+### 7. 开放问题与待确认事项
+
+- ❓ **SQL连接 ESM 兼容性**（Session 2 遗留）
+  - 当前倾向: 直接 named import 应可工作
+  - 需要: 真实连接测试验证
+  - 阻塞: SQL连接端到端验证
+
+- ❓ **ExtractionPane `TOOL_COLUMNS` 是否迁移到 manifest**（Session 2 遗留）
+  - 背景: 当前前端硬编码维护 `tmall-profile / xhs-insight / phone-cleaner / sycm-member` 四个工具的列映射
+  - 当前倾向: 短期由前端硬编码；中期迁移到 tool.json manifest 的 `resultColumns` 字段
+  - 阻塞: 下一个工具接入时会再暴露此问题
+
+- ❓ **风险等级 L0-L3 是否需要用户可配置**
+  - 当前倾向: manifest 中硬编码，用户不可改；后续如需可加管理面板
+  - 需要: 用户反馈
+
+### 8. 上下文与约定
+
+延续 Session 1-2 的安全约定，新增：
+
+- SQL 查询/导出自动校验危险操作，危险 SQL 被拦截（400），不可绕过
+- 工具执行 trace 写入 `trace_events` 表，通过可选 `workspaceId` 触发
+- 提取工具 manifest 必须包含 `riskLevel`（新工具接入时），已有工具已更新
+- L2 操作（SQL 导出、L2 提取工具）需用户二次确认
+- L3 操作（危险 SQL）默认禁止
+
+### 9. 下一个 Session 启动指令
+
+> 先读本 Session 顶部的「本次更新摘要」和「未完成事项」两节。
+>
+> 最紧迫的是 **SQL连接真实场景验证**（P0，Session 2 遗留）：启动服务器，连接本机 PostgreSQL/SQLite/MySQL，执行 SELECT，确认预览表格含 summary 摘要条，导出 CSV，注册到工作区，验证 trace_events 表有记录。若遇到 `pg`/`mysql2` ESM import 报错，在 `sql-connections.ts` 中改用 `createRequire` 或动态 `import()` 兼容。
+>
+> 验证通过后，可继续 P1：接入第二个提取工具验证新 manifest 协议，或 SQL 参数化查询。
+>
+> 注意：`/api/llm/prompt` 是 tool-free 通道，只能发送文本，不能发送文件路径。
+
+---
+
 ## 📌 Session 2 — 2026-06-05
 
 ### 0. 本次更新摘要（Changelog）

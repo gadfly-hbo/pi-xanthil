@@ -1,0 +1,277 @@
+{
+  "nodes": [
+    {
+      "id": "file:web/src/components/ModelBuilder.tsx",
+      "type": "file",
+      "name": "ModelBuilder.tsx",
+      "filePath": "web/src/components/ModelBuilder.tsx",
+      "summary": "Auto-generated summary for web/src/components/ModelBuilder.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ModelBuilder.tsx:ModelBuilder",
+      "type": "function",
+      "name": "ModelBuilder",
+      "lineRange": [
+        9,
+        167
+      ],
+      "summary": "Auto-generated summary for function ModelBuilder",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ModelInfoCard.tsx",
+      "type": "file",
+      "name": "ModelInfoCard.tsx",
+      "filePath": "web/src/components/ModelInfoCard.tsx",
+      "summary": "Auto-generated summary for web/src/components/ModelInfoCard.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ModelInfoCard.tsx:ModelInfoCard",
+      "type": "function",
+      "name": "ModelInfoCard",
+      "lineRange": [
+        41,
+        205
+      ],
+      "summary": "Auto-generated summary for function ModelInfoCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ModelLabPane.tsx",
+      "type": "file",
+      "name": "ModelLabPane.tsx",
+      "filePath": "web/src/components/ModelLabPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/ModelLabPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/ModelLabPane.tsx:parseCsv",
+      "type": "function",
+      "name": "parseCsv",
+      "lineRange": [
+        56,
+        84
+      ],
+      "summary": "Auto-generated summary for function parseCsv",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ModelLabPane.tsx:autoMap",
+      "type": "function",
+      "name": "autoMap",
+      "lineRange": [
+        88,
+        105
+      ],
+      "summary": "Auto-generated summary for function autoMap",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ModelLabPane.tsx:exportCsv",
+      "type": "function",
+      "name": "exportCsv",
+      "lineRange": [
+        113,
+        137
+      ],
+      "summary": "Auto-generated summary for function exportCsv",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ModelLabPane.tsx:ModelLabPane",
+      "type": "function",
+      "name": "ModelLabPane",
+      "lineRange": [
+        156,
+        832
+      ],
+      "summary": "Auto-generated summary for function ModelLabPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/data/models.ts",
+      "type": "file",
+      "name": "models.ts",
+      "filePath": "web/src/data/models.ts",
+      "summary": "Auto-generated summary for web/src/data/models.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:web/src/components/ModelBuilder.tsx",
+      "target": "function:web/src/components/ModelBuilder.tsx:ModelBuilder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ModelBuilder.tsx",
+      "target": "function:web/src/components/ModelBuilder.tsx:ModelBuilder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ModelBuilder.tsx",
+      "target": "file:web/src/data/models.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ModelInfoCard.tsx",
+      "target": "function:web/src/components/ModelInfoCard.tsx:ModelInfoCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ModelInfoCard.tsx",
+      "target": "function:web/src/components/ModelInfoCard.tsx:ModelInfoCard",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ModelInfoCard.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ModelInfoCard.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "function:web/src/components/ModelLabPane.tsx:parseCsv",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "function:web/src/components/ModelLabPane.tsx:autoMap",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "function:web/src/components/ModelLabPane.tsx:exportCsv",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "function:web/src/components/ModelLabPane.tsx:ModelLabPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "function:web/src/components/ModelLabPane.tsx:ModelLabPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "file:web/src/components/ModelBuilder.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "file:web/src/components/ModelInfoCard.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "file:web/src/data/models.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ModelLabPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/data/models.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

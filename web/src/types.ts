@@ -2,6 +2,14 @@
 
 // ---- SQL connections ----
 export type DbType = "sqlite" | "postgresql" | "mysql";
+export type RiskLevel = "L0" | "L1" | "L2" | "L3";
+
+export interface SqlValidateResult {
+  safe: boolean;
+  risks: string[];
+  suggestions: string[];
+  riskLevel: RiskLevel;
+}
 
 export interface SavedQuery {
   id: string;
@@ -37,6 +45,14 @@ export interface SqlQueryResult {
   rowCount: number;
   executionMs: number;
   capped: boolean;
+  validation?: SqlValidateResult;
+  summary?: QuerySummary;
+}
+
+export interface QuerySummary {
+  numericColumns: Array<{ name: string; min: number; max: number; avg: number; sum: number }>;
+  categoricalColumns: Array<{ name: string; uniqueCount: number; topValue: string }>;
+  dateRange?: { min: string; max: string };
 }
 
 export type WorkspaceFolderName = "draw_data" | "clean_data" | "report";
@@ -85,6 +101,11 @@ export interface ExtractionTool {
   timeoutMs?: number;
   parameters?: ToolParameter[];
   resultColumns?: Array<{ key: string; label: string }>;
+  riskLevel?: RiskLevel;
+  allowedUse?: string;
+  forbiddenUse?: string;
+  failureHandling?: string;
+  traceFields?: string[];
   input: {
     accept: string[];
     modes: Array<"file" | "directory">;

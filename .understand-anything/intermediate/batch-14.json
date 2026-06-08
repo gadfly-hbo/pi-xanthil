@@ -1,0 +1,933 @@
+{
+  "nodes": [
+    {
+      "id": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "type": "file",
+      "name": "extract_xhs_insight.py",
+      "filePath": "server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "summary": "Auto-generated summary for server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_ai_content",
+      "type": "function",
+      "name": "extract_ai_content",
+      "lineRange": [
+        28,
+        40
+      ],
+      "summary": "Auto-generated summary for function extract_ai_content",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_gender",
+      "type": "function",
+      "name": "extract_gender",
+      "lineRange": [
+        43,
+        50
+      ],
+      "summary": "Auto-generated summary for function extract_gender",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_age",
+      "type": "function",
+      "name": "extract_age",
+      "lineRange": [
+        53,
+        67
+      ],
+      "summary": "Auto-generated summary for function extract_age",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_marry",
+      "type": "function",
+      "name": "extract_marry",
+      "lineRange": [
+        70,
+        77
+      ],
+      "summary": "Auto-generated summary for function extract_marry",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_region",
+      "type": "function",
+      "name": "extract_region",
+      "lineRange": [
+        80,
+        110
+      ],
+      "summary": "Auto-generated summary for function extract_region",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_city_level",
+      "type": "function",
+      "name": "extract_city_level",
+      "lineRange": [
+        113,
+        122
+      ],
+      "summary": "Auto-generated summary for function extract_city_level",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_consumption",
+      "type": "function",
+      "name": "extract_consumption",
+      "lineRange": [
+        125,
+        203
+      ],
+      "summary": "Auto-generated summary for function extract_consumption",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_interests",
+      "type": "function",
+      "name": "extract_interests",
+      "lineRange": [
+        206,
+        231
+      ],
+      "summary": "Auto-generated summary for function extract_interests",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_keywords",
+      "type": "function",
+      "name": "extract_keywords",
+      "lineRange": [
+        234,
+        262
+      ],
+      "summary": "Auto-generated summary for function extract_keywords",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_search_terms",
+      "type": "function",
+      "name": "extract_search_terms",
+      "lineRange": [
+        265,
+        274
+      ],
+      "summary": "Auto-generated summary for function extract_search_terms",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_bloggers",
+      "type": "function",
+      "name": "extract_bloggers",
+      "lineRange": [
+        277,
+        298
+      ],
+      "summary": "Auto-generated summary for function extract_bloggers",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_lifestyle",
+      "type": "function",
+      "name": "extract_lifestyle",
+      "lineRange": [
+        301,
+        330
+      ],
+      "summary": "Auto-generated summary for function extract_lifestyle",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_all_labels",
+      "type": "function",
+      "name": "extract_all_labels",
+      "lineRange": [
+        333,
+        347
+      ],
+      "summary": "Auto-generated summary for function extract_all_labels",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:generate_md",
+      "type": "function",
+      "name": "generate_md",
+      "lineRange": [
+        350,
+        440
+      ],
+      "summary": "Auto-generated summary for function generate_md",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:process_file",
+      "type": "function",
+      "name": "process_file",
+      "lineRange": [
+        443,
+        487
+      ],
+      "summary": "Auto-generated summary for function process_file",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:run",
+      "type": "function",
+      "name": "run",
+      "lineRange": [
+        490,
+        532
+      ],
+      "summary": "Auto-generated summary for function run",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:main",
+      "type": "function",
+      "name": "main",
+      "lineRange": [
+        535,
+        561
+      ],
+      "summary": "Auto-generated summary for function main",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/extract-xhs-insight/tests/cases.json",
+      "type": "config",
+      "name": "cases.json",
+      "filePath": "server/tools/extract-xhs-insight/tests/cases.json",
+      "summary": "Auto-generated summary for server/tools/extract-xhs-insight/tests/cases.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/tools/extract-xhs-insight/tests/fixtures/minimal.html",
+      "type": "file",
+      "name": "minimal.html",
+      "filePath": "server/tools/extract-xhs-insight/tests/fixtures/minimal.html",
+      "summary": "Auto-generated summary for server/tools/extract-xhs-insight/tests/fixtures/minimal.html",
+      "tags": [
+        "markup",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+      "type": "config",
+      "name": "minimal_小红书.json",
+      "filePath": "server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+      "summary": "Auto-generated summary for server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "config:server/tools/extract-xhs-insight/tool.json",
+      "type": "config",
+      "name": "tool.json",
+      "filePath": "server/tools/extract-xhs-insight/tool.json",
+      "summary": "Auto-generated summary for server/tools/extract-xhs-insight/tool.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "type": "file",
+      "name": "phone_exporter.py",
+      "filePath": "server/tools/phone-cleaner/phone_exporter.py",
+      "summary": "Auto-generated summary for server/tools/phone-cleaner/phone_exporter.py",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/tools/phone-cleaner/phone_exporter.py:clean_phone",
+      "type": "function",
+      "name": "clean_phone",
+      "lineRange": [
+        23,
+        38
+      ],
+      "summary": "Auto-generated summary for function clean_phone",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/phone-cleaner/phone_exporter.py:md5_encrypt",
+      "type": "function",
+      "name": "md5_encrypt",
+      "lineRange": [
+        41,
+        43
+      ],
+      "summary": "Auto-generated summary for function md5_encrypt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/phone-cleaner/phone_exporter.py:find_phone_column",
+      "type": "function",
+      "name": "find_phone_column",
+      "lineRange": [
+        46,
+        53
+      ],
+      "summary": "Auto-generated summary for function find_phone_column",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/phone-cleaner/phone_exporter.py:process_file",
+      "type": "function",
+      "name": "process_file",
+      "lineRange": [
+        59,
+        192
+      ],
+      "summary": "Auto-generated summary for function process_file",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/phone-cleaner/phone_exporter.py:run",
+      "type": "function",
+      "name": "run",
+      "lineRange": [
+        198,
+        242
+      ],
+      "summary": "Auto-generated summary for function run",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/phone-cleaner/phone_exporter.py:main",
+      "type": "function",
+      "name": "main",
+      "lineRange": [
+        245,
+        295
+      ],
+      "summary": "Auto-generated summary for function main",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/phone-cleaner/tests/cases.json",
+      "type": "config",
+      "name": "cases.json",
+      "filePath": "server/tools/phone-cleaner/tests/cases.json",
+      "summary": "Auto-generated summary for server/tools/phone-cleaner/tests/cases.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:server/tools/phone-cleaner/tests/fixtures/invalid.txt",
+      "type": "document",
+      "name": "invalid.txt",
+      "filePath": "server/tools/phone-cleaner/tests/fixtures/invalid.txt",
+      "summary": "not a supported input file",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "endpoint:server/tools/phone-cleaner/tests/fixtures/minimal.csv",
+      "type": "endpoint",
+      "name": "minimal.csv",
+      "filePath": "server/tools/phone-cleaner/tests/fixtures/minimal.csv",
+      "summary": "Auto-generated summary for server/tools/phone-cleaner/tests/fixtures/minimal.csv",
+      "tags": [
+        "data",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "document:server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt",
+      "type": "document",
+      "name": "数据清洗日志.txt",
+      "filePath": "server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt",
+      "summary": "============================================================",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tools/phone-cleaner/tool.json",
+      "type": "config",
+      "name": "tool.json",
+      "filePath": "server/tools/phone-cleaner/tool.json",
+      "summary": "Auto-generated summary for server/tools/phone-cleaner/tool.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tsconfig.json",
+      "type": "config",
+      "name": "tsconfig.json",
+      "filePath": "server/tsconfig.json",
+      "summary": "Auto-generated summary for server/tsconfig.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/postcss.config.js",
+      "type": "file",
+      "name": "postcss.config.js",
+      "filePath": "web/postcss.config.js",
+      "summary": "Auto-generated summary for web/postcss.config.js",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/index.css",
+      "type": "file",
+      "name": "index.css",
+      "filePath": "web/src/index.css",
+      "summary": "Auto-generated summary for web/src/index.css",
+      "tags": [
+        "markup",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/shims.d.ts",
+      "type": "file",
+      "name": "shims.d.ts",
+      "filePath": "web/src/shims.d.ts",
+      "summary": "Auto-generated summary for web/src/shims.d.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/tailwind.config.js",
+      "type": "file",
+      "name": "tailwind.config.js",
+      "filePath": "web/tailwind.config.js",
+      "summary": "Auto-generated summary for web/tailwind.config.js",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/vite.config.ts",
+      "type": "file",
+      "name": "vite.config.ts",
+      "filePath": "web/vite.config.ts",
+      "summary": "Auto-generated summary for web/vite.config.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_ai_content",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_ai_content",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_gender",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_gender",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_age",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_age",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_marry",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_marry",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_region",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_region",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_city_level",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_city_level",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_consumption",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_consumption",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_interests",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_interests",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_keywords",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_keywords",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_search_terms",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_search_terms",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_bloggers",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_bloggers",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_lifestyle",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_lifestyle",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_all_labels",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:extract_all_labels",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:generate_md",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:generate_md",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:process_file",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:process_file",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:run",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:run",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/extract-xhs-insight/extract_xhs_insight.py",
+      "target": "function:server/tools/extract-xhs-insight/extract_xhs_insight.py:main",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "config:server/tools/extract-xhs-insight/tests/cases.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:server/tools/extract-xhs-insight/tool.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:clean_phone",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:clean_phone",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:md5_encrypt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:md5_encrypt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:find_phone_column",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:find_phone_column",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:process_file",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:process_file",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:run",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:run",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:main",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/phone-cleaner/phone_exporter.py",
+      "target": "function:server/tools/phone-cleaner/phone_exporter.py:main",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "config:server/tools/phone-cleaner/tests/cases.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "document:server/tools/phone-cleaner/tests/fixtures/invalid.txt",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:server/tools/phone-cleaner/tool.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:server/tsconfig.json",
+      "target": "file:server/src/index.ts",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

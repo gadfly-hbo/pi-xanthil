@@ -1,0 +1,82 @@
+{
+  "nodes": [
+    {
+      "id": "config:.obsidian/app.json",
+      "type": "config",
+      "name": "app.json",
+      "filePath": ".obsidian/app.json",
+      "summary": "Auto-generated summary for .obsidian/app.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:.obsidian/appearance.json",
+      "type": "config",
+      "name": "appearance.json",
+      "filePath": ".obsidian/appearance.json",
+      "summary": "Auto-generated summary for .obsidian/appearance.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:.obsidian/core-plugins.json",
+      "type": "config",
+      "name": "core-plugins.json",
+      "filePath": ".obsidian/core-plugins.json",
+      "summary": "Auto-generated summary for .obsidian/core-plugins.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:.obsidian/workspace.json",
+      "type": "config",
+      "name": "workspace.json",
+      "filePath": ".obsidian/workspace.json",
+      "summary": "Auto-generated summary for .obsidian/workspace.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    }
+  ],
+  "edges": [
+    {
+      "source": "config:.obsidian/app.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:.obsidian/appearance.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:.obsidian/core-plugins.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    },
+    {
+      "source": "config:.obsidian/workspace.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}

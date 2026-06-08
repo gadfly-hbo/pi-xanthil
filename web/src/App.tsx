@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelRightOpen, CircleAlert, Database, TriangleAlert, CloudSun, Store } from "lucide-react";
+import { PanelRightOpen, CircleAlert, Database, TriangleAlert, Store, FlaskConical } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/Sidebar";
 import { ChatPane } from "@/components/ChatPane";
@@ -13,6 +13,7 @@ import { useTabVisibility } from "@/lib/useTabVisibility";
 import { getSubTabsForTab, type SubTab } from "@/lib/constants";
 import { Placeholder } from "@/components/Placeholder";
 import { ResearchLabPane } from "@/components/ResearchLabPane";
+import { WeatherPane } from "@/components/WeatherPane";
 import { SkillLabPane } from "@/components/SkillLabPane";
 import { ToolLabPane } from "@/components/ToolLabPane";
 import { AggregatePane } from "@/components/AggregatePane";
@@ -37,6 +38,7 @@ import { ChangeManagementPane } from "@/components/ChangeManagementPane";
 import { CasesPane } from "@/components/CasesPane";
 import { SqlConnectPane } from "@/components/SqlConnectPane";
 import { PresentationVersionPane } from "@/components/PresentationVersionPane";
+import { ReportReviewPane } from "@/components/ReportReviewPane";
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
@@ -90,6 +92,14 @@ export default function App() {
   const [promoteScope, setPromoteScope] = useState<"latest_task" | "full_conversation">("latest_task");
   const [promoting, setPromoting] = useState(false);
   const [promoteError, setPromoteError] = useState("");
+  const [distillOpen, setDistillOpen] = useState(false);
+  const [distillScope, setDistillScope] = useState<"latest_task" | "full_conversation">("latest_task");
+  const [distilling, setDistilling] = useState(false);
+  const [distillContent, setDistillContent] = useState("");
+  const [distillName, setDistillName] = useState("");
+  const [distillError, setDistillError] = useState("");
+  const [distillSaving, setDistillSaving] = useState(false);
+  const [distillSavedPath, setDistillSavedPath] = useState("");
   const [rulesPromptEnabled, setRulesPromptEnabled] = useState(false);
   const [rulesPromptInfo, setRulesPromptInfo] = useState<{ count: number; updatedAt: number | null }>({ count: 0, updatedAt: null });
 
@@ -502,6 +512,52 @@ export default function App() {
     }
   }, [activeSession, model, promoteName, promoteScope, promoting]);
 
+  const openDistill = useCallback(() => {
+    if (!activeSession) return;
+    setDistillScope("latest_task");
+    setDistillContent("");
+    setDistillName("");
+    setDistillError("");
+    setDistillSavedPath("");
+    setDistillOpen(true);
+  }, [activeSession]);
+
+  const runDistill = useCallback(async () => {
+    if (!activeSession || distilling) return;
+    setDistilling(true);
+    setDistillError("");
+    setDistillSavedPath("");
+    try {
+      const result = await api.distillSkill(activeSession.id, {
+        scope: distillScope,
+        model: model || undefined,
+      });
+      setDistillContent(result.content);
+      setDistillName(result.name);
+    } catch (err) {
+      setDistillError(String(err));
+    } finally {
+      setDistilling(false);
+    }
+  }, [activeSession, distillScope, distilling, model]);
+
+  const saveDistilledSkill = useCallback(async () => {
+    if (!activeSession || !distillContent.trim() || !distillName.trim() || distillSaving) return;
+    setDistillSaving(true);
+    setDistillError("");
+    try {
+      const result = await api.saveSkill(activeSession.id, {
+        name: distillName.trim(),
+        content: distillContent,
+      });
+      setDistillSavedPath(result.path);
+    } catch (err) {
+      setDistillError(String(err));
+    } finally {
+      setDistillSaving(false);
+    }
+  }, [activeSession, distillContent, distillName, distillSaving]);
+
   const folderScope = useMemo(() => activeTab === "explore"
     ? (activeSessionId ? { type: "session" as const, sessionId: activeSessionId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null)
     : (activeFlowId ? { type: "flow" as const, flowId: activeFlowId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null),
@@ -678,6 +734,8 @@ export default function App() {
                 onRefreshRuntime={() => void refreshRuntime()}
                 canPromoteToWorkflow={canPromoteToWorkflow}
                 onPromoteToWorkflow={openPromote}
+                canDistillSkill={canPromoteToWorkflow}
+                onDistillSkill={openDistill}
               />
             )}
             {activeTab === "explore" && activeSubTab === "business_requirement" && (
@@ -698,6 +756,9 @@ export default function App() {
 
             {activeTab === "explore" && activeSubTab === "presentation_version" && (
               <PresentationVersionPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
+            )}
+            {activeTab === "explore" && activeSubTab === "report_review" && (
+              <ReportReviewPane scope={folderScope} model={model} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
             {activeTab === "explore" && activeSubTab === "golden_strategy" && (
               <GoldenStrategyPane scope={{ type: "session", sessionId: activeSessionId }} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
@@ -732,6 +793,9 @@ export default function App() {
             {activeTab === "multi" && activeSubTab === "presentation_version" && (
               <PresentationVersionPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
+            {activeTab === "multi" && activeSubTab === "report_review" && (
+              <ReportReviewPane scope={folderScope} model={model} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
+            )}
             {activeTab === "multi" && activeSubTab === "golden_strategy" && (
               <GoldenStrategyPane scope={{ type: "flow", flow: activeFlow?.kind === "multi" ? activeFlow : null }} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
             )}
@@ -741,7 +805,7 @@ export default function App() {
               <AggregatePane model={model} models={models} />
             )}
             {activeTab === "aggregate" && activeSubTab === "extraction" && (
-              <ExtractionPane />
+              <ExtractionPane workspaceId={activeWorkspaceId} />
             )}
             {activeTab === "aggregate" && activeSubTab === "sql_connect" && (
               <SqlConnectPane workspaceId={activeWorkspaceId} />
@@ -776,25 +840,28 @@ export default function App() {
                 hint="人群数据库管理，即将推出"
               />
             )}
-            {activeTab === "xan_db" && activeSubTab === "digital_life" && (
+            {activeTab === "xan_db" && activeSubTab === "industry" && (
               <Placeholder
                 icon={Database}
-                title="数字生命体"
-                hint="数字生命体数据库管理，即将推出"
+                title="行业"
+                hint="行业数据管理，即将推出"
               />
             )}
             {activeTab === "xan_db" && activeSubTab === "weather" && (
-              <Placeholder
-                icon={CloudSun}
-                title="天气"
-                hint="天气数据管理，即将推出"
-              />
+              <WeatherPane />
             )}
             {activeTab === "xan_db" && activeSubTab === "business_district" && (
               <Placeholder
                 icon={Store}
                 title="商圈"
                 hint="商圈数据管理，即将推出"
+              />
+            )}
+            {activeTab === "xan_db" && activeSubTab === "competitor" && (
+              <Placeholder
+                icon={Database}
+                title="竞品"
+                hint="竞品数据管理，即将推出"
               />
             )}
             {/* Research Lab tab */}
@@ -825,6 +892,13 @@ export default function App() {
                 mode="all"
                 restoreRunId={pendingRestoreRunId}
                 onRestoreConsumed={handleRestoreConsumed}
+              />
+            )}
+            {activeTab === "research_lab" && activeSubTab === "dlf" && (
+              <Placeholder
+                icon={FlaskConical}
+                title="DLF"
+                hint="DLF 模块管理，即将推出"
               />
             )}
             {/* AnaX tab */}
@@ -914,6 +988,80 @@ export default function App() {
                 className="h-8 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
               >
                 {promoting ? "正在创建..." : "创建工作流"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {distillOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
+          <div className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+            <h2 className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">沉淀 skill</h2>
+            <p className="mt-1 text-[12px] leading-5 text-neutral-500 dark:text-neutral-400">
+              参照 skill 提炼方法（案例解构 → 抽象提炼 → 写作 SKILL.md），把本次任务蒸馏为可复用 Skill。具体数字与业务背景会被参数化为 {"{变量}"}。
+            </p>
+            <div className="mt-4 flex items-end gap-3">
+              <label className="block flex-1 text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
+                提取范围
+                <select
+                  value={distillScope}
+                  onChange={(event) => setDistillScope(event.target.value as "latest_task" | "full_conversation")}
+                  disabled={distilling}
+                  className="mt-1 h-9 w-full rounded-md border border-neutral-200 bg-transparent px-3 text-[13px] outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100"
+                >
+                  <option value="latest_task">最近一次任务</option>
+                  <option value="full_conversation">完整对话</option>
+                </select>
+              </label>
+              <button
+                onClick={() => void runDistill()}
+                disabled={distilling}
+                className="h-9 rounded-md border border-neutral-200 px-3 text-[12px] font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
+              >
+                {distilling ? "正在提炼..." : distillContent ? "重新提炼" : "开始提炼"}
+              </button>
+            </div>
+            {(distillContent || distilling) && (
+              <div className="mt-4 flex min-h-0 flex-1 flex-col">
+                <label className="block text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
+                  Skill 名称（英文 kebab-case）
+                  <input
+                    value={distillName}
+                    onChange={(event) => setDistillName(event.target.value)}
+                    placeholder="例如 sales-anomaly-analysis"
+                    className="mt-1 h-9 w-full rounded-md border border-neutral-200 bg-transparent px-3 text-[13px] outline-none focus:border-neutral-400 dark:border-neutral-700 dark:text-neutral-100"
+                  />
+                </label>
+                <label className="mt-3 block flex min-h-0 flex-1 flex-col text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
+                  SKILL.md 预览（可编辑）
+                  <textarea
+                    value={distillContent}
+                    onChange={(event) => setDistillContent(event.target.value)}
+                    className="scrollbar-thin mt-1 min-h-[240px] w-full flex-1 resize-none rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[12px] leading-5 text-neutral-800 outline-none focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-100"
+                  />
+                </label>
+              </div>
+            )}
+            {distillError && <p className="mt-3 text-[12px] text-rose-500">{distillError}</p>}
+            {distillSavedPath && (
+              <p className="mt-3 text-[12px] text-emerald-600 dark:text-emerald-400">
+                已保存到 {distillSavedPath}
+              </p>
+            )}
+            <div className="mt-5 flex justify-end gap-2">
+              <button
+                onClick={() => setDistillOpen(false)}
+                disabled={distilling || distillSaving}
+                className="h-8 rounded-md px-3 text-[12px] text-neutral-500 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
+              >
+                {distillSavedPath ? "关闭" : "取消"}
+              </button>
+              <button
+                onClick={() => void saveDistilledSkill()}
+                disabled={!distillContent.trim() || !distillName.trim() || distilling || distillSaving || !!distillSavedPath}
+                className="h-8 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+              >
+                {distillSaving ? "正在保存..." : "保存 skill"}
               </button>
             </div>
           </div>

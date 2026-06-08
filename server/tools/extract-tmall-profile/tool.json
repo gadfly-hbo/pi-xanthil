@@ -10,6 +10,11 @@
     "modes": ["file", "directory"]
   },
   "output": [".md", ".json"],
+  "riskLevel": "L1",
+  "allowedUse": "从天猫数据银行导出的 HTML 文件中提取人群标签画像，用于人群分析和营销策略制定。",
+  "forbiddenUse": "不能处理非天猫数据银行格式的 HTML；不能处理包含个人身份信息（PII）的原始用户数据。",
+  "failureHandling": "单个文件解析失败不影响批量处理；空 HTML 文件返回 0 匹配率；超时后自动终止子进程。",
+  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
   "resultColumns": [
     { "key": "crowdName", "label": "人群" },
     { "key": "totalTags", "label": "标签数" },

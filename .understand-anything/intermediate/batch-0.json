@@ -1,0 +1,825 @@
+{
+  "nodes": [
+    {
+      "id": "file:web/src/components/AgentFlowPane.tsx",
+      "type": "file",
+      "name": "AgentFlowPane.tsx",
+      "filePath": "web/src/components/AgentFlowPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/AgentFlowPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/src/components/CopyButton.tsx",
+      "type": "file",
+      "name": "CopyButton.tsx",
+      "filePath": "web/src/components/CopyButton.tsx",
+      "summary": "Auto-generated summary for web/src/components/CopyButton.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/CreationPane.tsx",
+      "type": "file",
+      "name": "CreationPane.tsx",
+      "filePath": "web/src/components/CreationPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/CreationPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/src/components/ExecutionPane.tsx",
+      "type": "file",
+      "name": "ExecutionPane.tsx",
+      "filePath": "web/src/components/ExecutionPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/ExecutionPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/src/components/FlowChatPane.tsx",
+      "type": "file",
+      "name": "FlowChatPane.tsx",
+      "filePath": "web/src/components/FlowChatPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/FlowChatPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/src/components/FlowEditorPane.tsx",
+      "type": "file",
+      "name": "FlowEditorPane.tsx",
+      "filePath": "web/src/components/FlowEditorPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/FlowEditorPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/src/components/FlowWorkflowPane.tsx",
+      "type": "file",
+      "name": "FlowWorkflowPane.tsx",
+      "filePath": "web/src/components/FlowWorkflowPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/FlowWorkflowPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/src/components/Markdown.tsx",
+      "type": "file",
+      "name": "Markdown.tsx",
+      "filePath": "web/src/components/Markdown.tsx",
+      "summary": "Auto-generated summary for web/src/components/Markdown.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/MessageRow.tsx",
+      "type": "file",
+      "name": "MessageRow.tsx",
+      "filePath": "web/src/components/MessageRow.tsx",
+      "summary": "Auto-generated summary for web/src/components/MessageRow.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/MultiAgentExecutionPane.tsx",
+      "type": "file",
+      "name": "MultiAgentExecutionPane.tsx",
+      "filePath": "web/src/components/MultiAgentExecutionPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/MultiAgentExecutionPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/src/components/OperationalModelPane.tsx",
+      "type": "file",
+      "name": "OperationalModelPane.tsx",
+      "filePath": "web/src/components/OperationalModelPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/OperationalModelPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/index.html",
+      "type": "file",
+      "name": "index.html",
+      "filePath": "web/index.html",
+      "summary": "Auto-generated summary for web/index.html",
+      "tags": [
+        "markup",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:web/tsconfig.json",
+      "type": "config",
+      "name": "tsconfig.json",
+      "filePath": "web/tsconfig.json",
+      "summary": "Auto-generated summary for web/tsconfig.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:启动苍耳.command",
+      "type": "file",
+      "name": "启动苍耳.command",
+      "filePath": "启动苍耳.command",
+      "summary": "Auto-generated summary for 启动苍耳.command",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:extract.cjs",
+      "type": "file",
+      "name": "extract.cjs",
+      "filePath": "extract.cjs",
+      "summary": "Auto-generated summary for extract.cjs",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:fix_injection.cjs",
+      "type": "file",
+      "name": "fix_injection.cjs",
+      "filePath": "fix_injection.cjs",
+      "summary": "Auto-generated summary for fix_injection.cjs",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:generate_100_models.cjs",
+      "type": "file",
+      "name": "generate_100_models.cjs",
+      "filePath": "generate_100_models.cjs",
+      "summary": "Auto-generated summary for generate_100_models.cjs",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:server/tools/extract-tmall-profile/天猫标签分类对应表.md",
+      "type": "document",
+      "name": "天猫标签分类对应表.md",
+      "filePath": "server/tools/extract-tmall-profile/天猫标签分类对应表.md",
+      "summary": "Auto-generated summary for server/tools/extract-tmall-profile/天猫标签分类对应表.md",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/tools/extract-tmall-profile/extract_tmall.py",
+      "type": "file",
+      "name": "extract_tmall.py",
+      "filePath": "server/tools/extract-tmall-profile/extract_tmall.py",
+      "summary": "Auto-generated summary for server/tools/extract-tmall-profile/extract_tmall.py",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+      "type": "config",
+      "name": "测试人群_人群画像.json",
+      "filePath": "server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+      "summary": "Auto-generated summary for server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "table:server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv",
+      "type": "table",
+      "name": "小红书_标签类型_一级标签值.csv",
+      "filePath": "server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv",
+      "summary": "Auto-generated summary for server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv",
+      "tags": [
+        "data",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+      "type": "config",
+      "name": "minimal_小红书.json",
+      "filePath": "server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+      "summary": "Auto-generated summary for server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt",
+      "type": "document",
+      "name": "数据清洗日志.txt",
+      "filePath": "server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt",
+      "summary": "Auto-generated summary for server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "config:server/tsconfig.json",
+      "type": "config",
+      "name": "tsconfig.json",
+      "filePath": "server/tsconfig.json",
+      "summary": "Auto-generated summary for server/tsconfig.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/postcss.config.js",
+      "type": "file",
+      "name": "postcss.config.js",
+      "filePath": "web/postcss.config.js",
+      "summary": "Auto-generated summary for web/postcss.config.js",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/index.css",
+      "type": "file",
+      "name": "index.css",
+      "filePath": "web/src/index.css",
+      "summary": "Auto-generated summary for web/src/index.css",
+      "tags": [
+        "markup",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/shims.d.ts",
+      "type": "file",
+      "name": "shims.d.ts",
+      "filePath": "web/src/shims.d.ts",
+      "summary": "Auto-generated summary for web/src/shims.d.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/tailwind.config.js",
+      "type": "file",
+      "name": "tailwind.config.js",
+      "filePath": "web/tailwind.config.js",
+      "summary": "Auto-generated summary for web/tailwind.config.js",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/Placeholder.tsx",
+      "type": "file",
+      "name": "Placeholder.tsx",
+      "filePath": "web/src/components/Placeholder.tsx",
+      "summary": "Auto-generated summary for web/src/components/Placeholder.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/PreviewPane.tsx",
+      "type": "file",
+      "name": "PreviewPane.tsx",
+      "filePath": "web/src/components/PreviewPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/PreviewPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ProcessTrace.tsx",
+      "type": "file",
+      "name": "ProcessTrace.tsx",
+      "filePath": "web/src/components/ProcessTrace.tsx",
+      "summary": "Auto-generated summary for web/src/components/ProcessTrace.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/SkillSelector.tsx",
+      "type": "file",
+      "name": "SkillSelector.tsx",
+      "filePath": "web/src/components/SkillSelector.tsx",
+      "summary": "Auto-generated summary for web/src/components/SkillSelector.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ui/button.tsx",
+      "type": "file",
+      "name": "button.tsx",
+      "filePath": "web/src/components/ui/button.tsx",
+      "summary": "Auto-generated summary for web/src/components/ui/button.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/cn.ts",
+      "type": "file",
+      "name": "cn.ts",
+      "filePath": "web/src/lib/cn.ts",
+      "summary": "Auto-generated summary for web/src/lib/cn.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/theme.ts",
+      "type": "file",
+      "name": "theme.ts",
+      "filePath": "web/src/lib/theme.ts",
+      "summary": "Auto-generated summary for web/src/lib/theme.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/useTabVisibility.ts",
+      "type": "file",
+      "name": "useTabVisibility.ts",
+      "filePath": "web/src/lib/useTabVisibility.ts",
+      "summary": "Auto-generated summary for web/src/lib/useTabVisibility.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/ws.ts",
+      "type": "file",
+      "name": "ws.ts",
+      "filePath": "web/src/lib/ws.ts",
+      "summary": "Auto-generated summary for web/src/lib/ws.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/main.tsx",
+      "type": "file",
+      "name": "main.tsx",
+      "filePath": "web/src/main.tsx",
+      "summary": "Auto-generated summary for web/src/main.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/file-hash.ts",
+      "type": "file",
+      "name": "file-hash.ts",
+      "filePath": "server/src/file-hash.ts",
+      "summary": "Auto-generated summary for server/src/file-hash.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/flow-fs.ts",
+      "type": "file",
+      "name": "flow-fs.ts",
+      "filePath": "server/src/flow-fs.ts",
+      "summary": "Auto-generated summary for server/src/flow-fs.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/src/output-paths.ts",
+      "type": "file",
+      "name": "output-paths.ts",
+      "filePath": "server/src/output-paths.ts",
+      "summary": "Auto-generated summary for server/src/output-paths.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/SettingsModal.tsx",
+      "type": "file",
+      "name": "SettingsModal.tsx",
+      "filePath": "web/src/components/SettingsModal.tsx",
+      "summary": "Auto-generated summary for web/src/components/SettingsModal.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:handoff-实验室.md",
+      "type": "document",
+      "name": "handoff-实验室.md",
+      "filePath": "handoff-实验室.md",
+      "summary": "Auto-generated summary for handoff-实验室.md",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-工作流.md",
+      "type": "document",
+      "name": "handoff-工作流.md",
+      "filePath": "handoff-工作流.md",
+      "summary": "Auto-generated summary for handoff-工作流.md",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-探索.md",
+      "type": "document",
+      "name": "handoff-探索.md",
+      "filePath": "handoff-探索.md",
+      "summary": "Auto-generated summary for handoff-探索.md",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-缓存命中.md",
+      "type": "document",
+      "name": "handoff-缓存命中.md",
+      "filePath": "handoff-缓存命中.md",
+      "summary": "Auto-generated summary for handoff-缓存命中.md",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:handoff-规则记忆.md",
+      "type": "document",
+      "name": "handoff-规则记忆.md",
+      "filePath": "handoff-规则记忆.md",
+      "summary": "Auto-generated summary for handoff-规则记忆.md",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-计算工具.md",
+      "type": "document",
+      "name": "handoff-计算工具.md",
+      "filePath": "handoff-计算工具.md",
+      "summary": "Auto-generated summary for handoff-计算工具.md",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "package.json",
+      "summary": "Auto-generated summary for package.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:web/src/components/AgentFlowPane.tsx",
+      "target": "file:web/src/components/FlowChatPane.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/AgentFlowPane.tsx",
+      "target": "file:web/src/components/FlowWorkflowPane.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/AgentFlowPane.tsx",
+      "target": "file:web/src/components/MessageRow.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/AgentFlowPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/AgentFlowPane.tsx",
+      "target": "file:web/src/lib/ws.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/CreationPane.tsx",
+      "target": "file:web/src/components/MessageRow.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/CreationPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/CreationPane.tsx",
+      "target": "file:web/src/lib/ws.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ExecutionPane.tsx",
+      "target": "file:web/src/components/Placeholder.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ExecutionPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ExecutionPane.tsx",
+      "target": "file:web/src/lib/ws.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/FlowChatPane.tsx",
+      "target": "file:web/src/components/MessageRow.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/FlowChatPane.tsx",
+      "target": "file:web/src/components/SkillSelector.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/FlowChatPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/FlowEditorPane.tsx",
+      "target": "file:web/src/components/Markdown.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/FlowEditorPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/FlowWorkflowPane.tsx",
+      "target": "file:web/src/components/Placeholder.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/FlowWorkflowPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/FlowWorkflowPane.tsx",
+      "target": "file:web/src/lib/ws.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/MessageRow.tsx",
+      "target": "file:web/src/components/CopyButton.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/MessageRow.tsx",
+      "target": "file:web/src/components/Markdown.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/MessageRow.tsx",
+      "target": "file:web/src/components/ProcessTrace.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/MultiAgentExecutionPane.tsx",
+      "target": "file:web/src/components/CreationPane.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/MultiAgentExecutionPane.tsx",
+      "target": "file:web/src/components/Markdown.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/MultiAgentExecutionPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/MultiAgentExecutionPane.tsx",
+      "target": "file:web/src/lib/ws.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/OperationalModelPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/PreviewPane.tsx",
+      "target": "file:web/src/components/Markdown.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/PreviewPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SkillSelector.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ui/button.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/main.tsx",
+      "target": "file:web/src/index.css",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SettingsModal.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    }
+  ]
+}

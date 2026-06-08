@@ -27,6 +27,11 @@ export interface ExtractionToolManifest {
   timeoutMs?: number;
   parameters?: ToolParameter[];
   resultColumns?: Array<{ key: string; label: string }>;
+  riskLevel?: "L0" | "L1" | "L2" | "L3";
+  allowedUse?: string;
+  forbiddenUse?: string;
+  failureHandling?: string;
+  traceFields?: string[];
 }
 
 export interface RegisteredExtractionTool extends ExtractionToolManifest {

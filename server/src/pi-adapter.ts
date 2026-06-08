@@ -162,7 +162,7 @@ export function compactPiSession(workspaceRoot: string, piSessionId: string): Pr
  */
 export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
   const piSessionDir = sessionDir(opts.workspaceRoot);
-  const args = ["-p", "--mode", "json", "--no-extensions", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
+  const args = ["-p", "--mode", "json", "--no-skills", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
   if (opts.model) args.push("--model", opts.model);
   args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt));
   args.push(opts.text);

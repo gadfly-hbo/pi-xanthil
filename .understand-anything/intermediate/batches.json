@@ -1,0 +1,6134 @@
+{
+  "schemaVersion": 1,
+  "algorithm": "louvain",
+  "totalFiles": 202,
+  "totalBatches": 14,
+  "exportsByPath": {
+    "启动苍耳.command": [],
+    "pi.db": [],
+    "server/resume-recommend.mjs": [],
+    "server/src/anax-gate.test.ts": [],
+    "server/src/anax-gate.ts": [
+      "GATE_THRESHOLDS",
+      "extractVerdict",
+      "enforceGate",
+      "evaluateGate",
+      "deterministicRedLineCheck"
+    ],
+    "server/src/anax-template.ts": [
+      "buildAnaxWorkflow",
+      "buildAnaxQuickWorkflow"
+    ],
+    "server/src/autonomous-runner.ts": [
+      "runAutonomousTask"
+    ],
+    "server/src/cache.ts": [
+      "trackSessionUsage",
+      "trackWorkspaceUsage",
+      "trackSessionWorkspaceUsage",
+      "getSessionTokenStats",
+      "getWorkspaceTokenStats",
+      "getWorkspaceTodayTokenStats",
+      "listWorkspaceTokenUsageStats",
+      "getWorkspaceTokenUsageStatsByTarget"
+    ],
+    "server/src/change-management.ts": [
+      "getDownstreamNodeIds",
+      "isAnaxNode"
+    ],
+    "server/src/child-processes.test.ts": [],
+    "server/src/child-processes.ts": [
+      "registerChildProcess",
+      "notifyChildProcess",
+      "listActiveChildProcesses"
+    ],
+    "server/src/config.ts": [
+      "DATA_ROOT",
+      "WORKSPACES_ROOT",
+      "FAVORITES_ROOT",
+      "UPLOAD_TMP_ROOT",
+      "EXTRACTION_RUNS_ROOT",
+      "DB_PATH",
+      "PORT",
+      "PI_BIN",
+      "ANTIGRAVITY_BIN",
+      "DIRECT_LLM_ROOT",
+      "SQL_CONNECTIONS_PATH",
+      "BI_DATASETS_ROOT",
+      "ensureDirs"
+    ],
+    "server/src/db.ts": [
+      "createWorkspace",
+      "listWorkspaces",
+      "getWorkspace",
+      "renameWorkspace",
+      "deleteWorkspace",
+      "createSession",
+      "listSessions",
+      "getSession",
+      "touchSession",
+      "renameSession",
+      "deleteSession",
+      "getSessionRuntime",
+      "updateSessionRuntime",
+      "addMessage",
+      "listMessages",
+      "createFlow",
+      "listFlows",
+      "getFlow",
+      "renameFlow",
+      "touchFlow",
+      "updateFlowSourceName",
+      "updateFlowGeneration",
+      "deleteFlow",
+      "createWorkflowFavorite",
+      "listWorkflowFavorites",
+      "getWorkflowFavorite",
+      "getWorkflowFavoriteBySourceFlowId",
+      "updateWorkflowFavorite",
+      "removeWorkflowFavorite",
+      "addFlowMessage",
+      "listFlowMessages",
+      "createFlowRun",
+      "finishFlowRun",
+      "listFlowRuns",
+      "getFlowRun",
+      "createWorkflowEvaluation",
+      "listWorkflowEvaluations",
+      "getWorkflowEvaluation",
+      "updateWorkflowEvaluation",
+      "updateWorkflowEvaluationResult",
+      "createMemoryEvaluation",
+      "listMemoryEvaluations",
+      "getMemoryEvaluation",
+      "updateMemoryEvaluation",
+      "updateMemoryEvaluationResult",
+      "createSkillEvalSet",
+      "getSkillEvalSet",
+      "listSkillEvalSets",
+      "updateSkillEvalSet",
+      "deleteSkillEvalSet",
+      "saveSkillEvaluation",
+      "listSkillEvaluations",
+      "getSkillEvaluation",
+      "createToolCaseSet",
+      "getToolCaseSet",
+      "listToolCaseSets",
+      "updateToolCaseSet",
+      "deleteToolCaseSet",
+      "saveToolEvaluation",
+      "listToolEvaluations",
+      "getToolEvaluation",
+      "addWorkspacePath",
+      "updateWorkspacePathHash",
+      "listWorkspacePaths",
+      "getWorkspacePath",
+      "removeWorkspacePath",
+      "getFileAnalysis",
+      "setFileAnalysis",
+      "getFileAnalysesByPathIds",
+      "accumulateSessionTokenStats",
+      "getRawSessionTokenStats",
+      "listRawSessionTokenStatsByWorkspace",
+      "listRawSessionTokenStatsWithTitles",
+      "accumulateTokenUsageStats",
+      "listRawTokenUsageStatsByWorkspace",
+      "getRawTokenUsageStatsByTarget",
+      "getRawTokenUsageDailyStats",
+      "listMemoryUsageStats",
+      "getMemoryUsageStats",
+      "recordMemorySourceUsed",
+      "recordMemoryInjectionUsage",
+      "recordMemoryFeedback",
+      "createMemoryFailureAttribution",
+      "listMemoryFailureAttributions",
+      "createRuleMemoryProposal",
+      "listMemoryProposals",
+      "getMemoryProposal",
+      "approveMemoryProposal",
+      "rejectMemoryProposal",
+      "listRuleMemories",
+      "createRuleMemory",
+      "updateRuleMemory",
+      "updateRuleMemoryEnabled",
+      "updateRuleMemoriesEnabled",
+      "deleteRuleMemory",
+      "detectRuleConflicts",
+      "listRuleConflicts",
+      "updateRuleConflictStatus",
+      "buildEnabledRulesPrompt",
+      "listAnalysisStandards",
+      "createAnalysisStandard",
+      "updateAnalysisStandard",
+      "updateAnalysisStandardEnabled",
+      "deleteAnalysisStandard",
+      "buildEnabledStandardsPrompt",
+      "listBusinessContexts",
+      "createBusinessContext",
+      "updateBusinessContext",
+      "updateBusinessContextEnabled",
+      "updateBusinessContextsEnabled",
+      "deleteBusinessContext",
+      "buildEnabledBusinessContextPrompt",
+      "listAnalysisCases",
+      "createAnalysisCase",
+      "updateAnalysisCase",
+      "updateAnalysisCaseEnabled",
+      "deleteAnalysisCase",
+      "buildEnabledCasesPrompt",
+      "listHypotheses",
+      "createHypothesis",
+      "upsertHypothesisFromArchive",
+      "updateHypothesisEnabled",
+      "deleteHypothesis",
+      "tokenizeQuery",
+      "scoreHypothesis",
+      "buildHypothesisLibraryContext",
+      "addTraceEvent",
+      "pruneTraceEvents",
+      "pruneAllTraceEvents",
+      "listMemoryInjectionRecords",
+      "getTraceOverview",
+      "listTraceRecentEvents",
+      "getTraceTimeline",
+      "listTraceFailures",
+      "getTraceTrend",
+      "generateTraceRuleSuggestions",
+      "createChangeProposal",
+      "listChangeProposals",
+      "updateChangeProposal",
+      "deleteChangeProposal",
+      "markNodesStale",
+      "getStaleNodes",
+      "clearStaleNodes",
+      "getAnaxGateConfig",
+      "upsertAnaxGateConfig",
+      "saveSkillCurationProposals",
+      "listSkillCurationProposals",
+      "updateSkillCurationProposalStatus",
+      "upsertKgNode",
+      "listKgNodes",
+      "setKgNodeHidden",
+      "setKgNodeAiExtractedHash",
+      "insertManualKgEdge",
+      "deleteKgEdge",
+      "deleteKgNodesForSource",
+      "clearKgAutoEdges",
+      "insertKgEdges",
+      "listKgEdges",
+      "deleteKgData",
+      "createModelLabRun",
+      "listModelLabRuns",
+      "getModelLabRun",
+      "getModelLabStats",
+      "deleteModelLabRun",
+      "deleteModelLabRunsBefore",
+      "insertBiDataset",
+      "listBiDatasets",
+      "getBiDatasetById",
+      "getActiveBiDataset",
+      "deleteBiDataset",
+      "setActiveBiDataset",
+      "listReportFavoriteIds",
+      "addReportFavorite",
+      "removeReportFavorite",
+      "listAllReportTags",
+      "listTagsForReports",
+      "addReportTag",
+      "removeReportTag"
+    ],
+    "server/src/eval-set-api-smoke.test.ts": [],
+    "server/src/evaluation-archive.test.ts": [],
+    "server/src/evaluation-archive.ts": [
+      "archiveSkillEvaluation",
+      "archiveToolEvaluation",
+      "listEvaluationArchives"
+    ],
+    "server/src/evaluation-common.ts": [
+      "emptyMetrics",
+      "collectEvent",
+      "runJudge",
+      "messageOf",
+      "extractText"
+    ],
+    "server/src/evaluation-errors.test.ts": [],
+    "server/src/evaluation-errors.ts": [
+      "evaluationError",
+      "unknownEvaluationError",
+      "serializeEvaluationError",
+      "parseEvaluationError",
+      "formatEvaluationError"
+    ],
+    "server/src/evaluation-runner.ts": [
+      "runWorkflowEvaluation"
+    ],
+    "server/src/file-hash.ts": [
+      "computeFileHash",
+      "getFileSize"
+    ],
+    "server/src/flow-fs.ts": [
+      "readTree",
+      "safeResolve",
+      "readFlowFile",
+      "inferWorkflow",
+      "writeFlowFile",
+      "copyLocalFolderIntoFlow",
+      "moveAllFiles",
+      "copyFlowSnapshot"
+    ],
+    "server/src/html-report.ts": [
+      "renderMarkdownReportToHtml"
+    ],
+    "server/src/hypothesis-pruning.test.ts": [],
+    "server/src/index.ts": [],
+    "server/src/knowledge-graph.ts": [
+      "syncKnowledgeGraph",
+      "buildKgPrompt",
+      "extractKgEntitiesFromReports"
+    ],
+    "server/src/memory-evaluation-runner.ts": [
+      "runMemoryEvaluation"
+    ],
+    "server/src/memory-evaluation.test.ts": [],
+    "server/src/memory-governance.test.ts": [],
+    "server/src/memory-injection.test.ts": [],
+    "server/src/memory-injection.ts": [
+      "buildMemoryInjectionSnapshot",
+      "buildMemoryPrompt"
+    ],
+    "server/src/memory-proposal.test.ts": [],
+    "server/src/memory-usage.test.ts": [],
+    "server/src/model-lab.ts": [
+      "SUPPORTED_MODELS",
+      "buildModelLabPrompt"
+    ],
+    "server/src/multi-agent-runner.test-helpers.ts": [
+      "makeFakePiAdapter"
+    ],
+    "server/src/multi-agent-runner.test.ts": [],
+    "server/src/multi-agent-runner.ts": [
+      "readWorkflow",
+      "validateWorkflow",
+      "topoOrder",
+      "renderPrompt",
+      "extractMarkerArray",
+      "runMultiAgent"
+    ],
+    "server/src/output-paths.ts": [
+      "resolveOutputTarget",
+      "buildOutputPathInstructions",
+      "buildRegisteredPathContext"
+    ],
+    "server/src/pi-adapter.ts": [
+      "getPiSessionStats",
+      "compactPiSession",
+      "runPiPrompt",
+      "runPiTurn"
+    ],
+    "server/src/process-env.ts": [
+      "buildSanitizedEnv"
+    ],
+    "server/src/prompt-blocks.ts": [
+      "PROMPT_SCHEMA_VERSION",
+      "BLOCK_SAFETY",
+      "BLOCK_BASE_BEHAVIOR",
+      "BLOCK_FILE_ANALYSIS",
+      "buildDataContextBlock",
+      "assembleSystemPrompt"
+    ],
+    "server/src/report-review.ts": [
+      "DEFAULT_REVIEW_PROMPT",
+      "AUTO_FIX_SYSTEM_PROMPT",
+      "buildReviewPrompt",
+      "buildAutoFixPrompt",
+      "parseReviewScore"
+    ],
+    "server/src/reports.ts": [
+      "scanAllReports"
+    ],
+    "server/src/skill-activation.test.ts": [],
+    "server/src/skill-activation.ts": [
+      "detectSkillActivation",
+      "extractSkillActivationKeywords"
+    ],
+    "server/src/skill-curator.ts": [
+      "curateSkillEvaluation",
+      "applySkillCurationProposals",
+      "autoTriggerCuration"
+    ],
+    "server/src/skill-distillation.ts": [
+      "SKILL_DISTILL_SYSTEM_PROMPT",
+      "buildSkillDistillationPrompt",
+      "extractSkillMarkdown",
+      "parseSkillName",
+      "slugifySkillName"
+    ],
+    "server/src/skill-evaluation-api.test.ts": [],
+    "server/src/skill-evaluation-api.ts": [
+      "parseSkillEvaluationRunRequest"
+    ],
+    "server/src/skill-evaluation-runner.test.ts": [],
+    "server/src/skill-evaluation-runner.ts": [
+      "runSkillEvaluation",
+      "summarizeSkillEvaluationResults",
+      "buildPairwiseJudgePrompt"
+    ],
+    "server/src/skill-retrieval.ts": [
+      "retrieveSkills"
+    ],
+    "server/src/skills.test.ts": [],
+    "server/src/skills.ts": [
+      "listSkills",
+      "validateSkillPaths"
+    ],
+    "server/src/sql-connections.ts": [
+      "listConnections",
+      "getConnection",
+      "upsertConnection",
+      "deleteConnection",
+      "testConnection",
+      "getSchema",
+      "prepareSql",
+      "executeQuery",
+      "exportQueryToCsv"
+    ],
+    "server/src/tool-evaluation-api.test.ts": [],
+    "server/src/tool-evaluation-api.ts": [
+      "parseToolEvaluationRunRequest",
+      "parseToolEvaluationCases",
+      "resolveToolEvaluationCasePaths"
+    ],
+    "server/src/tool-evaluation-runner.test.ts": [],
+    "server/src/tool-evaluation-runner.ts": [
+      "runToolEvaluation",
+      "summarizeToolCases",
+      "runExtractionToolProcess"
+    ],
+    "server/src/types.ts": [],
+    "server/tools/extract-sycm-member/extract_sycm_member.py": [
+      "clean_percent_trends",
+      "format_goods_cell",
+      "extract_ai_analysis",
+      "extract_core_metrics",
+      "extract_asset_distribution",
+      "extract_overview_metrics",
+      "extract_goods_table",
+      "process_html_file",
+      "run",
+      "write_json",
+      "main"
+    ],
+    "server/tools/extract-tmall-profile/extract_tmall.py": [
+      "load_mapping",
+      "extract_from_html",
+      "safe_filename",
+      "md_cell",
+      "generate_md_report",
+      "json_report",
+      "write_json",
+      "run",
+      "main"
+    ],
+    "server/tools/extract-xhs-insight/extract_xhs_insight.py": [
+      "extract_ai_content",
+      "extract_gender",
+      "extract_age",
+      "extract_marry",
+      "extract_region",
+      "extract_city_level",
+      "extract_consumption",
+      "extract_interests",
+      "extract_keywords",
+      "extract_search_terms",
+      "extract_bloggers",
+      "extract_lifestyle",
+      "extract_all_labels",
+      "generate_md",
+      "process_file",
+      "run",
+      "main"
+    ],
+    "server/tools/phone-cleaner/phone_exporter.py": [
+      "clean_phone",
+      "md5_encrypt",
+      "find_phone_column",
+      "process_file",
+      "run",
+      "main"
+    ],
+    "server/tools/registry.ts": [
+      "listExtractionTools",
+      "getExtractionTool",
+      "validateExtractionInput"
+    ],
+    "web/postcss.config.js": [],
+    "web/src/App.tsx": [
+      "App"
+    ],
+    "web/src/components/AgentFlowPane.tsx": [
+      "AgentFlowPane"
+    ],
+    "web/src/components/AggregatePane.tsx": [
+      "AggregatePane"
+    ],
+    "web/src/components/AnaXPane.tsx": [
+      "AnaXPane"
+    ],
+    "web/src/components/AnaXReadmePane.tsx": [
+      "AnaXReadmePane"
+    ],
+    "web/src/components/BiDashboardPane.tsx": [
+      "BiDashboardPane"
+    ],
+    "web/src/components/BiImportDialog.tsx": [
+      "BiImportDialog"
+    ],
+    "web/src/components/BusinessContextPane.tsx": [
+      "BusinessContextPane"
+    ],
+    "web/src/components/BusinessRequirementPane.tsx": [
+      "BusinessRequirementPane"
+    ],
+    "web/src/components/CasesPane.tsx": [
+      "CasesPane"
+    ],
+    "web/src/components/ChangeManagementPane.tsx": [
+      "ChangeManagementPane"
+    ],
+    "web/src/components/ChatPane.tsx": [
+      "ChatPane"
+    ],
+    "web/src/components/CopyButton.tsx": [
+      "CopyButton"
+    ],
+    "web/src/components/CreationPane.tsx": [
+      "CreationPane"
+    ],
+    "web/src/components/data-exploration/ChartCanvas.tsx": [
+      "ChartCanvas"
+    ],
+    "web/src/components/data-exploration/ConfigPanel.tsx": [
+      "ConfigPanel"
+    ],
+    "web/src/components/data-exploration/FieldList.tsx": [
+      "FieldList"
+    ],
+    "web/src/components/data-exploration/FileSelector.tsx": [
+      "FileSelector"
+    ],
+    "web/src/components/data-exploration/InsightsReport.tsx": [
+      "InsightsReport"
+    ],
+    "web/src/components/data-exploration/JoinBuilder.tsx": [
+      "JoinBuilder"
+    ],
+    "web/src/components/data-exploration/ProfileReport.tsx": [
+      "ProfileReport"
+    ],
+    "web/src/components/DataExplorationPane.tsx": [
+      "DataExplorationPane"
+    ],
+    "web/src/components/DecisionTreePane.tsx": [
+      "DecisionTreePane"
+    ],
+    "web/src/components/ExecutionPane.tsx": [
+      "ExecutionPane"
+    ],
+    "web/src/components/ExtractionPane.tsx": [
+      "ExtractionPane"
+    ],
+    "web/src/components/FlowChatPane.tsx": [
+      "FlowChatPane"
+    ],
+    "web/src/components/FlowEditorPane.tsx": [
+      "FlowEditorPane"
+    ],
+    "web/src/components/FlowWorkflowPane.tsx": [
+      "FlowWorkflowPane"
+    ],
+    "web/src/components/FolderPathsPane.tsx": [
+      "FolderPathsPane"
+    ],
+    "web/src/components/GoldenStrategyPane.tsx": [
+      "GoldenStrategyPane"
+    ],
+    "web/src/components/HypothesisPane.tsx": [
+      "HypothesisPane"
+    ],
+    "web/src/components/IndicatorsPane.tsx": [
+      "IndicatorsPane"
+    ],
+    "web/src/components/KnowledgeGraphPane.tsx": [
+      "KnowledgeGraphPane"
+    ],
+    "web/src/components/MainHeader.tsx": [
+      "TABS",
+      "MainHeader"
+    ],
+    "web/src/components/Markdown.tsx": [
+      "Markdown"
+    ],
+    "web/src/components/MessageRow.tsx": [
+      "hasTraceBlocks",
+      "MessageRow"
+    ],
+    "web/src/components/ModelBuilder.tsx": [
+      "ModelBuilder"
+    ],
+    "web/src/components/ModelInfoCard.tsx": [
+      "ModelInfoCard"
+    ],
+    "web/src/components/ModelLabPane.tsx": [
+      "ModelLabPane"
+    ],
+    "web/src/components/ModelRunHistoryDashboard.tsx": [
+      "ModelRunHistoryDashboard"
+    ],
+    "web/src/components/MultiAgentExecutionPane.tsx": [
+      "MultiAgentExecutionPane"
+    ],
+    "web/src/components/NewMemberRetentionPane.tsx": [
+      "NewMemberRetentionPane"
+    ],
+    "web/src/components/OldMemberRecallPane.tsx": [
+      "OldMemberRecallPane"
+    ],
+    "web/src/components/OperationalModelPane.tsx": [
+      "OperationalModelPane"
+    ],
+    "web/src/components/Placeholder.tsx": [
+      "Placeholder"
+    ],
+    "web/src/components/PresentationVersionPane.tsx": [
+      "PresentationVersionPane"
+    ],
+    "web/src/components/PreviewPane.tsx": [
+      "PreviewPane"
+    ],
+    "web/src/components/ProcessTrace.tsx": [
+      "ToolUse",
+      "ToolResult",
+      "Thinking"
+    ],
+    "web/src/components/ReportHistoryPane.tsx": [
+      "ReportHistoryPane"
+    ],
+    "web/src/components/ReportPreviewDrawer.tsx": [
+      "ReportPreviewDrawer"
+    ],
+    "web/src/components/ReportReviewPane.tsx": [
+      "ReportReviewPane"
+    ],
+    "web/src/components/ResearchLabPane.tsx": [
+      "ResearchLabPane"
+    ],
+    "web/src/components/RulesPane.tsx": [
+      "RulesPane"
+    ],
+    "web/src/components/RunOutputPanel.tsx": [
+      "RunOutputPanel"
+    ],
+    "web/src/components/SettingsModal.tsx": [
+      "SettingsModal"
+    ],
+    "web/src/components/Sidebar.tsx": [
+      "Sidebar"
+    ],
+    "web/src/components/SkillLabPane.tsx": [
+      "SkillLabPane"
+    ],
+    "web/src/components/SkillSelector.tsx": [
+      "SkillSelector"
+    ],
+    "web/src/components/SqlConnectPane.tsx": [
+      "SqlConnectPane"
+    ],
+    "web/src/components/TocPane.tsx": [
+      "TocPane"
+    ],
+    "web/src/components/TokenStatsPane.tsx": [
+      "TokenStatsPane"
+    ],
+    "web/src/components/ToolLabPane.tsx": [
+      "ToolLabPane"
+    ],
+    "web/src/components/TracePane.tsx": [
+      "TracePane"
+    ],
+    "web/src/components/ui/button.tsx": [
+      "Button"
+    ],
+    "web/src/components/useBusinessRequirementContexts.ts": [
+      "useBusinessRequirementContexts"
+    ],
+    "web/src/components/WeatherPane.tsx": [
+      "WeatherPane"
+    ],
+    "web/src/components/WorkflowDagEditor.tsx": [
+      "WorkflowDagEditor"
+    ],
+    "web/src/data/models.ts": [
+      "MODELS",
+      "MODEL_CATEGORIES",
+      "OPERATIONAL_MODEL_IDS",
+      "ModelDef",
+      "ModelFieldDef",
+      "ModelOutputSpec",
+      "ModelCategoryId"
+    ],
+    "web/src/lib/aggregate.ts": [
+      "inferColumns",
+      "readLocalDataset",
+      "runAggregation",
+      "toCsv",
+      "buildPythonPrompt"
+    ],
+    "web/src/lib/api.ts": [],
+    "web/src/lib/biDatasetParser.ts": [
+      "matchColumn",
+      "toNumber",
+      "toRatio",
+      "parseRetentionRows",
+      "parseRecallRows"
+    ],
+    "web/src/lib/cn.ts": [
+      "cn"
+    ],
+    "web/src/lib/constants.ts": [
+      "SUB_TABS",
+      "VIEW_ONLY_TABS",
+      "AGGREGATE_SUB_TABS",
+      "LAB_SUB_TABS",
+      "RULE_MEMORY_SUB_TABS",
+      "XAN_DB_SUB_TABS",
+      "ANAX_SUB_TABS",
+      "DASHBOARD_SUB_TABS",
+      "getSubTabsForTab"
+    ],
+    "web/src/lib/duckdb.ts": [
+      "getDuckDB",
+      "openConnection",
+      "registerFile",
+      "runQuery",
+      "quoteIdent",
+      "quoteString"
+    ],
+    "web/src/lib/evaluation-export.ts": [
+      "downloadEvaluationJson",
+      "downloadSkillEvaluationMarkdown",
+      "downloadToolEvaluationMarkdown",
+      "downloadEvaluationArchiveManifest",
+      "downloadArchiveTextFile",
+      "downloadArchivesZip"
+    ],
+    "web/src/lib/insights.ts": [
+      "computeCorrelationMatrix",
+      "computeCategoryNumericAssociation",
+      "detectDataQualityFlags"
+    ],
+    "web/src/lib/joins.ts": [
+      "materializeJoin",
+      "detectJoinCandidates"
+    ],
+    "web/src/lib/profiling.ts": [
+      "inferKind",
+      "listColumns",
+      "profileTable"
+    ],
+    "web/src/lib/reportTypeClassifier.ts": [
+      "REPORT_TYPE_LABELS",
+      "REPORT_TYPE_COLORS",
+      "REPORT_TYPE_ORDER",
+      "formatSize",
+      "formatDate",
+      "formatDateShort",
+      "formatDayKey"
+    ],
+    "web/src/lib/theme.ts": [
+      "useTheme"
+    ],
+    "web/src/lib/useBiDataset.ts": [
+      "useBiDataset"
+    ],
+    "web/src/lib/useReportHistory.ts": [
+      "useReportHistory"
+    ],
+    "web/src/lib/useTabVisibility.ts": [
+      "useTabVisibility"
+    ],
+    "web/src/lib/ws.ts": [
+      "Gateway",
+      "gateway"
+    ],
+    "web/src/main.tsx": [],
+    "web/src/shims.d.ts": [],
+    "web/src/types.ts": [
+      "asBlocks",
+      "textOf"
+    ],
+    "web/tailwind.config.js": [],
+    "web/vite.config.ts": []
+  },
+  "batches": [
+    {
+      "batchIndex": 1,
+      "files": [
+        {
+          "path": "web/src/App.tsx",
+          "language": "typescript",
+          "sizeLines": 1073,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/AgentFlowPane.tsx",
+          "language": "typescript",
+          "sizeLines": 207,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/AggregatePane.tsx",
+          "language": "typescript",
+          "sizeLines": 255,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/AnaXPane.tsx",
+          "language": "typescript",
+          "sizeLines": 1147,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/AnaXReadmePane.tsx",
+          "language": "typescript",
+          "sizeLines": 206,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/BusinessContextPane.tsx",
+          "language": "typescript",
+          "sizeLines": 237,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/BusinessRequirementPane.tsx",
+          "language": "typescript",
+          "sizeLines": 1379,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/CasesPane.tsx",
+          "language": "typescript",
+          "sizeLines": 358,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ChangeManagementPane.tsx",
+          "language": "typescript",
+          "sizeLines": 343,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ChatPane.tsx",
+          "language": "typescript",
+          "sizeLines": 291,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/CopyButton.tsx",
+          "language": "typescript",
+          "sizeLines": 24,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/CreationPane.tsx",
+          "language": "typescript",
+          "sizeLines": 648,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/DecisionTreePane.tsx",
+          "language": "typescript",
+          "sizeLines": 470,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ExecutionPane.tsx",
+          "language": "typescript",
+          "sizeLines": 285,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ExtractionPane.tsx",
+          "language": "typescript",
+          "sizeLines": 364,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/FlowChatPane.tsx",
+          "language": "typescript",
+          "sizeLines": 278,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/FlowEditorPane.tsx",
+          "language": "typescript",
+          "sizeLines": 742,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/FlowWorkflowPane.tsx",
+          "language": "typescript",
+          "sizeLines": 425,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/FolderPathsPane.tsx",
+          "language": "typescript",
+          "sizeLines": 536,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/GoldenStrategyPane.tsx",
+          "language": "typescript",
+          "sizeLines": 571,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/HypothesisPane.tsx",
+          "language": "typescript",
+          "sizeLines": 237,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/IndicatorsPane.tsx",
+          "language": "typescript",
+          "sizeLines": 234,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/KnowledgeGraphPane.tsx",
+          "language": "typescript",
+          "sizeLines": 611,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/Markdown.tsx",
+          "language": "typescript",
+          "sizeLines": 39,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/MessageRow.tsx",
+          "language": "typescript",
+          "sizeLines": 99,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ModelRunHistoryDashboard.tsx",
+          "language": "typescript",
+          "sizeLines": 1456,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/MultiAgentExecutionPane.tsx",
+          "language": "typescript",
+          "sizeLines": 1295,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/OperationalModelPane.tsx",
+          "language": "typescript",
+          "sizeLines": 369,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/Placeholder.tsx",
+          "language": "typescript",
+          "sizeLines": 14,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/PresentationVersionPane.tsx",
+          "language": "typescript",
+          "sizeLines": 290,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/PreviewPane.tsx",
+          "language": "typescript",
+          "sizeLines": 192,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "web/src/App.tsx": [
+          "web/src/components/AggregatePane.tsx",
+          "web/src/components/AnaXPane.tsx",
+          "web/src/components/AnaXReadmePane.tsx",
+          "web/src/components/BiDashboardPane.tsx",
+          "web/src/components/BusinessContextPane.tsx",
+          "web/src/components/BusinessRequirementPane.tsx",
+          "web/src/components/CasesPane.tsx",
+          "web/src/components/ChangeManagementPane.tsx",
+          "web/src/components/ChatPane.tsx",
+          "web/src/components/DataExplorationPane.tsx",
+          "web/src/components/ExtractionPane.tsx",
+          "web/src/components/FolderPathsPane.tsx",
+          "web/src/components/GoldenStrategyPane.tsx",
+          "web/src/components/HypothesisPane.tsx",
+          "web/src/components/IndicatorsPane.tsx",
+          "web/src/components/KnowledgeGraphPane.tsx",
+          "web/src/components/MainHeader.tsx",
+          "web/src/components/MessageRow.tsx",
+          "web/src/components/ModelLabPane.tsx",
+          "web/src/components/ModelRunHistoryDashboard.tsx",
+          "web/src/components/MultiAgentExecutionPane.tsx",
+          "web/src/components/Placeholder.tsx",
+          "web/src/components/PresentationVersionPane.tsx",
+          "web/src/components/PreviewPane.tsx",
+          "web/src/components/ReportHistoryPane.tsx",
+          "web/src/components/ReportReviewPane.tsx",
+          "web/src/components/ResearchLabPane.tsx",
+          "web/src/components/RulesPane.tsx",
+          "web/src/components/SettingsModal.tsx",
+          "web/src/components/Sidebar.tsx",
+          "web/src/components/SkillLabPane.tsx",
+          "web/src/components/SqlConnectPane.tsx",
+          "web/src/components/TokenStatsPane.tsx",
+          "web/src/components/ToolLabPane.tsx",
+          "web/src/components/TracePane.tsx",
+          "web/src/components/WeatherPane.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/constants.ts",
+          "web/src/lib/useTabVisibility.ts",
+          "web/src/lib/ws.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/AgentFlowPane.tsx": [
+          "web/src/components/FlowChatPane.tsx",
+          "web/src/components/FlowWorkflowPane.tsx",
+          "web/src/components/MessageRow.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/ws.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/AggregatePane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/aggregate.ts",
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/AnaXPane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/ws.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/AnaXReadmePane.tsx": [
+          "web/src/lib/cn.ts"
+        ],
+        "web/src/components/BusinessContextPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/BusinessRequirementPane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/CasesPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ChangeManagementPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ChatPane.tsx": [
+          "web/src/components/MessageRow.tsx",
+          "web/src/components/SkillSelector.tsx",
+          "web/src/components/useBusinessRequirementContexts.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/CopyButton.tsx": [],
+        "web/src/components/CreationPane.tsx": [
+          "web/src/components/MessageRow.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/ws.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/DecisionTreePane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ExecutionPane.tsx": [
+          "web/src/components/Placeholder.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/ws.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ExtractionPane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/FlowChatPane.tsx": [
+          "web/src/components/MessageRow.tsx",
+          "web/src/components/SkillSelector.tsx",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/FlowEditorPane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/FlowWorkflowPane.tsx": [
+          "web/src/components/Placeholder.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/ws.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/FolderPathsPane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/GoldenStrategyPane.tsx": [
+          "web/src/components/useBusinessRequirementContexts.ts",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/HypothesisPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/IndicatorsPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/KnowledgeGraphPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/Markdown.tsx": [],
+        "web/src/components/MessageRow.tsx": [
+          "web/src/components/CopyButton.tsx",
+          "web/src/components/Markdown.tsx",
+          "web/src/components/ProcessTrace.tsx",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ModelRunHistoryDashboard.tsx": [
+          "web/src/data/models.ts",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/MultiAgentExecutionPane.tsx": [
+          "web/src/components/CreationPane.tsx",
+          "web/src/components/Markdown.tsx",
+          "web/src/components/RunOutputPanel.tsx",
+          "web/src/components/WorkflowDagEditor.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/ws.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/OperationalModelPane.tsx": [
+          "web/src/lib/cn.ts"
+        ],
+        "web/src/components/Placeholder.tsx": [],
+        "web/src/components/PresentationVersionPane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/components/useBusinessRequirementContexts.ts",
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/PreviewPane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ]
+      },
+      "neighborMap": {
+        "web/src/App.tsx": [
+          {
+            "path": "web/src/components/BiDashboardPane.tsx",
+            "batchIndex": 6,
+            "symbols": [
+              "BiDashboardPane"
+            ]
+          },
+          {
+            "path": "web/src/components/DataExplorationPane.tsx",
+            "batchIndex": 5,
+            "symbols": [
+              "DataExplorationPane"
+            ]
+          },
+          {
+            "path": "web/src/components/MainHeader.tsx",
+            "batchIndex": 8,
+            "symbols": [
+              "TABS",
+              "MainHeader"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelLabPane.tsx",
+            "batchIndex": 7,
+            "symbols": [
+              "ModelLabPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ReportHistoryPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "ReportHistoryPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ReportReviewPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "ReportReviewPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ResearchLabPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "ResearchLabPane"
+            ]
+          },
+          {
+            "path": "web/src/components/RulesPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "RulesPane"
+            ]
+          },
+          {
+            "path": "web/src/components/SettingsModal.tsx",
+            "batchIndex": 8,
+            "symbols": [
+              "SettingsModal"
+            ]
+          },
+          {
+            "path": "web/src/components/Sidebar.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "Sidebar"
+            ]
+          },
+          {
+            "path": "web/src/components/SkillLabPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "SkillLabPane"
+            ]
+          },
+          {
+            "path": "web/src/components/SqlConnectPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "SqlConnectPane"
+            ]
+          },
+          {
+            "path": "web/src/components/TokenStatsPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "TokenStatsPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ToolLabPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "ToolLabPane"
+            ]
+          },
+          {
+            "path": "web/src/components/TracePane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "TracePane"
+            ]
+          },
+          {
+            "path": "web/src/components/WeatherPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "WeatherPane"
+            ]
+          },
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/lib/constants.ts",
+            "batchIndex": 8,
+            "symbols": [
+              "SUB_TABS",
+              "VIEW_ONLY_TABS",
+              "AGGREGATE_SUB_TABS",
+              "LAB_SUB_TABS",
+              "RULE_MEMORY_SUB_TABS",
+              "XAN_DB_SUB_TABS",
+              "ANAX_SUB_TABS",
+              "DASHBOARD_SUB_TABS",
+              "getSubTabsForTab"
+            ]
+          },
+          {
+            "path": "web/src/lib/useTabVisibility.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "useTabVisibility"
+            ]
+          },
+          {
+            "path": "web/src/lib/ws.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "Gateway",
+              "gateway"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          },
+          {
+            "path": "web/src/main.tsx",
+            "batchIndex": 2,
+            "symbols": []
+          }
+        ],
+        "web/src/components/AgentFlowPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/lib/ws.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "Gateway",
+              "gateway"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/AggregatePane.tsx": [
+          {
+            "path": "web/src/lib/aggregate.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "inferColumns",
+              "readLocalDataset",
+              "runAggregation",
+              "toCsv",
+              "buildPythonPrompt"
+            ]
+          },
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/AnaXPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/lib/ws.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "Gateway",
+              "gateway"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/AnaXReadmePane.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          }
+        ],
+        "web/src/components/BusinessContextPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/BusinessRequirementPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/CasesPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/ChangeManagementPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/ChatPane.tsx": [
+          {
+            "path": "web/src/components/SkillSelector.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "SkillSelector"
+            ]
+          },
+          {
+            "path": "web/src/components/useBusinessRequirementContexts.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "useBusinessRequirementContexts"
+            ]
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/CreationPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/lib/ws.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "Gateway",
+              "gateway"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/DecisionTreePane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/ExecutionPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/lib/ws.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "Gateway",
+              "gateway"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/ExtractionPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/FlowChatPane.tsx": [
+          {
+            "path": "web/src/components/SkillSelector.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "SkillSelector"
+            ]
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/FlowEditorPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/FlowWorkflowPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/lib/ws.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "Gateway",
+              "gateway"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/FolderPathsPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/GoldenStrategyPane.tsx": [
+          {
+            "path": "web/src/components/useBusinessRequirementContexts.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "useBusinessRequirementContexts"
+            ]
+          },
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/HypothesisPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/IndicatorsPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/KnowledgeGraphPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/Markdown.tsx": [
+          {
+            "path": "web/src/components/ReportPreviewDrawer.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "ReportPreviewDrawer"
+            ]
+          },
+          {
+            "path": "web/src/components/ReportReviewPane.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "ReportReviewPane"
+            ]
+          },
+          {
+            "path": "web/src/components/RunOutputPanel.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "RunOutputPanel"
+            ]
+          }
+        ],
+        "web/src/components/MessageRow.tsx": [
+          {
+            "path": "web/src/components/ProcessTrace.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "ToolUse",
+              "ToolResult",
+              "Thinking"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/ModelRunHistoryDashboard.tsx": [
+          {
+            "path": "web/src/data/models.ts",
+            "batchIndex": 7,
+            "symbols": [
+              "MODELS",
+              "MODEL_CATEGORIES",
+              "OPERATIONAL_MODEL_IDS",
+              "ModelDef",
+              "ModelFieldDef",
+              "ModelOutputSpec",
+              "ModelCategoryId"
+            ]
+          },
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/MultiAgentExecutionPane.tsx": [
+          {
+            "path": "web/src/components/RunOutputPanel.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "RunOutputPanel"
+            ]
+          },
+          {
+            "path": "web/src/components/WorkflowDagEditor.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "WorkflowDagEditor"
+            ]
+          },
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/lib/ws.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "Gateway",
+              "gateway"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/OperationalModelPane.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          }
+        ],
+        "web/src/components/PresentationVersionPane.tsx": [
+          {
+            "path": "web/src/components/useBusinessRequirementContexts.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "useBusinessRequirementContexts"
+            ]
+          },
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/PreviewPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 2,
+      "files": [
+        {
+          "path": "web/src/components/ProcessTrace.tsx",
+          "language": "typescript",
+          "sizeLines": 77,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ReportHistoryPane.tsx",
+          "language": "typescript",
+          "sizeLines": 518,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ReportPreviewDrawer.tsx",
+          "language": "typescript",
+          "sizeLines": 316,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ReportReviewPane.tsx",
+          "language": "typescript",
+          "sizeLines": 558,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ResearchLabPane.tsx",
+          "language": "typescript",
+          "sizeLines": 329,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/RulesPane.tsx",
+          "language": "typescript",
+          "sizeLines": 208,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/RunOutputPanel.tsx",
+          "language": "typescript",
+          "sizeLines": 345,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/Sidebar.tsx",
+          "language": "typescript",
+          "sizeLines": 424,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/SkillLabPane.tsx",
+          "language": "typescript",
+          "sizeLines": 1196,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/SkillSelector.tsx",
+          "language": "typescript",
+          "sizeLines": 140,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/SqlConnectPane.tsx",
+          "language": "typescript",
+          "sizeLines": 890,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/TocPane.tsx",
+          "language": "typescript",
+          "sizeLines": 477,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/TokenStatsPane.tsx",
+          "language": "typescript",
+          "sizeLines": 298,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ToolLabPane.tsx",
+          "language": "typescript",
+          "sizeLines": 889,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/TracePane.tsx",
+          "language": "typescript",
+          "sizeLines": 266,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/WeatherPane.tsx",
+          "language": "typescript",
+          "sizeLines": 459,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/WorkflowDagEditor.tsx",
+          "language": "typescript",
+          "sizeLines": 544,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/data-exploration/FileSelector.tsx",
+          "language": "typescript",
+          "sizeLines": 194,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ui/button.tsx",
+          "language": "typescript",
+          "sizeLines": 33,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/useBusinessRequirementContexts.ts",
+          "language": "typescript",
+          "sizeLines": 75,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/aggregate.ts",
+          "language": "typescript",
+          "sizeLines": 197,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/api.ts",
+          "language": "typescript",
+          "sizeLines": 850,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/cn.ts",
+          "language": "typescript",
+          "sizeLines": 6,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/evaluation-export.ts",
+          "language": "typescript",
+          "sizeLines": 344,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/reportTypeClassifier.ts",
+          "language": "typescript",
+          "sizeLines": 63,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/theme.ts",
+          "language": "typescript",
+          "sizeLines": 24,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/useReportHistory.ts",
+          "language": "typescript",
+          "sizeLines": 103,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/useTabVisibility.ts",
+          "language": "typescript",
+          "sizeLines": 23,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/ws.ts",
+          "language": "typescript",
+          "sizeLines": 44,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/main.tsx",
+          "language": "typescript",
+          "sizeLines": 10,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/types.ts",
+          "language": "typescript",
+          "sizeLines": 1436,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "web/src/components/ProcessTrace.tsx": [
+          "web/src/types.ts"
+        ],
+        "web/src/components/ReportHistoryPane.tsx": [
+          "web/src/components/ReportPreviewDrawer.tsx",
+          "web/src/lib/cn.ts",
+          "web/src/lib/reportTypeClassifier.ts",
+          "web/src/lib/useReportHistory.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ReportPreviewDrawer.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/reportTypeClassifier.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ReportReviewPane.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ResearchLabPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/RulesPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/RunOutputPanel.tsx": [
+          "web/src/components/Markdown.tsx",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/Sidebar.tsx": [
+          "web/src/lib/cn.ts",
+          "web/src/lib/theme.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/SkillLabPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/evaluation-export.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/SkillSelector.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/SqlConnectPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/TocPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/TokenStatsPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ToolLabPane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/evaluation-export.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/TracePane.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/WeatherPane.tsx": [
+          "web/src/lib/cn.ts"
+        ],
+        "web/src/components/WorkflowDagEditor.tsx": [
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/data-exploration/FileSelector.tsx": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ui/button.tsx": [
+          "web/src/lib/cn.ts"
+        ],
+        "web/src/components/useBusinessRequirementContexts.ts": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/lib/aggregate.ts": [],
+        "web/src/lib/api.ts": [
+          "web/src/types.ts"
+        ],
+        "web/src/lib/cn.ts": [],
+        "web/src/lib/evaluation-export.ts": [
+          "web/src/types.ts"
+        ],
+        "web/src/lib/reportTypeClassifier.ts": [
+          "web/src/types.ts"
+        ],
+        "web/src/lib/theme.ts": [],
+        "web/src/lib/useReportHistory.ts": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/lib/useTabVisibility.ts": [],
+        "web/src/lib/ws.ts": [
+          "web/src/types.ts"
+        ],
+        "web/src/main.tsx": [
+          "web/src/App.tsx",
+          "web/src/index.css"
+        ],
+        "web/src/types.ts": []
+      },
+      "neighborMap": {
+        "web/src/components/ProcessTrace.tsx": [
+          {
+            "path": "web/src/components/MessageRow.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "hasTraceBlocks",
+              "MessageRow"
+            ]
+          }
+        ],
+        "web/src/components/ReportHistoryPane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/ReportPreviewDrawer.tsx": [
+          {
+            "path": "web/src/components/Markdown.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "Markdown"
+            ]
+          }
+        ],
+        "web/src/components/ReportReviewPane.tsx": [
+          {
+            "path": "web/src/components/Markdown.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "Markdown"
+            ]
+          },
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/ResearchLabPane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/RulesPane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/RunOutputPanel.tsx": [
+          {
+            "path": "web/src/components/Markdown.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "Markdown"
+            ]
+          },
+          {
+            "path": "web/src/components/MultiAgentExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "MultiAgentExecutionPane"
+            ]
+          }
+        ],
+        "web/src/components/Sidebar.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/SkillLabPane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/SkillSelector.tsx": [
+          {
+            "path": "web/src/components/ChatPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ChatPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowChatPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowChatPane"
+            ]
+          }
+        ],
+        "web/src/components/SqlConnectPane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/TokenStatsPane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/ToolLabPane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/TracePane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/WeatherPane.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/WorkflowDagEditor.tsx": [
+          {
+            "path": "web/src/components/MultiAgentExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "MultiAgentExecutionPane"
+            ]
+          }
+        ],
+        "web/src/components/data-exploration/FileSelector.tsx": [
+          {
+            "path": "web/src/components/DataExplorationPane.tsx",
+            "batchIndex": 5,
+            "symbols": [
+              "DataExplorationPane"
+            ]
+          }
+        ],
+        "web/src/components/useBusinessRequirementContexts.ts": [
+          {
+            "path": "web/src/components/ChatPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ChatPane"
+            ]
+          },
+          {
+            "path": "web/src/components/GoldenStrategyPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "GoldenStrategyPane"
+            ]
+          },
+          {
+            "path": "web/src/components/PresentationVersionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "PresentationVersionPane"
+            ]
+          }
+        ],
+        "web/src/lib/aggregate.ts": [
+          {
+            "path": "web/src/components/AggregatePane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AggregatePane"
+            ]
+          }
+        ],
+        "web/src/lib/api.ts": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          },
+          {
+            "path": "web/src/components/AgentFlowPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AgentFlowPane"
+            ]
+          },
+          {
+            "path": "web/src/components/AggregatePane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AggregatePane"
+            ]
+          },
+          {
+            "path": "web/src/components/AnaXPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AnaXPane"
+            ]
+          },
+          {
+            "path": "web/src/components/BusinessContextPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "BusinessContextPane"
+            ]
+          },
+          {
+            "path": "web/src/components/BusinessRequirementPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "BusinessRequirementPane"
+            ]
+          },
+          {
+            "path": "web/src/components/CasesPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "CasesPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ChangeManagementPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ChangeManagementPane"
+            ]
+          },
+          {
+            "path": "web/src/components/CreationPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "CreationPane"
+            ]
+          },
+          {
+            "path": "web/src/components/DecisionTreePane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "DecisionTreePane"
+            ]
+          },
+          {
+            "path": "web/src/components/ExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ExecutionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ExtractionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ExtractionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowEditorPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowEditorPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowWorkflowPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowWorkflowPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FolderPathsPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FolderPathsPane"
+            ]
+          },
+          {
+            "path": "web/src/components/GoldenStrategyPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "GoldenStrategyPane"
+            ]
+          },
+          {
+            "path": "web/src/components/HypothesisPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "HypothesisPane"
+            ]
+          },
+          {
+            "path": "web/src/components/IndicatorsPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "IndicatorsPane"
+            ]
+          },
+          {
+            "path": "web/src/components/KnowledgeGraphPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "KnowledgeGraphPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelLabPane.tsx",
+            "batchIndex": 7,
+            "symbols": [
+              "ModelLabPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelRunHistoryDashboard.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ModelRunHistoryDashboard"
+            ]
+          },
+          {
+            "path": "web/src/components/MultiAgentExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "MultiAgentExecutionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/PresentationVersionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "PresentationVersionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/PreviewPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "PreviewPane"
+            ]
+          },
+          {
+            "path": "web/src/lib/useBiDataset.ts",
+            "batchIndex": 6,
+            "symbols": [
+              "useBiDataset"
+            ]
+          }
+        ],
+        "web/src/lib/cn.ts": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          },
+          {
+            "path": "web/src/components/AgentFlowPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AgentFlowPane"
+            ]
+          },
+          {
+            "path": "web/src/components/AnaXPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AnaXPane"
+            ]
+          },
+          {
+            "path": "web/src/components/AnaXReadmePane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AnaXReadmePane"
+            ]
+          },
+          {
+            "path": "web/src/components/BiDashboardPane.tsx",
+            "batchIndex": 6,
+            "symbols": [
+              "BiDashboardPane"
+            ]
+          },
+          {
+            "path": "web/src/components/BiImportDialog.tsx",
+            "batchIndex": 6,
+            "symbols": [
+              "BiImportDialog"
+            ]
+          },
+          {
+            "path": "web/src/components/ChangeManagementPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ChangeManagementPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ChatPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ChatPane"
+            ]
+          },
+          {
+            "path": "web/src/components/CreationPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "CreationPane"
+            ]
+          },
+          {
+            "path": "web/src/components/DecisionTreePane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "DecisionTreePane"
+            ]
+          },
+          {
+            "path": "web/src/components/ExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ExecutionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowChatPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowChatPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowEditorPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowEditorPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowWorkflowPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowWorkflowPane"
+            ]
+          },
+          {
+            "path": "web/src/components/GoldenStrategyPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "GoldenStrategyPane"
+            ]
+          },
+          {
+            "path": "web/src/components/HypothesisPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "HypothesisPane"
+            ]
+          },
+          {
+            "path": "web/src/components/KnowledgeGraphPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "KnowledgeGraphPane"
+            ]
+          },
+          {
+            "path": "web/src/components/MainHeader.tsx",
+            "batchIndex": 8,
+            "symbols": [
+              "TABS",
+              "MainHeader"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelInfoCard.tsx",
+            "batchIndex": 7,
+            "symbols": [
+              "ModelInfoCard"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelLabPane.tsx",
+            "batchIndex": 7,
+            "symbols": [
+              "ModelLabPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelRunHistoryDashboard.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ModelRunHistoryDashboard"
+            ]
+          },
+          {
+            "path": "web/src/components/MultiAgentExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "MultiAgentExecutionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/NewMemberRetentionPane.tsx",
+            "batchIndex": 6,
+            "symbols": [
+              "NewMemberRetentionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/OldMemberRecallPane.tsx",
+            "batchIndex": 6,
+            "symbols": [
+              "OldMemberRecallPane"
+            ]
+          },
+          {
+            "path": "web/src/components/OperationalModelPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "OperationalModelPane"
+            ]
+          },
+          {
+            "path": "web/src/components/PreviewPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "PreviewPane"
+            ]
+          },
+          {
+            "path": "web/src/components/SettingsModal.tsx",
+            "batchIndex": 8,
+            "symbols": [
+              "SettingsModal"
+            ]
+          }
+        ],
+        "web/src/lib/useTabVisibility.ts": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/lib/ws.ts": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          },
+          {
+            "path": "web/src/components/AgentFlowPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AgentFlowPane"
+            ]
+          },
+          {
+            "path": "web/src/components/AnaXPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AnaXPane"
+            ]
+          },
+          {
+            "path": "web/src/components/CreationPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "CreationPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ExecutionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowWorkflowPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowWorkflowPane"
+            ]
+          },
+          {
+            "path": "web/src/components/MultiAgentExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "MultiAgentExecutionPane"
+            ]
+          }
+        ],
+        "web/src/main.tsx": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          },
+          {
+            "path": "web/src/index.css",
+            "batchIndex": 14,
+            "symbols": []
+          }
+        ],
+        "web/src/types.ts": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          },
+          {
+            "path": "web/src/components/DataExplorationPane.tsx",
+            "batchIndex": 5,
+            "symbols": [
+              "DataExplorationPane"
+            ]
+          },
+          {
+            "path": "web/src/components/MessageRow.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "hasTraceBlocks",
+              "MessageRow"
+            ]
+          },
+          {
+            "path": "web/src/components/MultiAgentExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "MultiAgentExecutionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/AgentFlowPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AgentFlowPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelLabPane.tsx",
+            "batchIndex": 7,
+            "symbols": [
+              "ModelLabPane"
+            ]
+          },
+          {
+            "path": "web/src/components/AnaXPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AnaXPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ChatPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ChatPane"
+            ]
+          },
+          {
+            "path": "web/src/components/CreationPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "CreationPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowWorkflowPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowWorkflowPane"
+            ]
+          },
+          {
+            "path": "web/src/components/AggregatePane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "AggregatePane"
+            ]
+          },
+          {
+            "path": "web/src/components/ExecutionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ExecutionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowChatPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowChatPane"
+            ]
+          },
+          {
+            "path": "web/src/components/GoldenStrategyPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "GoldenStrategyPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelRunHistoryDashboard.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ModelRunHistoryDashboard"
+            ]
+          },
+          {
+            "path": "web/src/components/PresentationVersionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "PresentationVersionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/PreviewPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "PreviewPane"
+            ]
+          },
+          {
+            "path": "web/src/components/BiImportDialog.tsx",
+            "batchIndex": 6,
+            "symbols": [
+              "BiImportDialog"
+            ]
+          },
+          {
+            "path": "web/src/components/BusinessRequirementPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "BusinessRequirementPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ChangeManagementPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ChangeManagementPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ExtractionPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ExtractionPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FlowEditorPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FlowEditorPane"
+            ]
+          },
+          {
+            "path": "web/src/components/FolderPathsPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "FolderPathsPane"
+            ]
+          },
+          {
+            "path": "web/src/components/HypothesisPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "HypothesisPane"
+            ]
+          },
+          {
+            "path": "web/src/components/KnowledgeGraphPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "KnowledgeGraphPane"
+            ]
+          },
+          {
+            "path": "web/src/data/models.ts",
+            "batchIndex": 7,
+            "symbols": [
+              "MODELS",
+              "MODEL_CATEGORIES",
+              "OPERATIONAL_MODEL_IDS",
+              "ModelDef",
+              "ModelFieldDef",
+              "ModelOutputSpec",
+              "ModelCategoryId"
+            ]
+          },
+          {
+            "path": "web/src/lib/useBiDataset.ts",
+            "batchIndex": 6,
+            "symbols": [
+              "useBiDataset"
+            ]
+          },
+          {
+            "path": "web/src/components/BusinessContextPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "BusinessContextPane"
+            ]
+          },
+          {
+            "path": "web/src/components/CasesPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "CasesPane"
+            ]
+          },
+          {
+            "path": "web/src/components/DecisionTreePane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "DecisionTreePane"
+            ]
+          },
+          {
+            "path": "web/src/components/IndicatorsPane.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "IndicatorsPane"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelInfoCard.tsx",
+            "batchIndex": 7,
+            "symbols": [
+              "ModelInfoCard"
+            ]
+          },
+          {
+            "path": "web/src/lib/biDatasetParser.ts",
+            "batchIndex": 6,
+            "symbols": [
+              "matchColumn",
+              "toNumber",
+              "toRatio",
+              "parseRetentionRows",
+              "parseRecallRows"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 3,
+      "files": [
+        {
+          "path": "server/src/anax-gate.test.ts",
+          "language": "typescript",
+          "sizeLines": 107,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/anax-gate.ts",
+          "language": "typescript",
+          "sizeLines": 224,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/anax-template.ts",
+          "language": "typescript",
+          "sizeLines": 451,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/autonomous-runner.ts",
+          "language": "typescript",
+          "sizeLines": 53,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/cache.ts",
+          "language": "typescript",
+          "sizeLines": 121,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/change-management.ts",
+          "language": "typescript",
+          "sizeLines": 19,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/child-processes.test.ts",
+          "language": "typescript",
+          "sizeLines": 51,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/child-processes.ts",
+          "language": "typescript",
+          "sizeLines": 54,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/config.ts",
+          "language": "typescript",
+          "sizeLines": 31,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/db.ts",
+          "language": "typescript",
+          "sizeLines": 3882,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/eval-set-api-smoke.test.ts",
+          "language": "typescript",
+          "sizeLines": 247,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/evaluation-archive.test.ts",
+          "language": "typescript",
+          "sizeLines": 119,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/evaluation-archive.ts",
+          "language": "typescript",
+          "sizeLines": 288,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/evaluation-common.ts",
+          "language": "typescript",
+          "sizeLines": 125,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/evaluation-errors.test.ts",
+          "language": "typescript",
+          "sizeLines": 24,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/evaluation-errors.ts",
+          "language": "typescript",
+          "sizeLines": 63,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/evaluation-runner.ts",
+          "language": "typescript",
+          "sizeLines": 164,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/file-hash.ts",
+          "language": "typescript",
+          "sizeLines": 26,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/flow-fs.ts",
+          "language": "typescript",
+          "sizeLines": 381,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/html-report.ts",
+          "language": "typescript",
+          "sizeLines": 154,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/hypothesis-pruning.test.ts",
+          "language": "typescript",
+          "sizeLines": 94,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/index.ts",
+          "language": "typescript",
+          "sizeLines": 5791,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/knowledge-graph.ts",
+          "language": "typescript",
+          "sizeLines": 456,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/memory-evaluation-runner.ts",
+          "language": "typescript",
+          "sizeLines": 132,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/memory-injection.ts",
+          "language": "typescript",
+          "sizeLines": 179,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/model-lab.ts",
+          "language": "typescript",
+          "sizeLines": 858,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/multi-agent-runner.test-helpers.ts",
+          "language": "typescript",
+          "sizeLines": 115,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "server/src/anax-gate.test.ts": [
+          "server/src/anax-gate.ts"
+        ],
+        "server/src/anax-gate.ts": [],
+        "server/src/anax-template.ts": [
+          "server/src/multi-agent-runner.ts"
+        ],
+        "server/src/autonomous-runner.ts": [
+          "server/src/evaluation-common.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/skill-retrieval.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/cache.ts": [
+          "server/src/db.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/change-management.ts": [],
+        "server/src/child-processes.test.ts": [
+          "server/src/child-processes.ts"
+        ],
+        "server/src/child-processes.ts": [],
+        "server/src/config.ts": [],
+        "server/src/db.ts": [
+          "server/src/config.ts",
+          "server/src/evaluation-errors.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/eval-set-api-smoke.test.ts": [
+          "server/src/types.ts"
+        ],
+        "server/src/evaluation-archive.test.ts": [
+          "server/src/evaluation-archive.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/evaluation-archive.ts": [
+          "server/src/types.ts"
+        ],
+        "server/src/evaluation-common.ts": [
+          "server/src/cache.ts",
+          "server/src/evaluation-errors.ts",
+          "server/src/output-paths.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/evaluation-errors.test.ts": [
+          "server/src/evaluation-errors.ts"
+        ],
+        "server/src/evaluation-errors.ts": [
+          "server/src/types.ts"
+        ],
+        "server/src/evaluation-runner.ts": [
+          "server/src/db.ts",
+          "server/src/evaluation-common.ts",
+          "server/src/evaluation-errors.ts",
+          "server/src/flow-fs.ts",
+          "server/src/multi-agent-runner.ts",
+          "server/src/output-paths.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/file-hash.ts": [],
+        "server/src/flow-fs.ts": [],
+        "server/src/html-report.ts": [],
+        "server/src/hypothesis-pruning.test.ts": [
+          "server/src/db.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/index.ts": [
+          "server/src/anax-template.ts",
+          "server/src/autonomous-runner.ts",
+          "server/src/cache.ts",
+          "server/src/change-management.ts",
+          "server/src/child-processes.ts",
+          "server/src/config.ts",
+          "server/src/db.ts",
+          "server/src/evaluation-archive.ts",
+          "server/src/evaluation-runner.ts",
+          "server/src/file-hash.ts",
+          "server/src/flow-fs.ts",
+          "server/src/html-report.ts",
+          "server/src/knowledge-graph.ts",
+          "server/src/memory-evaluation-runner.ts",
+          "server/src/memory-injection.ts",
+          "server/src/model-lab.ts",
+          "server/src/multi-agent-runner.ts",
+          "server/src/output-paths.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/process-env.ts",
+          "server/src/report-review.ts",
+          "server/src/reports.ts",
+          "server/src/skill-curator.ts",
+          "server/src/skill-distillation.ts",
+          "server/src/skill-evaluation-api.ts",
+          "server/src/skill-evaluation-runner.ts",
+          "server/src/skill-retrieval.ts",
+          "server/src/skills.ts",
+          "server/src/sql-connections.ts",
+          "server/src/tool-evaluation-api.ts",
+          "server/src/tool-evaluation-runner.ts",
+          "server/src/types.ts",
+          "server/tools/registry.ts"
+        ],
+        "server/src/knowledge-graph.ts": [
+          "server/src/config.ts",
+          "server/src/db.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/memory-evaluation-runner.ts": [
+          "server/src/db.ts",
+          "server/src/evaluation-common.ts",
+          "server/src/evaluation-errors.ts",
+          "server/src/memory-injection.ts",
+          "server/src/output-paths.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/memory-injection.ts": [
+          "server/src/db.ts",
+          "server/src/knowledge-graph.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/model-lab.ts": [],
+        "server/src/multi-agent-runner.test-helpers.ts": [
+          "server/src/multi-agent-runner.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/types.ts"
+        ]
+      },
+      "neighborMap": {
+        "server/src/anax-gate.ts": [
+          {
+            "path": "server/src/multi-agent-runner.test.ts",
+            "batchIndex": 4,
+            "symbols": []
+          },
+          {
+            "path": "server/src/multi-agent-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "readWorkflow",
+              "validateWorkflow",
+              "topoOrder",
+              "renderPrompt",
+              "extractMarkerArray",
+              "runMultiAgent"
+            ]
+          },
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/anax-template.ts": [
+          {
+            "path": "server/src/multi-agent-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "readWorkflow",
+              "validateWorkflow",
+              "topoOrder",
+              "renderPrompt",
+              "extractMarkerArray",
+              "runMultiAgent"
+            ]
+          }
+        ],
+        "server/src/autonomous-runner.ts": [
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          },
+          {
+            "path": "server/src/skill-retrieval.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "retrieveSkills"
+            ]
+          },
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/cache.ts": [
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/child-processes.ts": [
+          {
+            "path": "server/src/multi-agent-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "readWorkflow",
+              "validateWorkflow",
+              "topoOrder",
+              "renderPrompt",
+              "extractMarkerArray",
+              "runMultiAgent"
+            ]
+          },
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          }
+        ],
+        "server/src/config.ts": [
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          },
+          {
+            "path": "server/src/reports.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "scanAllReports"
+            ]
+          },
+          {
+            "path": "server/src/sql-connections.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "listConnections",
+              "getConnection",
+              "upsertConnection",
+              "deleteConnection",
+              "testConnection",
+              "getSchema",
+              "prepareSql",
+              "executeQuery",
+              "exportQueryToCsv"
+            ]
+          }
+        ],
+        "server/src/db.ts": [
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          },
+          {
+            "path": "server/src/skill-curator.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "curateSkillEvaluation",
+              "applySkillCurationProposals",
+              "autoTriggerCuration"
+            ]
+          }
+        ],
+        "server/src/eval-set-api-smoke.test.ts": [
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/evaluation-archive.test.ts": [
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/evaluation-archive.ts": [
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/evaluation-common.ts": [
+          {
+            "path": "server/src/output-paths.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "resolveOutputTarget",
+              "buildOutputPathInstructions",
+              "buildRegisteredPathContext"
+            ]
+          },
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          },
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          },
+          {
+            "path": "server/src/skill-curator.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "curateSkillEvaluation",
+              "applySkillCurationProposals",
+              "autoTriggerCuration"
+            ]
+          },
+          {
+            "path": "server/src/skill-evaluation-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "runSkillEvaluation",
+              "summarizeSkillEvaluationResults",
+              "buildPairwiseJudgePrompt"
+            ]
+          },
+          {
+            "path": "server/src/tool-evaluation-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "runToolEvaluation",
+              "summarizeToolCases",
+              "runExtractionToolProcess"
+            ]
+          }
+        ],
+        "server/src/evaluation-errors.ts": [
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          },
+          {
+            "path": "server/src/skill-evaluation-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "runSkillEvaluation",
+              "summarizeSkillEvaluationResults",
+              "buildPairwiseJudgePrompt"
+            ]
+          },
+          {
+            "path": "server/src/tool-evaluation-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "runToolEvaluation",
+              "summarizeToolCases",
+              "runExtractionToolProcess"
+            ]
+          }
+        ],
+        "server/src/evaluation-runner.ts": [
+          {
+            "path": "server/src/multi-agent-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "readWorkflow",
+              "validateWorkflow",
+              "topoOrder",
+              "renderPrompt",
+              "extractMarkerArray",
+              "runMultiAgent"
+            ]
+          },
+          {
+            "path": "server/src/output-paths.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "resolveOutputTarget",
+              "buildOutputPathInstructions",
+              "buildRegisteredPathContext"
+            ]
+          },
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          },
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/hypothesis-pruning.test.ts": [
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/index.ts": [
+          {
+            "path": "server/src/multi-agent-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "readWorkflow",
+              "validateWorkflow",
+              "topoOrder",
+              "renderPrompt",
+              "extractMarkerArray",
+              "runMultiAgent"
+            ]
+          },
+          {
+            "path": "server/src/output-paths.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "resolveOutputTarget",
+              "buildOutputPathInstructions",
+              "buildRegisteredPathContext"
+            ]
+          },
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          },
+          {
+            "path": "server/src/process-env.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "buildSanitizedEnv"
+            ]
+          },
+          {
+            "path": "server/src/report-review.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "DEFAULT_REVIEW_PROMPT",
+              "AUTO_FIX_SYSTEM_PROMPT",
+              "buildReviewPrompt",
+              "buildAutoFixPrompt",
+              "parseReviewScore"
+            ]
+          },
+          {
+            "path": "server/src/reports.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "scanAllReports"
+            ]
+          },
+          {
+            "path": "server/src/skill-curator.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "curateSkillEvaluation",
+              "applySkillCurationProposals",
+              "autoTriggerCuration"
+            ]
+          },
+          {
+            "path": "server/src/skill-distillation.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "SKILL_DISTILL_SYSTEM_PROMPT",
+              "buildSkillDistillationPrompt",
+              "extractSkillMarkdown",
+              "parseSkillName",
+              "slugifySkillName"
+            ]
+          },
+          {
+            "path": "server/src/skill-evaluation-api.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "parseSkillEvaluationRunRequest"
+            ]
+          },
+          {
+            "path": "server/src/skill-evaluation-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "runSkillEvaluation",
+              "summarizeSkillEvaluationResults",
+              "buildPairwiseJudgePrompt"
+            ]
+          },
+          {
+            "path": "server/src/skill-retrieval.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "retrieveSkills"
+            ]
+          },
+          {
+            "path": "server/src/skills.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "listSkills",
+              "validateSkillPaths"
+            ]
+          },
+          {
+            "path": "server/src/sql-connections.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "listConnections",
+              "getConnection",
+              "upsertConnection",
+              "deleteConnection",
+              "testConnection",
+              "getSchema",
+              "prepareSql",
+              "executeQuery",
+              "exportQueryToCsv"
+            ]
+          },
+          {
+            "path": "server/src/tool-evaluation-api.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "parseToolEvaluationRunRequest",
+              "parseToolEvaluationCases",
+              "resolveToolEvaluationCasePaths"
+            ]
+          },
+          {
+            "path": "server/src/tool-evaluation-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "runToolEvaluation",
+              "summarizeToolCases",
+              "runExtractionToolProcess"
+            ]
+          },
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          },
+          {
+            "path": "server/tools/registry.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "listExtractionTools",
+              "getExtractionTool",
+              "validateExtractionInput"
+            ]
+          }
+        ],
+        "server/src/knowledge-graph.ts": [
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          },
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/memory-evaluation-runner.ts": [
+          {
+            "path": "server/src/output-paths.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "resolveOutputTarget",
+              "buildOutputPathInstructions",
+              "buildRegisteredPathContext"
+            ]
+          },
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          },
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/memory-injection.ts": [
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ],
+        "server/src/multi-agent-runner.test-helpers.ts": [
+          {
+            "path": "server/src/multi-agent-runner.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "readWorkflow",
+              "validateWorkflow",
+              "topoOrder",
+              "renderPrompt",
+              "extractMarkerArray",
+              "runMultiAgent"
+            ]
+          },
+          {
+            "path": "server/src/pi-adapter.ts",
+            "batchIndex": 4,
+            "symbols": [
+              "getPiSessionStats",
+              "compactPiSession",
+              "runPiPrompt",
+              "runPiTurn"
+            ]
+          },
+          {
+            "path": "server/src/types.ts",
+            "batchIndex": 4,
+            "symbols": []
+          },
+          {
+            "path": "server/src/multi-agent-runner.test.ts",
+            "batchIndex": 4,
+            "symbols": []
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 4,
+      "files": [
+        {
+          "path": "server/src/multi-agent-runner.test.ts",
+          "language": "typescript",
+          "sizeLines": 664,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/multi-agent-runner.ts",
+          "language": "typescript",
+          "sizeLines": 660,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/output-paths.ts",
+          "language": "typescript",
+          "sizeLines": 130,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/pi-adapter.ts",
+          "language": "typescript",
+          "sizeLines": 331,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/process-env.ts",
+          "language": "typescript",
+          "sizeLines": 28,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/prompt-blocks.ts",
+          "language": "typescript",
+          "sizeLines": 87,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/report-review.ts",
+          "language": "typescript",
+          "sizeLines": 176,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/reports.ts",
+          "language": "typescript",
+          "sizeLines": 205,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-activation.test.ts",
+          "language": "typescript",
+          "sizeLines": 68,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-activation.ts",
+          "language": "typescript",
+          "sizeLines": 120,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-curator.ts",
+          "language": "typescript",
+          "sizeLines": 219,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-distillation.ts",
+          "language": "typescript",
+          "sizeLines": 77,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-evaluation-api.test.ts",
+          "language": "typescript",
+          "sizeLines": 46,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-evaluation-api.ts",
+          "language": "typescript",
+          "sizeLines": 81,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-evaluation-runner.test.ts",
+          "language": "typescript",
+          "sizeLines": 389,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-evaluation-runner.ts",
+          "language": "typescript",
+          "sizeLines": 675,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skill-retrieval.ts",
+          "language": "typescript",
+          "sizeLines": 84,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skills.test.ts",
+          "language": "typescript",
+          "sizeLines": 70,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/skills.ts",
+          "language": "typescript",
+          "sizeLines": 161,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/sql-connections.ts",
+          "language": "typescript",
+          "sizeLines": 390,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/tool-evaluation-api.test.ts",
+          "language": "typescript",
+          "sizeLines": 114,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/tool-evaluation-api.ts",
+          "language": "typescript",
+          "sizeLines": 112,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/tool-evaluation-runner.test.ts",
+          "language": "typescript",
+          "sizeLines": 351,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/tool-evaluation-runner.ts",
+          "language": "typescript",
+          "sizeLines": 654,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/types.ts",
+          "language": "typescript",
+          "sizeLines": 1157,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/tools/registry.ts",
+          "language": "typescript",
+          "sizeLines": 106,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "server/src/multi-agent-runner.test.ts": [
+          "server/src/anax-gate.ts",
+          "server/src/multi-agent-runner.test-helpers.ts",
+          "server/src/multi-agent-runner.ts",
+          "server/src/types.ts",
+          "server/tools/registry.ts"
+        ],
+        "server/src/multi-agent-runner.ts": [
+          "server/src/anax-gate.ts",
+          "server/src/child-processes.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/tool-evaluation-runner.ts",
+          "server/src/types.ts",
+          "server/tools/registry.ts"
+        ],
+        "server/src/output-paths.ts": [
+          "server/src/types.ts"
+        ],
+        "server/src/pi-adapter.ts": [
+          "server/src/child-processes.ts",
+          "server/src/config.ts",
+          "server/src/prompt-blocks.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/process-env.ts": [],
+        "server/src/prompt-blocks.ts": [],
+        "server/src/report-review.ts": [],
+        "server/src/reports.ts": [
+          "server/src/config.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/skill-activation.test.ts": [
+          "server/src/skill-activation.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/skill-activation.ts": [
+          "server/src/types.ts"
+        ],
+        "server/src/skill-curator.ts": [
+          "server/src/db.ts",
+          "server/src/evaluation-common.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/skills.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/skill-distillation.ts": [],
+        "server/src/skill-evaluation-api.test.ts": [
+          "server/src/skill-evaluation-api.ts"
+        ],
+        "server/src/skill-evaluation-api.ts": [
+          "server/src/skill-evaluation-runner.ts"
+        ],
+        "server/src/skill-evaluation-runner.test.ts": [
+          "server/src/pi-adapter.ts",
+          "server/src/skill-evaluation-runner.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/skill-evaluation-runner.ts": [
+          "server/src/evaluation-common.ts",
+          "server/src/evaluation-errors.ts",
+          "server/src/output-paths.ts",
+          "server/src/pi-adapter.ts",
+          "server/src/prompt-blocks.ts",
+          "server/src/skill-activation.ts",
+          "server/src/skill-retrieval.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/skill-retrieval.ts": [
+          "server/src/skills.ts",
+          "server/src/types.ts"
+        ],
+        "server/src/skills.test.ts": [
+          "server/src/skills.ts"
+        ],
+        "server/src/skills.ts": [],
+        "server/src/sql-connections.ts": [
+          "server/src/config.ts"
+        ],
+        "server/src/tool-evaluation-api.test.ts": [
+          "server/src/tool-evaluation-api.ts"
+        ],
+        "server/src/tool-evaluation-api.ts": [
+          "server/src/tool-evaluation-runner.ts"
+        ],
+        "server/src/tool-evaluation-runner.test.ts": [
+          "server/src/tool-evaluation-runner.ts",
+          "server/tools/registry.ts"
+        ],
+        "server/src/tool-evaluation-runner.ts": [
+          "server/src/evaluation-common.ts",
+          "server/src/evaluation-errors.ts",
+          "server/src/process-env.ts",
+          "server/src/types.ts",
+          "server/tools/registry.ts"
+        ],
+        "server/src/types.ts": [
+          "server/src/anax-gate.ts"
+        ],
+        "server/tools/registry.ts": []
+      },
+      "neighborMap": {
+        "server/src/multi-agent-runner.test.ts": [
+          {
+            "path": "server/src/anax-gate.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "GATE_THRESHOLDS",
+              "extractVerdict",
+              "enforceGate",
+              "evaluateGate",
+              "deterministicRedLineCheck"
+            ]
+          },
+          {
+            "path": "server/src/multi-agent-runner.test-helpers.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "makeFakePiAdapter"
+            ]
+          }
+        ],
+        "server/src/multi-agent-runner.ts": [
+          {
+            "path": "server/src/anax-gate.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "GATE_THRESHOLDS",
+              "extractVerdict",
+              "enforceGate",
+              "evaluateGate",
+              "deterministicRedLineCheck"
+            ]
+          },
+          {
+            "path": "server/src/child-processes.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "registerChildProcess",
+              "notifyChildProcess",
+              "listActiveChildProcesses"
+            ]
+          },
+          {
+            "path": "server/src/anax-template.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "buildAnaxWorkflow",
+              "buildAnaxQuickWorkflow"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runWorkflowEvaluation"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          },
+          {
+            "path": "server/src/multi-agent-runner.test-helpers.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "makeFakePiAdapter"
+            ]
+          }
+        ],
+        "server/src/output-paths.ts": [
+          {
+            "path": "server/src/evaluation-common.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "emptyMetrics",
+              "collectEvent",
+              "runJudge",
+              "messageOf",
+              "extractText"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runWorkflowEvaluation"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          },
+          {
+            "path": "server/src/memory-evaluation-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runMemoryEvaluation"
+            ]
+          }
+        ],
+        "server/src/pi-adapter.ts": [
+          {
+            "path": "server/src/child-processes.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "registerChildProcess",
+              "notifyChildProcess",
+              "listActiveChildProcesses"
+            ]
+          },
+          {
+            "path": "server/src/config.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "DATA_ROOT",
+              "WORKSPACES_ROOT",
+              "FAVORITES_ROOT",
+              "UPLOAD_TMP_ROOT",
+              "EXTRACTION_RUNS_ROOT",
+              "DB_PATH",
+              "PORT",
+              "PI_BIN",
+              "ANTIGRAVITY_BIN",
+              "DIRECT_LLM_ROOT",
+              "SQL_CONNECTIONS_PATH",
+              "BI_DATASETS_ROOT",
+              "ensureDirs"
+            ]
+          },
+          {
+            "path": "server/src/autonomous-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runAutonomousTask"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-common.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "emptyMetrics",
+              "collectEvent",
+              "runJudge",
+              "messageOf",
+              "extractText"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runWorkflowEvaluation"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          },
+          {
+            "path": "server/src/knowledge-graph.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "syncKnowledgeGraph",
+              "buildKgPrompt",
+              "extractKgEntitiesFromReports"
+            ]
+          },
+          {
+            "path": "server/src/memory-evaluation-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runMemoryEvaluation"
+            ]
+          },
+          {
+            "path": "server/src/multi-agent-runner.test-helpers.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "makeFakePiAdapter"
+            ]
+          }
+        ],
+        "server/src/process-env.ts": [
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/report-review.ts": [
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/reports.ts": [
+          {
+            "path": "server/src/config.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "DATA_ROOT",
+              "WORKSPACES_ROOT",
+              "FAVORITES_ROOT",
+              "UPLOAD_TMP_ROOT",
+              "EXTRACTION_RUNS_ROOT",
+              "DB_PATH",
+              "PORT",
+              "PI_BIN",
+              "ANTIGRAVITY_BIN",
+              "DIRECT_LLM_ROOT",
+              "SQL_CONNECTIONS_PATH",
+              "BI_DATASETS_ROOT",
+              "ensureDirs"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/skill-curator.ts": [
+          {
+            "path": "server/src/db.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "createWorkspace",
+              "listWorkspaces",
+              "getWorkspace",
+              "renameWorkspace",
+              "deleteWorkspace",
+              "createSession",
+              "listSessions",
+              "getSession",
+              "touchSession",
+              "renameSession",
+              "deleteSession",
+              "getSessionRuntime",
+              "updateSessionRuntime",
+              "addMessage",
+              "listMessages",
+              "createFlow",
+              "listFlows",
+              "getFlow",
+              "renameFlow",
+              "touchFlow",
+              "updateFlowSourceName",
+              "updateFlowGeneration",
+              "deleteFlow",
+              "createWorkflowFavorite",
+              "listWorkflowFavorites",
+              "getWorkflowFavorite",
+              "getWorkflowFavoriteBySourceFlowId",
+              "updateWorkflowFavorite",
+              "removeWorkflowFavorite",
+              "addFlowMessage",
+              "listFlowMessages",
+              "createFlowRun",
+              "finishFlowRun",
+              "listFlowRuns",
+              "getFlowRun",
+              "createWorkflowEvaluation",
+              "listWorkflowEvaluations",
+              "getWorkflowEvaluation",
+              "updateWorkflowEvaluation",
+              "updateWorkflowEvaluationResult",
+              "createMemoryEvaluation",
+              "listMemoryEvaluations",
+              "getMemoryEvaluation",
+              "updateMemoryEvaluation",
+              "updateMemoryEvaluationResult",
+              "createSkillEvalSet",
+              "getSkillEvalSet",
+              "listSkillEvalSets",
+              "updateSkillEvalSet",
+              "deleteSkillEvalSet",
+              "saveSkillEvaluation",
+              "listSkillEvaluations",
+              "getSkillEvaluation",
+              "createToolCaseSet",
+              "getToolCaseSet",
+              "listToolCaseSets",
+              "updateToolCaseSet",
+              "deleteToolCaseSet",
+              "saveToolEvaluation",
+              "listToolEvaluations",
+              "getToolEvaluation",
+              "addWorkspacePath",
+              "updateWorkspacePathHash",
+              "listWorkspacePaths",
+              "getWorkspacePath",
+              "removeWorkspacePath",
+              "getFileAnalysis",
+              "setFileAnalysis",
+              "getFileAnalysesByPathIds",
+              "accumulateSessionTokenStats",
+              "getRawSessionTokenStats",
+              "listRawSessionTokenStatsByWorkspace",
+              "listRawSessionTokenStatsWithTitles",
+              "accumulateTokenUsageStats",
+              "listRawTokenUsageStatsByWorkspace",
+              "getRawTokenUsageStatsByTarget",
+              "getRawTokenUsageDailyStats",
+              "listMemoryUsageStats",
+              "getMemoryUsageStats",
+              "recordMemorySourceUsed",
+              "recordMemoryInjectionUsage",
+              "recordMemoryFeedback",
+              "createMemoryFailureAttribution",
+              "listMemoryFailureAttributions",
+              "createRuleMemoryProposal",
+              "listMemoryProposals",
+              "getMemoryProposal",
+              "approveMemoryProposal",
+              "rejectMemoryProposal",
+              "listRuleMemories",
+              "createRuleMemory",
+              "updateRuleMemory",
+              "updateRuleMemoryEnabled",
+              "updateRuleMemoriesEnabled",
+              "deleteRuleMemory",
+              "detectRuleConflicts",
+              "listRuleConflicts",
+              "updateRuleConflictStatus",
+              "buildEnabledRulesPrompt",
+              "listAnalysisStandards",
+              "createAnalysisStandard",
+              "updateAnalysisStandard",
+              "updateAnalysisStandardEnabled",
+              "deleteAnalysisStandard",
+              "buildEnabledStandardsPrompt",
+              "listBusinessContexts",
+              "createBusinessContext",
+              "updateBusinessContext",
+              "updateBusinessContextEnabled",
+              "updateBusinessContextsEnabled",
+              "deleteBusinessContext",
+              "buildEnabledBusinessContextPrompt",
+              "listAnalysisCases",
+              "createAnalysisCase",
+              "updateAnalysisCase",
+              "updateAnalysisCaseEnabled",
+              "deleteAnalysisCase",
+              "buildEnabledCasesPrompt",
+              "listHypotheses",
+              "createHypothesis",
+              "upsertHypothesisFromArchive",
+              "updateHypothesisEnabled",
+              "deleteHypothesis",
+              "tokenizeQuery",
+              "scoreHypothesis",
+              "buildHypothesisLibraryContext",
+              "addTraceEvent",
+              "pruneTraceEvents",
+              "pruneAllTraceEvents",
+              "listMemoryInjectionRecords",
+              "getTraceOverview",
+              "listTraceRecentEvents",
+              "getTraceTimeline",
+              "listTraceFailures",
+              "getTraceTrend",
+              "generateTraceRuleSuggestions",
+              "createChangeProposal",
+              "listChangeProposals",
+              "updateChangeProposal",
+              "deleteChangeProposal",
+              "markNodesStale",
+              "getStaleNodes",
+              "clearStaleNodes",
+              "getAnaxGateConfig",
+              "upsertAnaxGateConfig",
+              "saveSkillCurationProposals",
+              "listSkillCurationProposals",
+              "updateSkillCurationProposalStatus",
+              "upsertKgNode",
+              "listKgNodes",
+              "setKgNodeHidden",
+              "setKgNodeAiExtractedHash",
+              "insertManualKgEdge",
+              "deleteKgEdge",
+              "deleteKgNodesForSource",
+              "clearKgAutoEdges",
+              "insertKgEdges",
+              "listKgEdges",
+              "deleteKgData",
+              "createModelLabRun",
+              "listModelLabRuns",
+              "getModelLabRun",
+              "getModelLabStats",
+              "deleteModelLabRun",
+              "deleteModelLabRunsBefore",
+              "insertBiDataset",
+              "listBiDatasets",
+              "getBiDatasetById",
+              "getActiveBiDataset",
+              "deleteBiDataset",
+              "setActiveBiDataset",
+              "listReportFavoriteIds",
+              "addReportFavorite",
+              "removeReportFavorite",
+              "listAllReportTags",
+              "listTagsForReports",
+              "addReportTag",
+              "removeReportTag"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-common.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "emptyMetrics",
+              "collectEvent",
+              "runJudge",
+              "messageOf",
+              "extractText"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/skill-distillation.ts": [
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/skill-evaluation-api.ts": [
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/skill-evaluation-runner.ts": [
+          {
+            "path": "server/src/evaluation-common.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "emptyMetrics",
+              "collectEvent",
+              "runJudge",
+              "messageOf",
+              "extractText"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-errors.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "evaluationError",
+              "unknownEvaluationError",
+              "serializeEvaluationError",
+              "parseEvaluationError",
+              "formatEvaluationError"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/skill-retrieval.ts": [
+          {
+            "path": "server/src/autonomous-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runAutonomousTask"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/skills.ts": [
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/sql-connections.ts": [
+          {
+            "path": "server/src/config.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "DATA_ROOT",
+              "WORKSPACES_ROOT",
+              "FAVORITES_ROOT",
+              "UPLOAD_TMP_ROOT",
+              "EXTRACTION_RUNS_ROOT",
+              "DB_PATH",
+              "PORT",
+              "PI_BIN",
+              "ANTIGRAVITY_BIN",
+              "DIRECT_LLM_ROOT",
+              "SQL_CONNECTIONS_PATH",
+              "BI_DATASETS_ROOT",
+              "ensureDirs"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/tool-evaluation-api.ts": [
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/tool-evaluation-runner.ts": [
+          {
+            "path": "server/src/evaluation-common.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "emptyMetrics",
+              "collectEvent",
+              "runJudge",
+              "messageOf",
+              "extractText"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-errors.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "evaluationError",
+              "unknownEvaluationError",
+              "serializeEvaluationError",
+              "parseEvaluationError",
+              "formatEvaluationError"
+            ]
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ],
+        "server/src/types.ts": [
+          {
+            "path": "server/src/anax-gate.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "GATE_THRESHOLDS",
+              "extractVerdict",
+              "enforceGate",
+              "evaluateGate",
+              "deterministicRedLineCheck"
+            ]
+          },
+          {
+            "path": "server/src/autonomous-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runAutonomousTask"
+            ]
+          },
+          {
+            "path": "server/src/cache.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "trackSessionUsage",
+              "trackWorkspaceUsage",
+              "trackSessionWorkspaceUsage",
+              "getSessionTokenStats",
+              "getWorkspaceTokenStats",
+              "getWorkspaceTodayTokenStats",
+              "listWorkspaceTokenUsageStats",
+              "getWorkspaceTokenUsageStatsByTarget"
+            ]
+          },
+          {
+            "path": "server/src/db.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "createWorkspace",
+              "listWorkspaces",
+              "getWorkspace",
+              "renameWorkspace",
+              "deleteWorkspace",
+              "createSession",
+              "listSessions",
+              "getSession",
+              "touchSession",
+              "renameSession",
+              "deleteSession",
+              "getSessionRuntime",
+              "updateSessionRuntime",
+              "addMessage",
+              "listMessages",
+              "createFlow",
+              "listFlows",
+              "getFlow",
+              "renameFlow",
+              "touchFlow",
+              "updateFlowSourceName",
+              "updateFlowGeneration",
+              "deleteFlow",
+              "createWorkflowFavorite",
+              "listWorkflowFavorites",
+              "getWorkflowFavorite",
+              "getWorkflowFavoriteBySourceFlowId",
+              "updateWorkflowFavorite",
+              "removeWorkflowFavorite",
+              "addFlowMessage",
+              "listFlowMessages",
+              "createFlowRun",
+              "finishFlowRun",
+              "listFlowRuns",
+              "getFlowRun",
+              "createWorkflowEvaluation",
+              "listWorkflowEvaluations",
+              "getWorkflowEvaluation",
+              "updateWorkflowEvaluation",
+              "updateWorkflowEvaluationResult",
+              "createMemoryEvaluation",
+              "listMemoryEvaluations",
+              "getMemoryEvaluation",
+              "updateMemoryEvaluation",
+              "updateMemoryEvaluationResult",
+              "createSkillEvalSet",
+              "getSkillEvalSet",
+              "listSkillEvalSets",
+              "updateSkillEvalSet",
+              "deleteSkillEvalSet",
+              "saveSkillEvaluation",
+              "listSkillEvaluations",
+              "getSkillEvaluation",
+              "createToolCaseSet",
+              "getToolCaseSet",
+              "listToolCaseSets",
+              "updateToolCaseSet",
+              "deleteToolCaseSet",
+              "saveToolEvaluation",
+              "listToolEvaluations",
+              "getToolEvaluation",
+              "addWorkspacePath",
+              "updateWorkspacePathHash",
+              "listWorkspacePaths",
+              "getWorkspacePath",
+              "removeWorkspacePath",
+              "getFileAnalysis",
+              "setFileAnalysis",
+              "getFileAnalysesByPathIds",
+              "accumulateSessionTokenStats",
+              "getRawSessionTokenStats",
+              "listRawSessionTokenStatsByWorkspace",
+              "listRawSessionTokenStatsWithTitles",
+              "accumulateTokenUsageStats",
+              "listRawTokenUsageStatsByWorkspace",
+              "getRawTokenUsageStatsByTarget",
+              "getRawTokenUsageDailyStats",
+              "listMemoryUsageStats",
+              "getMemoryUsageStats",
+              "recordMemorySourceUsed",
+              "recordMemoryInjectionUsage",
+              "recordMemoryFeedback",
+              "createMemoryFailureAttribution",
+              "listMemoryFailureAttributions",
+              "createRuleMemoryProposal",
+              "listMemoryProposals",
+              "getMemoryProposal",
+              "approveMemoryProposal",
+              "rejectMemoryProposal",
+              "listRuleMemories",
+              "createRuleMemory",
+              "updateRuleMemory",
+              "updateRuleMemoryEnabled",
+              "updateRuleMemoriesEnabled",
+              "deleteRuleMemory",
+              "detectRuleConflicts",
+              "listRuleConflicts",
+              "updateRuleConflictStatus",
+              "buildEnabledRulesPrompt",
+              "listAnalysisStandards",
+              "createAnalysisStandard",
+              "updateAnalysisStandard",
+              "updateAnalysisStandardEnabled",
+              "deleteAnalysisStandard",
+              "buildEnabledStandardsPrompt",
+              "listBusinessContexts",
+              "createBusinessContext",
+              "updateBusinessContext",
+              "updateBusinessContextEnabled",
+              "updateBusinessContextsEnabled",
+              "deleteBusinessContext",
+              "buildEnabledBusinessContextPrompt",
+              "listAnalysisCases",
+              "createAnalysisCase",
+              "updateAnalysisCase",
+              "updateAnalysisCaseEnabled",
+              "deleteAnalysisCase",
+              "buildEnabledCasesPrompt",
+              "listHypotheses",
+              "createHypothesis",
+              "upsertHypothesisFromArchive",
+              "updateHypothesisEnabled",
+              "deleteHypothesis",
+              "tokenizeQuery",
+              "scoreHypothesis",
+              "buildHypothesisLibraryContext",
+              "addTraceEvent",
+              "pruneTraceEvents",
+              "pruneAllTraceEvents",
+              "listMemoryInjectionRecords",
+              "getTraceOverview",
+              "listTraceRecentEvents",
+              "getTraceTimeline",
+              "listTraceFailures",
+              "getTraceTrend",
+              "generateTraceRuleSuggestions",
+              "createChangeProposal",
+              "listChangeProposals",
+              "updateChangeProposal",
+              "deleteChangeProposal",
+              "markNodesStale",
+              "getStaleNodes",
+              "clearStaleNodes",
+              "getAnaxGateConfig",
+              "upsertAnaxGateConfig",
+              "saveSkillCurationProposals",
+              "listSkillCurationProposals",
+              "updateSkillCurationProposalStatus",
+              "upsertKgNode",
+              "listKgNodes",
+              "setKgNodeHidden",
+              "setKgNodeAiExtractedHash",
+              "insertManualKgEdge",
+              "deleteKgEdge",
+              "deleteKgNodesForSource",
+              "clearKgAutoEdges",
+              "insertKgEdges",
+              "listKgEdges",
+              "deleteKgData",
+              "createModelLabRun",
+              "listModelLabRuns",
+              "getModelLabRun",
+              "getModelLabStats",
+              "deleteModelLabRun",
+              "deleteModelLabRunsBefore",
+              "insertBiDataset",
+              "listBiDatasets",
+              "getBiDatasetById",
+              "getActiveBiDataset",
+              "deleteBiDataset",
+              "setActiveBiDataset",
+              "listReportFavoriteIds",
+              "addReportFavorite",
+              "removeReportFavorite",
+              "listAllReportTags",
+              "listTagsForReports",
+              "addReportTag",
+              "removeReportTag"
+            ]
+          },
+          {
+            "path": "server/src/eval-set-api-smoke.test.ts",
+            "batchIndex": 3,
+            "symbols": []
+          },
+          {
+            "path": "server/src/evaluation-archive.test.ts",
+            "batchIndex": 3,
+            "symbols": []
+          },
+          {
+            "path": "server/src/evaluation-archive.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "archiveSkillEvaluation",
+              "archiveToolEvaluation",
+              "listEvaluationArchives"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-common.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "emptyMetrics",
+              "collectEvent",
+              "runJudge",
+              "messageOf",
+              "extractText"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-errors.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "evaluationError",
+              "unknownEvaluationError",
+              "serializeEvaluationError",
+              "parseEvaluationError",
+              "formatEvaluationError"
+            ]
+          },
+          {
+            "path": "server/src/evaluation-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runWorkflowEvaluation"
+            ]
+          },
+          {
+            "path": "server/src/hypothesis-pruning.test.ts",
+            "batchIndex": 3,
+            "symbols": []
+          },
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          },
+          {
+            "path": "server/src/knowledge-graph.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "syncKnowledgeGraph",
+              "buildKgPrompt",
+              "extractKgEntitiesFromReports"
+            ]
+          },
+          {
+            "path": "server/src/memory-evaluation-runner.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "runMemoryEvaluation"
+            ]
+          },
+          {
+            "path": "server/src/memory-injection.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "buildMemoryInjectionSnapshot",
+              "buildMemoryPrompt"
+            ]
+          },
+          {
+            "path": "server/src/multi-agent-runner.test-helpers.ts",
+            "batchIndex": 3,
+            "symbols": [
+              "makeFakePiAdapter"
+            ]
+          }
+        ],
+        "server/tools/registry.ts": [
+          {
+            "path": "server/src/index.ts",
+            "batchIndex": 3,
+            "symbols": []
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 5,
+      "files": [
+        {
+          "path": "web/src/components/DataExplorationPane.tsx",
+          "language": "typescript",
+          "sizeLines": 446,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/data-exploration/ChartCanvas.tsx",
+          "language": "typescript",
+          "sizeLines": 454,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/data-exploration/ConfigPanel.tsx",
+          "language": "typescript",
+          "sizeLines": 248,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/data-exploration/FieldList.tsx",
+          "language": "typescript",
+          "sizeLines": 93,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/data-exploration/InsightsReport.tsx",
+          "language": "typescript",
+          "sizeLines": 198,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/data-exploration/JoinBuilder.tsx",
+          "language": "typescript",
+          "sizeLines": 236,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/data-exploration/ProfileReport.tsx",
+          "language": "typescript",
+          "sizeLines": 108,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/duckdb.ts",
+          "language": "typescript",
+          "sizeLines": 163,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/insights.ts",
+          "language": "typescript",
+          "sizeLines": 137,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/joins.ts",
+          "language": "typescript",
+          "sizeLines": 140,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/profiling.ts",
+          "language": "typescript",
+          "sizeLines": 231,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "web/src/components/DataExplorationPane.tsx": [
+          "web/src/components/data-exploration/ChartCanvas.tsx",
+          "web/src/components/data-exploration/ConfigPanel.tsx",
+          "web/src/components/data-exploration/FieldList.tsx",
+          "web/src/components/data-exploration/FileSelector.tsx",
+          "web/src/components/data-exploration/InsightsReport.tsx",
+          "web/src/components/data-exploration/JoinBuilder.tsx",
+          "web/src/components/data-exploration/ProfileReport.tsx",
+          "web/src/lib/duckdb.ts",
+          "web/src/lib/profiling.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/data-exploration/ChartCanvas.tsx": [
+          "web/src/components/data-exploration/ConfigPanel.tsx",
+          "web/src/lib/duckdb.ts",
+          "web/src/lib/profiling.ts"
+        ],
+        "web/src/components/data-exploration/ConfigPanel.tsx": [
+          "web/src/lib/profiling.ts"
+        ],
+        "web/src/components/data-exploration/FieldList.tsx": [
+          "web/src/lib/profiling.ts"
+        ],
+        "web/src/components/data-exploration/InsightsReport.tsx": [
+          "web/src/lib/insights.ts",
+          "web/src/lib/profiling.ts"
+        ],
+        "web/src/components/data-exploration/JoinBuilder.tsx": [
+          "web/src/lib/joins.ts",
+          "web/src/lib/profiling.ts"
+        ],
+        "web/src/components/data-exploration/ProfileReport.tsx": [
+          "web/src/lib/profiling.ts"
+        ],
+        "web/src/lib/duckdb.ts": [],
+        "web/src/lib/insights.ts": [
+          "web/src/lib/duckdb.ts",
+          "web/src/lib/profiling.ts"
+        ],
+        "web/src/lib/joins.ts": [
+          "web/src/lib/duckdb.ts",
+          "web/src/lib/profiling.ts"
+        ],
+        "web/src/lib/profiling.ts": [
+          "web/src/lib/duckdb.ts"
+        ]
+      },
+      "neighborMap": {
+        "web/src/components/DataExplorationPane.tsx": [
+          {
+            "path": "web/src/components/data-exploration/FileSelector.tsx",
+            "batchIndex": 2,
+            "symbols": [
+              "FileSelector"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          },
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 6,
+      "files": [
+        {
+          "path": "web/src/components/BiDashboardPane.tsx",
+          "language": "typescript",
+          "sizeLines": 123,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/BiImportDialog.tsx",
+          "language": "typescript",
+          "sizeLines": 180,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/NewMemberRetentionPane.tsx",
+          "language": "typescript",
+          "sizeLines": 301,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/OldMemberRecallPane.tsx",
+          "language": "typescript",
+          "sizeLines": 296,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/biDatasetParser.ts",
+          "language": "typescript",
+          "sizeLines": 120,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/useBiDataset.ts",
+          "language": "typescript",
+          "sizeLines": 101,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "web/src/components/BiDashboardPane.tsx": [
+          "web/src/components/NewMemberRetentionPane.tsx",
+          "web/src/components/OldMemberRecallPane.tsx",
+          "web/src/lib/cn.ts"
+        ],
+        "web/src/components/BiImportDialog.tsx": [
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/NewMemberRetentionPane.tsx": [
+          "web/src/components/BiImportDialog.tsx",
+          "web/src/lib/biDatasetParser.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/useBiDataset.ts"
+        ],
+        "web/src/components/OldMemberRecallPane.tsx": [
+          "web/src/components/BiImportDialog.tsx",
+          "web/src/lib/biDatasetParser.ts",
+          "web/src/lib/cn.ts",
+          "web/src/lib/useBiDataset.ts"
+        ],
+        "web/src/lib/biDatasetParser.ts": [
+          "web/src/types.ts"
+        ],
+        "web/src/lib/useBiDataset.ts": [
+          "web/src/lib/api.ts",
+          "web/src/types.ts"
+        ]
+      },
+      "neighborMap": {
+        "web/src/components/BiDashboardPane.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/BiImportDialog.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/NewMemberRetentionPane.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          }
+        ],
+        "web/src/components/OldMemberRecallPane.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          }
+        ],
+        "web/src/lib/biDatasetParser.ts": [
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/lib/useBiDataset.ts": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 7,
+      "files": [
+        {
+          "path": "web/src/components/ModelBuilder.tsx",
+          "language": "typescript",
+          "sizeLines": 167,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ModelInfoCard.tsx",
+          "language": "typescript",
+          "sizeLines": 205,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/ModelLabPane.tsx",
+          "language": "typescript",
+          "sizeLines": 832,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/data/models.ts",
+          "language": "typescript",
+          "sizeLines": 2320,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "web/src/components/ModelBuilder.tsx": [
+          "web/src/data/models.ts"
+        ],
+        "web/src/components/ModelInfoCard.tsx": [
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/components/ModelLabPane.tsx": [
+          "web/src/components/ModelBuilder.tsx",
+          "web/src/components/ModelInfoCard.tsx",
+          "web/src/data/models.ts",
+          "web/src/lib/api.ts",
+          "web/src/lib/cn.ts",
+          "web/src/types.ts"
+        ],
+        "web/src/data/models.ts": [
+          "web/src/types.ts"
+        ]
+      },
+      "neighborMap": {
+        "web/src/components/ModelInfoCard.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          }
+        ],
+        "web/src/components/ModelLabPane.tsx": [
+          {
+            "path": "web/src/lib/api.ts",
+            "batchIndex": 2,
+            "symbols": []
+          },
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          },
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/data/models.ts": [
+          {
+            "path": "web/src/types.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "asBlocks",
+              "textOf"
+            ]
+          },
+          {
+            "path": "web/src/components/ModelRunHistoryDashboard.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "ModelRunHistoryDashboard"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 8,
+      "files": [
+        {
+          "path": "web/src/components/MainHeader.tsx",
+          "language": "typescript",
+          "sizeLines": 129,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/components/SettingsModal.tsx",
+          "language": "typescript",
+          "sizeLines": 92,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/lib/constants.ts",
+          "language": "typescript",
+          "sizeLines": 30,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "web/src/components/MainHeader.tsx": [
+          "web/src/lib/cn.ts"
+        ],
+        "web/src/components/SettingsModal.tsx": [
+          "web/src/components/MainHeader.tsx",
+          "web/src/lib/cn.ts",
+          "web/src/lib/constants.ts"
+        ],
+        "web/src/lib/constants.ts": [
+          "web/src/components/MainHeader.tsx"
+        ]
+      },
+      "neighborMap": {
+        "web/src/components/MainHeader.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/components/SettingsModal.tsx": [
+          {
+            "path": "web/src/lib/cn.ts",
+            "batchIndex": 2,
+            "symbols": [
+              "cn"
+            ]
+          },
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ],
+        "web/src/lib/constants.ts": [
+          {
+            "path": "web/src/App.tsx",
+            "batchIndex": 1,
+            "symbols": [
+              "App"
+            ]
+          }
+        ]
+      }
+    },
+    {
+      "batchIndex": 9,
+      "files": [
+        {
+          "path": ".obsidian/app.json",
+          "language": "json",
+          "sizeLines": 0,
+          "fileCategory": "config"
+        },
+        {
+          "path": ".obsidian/appearance.json",
+          "language": "json",
+          "sizeLines": 0,
+          "fileCategory": "config"
+        },
+        {
+          "path": ".obsidian/core-plugins.json",
+          "language": "json",
+          "sizeLines": 32,
+          "fileCategory": "config"
+        },
+        {
+          "path": ".obsidian/workspace.json",
+          "language": "json",
+          "sizeLines": 208,
+          "fileCategory": "config"
+        }
+      ],
+      "batchImportData": {
+        ".obsidian/app.json": [],
+        ".obsidian/appearance.json": [],
+        ".obsidian/core-plugins.json": [],
+        ".obsidian/workspace.json": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 10,
+      "files": [
+        {
+          "path": ".understand-anything/fingerprints.json",
+          "language": "json",
+          "sizeLines": 17030,
+          "fileCategory": "config"
+        },
+        {
+          "path": ".understand-anything/knowledge-graph.json",
+          "language": "json",
+          "sizeLines": 0,
+          "fileCategory": "config"
+        },
+        {
+          "path": ".understand-anything/meta.json",
+          "language": "json",
+          "sizeLines": 0,
+          "fileCategory": "config"
+        }
+      ],
+      "batchImportData": {
+        ".understand-anything/fingerprints.json": [],
+        ".understand-anything/knowledge-graph.json": [],
+        ".understand-anything/meta.json": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 11,
+      "files": [
+        {
+          "path": "AGENTS.md",
+          "language": "markdown",
+          "sizeLines": 95,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff- Dashboard.md",
+          "language": "markdown",
+          "sizeLines": 2157,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff-AnaX.md",
+          "language": "markdown",
+          "sizeLines": 994,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff-Xan数据库.md",
+          "language": "markdown",
+          "sizeLines": 140,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff-实验室.md",
+          "language": "markdown",
+          "sizeLines": 1876,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff-工作流.md",
+          "language": "markdown",
+          "sizeLines": 1464,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff-探索.md",
+          "language": "markdown",
+          "sizeLines": 1681,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff-缓存命中.md",
+          "language": "markdown",
+          "sizeLines": 189,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff-规则记忆.md",
+          "language": "markdown",
+          "sizeLines": 896,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "handoff-计算工具.md",
+          "language": "markdown",
+          "sizeLines": 496,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "package.json",
+          "language": "json",
+          "sizeLines": 25,
+          "fileCategory": "config"
+        }
+      ],
+      "batchImportData": {
+        "AGENTS.md": [],
+        "handoff- Dashboard.md": [],
+        "handoff-AnaX.md": [],
+        "handoff-Xan数据库.md": [],
+        "handoff-实验室.md": [],
+        "handoff-工作流.md": [],
+        "handoff-探索.md": [],
+        "handoff-缓存命中.md": [],
+        "handoff-规则记忆.md": [],
+        "handoff-计算工具.md": [],
+        "package.json": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 12,
+      "files": [
+        {
+          "path": "web/index.html",
+          "language": "html",
+          "sizeLines": 20,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "web/package.json",
+          "language": "json",
+          "sizeLines": 42,
+          "fileCategory": "config"
+        },
+        {
+          "path": "web/tsconfig.json",
+          "language": "json",
+          "sizeLines": 22,
+          "fileCategory": "config"
+        }
+      ],
+      "batchImportData": {
+        "web/index.html": [],
+        "web/package.json": [],
+        "web/tsconfig.json": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 13,
+      "files": [
+        {
+          "path": ".claude/settings.local.json",
+          "language": "json",
+          "sizeLines": 147,
+          "fileCategory": "config"
+        },
+        {
+          "path": ".pi/models/user_churn.json",
+          "language": "json",
+          "sizeLines": 28,
+          "fileCategory": "config"
+        },
+        {
+          "path": ".understand-anything/intermediate/scan-result.json",
+          "language": "json",
+          "sizeLines": 0,
+          "fileCategory": "config"
+        },
+        {
+          "path": "启动苍耳.command",
+          "language": "command",
+          "sizeLines": 93,
+          "fileCategory": "code"
+        },
+        {
+          "path": "docs/workflow-schema-compat.md",
+          "language": "markdown",
+          "sizeLines": 70,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "pi.db",
+          "language": "db",
+          "sizeLines": 0,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/package.json",
+          "language": "json",
+          "sizeLines": 31,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/resume-recommend.mjs",
+          "language": "javascript",
+          "sizeLines": 60,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/memory-evaluation.test.ts",
+          "language": "typescript",
+          "sizeLines": 72,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/memory-governance.test.ts",
+          "language": "typescript",
+          "sizeLines": 83,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/memory-injection.test.ts",
+          "language": "typescript",
+          "sizeLines": 166,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/memory-proposal.test.ts",
+          "language": "typescript",
+          "sizeLines": 64,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/src/memory-usage.test.ts",
+          "language": "typescript",
+          "sizeLines": 59,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/tools/extract-sycm-member/extract_sycm_member.py",
+          "language": "python",
+          "sizeLines": 573,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/tools/extract-sycm-member/tests/cases.json",
+          "language": "json",
+          "sizeLines": 25,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/extract-sycm-member/tests/fixtures/invalid.txt",
+          "language": "txt",
+          "sizeLines": 0,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "server/tools/extract-sycm-member/tests/fixtures/minimal.html",
+          "language": "html",
+          "sizeLines": 25,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "server/tools/extract-sycm-member/tool.json",
+          "language": "json",
+          "sizeLines": 20,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/extract-tmall-profile/天猫标签分类对应表.md",
+          "language": "markdown",
+          "sizeLines": 1473,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "server/tools/extract-tmall-profile/extract_tmall.py",
+          "language": "python",
+          "sizeLines": 226,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/tools/extract-tmall-profile/tests/cases.json",
+          "language": "json",
+          "sizeLines": 27,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/extract-tmall-profile/tests/fixtures/minimal.html",
+          "language": "html",
+          "sizeLines": 23,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json",
+          "language": "json",
+          "sizeLines": 47,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/extract-tmall-profile/tool.json",
+          "language": "json",
+          "sizeLines": 18,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv",
+          "language": "csv",
+          "sizeLines": 6093,
+          "fileCategory": "data"
+        }
+      ],
+      "batchImportData": {
+        ".claude/settings.local.json": [],
+        ".pi/models/user_churn.json": [],
+        ".understand-anything/intermediate/scan-result.json": [],
+        "启动苍耳.command": [],
+        "docs/workflow-schema-compat.md": [],
+        "pi.db": [],
+        "server/package.json": [],
+        "server/resume-recommend.mjs": [],
+        "server/src/memory-evaluation.test.ts": [],
+        "server/src/memory-governance.test.ts": [],
+        "server/src/memory-injection.test.ts": [],
+        "server/src/memory-proposal.test.ts": [],
+        "server/src/memory-usage.test.ts": [],
+        "server/tools/extract-sycm-member/extract_sycm_member.py": [],
+        "server/tools/extract-sycm-member/tests/cases.json": [],
+        "server/tools/extract-sycm-member/tests/fixtures/invalid.txt": [],
+        "server/tools/extract-sycm-member/tests/fixtures/minimal.html": [],
+        "server/tools/extract-sycm-member/tool.json": [],
+        "server/tools/extract-tmall-profile/天猫标签分类对应表.md": [],
+        "server/tools/extract-tmall-profile/extract_tmall.py": [],
+        "server/tools/extract-tmall-profile/tests/cases.json": [],
+        "server/tools/extract-tmall-profile/tests/fixtures/minimal.html": [],
+        "server/tools/extract-tmall-profile/tests/golden/minimal/测试人群_人群画像.json": [],
+        "server/tools/extract-tmall-profile/tool.json": [],
+        "server/tools/extract-xhs-insight/小红书_标签类型_一级标签值.csv": []
+      },
+      "neighborMap": {}
+    },
+    {
+      "batchIndex": 14,
+      "files": [
+        {
+          "path": "server/tools/extract-xhs-insight/extract_xhs_insight.py",
+          "language": "python",
+          "sizeLines": 565,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/tools/extract-xhs-insight/tests/cases.json",
+          "language": "json",
+          "sizeLines": 35,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/extract-xhs-insight/tests/fixtures/minimal.html",
+          "language": "html",
+          "sizeLines": 22,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json",
+          "language": "json",
+          "sizeLines": 115,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/extract-xhs-insight/tool.json",
+          "language": "json",
+          "sizeLines": 18,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/phone-cleaner/phone_exporter.py",
+          "language": "python",
+          "sizeLines": 299,
+          "fileCategory": "code"
+        },
+        {
+          "path": "server/tools/phone-cleaner/tests/cases.json",
+          "language": "json",
+          "sizeLines": 25,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tools/phone-cleaner/tests/fixtures/invalid.txt",
+          "language": "txt",
+          "sizeLines": 1,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "server/tools/phone-cleaner/tests/fixtures/minimal.csv",
+          "language": "csv",
+          "sizeLines": 6,
+          "fileCategory": "data"
+        },
+        {
+          "path": "server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt",
+          "language": "txt",
+          "sizeLines": 6,
+          "fileCategory": "docs"
+        },
+        {
+          "path": "server/tools/phone-cleaner/tool.json",
+          "language": "json",
+          "sizeLines": 18,
+          "fileCategory": "config"
+        },
+        {
+          "path": "server/tsconfig.json",
+          "language": "json",
+          "sizeLines": 17,
+          "fileCategory": "config"
+        },
+        {
+          "path": "web/postcss.config.js",
+          "language": "javascript",
+          "sizeLines": 6,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/src/index.css",
+          "language": "css",
+          "sizeLines": 87,
+          "fileCategory": "markup"
+        },
+        {
+          "path": "web/src/shims.d.ts",
+          "language": "typescript",
+          "sizeLines": 6,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/tailwind.config.js",
+          "language": "javascript",
+          "sizeLines": 37,
+          "fileCategory": "code"
+        },
+        {
+          "path": "web/vite.config.ts",
+          "language": "typescript",
+          "sizeLines": 31,
+          "fileCategory": "code"
+        }
+      ],
+      "batchImportData": {
+        "server/tools/extract-xhs-insight/extract_xhs_insight.py": [],
+        "server/tools/extract-xhs-insight/tests/cases.json": [],
+        "server/tools/extract-xhs-insight/tests/fixtures/minimal.html": [],
+        "server/tools/extract-xhs-insight/tests/golden/minimal/minimal_小红书.json": [],
+        "server/tools/extract-xhs-insight/tool.json": [],
+        "server/tools/phone-cleaner/phone_exporter.py": [],
+        "server/tools/phone-cleaner/tests/cases.json": [],
+        "server/tools/phone-cleaner/tests/fixtures/invalid.txt": [],
+        "server/tools/phone-cleaner/tests/fixtures/minimal.csv": [],
+        "server/tools/phone-cleaner/tests/golden/minimal/数据清洗日志.txt": [],
+        "server/tools/phone-cleaner/tool.json": [],
+        "server/tsconfig.json": [],
+        "web/postcss.config.js": [],
+        "web/src/index.css": [],
+        "web/src/shims.d.ts": [],
+        "web/tailwind.config.js": [],
+        "web/vite.config.ts": []
+      },
+      "neighborMap": {
+        "web/src/index.css": [
+          {
+            "path": "web/src/main.tsx",
+            "batchIndex": 2,
+            "symbols": []
+          }
+        ]
+      }
+    }
+  ]
+}

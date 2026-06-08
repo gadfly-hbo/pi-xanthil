@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { FileCode2, FolderOpen, Play, ShieldCheck, Wrench, X } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
+import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { Markdown } from "@/components/Markdown";
 import type { ExtractionRun, ExtractionTool } from "@/types";
@@ -148,7 +149,7 @@ function cellsFor(result: Record<string, unknown>, tool: { id: string; resultCol
   });
 }
 
-export function ExtractionPane() {
+export function ExtractionPane({ workspaceId }: { workspaceId: string | null }) {
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [toolId, setToolId] = useState("");
   const [inputPath, setInputPath] = useState("");
@@ -158,6 +159,7 @@ export function ExtractionPane() {
   const [error, setError] = useState("");
   const [run, setRun] = useState<ExtractionRun | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
+  const [confirming, setConfirming] = useState(false);
   const tool = useMemo(() => tools.find((item) => item.id === toolId) ?? null, [toolId, tools]);
 
   useEffect(() => {
@@ -198,12 +200,17 @@ export function ExtractionPane() {
 
   const execute = async () => {
     if (!tool || !inputPath || !outputPath) return;
+    if ((tool.riskLevel === "L2" || tool.riskLevel === "L3") && !confirming) {
+      setConfirming(true);
+      return;
+    }
+    setConfirming(false);
     setRunning(true);
     setError("");
     setRun(null);
     setPreview(null);
     try {
-      setRun(await api.runExtractionTool(tool.id, inputPath, outputPath, params));
+      setRun(await api.runExtractionTool(tool.id, inputPath, outputPath, params, workspaceId ?? undefined));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -263,6 +270,23 @@ export function ExtractionPane() {
                 <h2 className="text-[13px] font-semibold">{tool?.name ?? "请选择工具"}</h2>
                 <p className="mt-1 text-[12px] text-neutral-500">{tool?.description}</p>
                 {tool && <p className="mt-2 font-mono text-[11px] text-neutral-400">{tool.id} · {tool.runtime} · 输出 {tool.output.join(", ")}</p>}
+                {tool?.riskLevel && (
+                  <p className="mt-1 text-[11px]">
+                    <span className={cn(
+                      "inline-flex items-center gap-1 rounded px-1.5 py-0.5 font-medium",
+                      tool.riskLevel === "L0" && "bg-emerald-100 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400",
+                      tool.riskLevel === "L1" && "bg-blue-100 text-blue-700 dark:bg-blue-950/30 dark:text-blue-400",
+                      tool.riskLevel === "L2" && "bg-amber-100 text-amber-700 dark:bg-amber-950/30 dark:text-amber-400",
+                      tool.riskLevel === "L3" && "bg-red-100 text-red-700 dark:bg-red-950/30 dark:text-red-400",
+                    )}>
+                      风险等级 {tool.riskLevel}
+                    </span>
+                    {tool.allowedUse && <span className="ml-2 text-neutral-500">适用: {tool.allowedUse}</span>}
+                  </p>
+                )}
+                {tool?.forbiddenUse && (
+                  <p className="mt-1 text-[11px] text-red-500">禁止: {tool.forbiddenUse}</p>
+                )}
               </section>
 
               <section className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
@@ -308,7 +332,21 @@ export function ExtractionPane() {
                   </div>
                 )}
 
-                <button disabled={!tool || !inputPath || !outputPath || running} onClick={() => void execute()} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-[12px] font-medium text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900"><Play className="h-3.5 w-3.5" /> {running ? "正在本地提取..." : "开始本地提取"}</button>
+                <button disabled={!tool || !inputPath || !outputPath || running} onClick={() => void execute()} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-[12px] font-medium text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900"><Play className="h-3.5 w-3.5" /> {running ? "正在本地提取..." : confirming ? "确认执行" : "开始本地提取"}</button>
+                {confirming && (
+                  <div className="mt-2 rounded border border-amber-200 bg-amber-50 p-3 text-[11px] dark:border-amber-900/50 dark:bg-amber-950/30">
+                    <p className="font-medium text-amber-700 dark:text-amber-400">
+                      确认执行「{tool?.name}」？风险等级 {tool?.riskLevel || "L2"}
+                    </p>
+                    <p className="mt-1 text-amber-600 dark:text-amber-400">
+                      工具将在本地运行 Python 脚本，读取输入文件并写入输出目录。请确保输入路径不包含敏感明细数据。
+                    </p>
+                    <div className="mt-2 flex gap-2">
+                      <button onClick={() => void execute()} className="rounded bg-amber-600 px-2.5 py-1 text-white hover:bg-amber-700">确认执行</button>
+                      <button onClick={() => setConfirming(false)} className="rounded border border-amber-300 px-2.5 py-1 text-amber-700 dark:border-amber-700 dark:text-amber-400">取消</button>
+                    </div>
+                  </div>
+                )}
               </section>
 
               {run && (

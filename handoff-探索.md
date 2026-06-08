@@ -2,6 +2,237 @@
 
 ---
 
+## 📌 Session 22 — 2026-06-07
+
+### 0. 本次更新摘要（Changelog）
+
+**本次推进**: 在「探索-工作视图」对话头部「沉淀为工作流」按钮旁新增「沉淀 skill」按钮，实现从对话提炼可复用 Skill 的闭环：选范围 → LLM 按 skill 提炼方法蒸馏出 SKILL.md → 可编辑预览 → 保存到项目级 `.pi/skills/`（被 `listSkills` 扫到为 project skill）。
+**关键决策**: ①提炼方法（A 案例解构→B 抽象提炼→C 写 SKILL.md）压成**一次 LLM 调用**（内嵌进 prompt），不做链式三次往返；②落盘到**项目级** `<workspace>/.pi/skills/<slug>/SKILL.md` 而非全局；③**先预览可编辑再保存**，复用 promote 的 `latest_task`/`full_conversation` scope 与 `buildPromoteTranscript`。
+**新增阻塞/问题**: 无。web build ✅、server typecheck（新文件 + index.ts）✅；db.ts 预存脏代码报错照旧忽略。
+**下一步重点**: 真实 dev server smoke 走通「提炼→预览→编辑→保存→listSkills 出现」，验证 LLM 能稳定输出合法 frontmatter。
+
+### 1. 项目元信息
+
+项目名称: 苍耳 pi-Xanthil（数据分析 AI 工作台）
+项目类型: 代码开发
+Session 编号: 第 22 次交接
+本次 Session 起止: 从「对话只能沉淀为工作流」推进到「对话可一键提炼为可复用 Skill 并落盘为 project skill」
+最后更新: 2026-06-07
+
+### 2. 项目目标（North Star）
+
+延续 Session 21，无变化。本 session 新增子目标：让用户在完成一次 pi 数据分析任务后，能把「这次怎么做的」蒸馏为「下次能复用的方法」（SKILL.md），用变量替换常量。
+
+### 3. 当前进度全景
+
+| 模块/任务 | 状态 | 关键产出/位置 | 备注 |
+|---|---|---|---|
+| 提炼方法 prompt 模块 | ✅完成 | `server/src/skill-distillation.ts`（新建） | 内嵌 A→B→C 方法论+自查清单的 `buildSkillDistillationPrompt`、`extractSkillMarkdown`（去围栏/定位 frontmatter）、`parseSkillName`、`slugifySkillName`、`SKILL_DISTILL_SYSTEM_PROMPT` |
+| 提炼 API | ✅完成 | `server/src/index.ts` `POST /api/sessions/:id/distill-skill` | 复用 `buildPromoteTranscript(scope)` 取对话 → `runPiPrompt` → 返回 `{ content, name, model }` 供预览，不落盘 |
+| 保存 API | ✅完成 | `server/src/index.ts` `POST /api/sessions/:id/save-skill` | 写 `<workspace.rootPath>/.pi/skills/<slug>/SKILL.md`；已存在返回 409；返回 `{ path, name, slug }` |
+| 前端 API | ✅完成 | `web/src/lib/api.ts` | `distillSkill` / `saveSkill` |
+| 「沉淀 skill」按钮 | ✅完成 | `web/src/components/ChatPane.tsx` | 紧邻「沉淀为工作流」，Sparkles 图标，props `canDistillSkill`/`onDistillSkill`（复用 `canPromoteToWorkflow` 条件） |
+| 提炼弹窗 | ✅完成 | `web/src/App.tsx` | scope 选择 → 开始提炼 → 可编辑 SKILL.md 预览 + 名称输入 → 保存；含 distill* 状态/handlers |
+| web build / server typecheck | ✅完成 | — | build ✅；skill-distillation.ts/index.ts typecheck 无报错；db.ts 预存脏代码忽略 |
+| 真实 dev server smoke | ⏳待启动 | — | 未在浏览器实跑提炼/保存全链路 |
+
+### 4. 关键决策与权衡 ⭐
+
+**决策 41: skill 提炼压成单次 LLM 调用，不做链式 A→B→C**
+- 选择: `buildSkillDistillationPrompt(transcript)` 把「案例解构→抽象提炼→写作 SKILL.md」三步方法论+自查清单全部内嵌进一个 user prompt，让模型一次输出最终 SKILL.md。
+- 备选: 链式三次调用（A 出解构 → B 出方法论 → C 出 SKILL.md），可看中间产物（否决：3 次往返慢 3 倍，单次对话信息量不需要分步喂）。
+- 理由: 与报告审核/promote 一样单次 `runPiPrompt`，体验快；中间产物对最终落地的 SKILL.md 无增益。
+- 影响范围: 仅 `skill-distillation.ts` + distill-skill 路由。
+- 可逆性: 高（要分步随时可拆）。
+
+**决策 42: skill 落盘到项目级 `<workspace>/.pi/skills/`，不落全局**
+- 选择: `save-skill` 写到 `join(workspace.rootPath, ".pi", "skills", slug, "SKILL.md")`。
+- 备选: 写全局 `~/.pi/agent/skills/`（否决：会跨项目污染，且提炼自本工作区的具体任务，project 作用域更合适）。
+- 理由: `skills.ts` 的 `projectSkillRoots()` 从 workspaceRoot 向上扫 `.pi/skills` 与 `.agents/skills`，写到项目根即可被 `listSkills()` 识别为 `source: "project"` 的可用 skill，随工作区可见。
+- 影响范围: 落盘路径、`listSkills` 发现逻辑（无需改）；已存在同名 slug 返回 409 不覆盖。
+- 可逆性: 高。
+
+**决策 43: 先预览可编辑再保存，分两个 API**
+- 选择: distill 与 save 拆成两个端点；前端弹窗里提炼结果进可编辑 textarea + 名称输入框，确认后才调 save。
+- 备选: 一键提炼直接落盘（否决：SKILL.md 是给 agent 用的产物，LLM 可能格式/命名不理想，需人工把关）。
+- 理由: 仿照「报告审核」的 edit 模式；frontmatter `name` 解析出来预填名称输入框，用户可改。
+- 影响范围: `App.tsx` distill 状态机（distillContent/distillName/distillSavedPath）。
+- 可逆性: 高。
+
+### 5. 技术/方案细节快照
+
+- **提炼方法来源**: `~/.pi/agent/prompts/skill-distillation-prompts.md`（用户提供，4 段 pipeline A 解构/B 抽象/C 写 SKILL.md/D 多案例融合 + 快速检验清单）。本期只用 A→B→C，压成单 prompt。
+- **对话取数**: 复用 `buildPromoteTranscript(sessionId, scope)`（`index.ts:815`）——`latest_task` 取最后一个 user 起始，`full_conversation` 取全部，尾部截断 24000 字。
+- **LLM 调用**: `runPiPrompt({ workspaceRoot: workspace.rootPath, text, model, systemPrompt: SKILL_DISTILL_SYSTEM_PROMPT, timeoutMs: 180_000, onEvent: trackUsageEvent(...targetKind:"session"...) })`。
+- **输出清洗**: `extractSkillMarkdown` 去 ```markdown 围栏 + 从首个 `---` 截断到 frontmatter 起始；`parseSkillName` 读 frontmatter `name:`；`slugifySkillName` 允许 `[a-z0-9一-龥]`，兜底 `skill-<ts>`。
+- **关键约束**:
+  - 本功能**不受数据探索 LLM 隔离约束**：提炼对象是对话 transcript（本就 LLM 可见），非原始数据文件。改动文件均不在 `DataExplorationPane`/`data-exploration/`/`lib/insights|joins|profiling` 子树内，扩展版 LLM grep 不受影响。
+  - 「沉淀 skill」按钮触发条件 = `canPromoteToWorkflow`（非运行中 + 有已完成 assistant 回复）。
+  - ChatPane 仅在 explore/view 单处挂载（`App.tsx:665` 附近），无第二挂载点。
+- **验证**: `npm run build` ✅；`npm -w server run typecheck` 中 `skill-distillation.ts` 与 `index.ts` 0 报错（修了两处 strict regex group undefined 守卫 `fence?.[1]` / `match?.[1]`）；db.ts/memory-governance.test.ts 预存脏代码报错照旧。
+
+### 6. 未完成事项与下一步（Action Items）
+
+- [ ] **真实 dev server smoke（沉淀 skill 全链路）** — P0
+  - 上下文: 仅过 build/typecheck，未在浏览器实跑。
+  - 步骤: 起 dev server → 在 explore/工作视图完成一次有 assistant 回复的对话 → 点「沉淀 skill」→ 选范围 → 「开始提炼」→ 看 SKILL.md 预览 → 改名称/内容 → 「保存 skill」→ 确认提示落盘路径 → 在 skill 选择器（ChatPane composer 的 SkillSelector）确认新 skill 出现。
+  - 完成标准: LLM 返回合法 frontmatter（name+description）；保存成功；`listSkills` 能扫到为 project skill。
+  - 潜在难点: LLM 可能不严格按「第一行 ---」输出（已有 `extractSkillMarkdown` 去围栏+定位兜底，但未实跑验证）；slug 含中文目录名在某些工具链下的兼容性。
+
+- [ ] **报告审核 P0/创新功能（延续 Session 21）** — P1
+  - Session 21 的报告审核 smoke + 8 项创新功能仍未动；本 session 转向了 skill 提炼。
+
+### 7. 开放问题与待确认事项
+
+- ❓ **是否需要 D 步「多案例融合」入口**：当前只做单对话提炼（A→B→C）。若用户积累多个同类 skill，可能想要融合升级（Prompt D）。
+  - 当前倾向: 等用户提出再做；可在 skill 管理界面加「融合」入口。
+  - 阻塞了什么: 不阻塞当前功能。
+
+- ❓ **所有改动均未 git commit**（延续 Session 20/21）
+  - 当前倾向: 等用户指示。
+
+### 8. 上下文与约定
+
+无变化，延续既有约定。强调：①「沉淀 skill」不触发数据探索 LLM 隔离约束（提炼对象是对话非数据）；②提炼方法论以 `~/.pi/agent/prompts/skill-distillation-prompts.md` 为准。
+
+### 9. 下一个 Session 启动指令
+
+> 先读本 Session 顶部「摘要」「关键决策」。
+> 跑 `npm run build` 确认现状（server db.ts 报错忽略）。
+> 最紧迫：**沉淀 skill 全链路 smoke**（提炼→预览→编辑→保存→SkillSelector 出现），重点验证 LLM frontmatter 稳定性。
+> 注意：本功能不受数据探索 LLM 隔离约束；落盘路径是项目级 `<workspace>/.pi/skills/<slug>/SKILL.md`。
+> 如要提交代码，先与用户确认。
+
+---
+
+## 📌 Session 21 — 2026-06-07
+
+### 0. 本次更新摘要（Changelog）
+
+**本次推进**: 在「汇报版本」后新增「报告审核」二级 tab，实现完整审核闭环：报告选择 → LLM 结构化评审（Markdown + 行内批注 + 评分）→ 手动编辑（MD）/ AI 自动修改（全格式）→ 修改前后 Diff 对比 → 审核历史回溯。两轮迭代：第一轮落地基础审核 + AI 修改管线；第二轮新增行内批注、Diff 可视化、审核历史面板三项增强。
+**关键决策**: ①LLM 评审输出结构化 JSON（`reviewMarkdown` + `annotations[]` + `totalScore`），而非纯 Markdown，使行内批注和评分可解析；②审核历史物化为 `review_history/*.json` 文件，按 `pathId + relPath` 过滤，前端左侧面板展示；③Diff 复用 `BusinessRequirementPane` 的 LCS 行级算法，AI 修改后自动切到 Diff tab。
+**新增阻塞/问题**: 无。typecheck/web build 全通过；server typecheck 仅 `db.ts`/`memory-governance.test.ts` 预存脏代码报错。
+**下一步重点**: 用户已列出 8 项后续创新建议（闭环验证 / 分维度修改 / 模板库 / 批量审核 / 类型识别 / 置信度 / 导出 / Checklist），按用户指示排优先级推进。
+
+### 1. 项目元信息
+
+项目名称: 苍耳 pi-Xanthil（数据分析 AI 工作台）
+项目类型: 代码开发
+Session 编号: 第 21 次交接
+本次 Session 起止: 从「探索 tab 无报告审核能力」推进到「报告审核 tab 完整上线：评审 + 行内批注 + Diff + 历史 + AI 修改」
+最后更新: 2026-06-07
+
+### 2. 项目目标（North Star）
+
+延续 Session 20，无变化。本 session 新增子目标：让用户在报告生成后，能在统一界面内完成 LLM 评审、修改建议查看、手动/AI 修改、修改对比、历史回溯的完整闭环。
+
+### 3. 当前进度全景
+
+| 模块/任务 | 状态 | 关键产出/位置 | 备注 |
+|---|---|---|---|
+| 报告审核 tab 导航 | ✅完成 | `web/src/lib/constants.ts` | `SubTab` 新增 `report_review`；位置在 `presentation_version` 之后 |
+| 报告审核主组件 | ✅完成 | `web/src/components/ReportReviewPane.tsx` | 报告选择器 + 评审提示词 + 开始评审按钮 + 四 tab 结果区 |
+| 内置审核提示词 | ✅完成 | `server/src/report-review.ts` | 5 维度结构化评审标准（逻辑/数据/结论/表达/行动），每项 X/10 |
+| LLM 评审 API | ✅完成 | `server/src/index.ts` `POST /api/report-review/review` | 输出 JSON：`reviewMarkdown` + `annotations[]` + `totalScore`；自动保存历史 |
+| AI 自动修改 API | ✅完成 | `server/src/index.ts` `POST /api/report-review/auto-fix` | 基于评审意见修改报告，保存到 `reviewed_versions/` |
+| 行内批注展示 | ✅完成 | `ReportReviewPane.tsx` annotations tab | 每条批注卡片：原文引用 + 问题 + 建议 + P0/P1/P2 标签 |
+| 修改前后 Diff | ✅完成 | `ReportReviewPane.tsx` diff tab | LCS 行级 diff，删除行红色、新增行绿色 |
+| 审核历史面板 | ✅完成 | `ReportReviewPane.tsx` + `GET /api/report-review/history` | 左侧底部历史列表（时间 + 评分），点击回看 |
+| 手动编辑（MD） | ✅完成 | `ReportReviewPane.tsx` edit tab | textarea 编辑 + 保存按钮，调 `workspacePathFilePut` |
+| typecheck / build | ✅完成 | — | web typecheck ✅；build ✅；server 仅预存脏代码报错 |
+
+### 4. 关键决策与权衡 ⭐
+
+**决策 38: LLM 评审输出结构化 JSON，而非纯 Markdown**
+- 选择: `buildReviewPrompt()` 要求 LLM 输出 `{"reviewMarkdown":"...","annotations":[...],"totalScore":35}`，服务端 `extractJsonObject()` 解析后 fallback 到纯文本。
+- 备选: 只输出 Markdown，前端用正则提取评分和批注（否决：LLM 格式不稳定，正则提取不可靠）。
+- 理由: 结构化输出使行内批注可独立渲染为卡片、评分可做历史趋势、未来可做分维度选择性修改。
+- 影响范围: review API 返回格式、前端 annotations/diff/history 三 tab 均依赖此结构。
+- 可逆性: 中（前端已适配 JSON 解析 + Markdown fallback 双路径）。
+
+**决策 39: 审核历史物化为文件系统 JSON，不走数据库**
+- 选择: 每次评审后 `writeFlowFile(outputDir, "review_history/<name>-审核-<ts>.json", ...)`，`GET /api/report-review/history` 扫描目录读取。
+- 备选: 存入 SQLite（否决：评审历史是报告输出目录的附属物，与报告文件放在一起更直观，且不需要复杂查询）。
+- 理由: 与项目现有 `business_requirements/`、`presentation_versions/`、`reviewed_versions/` 模式一致；用户可直接在文件系统中查看/删除。
+- 影响范围: 仅 report-review 路由和前端 history 面板。
+- 可逆性: 高。
+
+**决策 40: Diff 复用 LCS 算法，前端计算，不新增后端 API**
+- 选择: `ReportReviewPane.tsx` 内嵌 `buildLineDiff()`（从 `BusinessRequirementPane.tsx` 复制），比较 `originalContent` vs `fixedContent`。
+- 备选: 新增后端 diff API（否决：行级 diff 计算量小，前端即可完成，无需额外网络往返）。
+- 理由: 与业务需求版本 diff 保持一致；AI 修改后自动切到 diff tab，即时反馈。
+- 影响范围: 仅 `ReportReviewPane.tsx`。
+- 可逆性: 高。
+
+### 5. 技术/方案细节快照
+
+- **新增文件**：
+  - `server/src/report-review.ts`：`DEFAULT_REVIEW_PROMPT`（5 维度评审标准）、`AUTO_FIX_SYSTEM_PROMPT`、`buildReviewPrompt()`、`buildAutoFixPrompt()`、`parseReviewScore()`、`ReviewAnnotation` / `ReviewResult` / `ReviewHistoryEntry` 类型。
+  - `web/src/components/ReportReviewPane.tsx`：~310 行，含报告扫描、评审触发、四 tab 结果区（review / annotations / diff / edit）、审核历史面板、LCS diff 算法。
+
+- **新增 API 路由**（`server/src/index.ts`）：
+  - `POST /api/report-review/review` — 接收 `{ pathId, relPath?, prompt?, model? }`，调用 `runPiPrompt` 评审，解析 JSON → 保存历史 JSON → 返回 `{ content, annotations, totalScore, model, reportContent }`。
+  - `POST /api/report-review/auto-fix` — 接收 `{ pathId, relPath?, reviewContent, prompt?, model? }`，调用 `runPiPrompt` 修改，保存到 `reviewed_versions/<name>-审核修改-<ts>.<ext>`。
+  - `GET /api/report-review/history?pathId=&relPath=` — 扫描 `review_history/` 目录，按 `relPath` 过滤，按时间倒序返回。
+
+- **前端 API**（`web/src/lib/api.ts`）：
+  - `reviewReport(payload)` → `{ content, annotations, totalScore, model, reportContent }`
+  - `autoFixReport(payload)` → `{ path, content, model }`
+  - `listReviewHistory(payload)` → `{ entries: ReviewHistoryEntry[] }`
+
+- **ReportReviewPane 状态结构**：
+  - `reviewContent` / `annotations` / `totalScore` — 当前评审结果
+  - `originalContent` / `fixedContent` / `fixedPath` — 原始报告 + AI 修改结果
+  - `editingContent` — 手动编辑内容
+  - `activeTab: "review" | "annotations" | "diff" | "edit"` — 结果区 tab 切换
+  - `history: HistoryEntry[]` — 审核历史列表
+
+- **关键约束**：
+  - 报告审核模块**不涉及数据探索**，无 LLM 隔离限制。评审和修改都走 LLM，这是预期行为。
+  - 审核历史 JSON 文件路径：`<report_output_dir>/review_history/<sanitized_name>-审核-<timestamp>.json`
+  - AI 修改输出路径：`<report_output_dir>/reviewed_versions/<sanitized_name>-审核修改-<timestamp>.<ext>`
+
+### 6. 未完成事项与下一步（Action Items）
+
+- [ ] **真实 dev server smoke（报告审核全链路）** — P0
+  - 上下文: 报告审核模块仅通过 typecheck/build，未在浏览器实跑。
+  - 步骤: 启动 dev server → 切到「报告审核」tab → 选一个 MD 报告 → 点击「开始评审」→ 查看评审结果 / 行内批注 → 点击「AI 自动修改」→ 查看 Diff → 手动编辑 → 保存 → 查看审核历史。
+  - 完成标准: 全链路无报错；LLM 返回有效 JSON；annotations 正确解析；Diff 正确显示；历史记录可回看。
+  - 潜在难点: LLM 可能不按 JSON 格式输出（已有 `extractJsonObject` fallback + Markdown 降级）。
+
+- [ ] **报告审核创新功能（8 项，按用户优先级）** — P1/P2
+  - 审核-修改闭环验证：AI 修改后自动二次审核，对比评分变化
+  - 分维度选择性修改：勾选维度后 AI 按需修改
+  - 评审模板库：内置多套领域审核标准（财务/市场/技术/运营）
+  - 批量审核：多选报告一键批量评审
+  - 报告类型自动识别：LLM 判断类型后匹配审核标准
+  - 审核置信度标注：每条建议附带置信度，低置信度折叠
+  - 审核结果导出：评审报告 + 建议导出为 MD/HTML
+  - 审核 Checklist 模式：标准转可勾选 checklist
+
+### 7. 开放问题与待确认事项
+
+- ❓ **创新功能推进顺序**：用户已列出 8 项，但未指定优先级。建议先做「分维度选择性修改 + 审核-修改闭环验证」（体验闭环），再做「模板库 + 批量审核」（效率工具）。
+  - 当前倾向: 等用户指定。
+  - 阻塞了什么: 不阻塞当前功能使用。
+
+- ❓ **所有改动均未 git commit**（延续 Session 20 开放问题）
+  - 当前倾向: 等用户指示是否提交。
+
+### 8. 上下文与约定
+
+无变化，延续既有约定。强调：①数据探索模块 LLM 隔离约束不适用于报告审核模块（审核本身就需要 LLM）；②仓库大量他人 dirty changes 不要回滚。
+
+### 9. 下一个 Session 启动指令
+
+> 先读本 Session 顶部「摘要」「关键决策」。
+> 跑 `npm run build` 确认现状（server typecheck 的 db.ts 报错忽略）。
+> 最紧迫：**真实 dev server smoke**，走通报告审核全链路（选报告→评审→批注→AI 修改→Diff→历史）。
+> 创新功能 8 项中，建议优先做「分维度选择性修改」和「审核-修改闭环验证」。
+> 如要提交代码，先与用户确认。
+
+---
+
 ## 📌 Session 20 — 2026-06-07
 
 ### 0. 本次更新摘要（Changelog）

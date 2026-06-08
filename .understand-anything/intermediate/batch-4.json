@@ -1,0 +1,3626 @@
+{
+  "nodes": [
+    {
+      "id": "file:server/src/multi-agent-runner.test.ts",
+      "type": "file",
+      "name": "multi-agent-runner.test.ts",
+      "filePath": "server/src/multi-agent-runner.test.ts",
+      "summary": "Auto-generated summary for server/src/multi-agent-runner.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.test.ts:makeBaseOptions",
+      "type": "function",
+      "name": "makeBaseOptions",
+      "lineRange": [
+        16,
+        27
+      ],
+      "summary": "Auto-generated summary for function makeBaseOptions",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.test.ts:fakeExtractionTool",
+      "type": "function",
+      "name": "fakeExtractionTool",
+      "lineRange": [
+        29,
+        42
+      ],
+      "summary": "Auto-generated summary for function fakeExtractionTool",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/multi-agent-runner.ts",
+      "type": "file",
+      "name": "multi-agent-runner.ts",
+      "filePath": "server/src/multi-agent-runner.ts",
+      "summary": "Auto-generated summary for server/src/multi-agent-runner.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:readWorkflow",
+      "type": "function",
+      "name": "readWorkflow",
+      "lineRange": [
+        140,
+        149
+      ],
+      "summary": "Auto-generated summary for function readWorkflow",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:validateWorkflow",
+      "type": "function",
+      "name": "validateWorkflow",
+      "lineRange": [
+        151,
+        254
+      ],
+      "summary": "Auto-generated summary for function validateWorkflow",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:topoOrder",
+      "type": "function",
+      "name": "topoOrder",
+      "lineRange": [
+        256,
+        281
+      ],
+      "summary": "Auto-generated summary for function topoOrder",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:renderPrompt",
+      "type": "function",
+      "name": "renderPrompt",
+      "lineRange": [
+        285,
+        297
+      ],
+      "summary": "Auto-generated summary for function renderPrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:extractMarkerArray",
+      "type": "function",
+      "name": "extractMarkerArray",
+      "lineRange": [
+        307,
+        316
+      ],
+      "summary": "Auto-generated summary for function extractMarkerArray",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:extractText",
+      "type": "function",
+      "name": "extractText",
+      "lineRange": [
+        333,
+        343
+      ],
+      "summary": "Auto-generated summary for function extractText",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:runMultiAgent",
+      "type": "function",
+      "name": "runMultiAgent",
+      "lineRange": [
+        345,
+        432
+      ],
+      "summary": "Auto-generated summary for function runMultiAgent",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:executeToolNode",
+      "type": "function",
+      "name": "executeToolNode",
+      "lineRange": [
+        448,
+        503
+      ],
+      "summary": "Auto-generated summary for function executeToolNode",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:executeTurn",
+      "type": "function",
+      "name": "executeTurn",
+      "lineRange": [
+        515,
+        544
+      ],
+      "summary": "Auto-generated summary for function executeTurn",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:runFanOut",
+      "type": "function",
+      "name": "runFanOut",
+      "lineRange": [
+        554,
+        595
+      ],
+      "summary": "Auto-generated summary for function runFanOut",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:toolSummaryHasError",
+      "type": "function",
+      "name": "toolSummaryHasError",
+      "lineRange": [
+        615,
+        629
+      ],
+      "summary": "Auto-generated summary for function toolSummaryHasError",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/multi-agent-runner.ts:listRelativeFiles",
+      "type": "function",
+      "name": "listRelativeFiles",
+      "lineRange": [
+        631,
+        644
+      ],
+      "summary": "Auto-generated summary for function listRelativeFiles",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/output-paths.ts",
+      "type": "file",
+      "name": "output-paths.ts",
+      "filePath": "server/src/output-paths.ts",
+      "summary": "Auto-generated summary for server/src/output-paths.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/output-paths.ts:resolveOutputTarget",
+      "type": "function",
+      "name": "resolveOutputTarget",
+      "lineRange": [
+        51,
+        67
+      ],
+      "summary": "Auto-generated summary for function resolveOutputTarget",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/output-paths.ts:buildOutputPathInstructions",
+      "type": "function",
+      "name": "buildOutputPathInstructions",
+      "lineRange": [
+        69,
+        79
+      ],
+      "summary": "Auto-generated summary for function buildOutputPathInstructions",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/output-paths.ts:buildRegisteredPathContext",
+      "type": "function",
+      "name": "buildRegisteredPathContext",
+      "lineRange": [
+        88,
+        130
+      ],
+      "summary": "Auto-generated summary for function buildRegisteredPathContext",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/pi-adapter.ts",
+      "type": "file",
+      "name": "pi-adapter.ts",
+      "filePath": "server/src/pi-adapter.ts",
+      "summary": "Auto-generated summary for server/src/pi-adapter.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/src/pi-adapter.ts:runPiRpcCommand",
+      "type": "function",
+      "name": "runPiRpcCommand",
+      "lineRange": [
+        65,
+        145
+      ],
+      "summary": "Auto-generated summary for function runPiRpcCommand",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/pi-adapter.ts:getPiSessionStats",
+      "type": "function",
+      "name": "getPiSessionStats",
+      "lineRange": [
+        147,
+        149
+      ],
+      "summary": "Auto-generated summary for function getPiSessionStats",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/pi-adapter.ts:compactPiSession",
+      "type": "function",
+      "name": "compactPiSession",
+      "lineRange": [
+        151,
+        156
+      ],
+      "summary": "Auto-generated summary for function compactPiSession",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/pi-adapter.ts:runPiPrompt",
+      "type": "function",
+      "name": "runPiPrompt",
+      "lineRange": [
+        163,
+        241
+      ],
+      "summary": "Auto-generated summary for function runPiPrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/pi-adapter.ts:runPiTurn",
+      "type": "function",
+      "name": "runPiTurn",
+      "lineRange": [
+        252,
+        331
+      ],
+      "summary": "Auto-generated summary for function runPiTurn",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/src/process-env.ts",
+      "type": "file",
+      "name": "process-env.ts",
+      "filePath": "server/src/process-env.ts",
+      "summary": "Auto-generated summary for server/src/process-env.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/process-env.ts:buildSanitizedEnv",
+      "type": "function",
+      "name": "buildSanitizedEnv",
+      "lineRange": [
+        22,
+        28
+      ],
+      "summary": "Auto-generated summary for function buildSanitizedEnv",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/prompt-blocks.ts",
+      "type": "file",
+      "name": "prompt-blocks.ts",
+      "filePath": "server/src/prompt-blocks.ts",
+      "summary": "Auto-generated summary for server/src/prompt-blocks.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/prompt-blocks.ts:buildDataContextBlock",
+      "type": "function",
+      "name": "buildDataContextBlock",
+      "lineRange": [
+        76,
+        80
+      ],
+      "summary": "Auto-generated summary for function buildDataContextBlock",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/prompt-blocks.ts:assembleSystemPrompt",
+      "type": "function",
+      "name": "assembleSystemPrompt",
+      "lineRange": [
+        82,
+        87
+      ],
+      "summary": "Auto-generated summary for function assembleSystemPrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/report-review.ts",
+      "type": "file",
+      "name": "report-review.ts",
+      "filePath": "server/src/report-review.ts",
+      "summary": "Auto-generated summary for server/src/report-review.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/report-review.ts:buildReviewPrompt",
+      "type": "function",
+      "name": "buildReviewPrompt",
+      "lineRange": [
+        112,
+        148
+      ],
+      "summary": "Auto-generated summary for function buildReviewPrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/report-review.ts:buildAutoFixPrompt",
+      "type": "function",
+      "name": "buildAutoFixPrompt",
+      "lineRange": [
+        150,
+        168
+      ],
+      "summary": "Auto-generated summary for function buildAutoFixPrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/report-review.ts:parseReviewScore",
+      "type": "function",
+      "name": "parseReviewScore",
+      "lineRange": [
+        170,
+        176
+      ],
+      "summary": "Auto-generated summary for function parseReviewScore",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/reports.ts",
+      "type": "file",
+      "name": "reports.ts",
+      "filePath": "server/src/reports.ts",
+      "summary": "Auto-generated summary for server/src/reports.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/reports.ts:readFlowName",
+      "type": "function",
+      "name": "readFlowName",
+      "lineRange": [
+        43,
+        59
+      ],
+      "summary": "Auto-generated summary for function readFlowName",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/reports.ts:walkFlowRuns",
+      "type": "function",
+      "name": "walkFlowRuns",
+      "lineRange": [
+        61,
+        96
+      ],
+      "summary": "Auto-generated summary for function walkFlowRuns",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/reports.ts:walkDir",
+      "type": "function",
+      "name": "walkDir",
+      "lineRange": [
+        98,
+        146
+      ],
+      "summary": "Auto-generated summary for function walkDir",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/reports.ts:scanRoot",
+      "type": "function",
+      "name": "scanRoot",
+      "lineRange": [
+        148,
+        194
+      ],
+      "summary": "Auto-generated summary for function scanRoot",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/reports.ts:scanAllReports",
+      "type": "function",
+      "name": "scanAllReports",
+      "lineRange": [
+        196,
+        205
+      ],
+      "summary": "Auto-generated summary for function scanAllReports",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-activation.test.ts",
+      "type": "file",
+      "name": "skill-activation.test.ts",
+      "filePath": "server/src/skill-activation.test.ts",
+      "summary": "Auto-generated summary for server/src/skill-activation.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skill-activation.test.ts:makeSkillFile",
+      "type": "function",
+      "name": "makeSkillFile",
+      "lineRange": [
+        9,
+        28
+      ],
+      "summary": "Auto-generated summary for function makeSkillFile",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-activation.ts",
+      "type": "file",
+      "name": "skill-activation.ts",
+      "filePath": "server/src/skill-activation.ts",
+      "summary": "Auto-generated summary for server/src/skill-activation.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skill-activation.ts:detectSkillActivation",
+      "type": "function",
+      "name": "detectSkillActivation",
+      "lineRange": [
+        18,
+        50
+      ],
+      "summary": "Auto-generated summary for function detectSkillActivation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-activation.ts:extractSkillActivationKeywords",
+      "type": "function",
+      "name": "extractSkillActivationKeywords",
+      "lineRange": [
+        52,
+        74
+      ],
+      "summary": "Auto-generated summary for function extractSkillActivationKeywords",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-activation.ts:parseFrontmatter",
+      "type": "function",
+      "name": "parseFrontmatter",
+      "lineRange": [
+        76,
+        87
+      ],
+      "summary": "Auto-generated summary for function parseFrontmatter",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-curator.ts",
+      "type": "file",
+      "name": "skill-curator.ts",
+      "filePath": "server/src/skill-curator.ts",
+      "summary": "Auto-generated summary for server/src/skill-curator.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skill-curator.ts:curateSkillEvaluation",
+      "type": "function",
+      "name": "curateSkillEvaluation",
+      "lineRange": [
+        22,
+        68
+      ],
+      "summary": "Auto-generated summary for function curateSkillEvaluation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-curator.ts:applySkillCurationProposals",
+      "type": "function",
+      "name": "applySkillCurationProposals",
+      "lineRange": [
+        70,
+        92
+      ],
+      "summary": "Auto-generated summary for function applySkillCurationProposals",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-curator.ts:buildCurationPrompt",
+      "type": "function",
+      "name": "buildCurationPrompt",
+      "lineRange": [
+        104,
+        174
+      ],
+      "summary": "Auto-generated summary for function buildCurationPrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skill-curator.ts:parseCurationResponse",
+      "type": "function",
+      "name": "parseCurationResponse",
+      "lineRange": [
+        176,
+        187
+      ],
+      "summary": "Auto-generated summary for function parseCurationResponse",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-curator.ts:autoTriggerCuration",
+      "type": "function",
+      "name": "autoTriggerCuration",
+      "lineRange": [
+        190,
+        202
+      ],
+      "summary": "Auto-generated summary for function autoTriggerCuration",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-curator.ts:parseProposals",
+      "type": "function",
+      "name": "parseProposals",
+      "lineRange": [
+        204,
+        219
+      ],
+      "summary": "Auto-generated summary for function parseProposals",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-distillation.ts",
+      "type": "file",
+      "name": "skill-distillation.ts",
+      "filePath": "server/src/skill-distillation.ts",
+      "summary": "Auto-generated summary for server/src/skill-distillation.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skill-distillation.ts:buildSkillDistillationPrompt",
+      "type": "function",
+      "name": "buildSkillDistillationPrompt",
+      "lineRange": [
+        14,
+        46
+      ],
+      "summary": "Auto-generated summary for function buildSkillDistillationPrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-distillation.ts:extractSkillMarkdown",
+      "type": "function",
+      "name": "extractSkillMarkdown",
+      "lineRange": [
+        50,
+        57
+      ],
+      "summary": "Auto-generated summary for function extractSkillMarkdown",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-distillation.ts:parseSkillName",
+      "type": "function",
+      "name": "parseSkillName",
+      "lineRange": [
+        60,
+        67
+      ],
+      "summary": "Auto-generated summary for function parseSkillName",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-distillation.ts:slugifySkillName",
+      "type": "function",
+      "name": "slugifySkillName",
+      "lineRange": [
+        70,
+        77
+      ],
+      "summary": "Auto-generated summary for function slugifySkillName",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-evaluation-api.test.ts",
+      "type": "file",
+      "name": "skill-evaluation-api.test.ts",
+      "filePath": "server/src/skill-evaluation-api.test.ts",
+      "summary": "Auto-generated summary for server/src/skill-evaluation-api.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-evaluation-api.ts",
+      "type": "file",
+      "name": "skill-evaluation-api.ts",
+      "filePath": "server/src/skill-evaluation-api.ts",
+      "summary": "Auto-generated summary for server/src/skill-evaluation-api.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-api.ts:parseSkillEvaluationRunRequest",
+      "type": "function",
+      "name": "parseSkillEvaluationRunRequest",
+      "lineRange": [
+        17,
+        41
+      ],
+      "summary": "Auto-generated summary for function parseSkillEvaluationRunRequest",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-api.ts:parseVariants",
+      "type": "function",
+      "name": "parseVariants",
+      "lineRange": [
+        43,
+        60
+      ],
+      "summary": "Auto-generated summary for function parseVariants",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-api.ts:parseTasks",
+      "type": "function",
+      "name": "parseTasks",
+      "lineRange": [
+        62,
+        81
+      ],
+      "summary": "Auto-generated summary for function parseTasks",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-evaluation-runner.test.ts",
+      "type": "file",
+      "name": "skill-evaluation-runner.test.ts",
+      "filePath": "server/src/skill-evaluation-runner.test.ts",
+      "summary": "Auto-generated summary for server/src/skill-evaluation-runner.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.test.ts:makeSkillFile",
+      "type": "function",
+      "name": "makeSkillFile",
+      "lineRange": [
+        21,
+        40
+      ],
+      "summary": "Auto-generated summary for function makeSkillFile",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.test.ts:makeFakeRunTurn",
+      "type": "function",
+      "name": "makeFakeRunTurn",
+      "lineRange": [
+        42,
+        68
+      ],
+      "summary": "Auto-generated summary for function makeFakeRunTurn",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.test.ts:makeSuccessfulResult",
+      "type": "function",
+      "name": "makeSuccessfulResult",
+      "lineRange": [
+        362,
+        389
+      ],
+      "summary": "Auto-generated summary for function makeSuccessfulResult",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-evaluation-runner.ts",
+      "type": "file",
+      "name": "skill-evaluation-runner.ts",
+      "filePath": "server/src/skill-evaluation-runner.ts",
+      "summary": "Auto-generated summary for server/src/skill-evaluation-runner.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:runSkillEvaluation",
+      "type": "function",
+      "name": "runSkillEvaluation",
+      "lineRange": [
+        149,
+        179
+      ],
+      "summary": "Auto-generated summary for function runSkillEvaluation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:summarizeSkillEvaluationResults",
+      "type": "function",
+      "name": "summarizeSkillEvaluationResults",
+      "lineRange": [
+        181,
+        187
+      ],
+      "summary": "Auto-generated summary for function summarizeSkillEvaluationResults",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:runSkillCase",
+      "type": "function",
+      "name": "runSkillCase",
+      "lineRange": [
+        189,
+        258
+      ],
+      "summary": "Auto-generated summary for function runSkillCase",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:judgeSkillPairwiseResults",
+      "type": "function",
+      "name": "judgeSkillPairwiseResults",
+      "lineRange": [
+        260,
+        305
+      ],
+      "summary": "Auto-generated summary for function judgeSkillPairwiseResults",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:runRepeatedPairwiseJudge",
+      "type": "function",
+      "name": "runRepeatedPairwiseJudge",
+      "lineRange": [
+        307,
+        337
+      ],
+      "summary": "Auto-generated summary for function runRepeatedPairwiseJudge",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:aggregatePairwiseJudgeRuns",
+      "type": "function",
+      "name": "aggregatePairwiseJudgeRuns",
+      "lineRange": [
+        339,
+        378
+      ],
+      "summary": "Auto-generated summary for function aggregatePairwiseJudgeRuns",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:runDefaultPairwiseJudge",
+      "type": "function",
+      "name": "runDefaultPairwiseJudge",
+      "lineRange": [
+        380,
+        407
+      ],
+      "summary": "Auto-generated summary for function runDefaultPairwiseJudge",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:buildPairwiseJudgePrompt",
+      "type": "function",
+      "name": "buildPairwiseJudgePrompt",
+      "lineRange": [
+        409,
+        444
+      ],
+      "summary": "Auto-generated summary for function buildPairwiseJudgePrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:parsePairwiseJudgeResponse",
+      "type": "function",
+      "name": "parsePairwiseJudgeResponse",
+      "lineRange": [
+        446,
+        475
+      ],
+      "summary": "Auto-generated summary for function parsePairwiseJudgeResponse",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:pairwiseJudgeFailure",
+      "type": "function",
+      "name": "pairwiseJudgeFailure",
+      "lineRange": [
+        486,
+        500
+      ],
+      "summary": "Auto-generated summary for function pairwiseJudgeFailure",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:runSkillPiTurn",
+      "type": "function",
+      "name": "runSkillPiTurn",
+      "lineRange": [
+        502,
+        539
+      ],
+      "summary": "Auto-generated summary for function runSkillPiTurn",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:validateSkillEvaluationOptions",
+      "type": "function",
+      "name": "validateSkillEvaluationOptions",
+      "lineRange": [
+        541,
+        568
+      ],
+      "summary": "Auto-generated summary for function validateSkillEvaluationOptions",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:summarizeVariants",
+      "type": "function",
+      "name": "summarizeVariants",
+      "lineRange": [
+        570,
+        590
+      ],
+      "summary": "Auto-generated summary for function summarizeVariants",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:summarizeTasks",
+      "type": "function",
+      "name": "summarizeTasks",
+      "lineRange": [
+        592,
+        605
+      ],
+      "summary": "Auto-generated summary for function summarizeTasks",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:summarizePairwise",
+      "type": "function",
+      "name": "summarizePairwise",
+      "lineRange": [
+        612,
+        638
+      ],
+      "summary": "Auto-generated summary for function summarizePairwise",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skill-evaluation-runner.ts:majorityVerdict",
+      "type": "function",
+      "name": "majorityVerdict",
+      "lineRange": [
+        664,
+        675
+      ],
+      "summary": "Auto-generated summary for function majorityVerdict",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skill-retrieval.ts",
+      "type": "file",
+      "name": "skill-retrieval.ts",
+      "filePath": "server/src/skill-retrieval.ts",
+      "summary": "Auto-generated summary for server/src/skill-retrieval.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skill-retrieval.ts:retrieveSkills",
+      "type": "function",
+      "name": "retrieveSkills",
+      "lineRange": [
+        40,
+        84
+      ],
+      "summary": "Auto-generated summary for function retrieveSkills",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skills.test.ts",
+      "type": "file",
+      "name": "skills.test.ts",
+      "filePath": "server/src/skills.test.ts",
+      "summary": "Auto-generated summary for server/src/skills.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skills.test.ts:makeWorkspaceWithSkill",
+      "type": "function",
+      "name": "makeWorkspaceWithSkill",
+      "lineRange": [
+        8,
+        42
+      ],
+      "summary": "Auto-generated summary for function makeWorkspaceWithSkill",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/skills.ts",
+      "type": "file",
+      "name": "skills.ts",
+      "filePath": "server/src/skills.ts",
+      "summary": "Auto-generated summary for server/src/skills.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/skills.ts:listSkills",
+      "type": "function",
+      "name": "listSkills",
+      "lineRange": [
+        27,
+        38
+      ],
+      "summary": "Auto-generated summary for function listSkills",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skills.ts:validateSkillPaths",
+      "type": "function",
+      "name": "validateSkillPaths",
+      "lineRange": [
+        40,
+        62
+      ],
+      "summary": "Auto-generated summary for function validateSkillPaths",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skills.ts:projectSkillRoots",
+      "type": "function",
+      "name": "projectSkillRoots",
+      "lineRange": [
+        64,
+        75
+      ],
+      "summary": "Auto-generated summary for function projectSkillRoots",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skills.ts:walk",
+      "type": "function",
+      "name": "walk",
+      "lineRange": [
+        86,
+        111
+      ],
+      "summary": "Auto-generated summary for function walk",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skills.ts:addSkill",
+      "type": "function",
+      "name": "addSkill",
+      "lineRange": [
+        113,
+        137
+      ],
+      "summary": "Auto-generated summary for function addSkill",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/skills.ts:parseFrontmatter",
+      "type": "function",
+      "name": "parseFrontmatter",
+      "lineRange": [
+        139,
+        150
+      ],
+      "summary": "Auto-generated summary for function parseFrontmatter",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/sql-connections.ts",
+      "type": "file",
+      "name": "sql-connections.ts",
+      "filePath": "server/src/sql-connections.ts",
+      "summary": "Auto-generated summary for server/src/sql-connections.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:listConnections",
+      "type": "function",
+      "name": "listConnections",
+      "lineRange": [
+        80,
+        82
+      ],
+      "summary": "Auto-generated summary for function listConnections",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:getConnection",
+      "type": "function",
+      "name": "getConnection",
+      "lineRange": [
+        84,
+        86
+      ],
+      "summary": "Auto-generated summary for function getConnection",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:upsertConnection",
+      "type": "function",
+      "name": "upsertConnection",
+      "lineRange": [
+        88,
+        99
+      ],
+      "summary": "Auto-generated summary for function upsertConnection",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:deleteConnection",
+      "type": "function",
+      "name": "deleteConnection",
+      "lineRange": [
+        101,
+        107
+      ],
+      "summary": "Auto-generated summary for function deleteConnection",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:withPg",
+      "type": "function",
+      "name": "withPg",
+      "lineRange": [
+        116,
+        133
+      ],
+      "summary": "Auto-generated summary for function withPg",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:withMysql",
+      "type": "function",
+      "name": "withMysql",
+      "lineRange": [
+        135,
+        150
+      ],
+      "summary": "Auto-generated summary for function withMysql",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:testConnection",
+      "type": "function",
+      "name": "testConnection",
+      "lineRange": [
+        163,
+        184
+      ],
+      "summary": "Auto-generated summary for function testConnection",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:pgSchema",
+      "type": "function",
+      "name": "pgSchema",
+      "lineRange": [
+        188,
+        212
+      ],
+      "summary": "Auto-generated summary for function pgSchema",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:mysqlSchema",
+      "type": "function",
+      "name": "mysqlSchema",
+      "lineRange": [
+        214,
+        228
+      ],
+      "summary": "Auto-generated summary for function mysqlSchema",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:sqliteSchema",
+      "type": "function",
+      "name": "sqliteSchema",
+      "lineRange": [
+        230,
+        245
+      ],
+      "summary": "Auto-generated summary for function sqliteSchema",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:getSchema",
+      "type": "function",
+      "name": "getSchema",
+      "lineRange": [
+        247,
+        251
+      ],
+      "summary": "Auto-generated summary for function getSchema",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:prepareSql",
+      "type": "function",
+      "name": "prepareSql",
+      "lineRange": [
+        253,
+        263
+      ],
+      "summary": "Auto-generated summary for function prepareSql",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:executeQuery",
+      "type": "function",
+      "name": "executeQuery",
+      "lineRange": [
+        313,
+        318
+      ],
+      "summary": "Auto-generated summary for function executeQuery",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/sql-connections.ts:exportQueryToCsv",
+      "type": "function",
+      "name": "exportQueryToCsv",
+      "lineRange": [
+        335,
+        390
+      ],
+      "summary": "Auto-generated summary for function exportQueryToCsv",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/src/tool-evaluation-api.test.ts",
+      "type": "file",
+      "name": "tool-evaluation-api.test.ts",
+      "filePath": "server/src/tool-evaluation-api.test.ts",
+      "summary": "Auto-generated summary for server/src/tool-evaluation-api.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:server/src/tool-evaluation-api.ts",
+      "type": "file",
+      "name": "tool-evaluation-api.ts",
+      "filePath": "server/src/tool-evaluation-api.ts",
+      "summary": "Auto-generated summary for server/src/tool-evaluation-api.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-api.ts:parseToolEvaluationRunRequest",
+      "type": "function",
+      "name": "parseToolEvaluationRunRequest",
+      "lineRange": [
+        14,
+        27
+      ],
+      "summary": "Auto-generated summary for function parseToolEvaluationRunRequest",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-api.ts:parseToolEvaluationCases",
+      "type": "function",
+      "name": "parseToolEvaluationCases",
+      "lineRange": [
+        29,
+        53
+      ],
+      "summary": "Auto-generated summary for function parseToolEvaluationCases",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-api.ts:resolveToolEvaluationCasePaths",
+      "type": "function",
+      "name": "resolveToolEvaluationCasePaths",
+      "lineRange": [
+        55,
+        63
+      ],
+      "summary": "Auto-generated summary for function resolveToolEvaluationCasePaths",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-api.ts:parseExpectation",
+      "type": "function",
+      "name": "parseExpectation",
+      "lineRange": [
+        65,
+        96
+      ],
+      "summary": "Auto-generated summary for function parseExpectation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/tool-evaluation-runner.test.ts",
+      "type": "file",
+      "name": "tool-evaluation-runner.test.ts",
+      "filePath": "server/src/tool-evaluation-runner.test.ts",
+      "summary": "Auto-generated summary for server/src/tool-evaluation-runner.test.ts",
+      "tags": [
+        "code",
+        "auto-generated",
+        "test"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.test.ts:fakeTool",
+      "type": "function",
+      "name": "fakeTool",
+      "lineRange": [
+        9,
+        24
+      ],
+      "summary": "Auto-generated summary for function fakeTool",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.test.ts:row",
+      "type": "function",
+      "name": "row",
+      "lineRange": [
+        333,
+        351
+      ],
+      "summary": "Auto-generated summary for function row",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/tool-evaluation-runner.ts",
+      "type": "file",
+      "name": "tool-evaluation-runner.ts",
+      "filePath": "server/src/tool-evaluation-runner.ts",
+      "summary": "Auto-generated summary for server/src/tool-evaluation-runner.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:runToolEvaluation",
+      "type": "function",
+      "name": "runToolEvaluation",
+      "lineRange": [
+        116,
+        144
+      ],
+      "summary": "Auto-generated summary for function runToolEvaluation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:summarizeToolCases",
+      "type": "function",
+      "name": "summarizeToolCases",
+      "lineRange": [
+        146,
+        163
+      ],
+      "summary": "Auto-generated summary for function summarizeToolCases",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:runToolCase",
+      "type": "function",
+      "name": "runToolCase",
+      "lineRange": [
+        165,
+        242
+      ],
+      "summary": "Auto-generated summary for function runToolCase",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:runExtractionToolProcess",
+      "type": "function",
+      "name": "runExtractionToolProcess",
+      "lineRange": [
+        244,
+        269
+      ],
+      "summary": "Auto-generated summary for function runExtractionToolProcess",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:evaluateExpectation",
+      "type": "function",
+      "name": "evaluateExpectation",
+      "lineRange": [
+        271,
+        301
+      ],
+      "summary": "Auto-generated summary for function evaluateExpectation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:evaluateGolden",
+      "type": "function",
+      "name": "evaluateGolden",
+      "lineRange": [
+        332,
+        349
+      ],
+      "summary": "Auto-generated summary for function evaluateGolden",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:compareGoldenFile",
+      "type": "function",
+      "name": "compareGoldenFile",
+      "lineRange": [
+        351,
+        378
+      ],
+      "summary": "Auto-generated summary for function compareGoldenFile",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:evaluateLlmJudge",
+      "type": "function",
+      "name": "evaluateLlmJudge",
+      "lineRange": [
+        380,
+        411
+      ],
+      "summary": "Auto-generated summary for function evaluateLlmJudge",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:matchExpectedFailure",
+      "type": "function",
+      "name": "matchExpectedFailure",
+      "lineRange": [
+        417,
+        428
+      ],
+      "summary": "Auto-generated summary for function matchExpectedFailure",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:validateJsonSchemaSubset",
+      "type": "function",
+      "name": "validateJsonSchemaSubset",
+      "lineRange": [
+        430,
+        473
+      ],
+      "summary": "Auto-generated summary for function validateJsonSchemaSubset",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:compareJsonValue",
+      "type": "function",
+      "name": "compareJsonValue",
+      "lineRange": [
+        498,
+        529
+      ],
+      "summary": "Auto-generated summary for function compareJsonValue",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:textDiffHint",
+      "type": "function",
+      "name": "textDiffHint",
+      "lineRange": [
+        551,
+        561
+      ],
+      "summary": "Auto-generated summary for function textDiffHint",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:readToolOutputText",
+      "type": "function",
+      "name": "readToolOutputText",
+      "lineRange": [
+        578,
+        593
+      ],
+      "summary": "Auto-generated summary for function readToolOutputText",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/src/tool-evaluation-runner.ts:validateToolEvaluationOptions",
+      "type": "function",
+      "name": "validateToolEvaluationOptions",
+      "lineRange": [
+        636,
+        650
+      ],
+      "summary": "Auto-generated summary for function validateToolEvaluationOptions",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:server/src/types.ts",
+      "type": "file",
+      "name": "types.ts",
+      "filePath": "server/src/types.ts",
+      "summary": "Auto-generated summary for server/src/types.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:server/tools/registry.ts",
+      "type": "file",
+      "name": "registry.ts",
+      "filePath": "server/tools/registry.ts",
+      "summary": "Auto-generated summary for server/tools/registry.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:server/tools/registry.ts:isManifest",
+      "type": "function",
+      "name": "isManifest",
+      "lineRange": [
+        43,
+        62
+      ],
+      "summary": "Auto-generated summary for function isManifest",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/registry.ts:loadTools",
+      "type": "function",
+      "name": "loadTools",
+      "lineRange": [
+        72,
+        86
+      ],
+      "summary": "Auto-generated summary for function loadTools",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/registry.ts:listExtractionTools",
+      "type": "function",
+      "name": "listExtractionTools",
+      "lineRange": [
+        91,
+        93
+      ],
+      "summary": "Auto-generated summary for function listExtractionTools",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/registry.ts:getExtractionTool",
+      "type": "function",
+      "name": "getExtractionTool",
+      "lineRange": [
+        95,
+        97
+      ],
+      "summary": "Auto-generated summary for function getExtractionTool",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:server/tools/registry.ts:validateExtractionInput",
+      "type": "function",
+      "name": "validateExtractionInput",
+      "lineRange": [
+        99,
+        106
+      ],
+      "summary": "Auto-generated summary for function validateExtractionInput",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:server/src/multi-agent-runner.test.ts",
+      "target": "function:server/src/multi-agent-runner.test.ts:makeBaseOptions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.test.ts",
+      "target": "function:server/src/multi-agent-runner.test.ts:fakeExtractionTool",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.test.ts",
+      "target": "file:server/src/anax-gate.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.test.ts",
+      "target": "file:server/src/multi-agent-runner.test-helpers.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.test.ts",
+      "target": "file:server/src/multi-agent-runner.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.test.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.test.ts",
+      "target": "file:server/tools/registry.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:readWorkflow",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:readWorkflow",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:validateWorkflow",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:validateWorkflow",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:topoOrder",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:topoOrder",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:renderPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:renderPrompt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:extractMarkerArray",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:extractMarkerArray",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:extractText",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:runMultiAgent",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:runMultiAgent",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:executeToolNode",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:executeTurn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:runFanOut",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:toolSummaryHasError",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "function:server/src/multi-agent-runner.ts:listRelativeFiles",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "file:server/src/anax-gate.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "file:server/src/child-processes.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "file:server/src/pi-adapter.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "file:server/src/tool-evaluation-runner.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/multi-agent-runner.ts",
+      "target": "file:server/tools/registry.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/output-paths.ts",
+      "target": "function:server/src/output-paths.ts:resolveOutputTarget",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/output-paths.ts",
+      "target": "function:server/src/output-paths.ts:resolveOutputTarget",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/output-paths.ts",
+      "target": "function:server/src/output-paths.ts:buildOutputPathInstructions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/output-paths.ts",
+      "target": "function:server/src/output-paths.ts:buildOutputPathInstructions",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/output-paths.ts",
+      "target": "function:server/src/output-paths.ts:buildRegisteredPathContext",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/output-paths.ts",
+      "target": "function:server/src/output-paths.ts:buildRegisteredPathContext",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/output-paths.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:runPiRpcCommand",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:getPiSessionStats",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:getPiSessionStats",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:compactPiSession",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:compactPiSession",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:runPiPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:runPiPrompt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:runPiTurn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "function:server/src/pi-adapter.ts:runPiTurn",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "file:server/src/child-processes.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "file:server/src/config.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "file:server/src/prompt-blocks.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/pi-adapter.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/process-env.ts",
+      "target": "function:server/src/process-env.ts:buildSanitizedEnv",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/process-env.ts",
+      "target": "function:server/src/process-env.ts:buildSanitizedEnv",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/prompt-blocks.ts",
+      "target": "function:server/src/prompt-blocks.ts:buildDataContextBlock",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/prompt-blocks.ts",
+      "target": "function:server/src/prompt-blocks.ts:buildDataContextBlock",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/prompt-blocks.ts",
+      "target": "function:server/src/prompt-blocks.ts:assembleSystemPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/prompt-blocks.ts",
+      "target": "function:server/src/prompt-blocks.ts:assembleSystemPrompt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/report-review.ts",
+      "target": "function:server/src/report-review.ts:buildReviewPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/report-review.ts",
+      "target": "function:server/src/report-review.ts:buildReviewPrompt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/report-review.ts",
+      "target": "function:server/src/report-review.ts:buildAutoFixPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/report-review.ts",
+      "target": "function:server/src/report-review.ts:buildAutoFixPrompt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/report-review.ts",
+      "target": "function:server/src/report-review.ts:parseReviewScore",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/report-review.ts",
+      "target": "function:server/src/report-review.ts:parseReviewScore",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/reports.ts",
+      "target": "function:server/src/reports.ts:readFlowName",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/reports.ts",
+      "target": "function:server/src/reports.ts:walkFlowRuns",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/reports.ts",
+      "target": "function:server/src/reports.ts:walkDir",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/reports.ts",
+      "target": "function:server/src/reports.ts:scanRoot",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/reports.ts",
+      "target": "function:server/src/reports.ts:scanAllReports",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/reports.ts",
+      "target": "function:server/src/reports.ts:scanAllReports",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/reports.ts",
+      "target": "file:server/src/config.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/reports.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-activation.test.ts",
+      "target": "function:server/src/skill-activation.test.ts:makeSkillFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-activation.test.ts",
+      "target": "file:server/src/skill-activation.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-activation.test.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-activation.ts",
+      "target": "function:server/src/skill-activation.ts:detectSkillActivation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-activation.ts",
+      "target": "function:server/src/skill-activation.ts:detectSkillActivation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-activation.ts",
+      "target": "function:server/src/skill-activation.ts:extractSkillActivationKeywords",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-activation.ts",
+      "target": "function:server/src/skill-activation.ts:extractSkillActivationKeywords",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-activation.ts",
+      "target": "function:server/src/skill-activation.ts:parseFrontmatter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-activation.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:curateSkillEvaluation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:curateSkillEvaluation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:applySkillCurationProposals",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:applySkillCurationProposals",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:buildCurationPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:parseCurationResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:autoTriggerCuration",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:autoTriggerCuration",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "function:server/src/skill-curator.ts:parseProposals",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "file:server/src/db.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "file:server/src/evaluation-common.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "file:server/src/pi-adapter.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "file:server/src/skills.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-curator.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-distillation.ts",
+      "target": "function:server/src/skill-distillation.ts:buildSkillDistillationPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-distillation.ts",
+      "target": "function:server/src/skill-distillation.ts:buildSkillDistillationPrompt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-distillation.ts",
+      "target": "function:server/src/skill-distillation.ts:extractSkillMarkdown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-distillation.ts",
+      "target": "function:server/src/skill-distillation.ts:extractSkillMarkdown",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-distillation.ts",
+      "target": "function:server/src/skill-distillation.ts:parseSkillName",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-distillation.ts",
+      "target": "function:server/src/skill-distillation.ts:parseSkillName",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-distillation.ts",
+      "target": "function:server/src/skill-distillation.ts:slugifySkillName",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-distillation.ts",
+      "target": "function:server/src/skill-distillation.ts:slugifySkillName",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-evaluation-api.test.ts",
+      "target": "file:server/src/skill-evaluation-api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-api.ts",
+      "target": "function:server/src/skill-evaluation-api.ts:parseSkillEvaluationRunRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-api.ts",
+      "target": "function:server/src/skill-evaluation-api.ts:parseSkillEvaluationRunRequest",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-evaluation-api.ts",
+      "target": "function:server/src/skill-evaluation-api.ts:parseVariants",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-api.ts",
+      "target": "function:server/src/skill-evaluation-api.ts:parseTasks",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-api.ts",
+      "target": "file:server/src/skill-evaluation-runner.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.test.ts",
+      "target": "function:server/src/skill-evaluation-runner.test.ts:makeSkillFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.test.ts",
+      "target": "function:server/src/skill-evaluation-runner.test.ts:makeFakeRunTurn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.test.ts",
+      "target": "function:server/src/skill-evaluation-runner.test.ts:makeSuccessfulResult",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.test.ts",
+      "target": "file:server/src/pi-adapter.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.test.ts",
+      "target": "file:server/src/skill-evaluation-runner.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.test.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:runSkillEvaluation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:runSkillEvaluation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:summarizeSkillEvaluationResults",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:summarizeSkillEvaluationResults",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:runSkillCase",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:judgeSkillPairwiseResults",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:runRepeatedPairwiseJudge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:aggregatePairwiseJudgeRuns",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:runDefaultPairwiseJudge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:buildPairwiseJudgePrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:buildPairwiseJudgePrompt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:parsePairwiseJudgeResponse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:pairwiseJudgeFailure",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:runSkillPiTurn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:validateSkillEvaluationOptions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:summarizeVariants",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:summarizeTasks",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:summarizePairwise",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "function:server/src/skill-evaluation-runner.ts:majorityVerdict",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "file:server/src/evaluation-common.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "file:server/src/evaluation-errors.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "file:server/src/output-paths.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "file:server/src/pi-adapter.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "file:server/src/prompt-blocks.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "file:server/src/skill-activation.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "file:server/src/skill-retrieval.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-evaluation-runner.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-retrieval.ts",
+      "target": "function:server/src/skill-retrieval.ts:retrieveSkills",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skill-retrieval.ts",
+      "target": "function:server/src/skill-retrieval.ts:retrieveSkills",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skill-retrieval.ts",
+      "target": "file:server/src/skills.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skill-retrieval.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skills.test.ts",
+      "target": "function:server/src/skills.test.ts:makeWorkspaceWithSkill",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skills.test.ts",
+      "target": "file:server/src/skills.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/skills.ts",
+      "target": "function:server/src/skills.ts:listSkills",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skills.ts",
+      "target": "function:server/src/skills.ts:listSkills",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skills.ts",
+      "target": "function:server/src/skills.ts:validateSkillPaths",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skills.ts",
+      "target": "function:server/src/skills.ts:validateSkillPaths",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/skills.ts",
+      "target": "function:server/src/skills.ts:projectSkillRoots",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skills.ts",
+      "target": "function:server/src/skills.ts:walk",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skills.ts",
+      "target": "function:server/src/skills.ts:addSkill",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/skills.ts",
+      "target": "function:server/src/skills.ts:parseFrontmatter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:listConnections",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:listConnections",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:getConnection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:getConnection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:upsertConnection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:upsertConnection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:deleteConnection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:deleteConnection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:withPg",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:withMysql",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:testConnection",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:testConnection",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:pgSchema",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:mysqlSchema",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:sqliteSchema",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:getSchema",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:getSchema",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:prepareSql",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:prepareSql",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:executeQuery",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:executeQuery",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:exportQueryToCsv",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "function:server/src/sql-connections.ts:exportQueryToCsv",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/sql-connections.ts",
+      "target": "file:server/src/config.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.test.ts",
+      "target": "file:server/src/tool-evaluation-api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.ts",
+      "target": "function:server/src/tool-evaluation-api.ts:parseToolEvaluationRunRequest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.ts",
+      "target": "function:server/src/tool-evaluation-api.ts:parseToolEvaluationRunRequest",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.ts",
+      "target": "function:server/src/tool-evaluation-api.ts:parseToolEvaluationCases",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.ts",
+      "target": "function:server/src/tool-evaluation-api.ts:parseToolEvaluationCases",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.ts",
+      "target": "function:server/src/tool-evaluation-api.ts:resolveToolEvaluationCasePaths",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.ts",
+      "target": "function:server/src/tool-evaluation-api.ts:resolveToolEvaluationCasePaths",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.ts",
+      "target": "function:server/src/tool-evaluation-api.ts:parseExpectation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-api.ts",
+      "target": "file:server/src/tool-evaluation-runner.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.test.ts",
+      "target": "function:server/src/tool-evaluation-runner.test.ts:fakeTool",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.test.ts",
+      "target": "function:server/src/tool-evaluation-runner.test.ts:row",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.test.ts",
+      "target": "file:server/src/tool-evaluation-runner.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.test.ts",
+      "target": "file:server/tools/registry.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:runToolEvaluation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:runToolEvaluation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:summarizeToolCases",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:summarizeToolCases",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:runToolCase",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:runExtractionToolProcess",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:runExtractionToolProcess",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:evaluateExpectation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:evaluateGolden",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:compareGoldenFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:evaluateLlmJudge",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:matchExpectedFailure",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:validateJsonSchemaSubset",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:compareJsonValue",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:textDiffHint",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:readToolOutputText",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "function:server/src/tool-evaluation-runner.ts:validateToolEvaluationOptions",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "file:server/src/evaluation-common.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "file:server/src/evaluation-errors.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "file:server/src/process-env.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "file:server/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/tool-evaluation-runner.ts",
+      "target": "file:server/tools/registry.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/src/types.ts",
+      "target": "file:server/src/anax-gate.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:server/tools/registry.ts",
+      "target": "function:server/tools/registry.ts:isManifest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/registry.ts",
+      "target": "function:server/tools/registry.ts:loadTools",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/registry.ts",
+      "target": "function:server/tools/registry.ts:listExtractionTools",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/registry.ts",
+      "target": "function:server/tools/registry.ts:listExtractionTools",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/registry.ts",
+      "target": "function:server/tools/registry.ts:getExtractionTool",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/registry.ts",
+      "target": "function:server/tools/registry.ts:getExtractionTool",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:server/tools/registry.ts",
+      "target": "function:server/tools/registry.ts:validateExtractionInput",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:server/tools/registry.ts",
+      "target": "function:server/tools/registry.ts:validateExtractionInput",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

@@ -1,0 +1,3188 @@
+{
+  "nodes": [
+    {
+      "id": "file:web/src/components/ProcessTrace.tsx",
+      "type": "file",
+      "name": "ProcessTrace.tsx",
+      "filePath": "web/src/components/ProcessTrace.tsx",
+      "summary": "Auto-generated summary for web/src/components/ProcessTrace.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ProcessTrace.tsx:ToolUse",
+      "type": "function",
+      "name": "ToolUse",
+      "lineRange": [
+        29,
+        45
+      ],
+      "summary": "Auto-generated summary for function ToolUse",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ProcessTrace.tsx:ToolResult",
+      "type": "function",
+      "name": "ToolResult",
+      "lineRange": [
+        47,
+        63
+      ],
+      "summary": "Auto-generated summary for function ToolResult",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ProcessTrace.tsx:Thinking",
+      "type": "function",
+      "name": "Thinking",
+      "lineRange": [
+        65,
+        77
+      ],
+      "summary": "Auto-generated summary for function Thinking",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/ReportHistoryPane.tsx",
+      "type": "file",
+      "name": "ReportHistoryPane.tsx",
+      "filePath": "web/src/components/ReportHistoryPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/ReportHistoryPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/ReportHistoryPane.tsx:ReportHistoryPane",
+      "type": "function",
+      "name": "ReportHistoryPane",
+      "lineRange": [
+        35,
+        335
+      ],
+      "summary": "Auto-generated summary for function ReportHistoryPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ReportHistoryPane.tsx:KpiCard",
+      "type": "function",
+      "name": "KpiCard",
+      "lineRange": [
+        337,
+        347
+      ],
+      "summary": "Auto-generated summary for function KpiCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ReportHistoryPane.tsx:ReportCard",
+      "type": "function",
+      "name": "ReportCard",
+      "lineRange": [
+        349,
+        409
+      ],
+      "summary": "Auto-generated summary for function ReportCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ReportHistoryPane.tsx:TagFilter",
+      "type": "function",
+      "name": "TagFilter",
+      "lineRange": [
+        411,
+        518
+      ],
+      "summary": "Auto-generated summary for function TagFilter",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "type": "file",
+      "name": "ReportPreviewDrawer.tsx",
+      "filePath": "web/src/components/ReportPreviewDrawer.tsx",
+      "summary": "Auto-generated summary for web/src/components/ReportPreviewDrawer.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/ReportPreviewDrawer.tsx:ReportPreviewDrawer",
+      "type": "function",
+      "name": "ReportPreviewDrawer",
+      "lineRange": [
+        20,
+        195
+      ],
+      "summary": "Auto-generated summary for function ReportPreviewDrawer",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ReportPreviewDrawer.tsx:TagEditor",
+      "type": "function",
+      "name": "TagEditor",
+      "lineRange": [
+        197,
+        316
+      ],
+      "summary": "Auto-generated summary for function TagEditor",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ReportReviewPane.tsx",
+      "type": "file",
+      "name": "ReportReviewPane.tsx",
+      "filePath": "web/src/components/ReportReviewPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/ReportReviewPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/ReportReviewPane.tsx:buildLineDiff",
+      "type": "function",
+      "name": "buildLineDiff",
+      "lineRange": [
+        70,
+        100
+      ],
+      "summary": "Auto-generated summary for function buildLineDiff",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ReportReviewPane.tsx:ReportReviewPane",
+      "type": "function",
+      "name": "ReportReviewPane",
+      "lineRange": [
+        123,
+        559
+      ],
+      "summary": "Auto-generated summary for function ReportReviewPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ResearchLabPane.tsx",
+      "type": "file",
+      "name": "ResearchLabPane.tsx",
+      "filePath": "web/src/components/ResearchLabPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/ResearchLabPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/ResearchLabPane.tsx:ResearchLabPane",
+      "type": "function",
+      "name": "ResearchLabPane",
+      "lineRange": [
+        28,
+        224
+      ],
+      "summary": "Auto-generated summary for function ResearchLabPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ResearchLabPane.tsx:MultiAgentModelConfig",
+      "type": "function",
+      "name": "MultiAgentModelConfig",
+      "lineRange": [
+        226,
+        246
+      ],
+      "summary": "Auto-generated summary for function MultiAgentModelConfig",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ResearchLabPane.tsx:SavedModelConfigs",
+      "type": "function",
+      "name": "SavedModelConfigs",
+      "lineRange": [
+        255,
+        269
+      ],
+      "summary": "Auto-generated summary for function SavedModelConfigs",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ResearchLabPane.tsx:snapshotFlowConfigs",
+      "type": "function",
+      "name": "snapshotFlowConfigs",
+      "lineRange": [
+        271,
+        297
+      ],
+      "summary": "Auto-generated summary for function snapshotFlowConfigs",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/RulesPane.tsx",
+      "type": "file",
+      "name": "RulesPane.tsx",
+      "filePath": "web/src/components/RulesPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/RulesPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/RulesPane.tsx:RulesPane",
+      "type": "function",
+      "name": "RulesPane",
+      "lineRange": [
+        16,
+        208
+      ],
+      "summary": "Auto-generated summary for function RulesPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/RunOutputPanel.tsx",
+      "type": "file",
+      "name": "RunOutputPanel.tsx",
+      "filePath": "web/src/components/RunOutputPanel.tsx",
+      "summary": "Auto-generated summary for web/src/components/RunOutputPanel.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/RunOutputPanel.tsx:RunFileTree",
+      "type": "function",
+      "name": "RunFileTree",
+      "lineRange": [
+        59,
+        112
+      ],
+      "summary": "Auto-generated summary for function RunFileTree",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/RunOutputPanel.tsx:RunOutputPanel",
+      "type": "function",
+      "name": "RunOutputPanel",
+      "lineRange": [
+        114,
+        345
+      ],
+      "summary": "Auto-generated summary for function RunOutputPanel",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/Sidebar.tsx",
+      "type": "file",
+      "name": "Sidebar.tsx",
+      "filePath": "web/src/components/Sidebar.tsx",
+      "summary": "Auto-generated summary for web/src/components/Sidebar.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/Sidebar.tsx:Sidebar",
+      "type": "function",
+      "name": "Sidebar",
+      "lineRange": [
+        70,
+        424
+      ],
+      "summary": "Auto-generated summary for function Sidebar",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/SkillLabPane.tsx",
+      "type": "file",
+      "name": "SkillLabPane.tsx",
+      "filePath": "web/src/components/SkillLabPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/SkillLabPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/SkillLabPane.tsx:SkillLabPane",
+      "type": "function",
+      "name": "SkillLabPane",
+      "lineRange": [
+        23,
+        815
+      ],
+      "summary": "Auto-generated summary for function SkillLabPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/SkillLabPane.tsx:SummaryTable",
+      "type": "function",
+      "name": "SummaryTable",
+      "lineRange": [
+        817,
+        846
+      ],
+      "summary": "Auto-generated summary for function SummaryTable",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/SkillLabPane.tsx:PairwiseSummaryTable",
+      "type": "function",
+      "name": "PairwiseSummaryTable",
+      "lineRange": [
+        848,
+        881
+      ],
+      "summary": "Auto-generated summary for function PairwiseSummaryTable",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/SkillLabPane.tsx:TaskSummaryTable",
+      "type": "function",
+      "name": "TaskSummaryTable",
+      "lineRange": [
+        883,
+        907
+      ],
+      "summary": "Auto-generated summary for function TaskSummaryTable",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/SkillLabPane.tsx:ResultCard",
+      "type": "function",
+      "name": "ResultCard",
+      "lineRange": [
+        909,
+        941
+      ],
+      "summary": "Auto-generated summary for function ResultCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/SkillLabPane.tsx:CurationPanel",
+      "type": "function",
+      "name": "CurationPanel",
+      "lineRange": [
+        979,
+        1038
+      ],
+      "summary": "Auto-generated summary for function CurationPanel",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/SkillLabPane.tsx:ProposalCard",
+      "type": "function",
+      "name": "ProposalCard",
+      "lineRange": [
+        1049,
+        1088
+      ],
+      "summary": "Auto-generated summary for function ProposalCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/SkillLabPane.tsx:AutonomousPanel",
+      "type": "function",
+      "name": "AutonomousPanel",
+      "lineRange": [
+        1106,
+        1196
+      ],
+      "summary": "Auto-generated summary for function AutonomousPanel",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/SkillSelector.tsx",
+      "type": "file",
+      "name": "SkillSelector.tsx",
+      "filePath": "web/src/components/SkillSelector.tsx",
+      "summary": "Auto-generated summary for web/src/components/SkillSelector.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/SkillSelector.tsx:SkillSelector",
+      "type": "function",
+      "name": "SkillSelector",
+      "lineRange": [
+        17,
+        140
+      ],
+      "summary": "Auto-generated summary for function SkillSelector",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/SqlConnectPane.tsx",
+      "type": "file",
+      "name": "SqlConnectPane.tsx",
+      "filePath": "web/src/components/SqlConnectPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/SqlConnectPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/SqlConnectPane.tsx:ConnForm",
+      "type": "function",
+      "name": "ConnForm",
+      "lineRange": [
+        25,
+        102
+      ],
+      "summary": "Auto-generated summary for function ConnForm",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/SqlConnectPane.tsx:SchemaPanel",
+      "type": "function",
+      "name": "SchemaPanel",
+      "lineRange": [
+        106,
+        157
+      ],
+      "summary": "Auto-generated summary for function SchemaPanel",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/SqlConnectPane.tsx:ResultTable",
+      "type": "function",
+      "name": "ResultTable",
+      "lineRange": [
+        161,
+        183
+      ],
+      "summary": "Auto-generated summary for function ResultTable",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/SqlConnectPane.tsx:ExportPanel",
+      "type": "function",
+      "name": "ExportPanel",
+      "lineRange": [
+        189,
+        346
+      ],
+      "summary": "Auto-generated summary for function ExportPanel",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/SqlConnectPane.tsx:SqlConnectPane",
+      "type": "function",
+      "name": "SqlConnectPane",
+      "lineRange": [
+        352,
+        890
+      ],
+      "summary": "Auto-generated summary for function SqlConnectPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/TocPane.tsx",
+      "type": "file",
+      "name": "TocPane.tsx",
+      "filePath": "web/src/components/TocPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/TocPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/TocPane.tsx:toFlowNodes",
+      "type": "function",
+      "name": "toFlowNodes",
+      "lineRange": [
+        54,
+        86
+      ],
+      "summary": "Auto-generated summary for function toFlowNodes",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/TocPane.tsx:TocCard",
+      "type": "function",
+      "name": "TocCard",
+      "lineRange": [
+        88,
+        114
+      ],
+      "summary": "Auto-generated summary for function TocCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/TocPane.tsx:TocCanvas",
+      "type": "function",
+      "name": "TocCanvas",
+      "lineRange": [
+        118,
+        128
+      ],
+      "summary": "Auto-generated summary for function TocCanvas",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/TocPane.tsx:generateTocHtml",
+      "type": "function",
+      "name": "generateTocHtml",
+      "lineRange": [
+        143,
+        226
+      ],
+      "summary": "Auto-generated summary for function generateTocHtml",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/TocPane.tsx:TocPane",
+      "type": "function",
+      "name": "TocPane",
+      "lineRange": [
+        230,
+        477
+      ],
+      "summary": "Auto-generated summary for function TocPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/TokenStatsPane.tsx",
+      "type": "file",
+      "name": "TokenStatsPane.tsx",
+      "filePath": "web/src/components/TokenStatsPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/TokenStatsPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/TokenStatsPane.tsx:kindLabel",
+      "type": "function",
+      "name": "kindLabel",
+      "lineRange": [
+        22,
+        37
+      ],
+      "summary": "Auto-generated summary for function kindLabel",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/TokenStatsPane.tsx:StatCard",
+      "type": "function",
+      "name": "StatCard",
+      "lineRange": [
+        51,
+        66
+      ],
+      "summary": "Auto-generated summary for function StatCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/TokenStatsPane.tsx:TokenStatsPane",
+      "type": "function",
+      "name": "TokenStatsPane",
+      "lineRange": [
+        68,
+        298
+      ],
+      "summary": "Auto-generated summary for function TokenStatsPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ToolLabPane.tsx",
+      "type": "file",
+      "name": "ToolLabPane.tsx",
+      "filePath": "web/src/components/ToolLabPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/ToolLabPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:defaultCase",
+      "type": "function",
+      "name": "defaultCase",
+      "lineRange": [
+        35,
+        51
+      ],
+      "summary": "Auto-generated summary for function defaultCase",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:ToolLabPane",
+      "type": "function",
+      "name": "ToolLabPane",
+      "lineRange": [
+        53,
+        488
+      ],
+      "summary": "Auto-generated summary for function ToolLabPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:CaseEditor",
+      "type": "function",
+      "name": "CaseEditor",
+      "lineRange": [
+        490,
+        594
+      ],
+      "summary": "Auto-generated summary for function CaseEditor",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:SummaryTable",
+      "type": "function",
+      "name": "SummaryTable",
+      "lineRange": [
+        596,
+        619
+      ],
+      "summary": "Auto-generated summary for function SummaryTable",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:ResultCard",
+      "type": "function",
+      "name": "ResultCard",
+      "lineRange": [
+        621,
+        654
+      ],
+      "summary": "Auto-generated summary for function ResultCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:hasConfiguredCases",
+      "type": "function",
+      "name": "hasConfiguredCases",
+      "lineRange": [
+        656,
+        668
+      ],
+      "summary": "Auto-generated summary for function hasConfiguredCases",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:describeExpectation",
+      "type": "function",
+      "name": "describeExpectation",
+      "lineRange": [
+        688,
+        723
+      ],
+      "summary": "Auto-generated summary for function describeExpectation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:describeActual",
+      "type": "function",
+      "name": "describeActual",
+      "lineRange": [
+        725,
+        735
+      ],
+      "summary": "Auto-generated summary for function describeActual",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:fromToolEvalCase",
+      "type": "function",
+      "name": "fromToolEvalCase",
+      "lineRange": [
+        745,
+        793
+      ],
+      "summary": "Auto-generated summary for function fromToolEvalCase",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:toToolEvalCase",
+      "type": "function",
+      "name": "toToolEvalCase",
+      "lineRange": [
+        795,
+        807
+      ],
+      "summary": "Auto-generated summary for function toToolEvalCase",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/ToolLabPane.tsx:toExpectation",
+      "type": "function",
+      "name": "toExpectation",
+      "lineRange": [
+        809,
+        840
+      ],
+      "summary": "Auto-generated summary for function toExpectation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/TracePane.tsx",
+      "type": "file",
+      "name": "TracePane.tsx",
+      "filePath": "web/src/components/TracePane.tsx",
+      "summary": "Auto-generated summary for web/src/components/TracePane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/TracePane.tsx:TracePane",
+      "type": "function",
+      "name": "TracePane",
+      "lineRange": [
+        56,
+        266
+      ],
+      "summary": "Auto-generated summary for function TracePane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/WeatherPane.tsx",
+      "type": "file",
+      "name": "WeatherPane.tsx",
+      "filePath": "web/src/components/WeatherPane.tsx",
+      "summary": "Auto-generated summary for web/src/components/WeatherPane.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/WeatherPane.tsx:WeatherPane",
+      "type": "function",
+      "name": "WeatherPane",
+      "lineRange": [
+        92,
+        460
+      ],
+      "summary": "Auto-generated summary for function WeatherPane",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/WorkflowDagEditor.tsx",
+      "type": "file",
+      "name": "WorkflowDagEditor.tsx",
+      "filePath": "web/src/components/WorkflowDagEditor.tsx",
+      "summary": "Auto-generated summary for web/src/components/WorkflowDagEditor.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/components/WorkflowDagEditor.tsx:autoLayout",
+      "type": "function",
+      "name": "autoLayout",
+      "lineRange": [
+        49,
+        88
+      ],
+      "summary": "Auto-generated summary for function autoLayout",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/WorkflowDagEditor.tsx:initRFNodes",
+      "type": "function",
+      "name": "initRFNodes",
+      "lineRange": [
+        90,
+        103
+      ],
+      "summary": "Auto-generated summary for function initRFNodes",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/WorkflowDagEditor.tsx:initRFEdges",
+      "type": "function",
+      "name": "initRFEdges",
+      "lineRange": [
+        105,
+        115
+      ],
+      "summary": "Auto-generated summary for function initRFEdges",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/WorkflowDagEditor.tsx:WorkflowNodeCard",
+      "type": "function",
+      "name": "WorkflowNodeCard",
+      "lineRange": [
+        118,
+        162
+      ],
+      "summary": "Auto-generated summary for function WorkflowNodeCard",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/components/WorkflowDagEditor.tsx:WorkflowDagEditor",
+      "type": "function",
+      "name": "WorkflowDagEditor",
+      "lineRange": [
+        177,
+        392
+      ],
+      "summary": "Auto-generated summary for function WorkflowDagEditor",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/WorkflowDagEditor.tsx:NodePropertyPanel",
+      "type": "function",
+      "name": "NodePropertyPanel",
+      "lineRange": [
+        404,
+        532
+      ],
+      "summary": "Auto-generated summary for function NodePropertyPanel",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/data-exploration/FileSelector.tsx",
+      "type": "file",
+      "name": "FileSelector.tsx",
+      "filePath": "web/src/components/data-exploration/FileSelector.tsx",
+      "summary": "Auto-generated summary for web/src/components/data-exploration/FileSelector.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/FileSelector.tsx:FileTree",
+      "type": "function",
+      "name": "FileTree",
+      "lineRange": [
+        56,
+        114
+      ],
+      "summary": "Auto-generated summary for function FileTree",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/data-exploration/FileSelector.tsx:FileSelector",
+      "type": "function",
+      "name": "FileSelector",
+      "lineRange": [
+        116,
+        194
+      ],
+      "summary": "Auto-generated summary for function FileSelector",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/components/ui/button.tsx",
+      "type": "file",
+      "name": "button.tsx",
+      "filePath": "web/src/components/ui/button.tsx",
+      "summary": "Auto-generated summary for web/src/components/ui/button.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/components/useBusinessRequirementContexts.ts",
+      "type": "file",
+      "name": "useBusinessRequirementContexts.ts",
+      "filePath": "web/src/components/useBusinessRequirementContexts.ts",
+      "summary": "Auto-generated summary for web/src/components/useBusinessRequirementContexts.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/components/useBusinessRequirementContexts.ts:useBusinessRequirementContexts",
+      "type": "function",
+      "name": "useBusinessRequirementContexts",
+      "lineRange": [
+        19,
+        75
+      ],
+      "summary": "Auto-generated summary for function useBusinessRequirementContexts",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/lib/aggregate.ts",
+      "type": "file",
+      "name": "aggregate.ts",
+      "filePath": "web/src/lib/aggregate.ts",
+      "summary": "Auto-generated summary for web/src/lib/aggregate.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/aggregate.ts:inferColumns",
+      "type": "function",
+      "name": "inferColumns",
+      "lineRange": [
+        70,
+        80
+      ],
+      "summary": "Auto-generated summary for function inferColumns",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/aggregate.ts:normalizeRows",
+      "type": "function",
+      "name": "normalizeRows",
+      "lineRange": [
+        82,
+        99
+      ],
+      "summary": "Auto-generated summary for function normalizeRows",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/aggregate.ts:readLocalDataset",
+      "type": "function",
+      "name": "readLocalDataset",
+      "lineRange": [
+        101,
+        109
+      ],
+      "summary": "Auto-generated summary for function readLocalDataset",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/aggregate.ts:dateBucket",
+      "type": "function",
+      "name": "dateBucket",
+      "lineRange": [
+        111,
+        121
+      ],
+      "summary": "Auto-generated summary for function dateBucket",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/aggregate.ts:calculateMetric",
+      "type": "function",
+      "name": "calculateMetric",
+      "lineRange": [
+        136,
+        147
+      ],
+      "summary": "Auto-generated summary for function calculateMetric",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/aggregate.ts:runAggregation",
+      "type": "function",
+      "name": "runAggregation",
+      "lineRange": [
+        149,
+        169
+      ],
+      "summary": "Auto-generated summary for function runAggregation",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/aggregate.ts:toCsv",
+      "type": "function",
+      "name": "toCsv",
+      "lineRange": [
+        176,
+        181
+      ],
+      "summary": "Auto-generated summary for function toCsv",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/aggregate.ts:buildPythonPrompt",
+      "type": "function",
+      "name": "buildPythonPrompt",
+      "lineRange": [
+        183,
+        197
+      ],
+      "summary": "Auto-generated summary for function buildPythonPrompt",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/api.ts",
+      "type": "file",
+      "name": "api.ts",
+      "filePath": "web/src/lib/api.ts",
+      "summary": "Auto-generated summary for web/src/lib/api.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "file:web/src/lib/cn.ts",
+      "type": "file",
+      "name": "cn.ts",
+      "filePath": "web/src/lib/cn.ts",
+      "summary": "Auto-generated summary for web/src/lib/cn.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/cn.ts:cn",
+      "type": "function",
+      "name": "cn",
+      "lineRange": [
+        4,
+        6
+      ],
+      "summary": "Auto-generated summary for function cn",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/evaluation-export.ts",
+      "type": "file",
+      "name": "evaluation-export.ts",
+      "filePath": "web/src/lib/evaluation-export.ts",
+      "summary": "Auto-generated summary for web/src/lib/evaluation-export.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:downloadEvaluationJson",
+      "type": "function",
+      "name": "downloadEvaluationJson",
+      "lineRange": [
+        6,
+        8
+      ],
+      "summary": "Auto-generated summary for function downloadEvaluationJson",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:downloadSkillEvaluationMarkdown",
+      "type": "function",
+      "name": "downloadSkillEvaluationMarkdown",
+      "lineRange": [
+        10,
+        16
+      ],
+      "summary": "Auto-generated summary for function downloadSkillEvaluationMarkdown",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:downloadToolEvaluationMarkdown",
+      "type": "function",
+      "name": "downloadToolEvaluationMarkdown",
+      "lineRange": [
+        18,
+        24
+      ],
+      "summary": "Auto-generated summary for function downloadToolEvaluationMarkdown",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:downloadEvaluationArchiveManifest",
+      "type": "function",
+      "name": "downloadEvaluationArchiveManifest",
+      "lineRange": [
+        26,
+        28
+      ],
+      "summary": "Auto-generated summary for function downloadEvaluationArchiveManifest",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:downloadArchiveTextFile",
+      "type": "function",
+      "name": "downloadArchiveTextFile",
+      "lineRange": [
+        30,
+        32
+      ],
+      "summary": "Auto-generated summary for function downloadArchiveTextFile",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:renderSkillEvaluationMarkdown",
+      "type": "function",
+      "name": "renderSkillEvaluationMarkdown",
+      "lineRange": [
+        34,
+        106
+      ],
+      "summary": "Auto-generated summary for function renderSkillEvaluationMarkdown",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:renderToolEvaluationMarkdown",
+      "type": "function",
+      "name": "renderToolEvaluationMarkdown",
+      "lineRange": [
+        108,
+        146
+      ],
+      "summary": "Auto-generated summary for function renderToolEvaluationMarkdown",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:renderSkillRunFailure",
+      "type": "function",
+      "name": "renderSkillRunFailure",
+      "lineRange": [
+        148,
+        163
+      ],
+      "summary": "Auto-generated summary for function renderSkillRunFailure",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:renderToolRunFailure",
+      "type": "function",
+      "name": "renderToolRunFailure",
+      "lineRange": [
+        165,
+        182
+      ],
+      "summary": "Auto-generated summary for function renderToolRunFailure",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:downloadArchivesZip",
+      "type": "function",
+      "name": "downloadArchivesZip",
+      "lineRange": [
+        239,
+        258
+      ],
+      "summary": "Auto-generated summary for function downloadArchivesZip",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:buildZip",
+      "type": "function",
+      "name": "buildZip",
+      "lineRange": [
+        261,
+        324
+      ],
+      "summary": "Auto-generated summary for function buildZip",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/evaluation-export.ts:computeCrc32",
+      "type": "function",
+      "name": "computeCrc32",
+      "lineRange": [
+        334,
+        344
+      ],
+      "summary": "Auto-generated summary for function computeCrc32",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/reportTypeClassifier.ts",
+      "type": "file",
+      "name": "reportTypeClassifier.ts",
+      "filePath": "web/src/lib/reportTypeClassifier.ts",
+      "summary": "Auto-generated summary for web/src/lib/reportTypeClassifier.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/reportTypeClassifier.ts:formatSize",
+      "type": "function",
+      "name": "formatSize",
+      "lineRange": [
+        36,
+        40
+      ],
+      "summary": "Auto-generated summary for function formatSize",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/reportTypeClassifier.ts:formatDate",
+      "type": "function",
+      "name": "formatDate",
+      "lineRange": [
+        42,
+        49
+      ],
+      "summary": "Auto-generated summary for function formatDate",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/reportTypeClassifier.ts:formatDateShort",
+      "type": "function",
+      "name": "formatDateShort",
+      "lineRange": [
+        51,
+        56
+      ],
+      "summary": "Auto-generated summary for function formatDateShort",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/reportTypeClassifier.ts:formatDayKey",
+      "type": "function",
+      "name": "formatDayKey",
+      "lineRange": [
+        58,
+        63
+      ],
+      "summary": "Auto-generated summary for function formatDayKey",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/theme.ts",
+      "type": "file",
+      "name": "theme.ts",
+      "filePath": "web/src/lib/theme.ts",
+      "summary": "Auto-generated summary for web/src/lib/theme.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/theme.ts:useTheme",
+      "type": "function",
+      "name": "useTheme",
+      "lineRange": [
+        11,
+        24
+      ],
+      "summary": "Auto-generated summary for function useTheme",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/useReportHistory.ts",
+      "type": "file",
+      "name": "useReportHistory.ts",
+      "filePath": "web/src/lib/useReportHistory.ts",
+      "summary": "Auto-generated summary for web/src/lib/useReportHistory.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "function:web/src/lib/useReportHistory.ts:useReportHistory",
+      "type": "function",
+      "name": "useReportHistory",
+      "lineRange": [
+        18,
+        103
+      ],
+      "summary": "Auto-generated summary for function useReportHistory",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "file:web/src/lib/useTabVisibility.ts",
+      "type": "file",
+      "name": "useTabVisibility.ts",
+      "filePath": "web/src/lib/useTabVisibility.ts",
+      "summary": "Auto-generated summary for web/src/lib/useTabVisibility.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/lib/useTabVisibility.ts:useTabVisibility",
+      "type": "function",
+      "name": "useTabVisibility",
+      "lineRange": [
+        3,
+        23
+      ],
+      "summary": "Auto-generated summary for function useTabVisibility",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/lib/ws.ts",
+      "type": "file",
+      "name": "ws.ts",
+      "filePath": "web/src/lib/ws.ts",
+      "summary": "Auto-generated summary for web/src/lib/ws.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "class:web/src/lib/ws.ts:Gateway",
+      "type": "class",
+      "name": "Gateway",
+      "lineRange": [
+        6,
+        42
+      ],
+      "summary": "Auto-generated summary for class Gateway",
+      "tags": [
+        "class",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/main.tsx",
+      "type": "file",
+      "name": "main.tsx",
+      "filePath": "web/src/main.tsx",
+      "summary": "Auto-generated summary for web/src/main.tsx",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "file:web/src/types.ts",
+      "type": "file",
+      "name": "types.ts",
+      "filePath": "web/src/types.ts",
+      "summary": "Auto-generated summary for web/src/types.ts",
+      "tags": [
+        "code",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "function:web/src/types.ts:asBlocks",
+      "type": "function",
+      "name": "asBlocks",
+      "lineRange": [
+        1117,
+        1119
+      ],
+      "summary": "Auto-generated summary for function asBlocks",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    },
+    {
+      "id": "function:web/src/types.ts:textOf",
+      "type": "function",
+      "name": "textOf",
+      "lineRange": [
+        1391,
+        1396
+      ],
+      "summary": "Auto-generated summary for function textOf",
+      "tags": [
+        "function",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "file:web/src/components/ProcessTrace.tsx",
+      "target": "function:web/src/components/ProcessTrace.tsx:ToolUse",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ProcessTrace.tsx",
+      "target": "function:web/src/components/ProcessTrace.tsx:ToolUse",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ProcessTrace.tsx",
+      "target": "function:web/src/components/ProcessTrace.tsx:ToolResult",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ProcessTrace.tsx",
+      "target": "function:web/src/components/ProcessTrace.tsx:ToolResult",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ProcessTrace.tsx",
+      "target": "function:web/src/components/ProcessTrace.tsx:Thinking",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ProcessTrace.tsx",
+      "target": "function:web/src/components/ProcessTrace.tsx:Thinking",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ProcessTrace.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "function:web/src/components/ReportHistoryPane.tsx:ReportHistoryPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "function:web/src/components/ReportHistoryPane.tsx:ReportHistoryPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "function:web/src/components/ReportHistoryPane.tsx:KpiCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "function:web/src/components/ReportHistoryPane.tsx:ReportCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "function:web/src/components/ReportHistoryPane.tsx:TagFilter",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "file:web/src/lib/reportTypeClassifier.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "file:web/src/lib/useReportHistory.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportHistoryPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "target": "function:web/src/components/ReportPreviewDrawer.tsx:ReportPreviewDrawer",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "target": "function:web/src/components/ReportPreviewDrawer.tsx:ReportPreviewDrawer",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "target": "function:web/src/components/ReportPreviewDrawer.tsx:TagEditor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "target": "file:web/src/components/Markdown.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "target": "file:web/src/lib/reportTypeClassifier.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportPreviewDrawer.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportReviewPane.tsx",
+      "target": "function:web/src/components/ReportReviewPane.tsx:buildLineDiff",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ReportReviewPane.tsx",
+      "target": "function:web/src/components/ReportReviewPane.tsx:ReportReviewPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ReportReviewPane.tsx",
+      "target": "function:web/src/components/ReportReviewPane.tsx:ReportReviewPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ReportReviewPane.tsx",
+      "target": "file:web/src/components/Markdown.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportReviewPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ReportReviewPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ResearchLabPane.tsx",
+      "target": "function:web/src/components/ResearchLabPane.tsx:ResearchLabPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ResearchLabPane.tsx",
+      "target": "function:web/src/components/ResearchLabPane.tsx:ResearchLabPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ResearchLabPane.tsx",
+      "target": "function:web/src/components/ResearchLabPane.tsx:MultiAgentModelConfig",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ResearchLabPane.tsx",
+      "target": "function:web/src/components/ResearchLabPane.tsx:SavedModelConfigs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ResearchLabPane.tsx",
+      "target": "function:web/src/components/ResearchLabPane.tsx:snapshotFlowConfigs",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ResearchLabPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ResearchLabPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ResearchLabPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/RulesPane.tsx",
+      "target": "function:web/src/components/RulesPane.tsx:RulesPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/RulesPane.tsx",
+      "target": "function:web/src/components/RulesPane.tsx:RulesPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/RulesPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/RulesPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/RunOutputPanel.tsx",
+      "target": "function:web/src/components/RunOutputPanel.tsx:RunFileTree",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/RunOutputPanel.tsx",
+      "target": "function:web/src/components/RunOutputPanel.tsx:RunOutputPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/RunOutputPanel.tsx",
+      "target": "function:web/src/components/RunOutputPanel.tsx:RunOutputPanel",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/RunOutputPanel.tsx",
+      "target": "file:web/src/components/Markdown.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/RunOutputPanel.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/RunOutputPanel.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/RunOutputPanel.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/Sidebar.tsx",
+      "target": "function:web/src/components/Sidebar.tsx:Sidebar",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/Sidebar.tsx",
+      "target": "function:web/src/components/Sidebar.tsx:Sidebar",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/Sidebar.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/Sidebar.tsx",
+      "target": "file:web/src/lib/theme.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/Sidebar.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:SkillLabPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:SkillLabPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:SummaryTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:PairwiseSummaryTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:TaskSummaryTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:ResultCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:CurationPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:ProposalCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "function:web/src/components/SkillLabPane.tsx:AutonomousPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "file:web/src/lib/evaluation-export.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SkillLabPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SkillSelector.tsx",
+      "target": "function:web/src/components/SkillSelector.tsx:SkillSelector",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SkillSelector.tsx",
+      "target": "function:web/src/components/SkillSelector.tsx:SkillSelector",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/SkillSelector.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SkillSelector.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SkillSelector.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "function:web/src/components/SqlConnectPane.tsx:ConnForm",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "function:web/src/components/SqlConnectPane.tsx:SchemaPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "function:web/src/components/SqlConnectPane.tsx:ResultTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "function:web/src/components/SqlConnectPane.tsx:ExportPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "function:web/src/components/SqlConnectPane.tsx:SqlConnectPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "function:web/src/components/SqlConnectPane.tsx:SqlConnectPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/SqlConnectPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "function:web/src/components/TocPane.tsx:toFlowNodes",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "function:web/src/components/TocPane.tsx:TocCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "function:web/src/components/TocPane.tsx:TocCanvas",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "function:web/src/components/TocPane.tsx:generateTocHtml",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "function:web/src/components/TocPane.tsx:TocPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "function:web/src/components/TocPane.tsx:TocPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/TocPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/TokenStatsPane.tsx",
+      "target": "function:web/src/components/TokenStatsPane.tsx:kindLabel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TokenStatsPane.tsx",
+      "target": "function:web/src/components/TokenStatsPane.tsx:StatCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TokenStatsPane.tsx",
+      "target": "function:web/src/components/TokenStatsPane.tsx:TokenStatsPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TokenStatsPane.tsx",
+      "target": "function:web/src/components/TokenStatsPane.tsx:TokenStatsPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/TokenStatsPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/TokenStatsPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:defaultCase",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:ToolLabPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:ToolLabPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:CaseEditor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:SummaryTable",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:ResultCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:hasConfiguredCases",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:describeExpectation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:describeActual",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:fromToolEvalCase",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:toToolEvalCase",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "function:web/src/components/ToolLabPane.tsx:toExpectation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "file:web/src/lib/evaluation-export.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ToolLabPane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/TracePane.tsx",
+      "target": "function:web/src/components/TracePane.tsx:TracePane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/TracePane.tsx",
+      "target": "function:web/src/components/TracePane.tsx:TracePane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/TracePane.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/TracePane.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/WeatherPane.tsx",
+      "target": "function:web/src/components/WeatherPane.tsx:WeatherPane",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/WeatherPane.tsx",
+      "target": "function:web/src/components/WeatherPane.tsx:WeatherPane",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/WeatherPane.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "function:web/src/components/WorkflowDagEditor.tsx:autoLayout",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "function:web/src/components/WorkflowDagEditor.tsx:initRFNodes",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "function:web/src/components/WorkflowDagEditor.tsx:initRFEdges",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "function:web/src/components/WorkflowDagEditor.tsx:WorkflowNodeCard",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "function:web/src/components/WorkflowDagEditor.tsx:WorkflowDagEditor",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "function:web/src/components/WorkflowDagEditor.tsx:WorkflowDagEditor",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "function:web/src/components/WorkflowDagEditor.tsx:NodePropertyPanel",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/WorkflowDagEditor.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FileSelector.tsx",
+      "target": "function:web/src/components/data-exploration/FileSelector.tsx:FileTree",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FileSelector.tsx",
+      "target": "function:web/src/components/data-exploration/FileSelector.tsx:FileSelector",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FileSelector.tsx",
+      "target": "function:web/src/components/data-exploration/FileSelector.tsx:FileSelector",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FileSelector.tsx",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/data-exploration/FileSelector.tsx",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/ui/button.tsx",
+      "target": "file:web/src/lib/cn.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/useBusinessRequirementContexts.ts",
+      "target": "function:web/src/components/useBusinessRequirementContexts.ts:useBusinessRequirementContexts",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/components/useBusinessRequirementContexts.ts",
+      "target": "function:web/src/components/useBusinessRequirementContexts.ts:useBusinessRequirementContexts",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/components/useBusinessRequirementContexts.ts",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/components/useBusinessRequirementContexts.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:inferColumns",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:inferColumns",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:normalizeRows",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:readLocalDataset",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:readLocalDataset",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:dateBucket",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:calculateMetric",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:runAggregation",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:runAggregation",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:toCsv",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:toCsv",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:buildPythonPrompt",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/aggregate.ts",
+      "target": "function:web/src/lib/aggregate.ts:buildPythonPrompt",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/api.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/cn.ts",
+      "target": "function:web/src/lib/cn.ts:cn",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/cn.ts",
+      "target": "function:web/src/lib/cn.ts:cn",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadEvaluationJson",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadEvaluationJson",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadSkillEvaluationMarkdown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadSkillEvaluationMarkdown",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadToolEvaluationMarkdown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadToolEvaluationMarkdown",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadEvaluationArchiveManifest",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadEvaluationArchiveManifest",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadArchiveTextFile",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadArchiveTextFile",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:renderSkillEvaluationMarkdown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:renderToolEvaluationMarkdown",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:renderSkillRunFailure",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:renderToolRunFailure",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadArchivesZip",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:downloadArchivesZip",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:buildZip",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "function:web/src/lib/evaluation-export.ts:computeCrc32",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/evaluation-export.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "function:web/src/lib/reportTypeClassifier.ts:formatSize",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "function:web/src/lib/reportTypeClassifier.ts:formatSize",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "function:web/src/lib/reportTypeClassifier.ts:formatDate",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "function:web/src/lib/reportTypeClassifier.ts:formatDate",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "function:web/src/lib/reportTypeClassifier.ts:formatDateShort",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "function:web/src/lib/reportTypeClassifier.ts:formatDateShort",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "function:web/src/lib/reportTypeClassifier.ts:formatDayKey",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "function:web/src/lib/reportTypeClassifier.ts:formatDayKey",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/reportTypeClassifier.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/theme.ts",
+      "target": "function:web/src/lib/theme.ts:useTheme",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/theme.ts",
+      "target": "function:web/src/lib/theme.ts:useTheme",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/useReportHistory.ts",
+      "target": "function:web/src/lib/useReportHistory.ts:useReportHistory",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/useReportHistory.ts",
+      "target": "function:web/src/lib/useReportHistory.ts:useReportHistory",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/useReportHistory.ts",
+      "target": "file:web/src/lib/api.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/useReportHistory.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/lib/useTabVisibility.ts",
+      "target": "function:web/src/lib/useTabVisibility.ts:useTabVisibility",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/useTabVisibility.ts",
+      "target": "function:web/src/lib/useTabVisibility.ts:useTabVisibility",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/ws.ts",
+      "target": "class:web/src/lib/ws.ts:Gateway",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/lib/ws.ts",
+      "target": "class:web/src/lib/ws.ts:Gateway",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/lib/ws.ts",
+      "target": "file:web/src/types.ts",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/main.tsx",
+      "target": "file:web/src/App.tsx",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/main.tsx",
+      "target": "file:web/src/index.css",
+      "type": "imports",
+      "direction": "forward",
+      "weight": 0.7
+    },
+    {
+      "source": "file:web/src/types.ts",
+      "target": "function:web/src/types.ts:asBlocks",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/types.ts",
+      "target": "function:web/src/types.ts:asBlocks",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    },
+    {
+      "source": "file:web/src/types.ts",
+      "target": "function:web/src/types.ts:textOf",
+      "type": "contains",
+      "direction": "forward",
+      "weight": 1
+    },
+    {
+      "source": "file:web/src/types.ts",
+      "target": "function:web/src/types.ts:textOf",
+      "type": "exports",
+      "direction": "forward",
+      "weight": 0.8
+    }
+  ]
+}

@@ -1,8 +1,8 @@
 import { useCallback, useEffect, useState } from "react";
-import { ChevronDown, ChevronRight, DatabaseZap, FolderOpen, Loader2, Play, Plus, RefreshCw, Save, ShieldCheck, Trash2, Wifi, WifiOff } from "lucide-react";
+import { ChevronDown, ChevronRight, DatabaseZap, FolderOpen, Loader2, Play, Plus, RefreshCw, Save, ShieldCheck, ShieldAlert, Trash2, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
-import type { DbType, SavedQuery, SchemaTable, SqlConnection, SqlQueryResult, ToolParameter } from "@/types";
+import type { DbType, SavedQuery, SchemaTable, SqlConnection, SqlQueryResult, SqlValidateResult, ToolParameter } from "@/types";
 
 // ---- Connection Form ----
 
@@ -247,7 +247,8 @@ function ExportPanel({ connId, sql, params, workspaceId }: ExportPanelProps) {
               column: watermarkColumn.trim(),
               initialValue: (!watermarkState || !watermarkState.exists) ? initialWatermark.trim() || undefined : undefined
             }
-          : undefined
+          : undefined,
+        workspaceId ?? undefined
       );
       setResult(res);
       refreshWatermarkState(outputPath);
@@ -265,7 +266,13 @@ function ExportPanel({ connId, sql, params, workspaceId }: ExportPanelProps) {
 
   return (
     <div className="space-y-3 rounded-lg border border-neutral-200 bg-white p-4 text-[12px] dark:border-neutral-800 dark:bg-neutral-900">
-      <h3 className="text-[13px] font-semibold">导出 CSV 到工作区</h3>
+      <div className="flex items-center gap-2">
+        <h3 className="text-[13px] font-semibold">导出 CSV 到工作区</h3>
+        <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">L2 · 需确认</span>
+      </div>
+      <p className="text-[11px] text-amber-600 dark:text-amber-400">
+        导出操作将把查询结果写入本地文件。请确认输出路径和文件名无误。
+      </p>
 
       <div className="flex gap-3">
         {(["draw_data", "clean_data"] as const).map((f) => (
@@ -365,6 +372,7 @@ export function SqlConnectPane({ workspaceId }: Props) {
   const [queryResult, setQueryResult] = useState<SqlQueryResult | null>(null);
   const [queryError, setQueryError] = useState("");
   const [showExport, setShowExport] = useState(false);
+  const [validation, setValidation] = useState<SqlValidateResult | null>(null);
 
   const [queriesOpen, setQueriesOpen] = useState(false);
   const [activeQuery, setActiveQuery] = useState<SavedQuery | null>(null);
@@ -394,6 +402,7 @@ export function SqlConnectPane({ workspaceId }: Props) {
     setTestResult(null);
     setSql("");
     setSqlParams({});
+    setValidation(null);
   };
 
   const loadSavedQuery = (q: SavedQuery) => {
@@ -505,9 +514,22 @@ export function SqlConnectPane({ workspaceId }: Props) {
     if (!selected || !sql.trim()) return;
     setQuerying(true); setQueryResult(null); setQueryError(""); setShowExport(false);
     try {
-      setQueryResult(await api.querySql(selected.id, sql.trim(), sqlParams));
+      setQueryResult(await api.querySql(selected.id, sql.trim(), sqlParams, workspaceId ?? undefined));
     } catch (err) { setQueryError(String(err)); } finally { setQuerying(false); }
   };
+
+  const doValidate = useCallback(async () => {
+    if (!selected || !sql.trim()) { setValidation(null); return; }
+    try {
+      setValidation(await api.validateSql(selected.id, sql.trim()));
+    } catch { setValidation(null); }
+  }, [selected, sql]);
+
+  useEffect(() => {
+    if (!sql.trim()) { setValidation(null); return; }
+    const timer = setTimeout(() => { void doValidate(); }, 500);
+    return () => clearTimeout(timer);
+  }, [sql, doValidate]);
 
   const saveConn = async (data: Omit<SqlConnection, "id" | "createdAt">) => {
     if (showForm === "edit" && selected) {
@@ -690,7 +712,33 @@ export function SqlConnectPane({ workspaceId }: Props) {
                 className="mt-3 h-32 w-full resize-y rounded border border-neutral-200 bg-neutral-50 p-3 font-mono text-[12px] leading-5 outline-none focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-950"
                 spellCheck={false}
               />
-              
+
+              {validation && (
+                <div className={cn(
+                  "mt-2 rounded border px-3 py-2 text-[11px]",
+                  validation.safe
+                    ? "border-emerald-200 bg-emerald-50 dark:border-emerald-900/50 dark:bg-emerald-950/30"
+                    : "border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/30",
+                )}>
+                  <div className="flex items-center gap-1.5 font-medium">
+                    {validation.safe
+                      ? <><ShieldCheck className="h-3.5 w-3.5 text-emerald-600" /> SQL 安全 · 风险等级 {validation.riskLevel}</>
+                      : <><ShieldAlert className="h-3.5 w-3.5 text-red-600" /> SQL 包含危险操作 · 风险等级 {validation.riskLevel}</>
+                    }
+                  </div>
+                  {validation.risks.length > 0 && (
+                    <ul className="mt-1 ml-5 list-disc text-red-600 dark:text-red-400">
+                      {validation.risks.map((r, i) => <li key={i}>{r}</li>)}
+                    </ul>
+                  )}
+                  {validation.suggestions.length > 0 && (
+                    <ul className="mt-1 ml-5 list-disc text-amber-600 dark:text-amber-400">
+                      {validation.suggestions.map((s, i) => <li key={i}>{s}</li>)}
+                    </ul>
+                  )}
+                </div>
+              )}
+
               {activeQuery && activeQuery.parameters && activeQuery.parameters.length > 0 ? (
                 <div className="mt-3 rounded border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/50 dark:bg-amber-950/30 text-[12px]">
                   <h4 className="mb-2 text-[11px] font-semibold text-amber-700 dark:text-amber-500">
@@ -787,6 +835,29 @@ export function SqlConnectPane({ workspaceId }: Props) {
                     {showExport ? "关闭导出" : "导出配置"}
                   </button>
                 </div>
+                {queryResult.summary && (
+                  <div className="border-b border-neutral-100 px-4 py-2 dark:border-neutral-800">
+                    <div className="flex flex-wrap gap-x-4 gap-y-1 text-[11px]">
+                      {queryResult.summary.numericColumns.slice(0, 3).map((nc) => (
+                        <span key={nc.name} className="text-neutral-500">
+                          <span className="font-mono font-medium text-neutral-700 dark:text-neutral-300">{nc.name}</span>
+                          : {nc.min.toLocaleString()} ~ {nc.max.toLocaleString()} (avg {nc.avg.toFixed(1)})
+                        </span>
+                      ))}
+                      {queryResult.summary.dateRange && (
+                        <span className="text-neutral-500">
+                          时间范围: <span className="font-mono">{queryResult.summary.dateRange.min} ~ {queryResult.summary.dateRange.max}</span>
+                        </span>
+                      )}
+                      {queryResult.summary.categoricalColumns.slice(0, 2).map((cc) => (
+                        <span key={cc.name} className="text-neutral-500">
+                          <span className="font-mono font-medium text-neutral-700 dark:text-neutral-300">{cc.name}</span>
+                          : {cc.uniqueCount} 种取值, top={cc.topValue}
+                        </span>
+                      ))}
+                    </div>
+                  </div>
+                )}
                 <div className="mt-3 max-h-96 overflow-auto">
                   <ResultTable result={queryResult} />
                 </div>

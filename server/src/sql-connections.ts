@@ -7,6 +7,15 @@ import { SQL_CONNECTIONS_PATH } from "./config.ts";
 
 export type DbType = "sqlite" | "postgresql" | "mysql";
 
+export type RiskLevel = "L0" | "L1" | "L2" | "L3";
+
+export interface SqlValidateResult {
+  safe: boolean;
+  risks: string[];
+  suggestions: string[];
+  riskLevel: RiskLevel;
+}
+
 export interface ToolParameter {
   name: string;
   label: string;
@@ -60,6 +69,13 @@ export interface QueryResult {
   rowCount: number;
   executionMs: number;
   capped: boolean;
+  summary?: QuerySummary;
+}
+
+export interface QuerySummary {
+  numericColumns: Array<{ name: string; min: number; max: number; avg: number; sum: number }>;
+  categoricalColumns: Array<{ name: string; uniqueCount: number; topValue: string }>;
+  dateRange?: { min: string; max: string };
 }
 
 // ---- connection storage ----
@@ -262,6 +278,48 @@ export function prepareSql(connType: DbType, sql: string, params?: Record<string
   return { text, values };
 }
 
+// ---- SQL validation ----
+
+const DANGEROUS_KEYWORDS = [
+  "DROP", "DELETE", "UPDATE", "INSERT", "ALTER", "CREATE", "TRUNCATE",
+  "GRANT", "REVOKE", "EXEC", "EXECUTE", "MERGE", "REPLACE",
+];
+
+const WARNING_PATTERNS: Array<{ pattern: RegExp; message: string }> = [
+  { pattern: /\bSELECT\s+\*\b/i, message: "SELECT * 可能导致大量数据传输，建议指定具体列" },
+  { pattern: /\bFROM\s+\w+\s*$/i, message: "缺少 LIMIT 子句，可能返回大量数据" },
+  { pattern: /\bCROSS\s+JOIN\b/i, message: "CROSS JOIN 可能产生笛卡尔积，请确认意图" },
+  { pattern: /\bLIKE\s+'%[^']*%'/i, message: "前缀通配 LIKE 查询可能无法使用索引" },
+];
+
+export function validateSql(sql: string): SqlValidateResult {
+  const risks: string[] = [];
+  const suggestions: string[] = [];
+  const upperSql = sql.toUpperCase().trim();
+
+  for (const kw of DANGEROUS_KEYWORDS) {
+    const regex = new RegExp(`\\b${kw}\\b`, "i");
+    if (regex.test(upperSql)) {
+      risks.push(`检测到危险操作: ${kw}`);
+    }
+  }
+
+  for (const { pattern, message } of WARNING_PATTERNS) {
+    if (pattern.test(sql)) {
+      suggestions.push(message);
+    }
+  }
+
+  if (upperSql.startsWith("SELECT") && !/\bLIMIT\b/i.test(upperSql)) {
+    suggestions.push("建议添加 LIMIT 子句限制返回行数");
+  }
+
+  const safe = risks.length === 0;
+  const riskLevel: RiskLevel = safe ? "L1" : "L3";
+
+  return { safe, risks, suggestions, riskLevel };
+}
+
 // ---- query ----
 
 const PREVIEW_CAP = 500;
@@ -312,9 +370,62 @@ function sqliteQuery(conn: SqlConnection, sql: string, params: unknown[], cap: n
 
 export async function executeQuery(conn: SqlConnection, sql: string, cap = PREVIEW_CAP, params?: Record<string, unknown>): Promise<QueryResult> {
   const { text, values } = prepareSql(conn.type, sql, params);
-  if (conn.type === "sqlite") return sqliteQuery(conn, text, values, cap);
-  if (conn.type === "postgresql") return pgQuery(conn, text, values, cap);
-  return mysqlQuery(conn, text, values, cap);
+  let result: QueryResult;
+  if (conn.type === "sqlite") result = sqliteQuery(conn, text, values, cap);
+  else if (conn.type === "postgresql") result = await pgQuery(conn, text, values, cap);
+  else result = await mysqlQuery(conn, text, values, cap);
+  result.summary = computeSummary(result);
+  return result;
+}
+
+function computeSummary(result: QueryResult): QuerySummary | undefined {
+  if (result.rows.length === 0 || result.columns.length === 0) return undefined;
+  const numericColumns: QuerySummary["numericColumns"] = [];
+  const categoricalColumns: QuerySummary["categoricalColumns"] = [];
+  let dateRange: QuerySummary["dateRange"] | undefined;
+
+  for (const col of result.columns) {
+    const values = result.rows.map((r) => r[col]);
+    const nonNull = values.filter((v) => v !== null && v !== undefined);
+
+    if (nonNull.length === 0) continue;
+
+    if (nonNull.every((v) => typeof v === "number" && Number.isFinite(v))) {
+      const nums = nonNull as number[];
+      numericColumns.push({
+        name: col,
+        min: Math.min(...nums),
+        max: Math.max(...nums),
+        avg: nums.reduce((a, b) => a + b, 0) / nums.length,
+        sum: nums.reduce((a, b) => a + b, 0),
+      });
+    } else if (nonNull.some((v) => v instanceof Date || (typeof v === "string" && !Number.isNaN(Date.parse(v))))) {
+      const dates = nonNull
+        .map((v) => (v instanceof Date ? v : new Date(v as string)))
+        .filter((d) => !Number.isNaN(d.getTime()))
+        .sort((a, b) => a.getTime() - b.getTime());
+      if (dates.length > 0) {
+        dateRange = {
+          min: dates[0]!.toISOString().slice(0, 10),
+          max: dates[dates.length - 1]!.toISOString().slice(0, 10),
+        };
+      }
+    } else {
+      const freq = new Map<string, number>();
+      for (const v of nonNull) {
+        const key = String(v);
+        freq.set(key, (freq.get(key) ?? 0) + 1);
+      }
+      let topValue = "";
+      let topCount = 0;
+      for (const [k, c] of freq) {
+        if (c > topCount) { topValue = k; topCount = c; }
+      }
+      categoricalColumns.push({ name: col, uniqueCount: freq.size, topValue });
+    }
+  }
+
+  return { numericColumns, categoricalColumns, dateRange };
 }
 
 // ---- export to CSV ----

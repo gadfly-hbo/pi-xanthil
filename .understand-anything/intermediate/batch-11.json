@@ -1,0 +1,215 @@
+{
+  "nodes": [
+    {
+      "id": "document:AGENTS.md",
+      "type": "document",
+      "name": "AGENTS.md",
+      "filePath": "AGENTS.md",
+      "summary": "pi-Xanthil 项目约定（AGENTS.md）",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:handoff- Dashboard.md",
+      "type": "document",
+      "name": "handoff- Dashboard.md",
+      "filePath": "handoff- Dashboard.md",
+      "summary": "Handoff Log — 模型工坊 (Model Lab)",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-AnaX.md",
+      "type": "document",
+      "name": "handoff-AnaX.md",
+      "filePath": "handoff-AnaX.md",
+      "summary": "Handoff Log — AnaX 商业分析模块整合",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-Xan数据库.md",
+      "type": "document",
+      "name": "handoff-Xan数据库.md",
+      "filePath": "handoff-Xan数据库.md",
+      "summary": "Handoff Log — pi-Xanthil / Xan数据库模块",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:handoff-实验室.md",
+      "type": "document",
+      "name": "handoff-实验室.md",
+      "filePath": "handoff-实验室.md",
+      "summary": "Handoff Log — 苍耳 pi-Xanthil · 实验室（评估评测）模块",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-工作流.md",
+      "type": "document",
+      "name": "handoff-工作流.md",
+      "filePath": "handoff-工作流.md",
+      "summary": "Handoff Log — 苍耳 pi-Xanthil · AgentFlow 模块",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-探索.md",
+      "type": "document",
+      "name": "handoff-探索.md",
+      "filePath": "handoff-探索.md",
+      "summary": "Handoff Log — 苍耳 pi-Xanthil（数据分析 AI 工作台）",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-缓存命中.md",
+      "type": "document",
+      "name": "handoff-缓存命中.md",
+      "filePath": "handoff-缓存命中.md",
+      "summary": "Handoff Log — 缓存命中 Harness（降低 token 消耗）",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "moderate"
+    },
+    {
+      "id": "document:handoff-规则记忆.md",
+      "type": "document",
+      "name": "handoff-规则记忆.md",
+      "filePath": "handoff-规则记忆.md",
+      "summary": "Handoff Log — pi-xanthil / 规则记忆模块",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "document:handoff-计算工具.md",
+      "type": "document",
+      "name": "handoff-计算工具.md",
+      "filePath": "handoff-计算工具.md",
+      "summary": "Handoff Log — 计算工具 · 聚合计算与数据提取",
+      "tags": [
+        "docs",
+        "auto-generated"
+      ],
+      "complexity": "complex"
+    },
+    {
+      "id": "config:package.json",
+      "type": "config",
+      "name": "package.json",
+      "filePath": "package.json",
+      "summary": "Auto-generated summary for package.json",
+      "tags": [
+        "config",
+        "auto-generated"
+      ],
+      "complexity": "simple"
+    }
+  ],
+  "edges": [
+    {
+      "source": "document:AGENTS.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff- Dashboard.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff-AnaX.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff-Xan数据库.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff-实验室.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff-工作流.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff-探索.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff-缓存命中.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff-规则记忆.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "document:handoff-计算工具.md",
+      "target": "document:README.md",
+      "type": "related",
+      "direction": "forward",
+      "weight": 0.5
+    },
+    {
+      "source": "config:package.json",
+      "target": "file:web/src/main.tsx",
+      "type": "configures",
+      "direction": "forward",
+      "weight": 0.6
+    }
+  ]
+}
