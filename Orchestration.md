@@ -177,3 +177,18 @@ web/src/
 - [ ] `MetricDefinition` 语义层契约定义 — 总控（P1 前置）
 - [ ] 三个 agent 接入开发环境 + 阅读本章程 + `AGENTS.md`
 - 参考：审计结论见会话「总纲领-传统BI-AI数据分析工作台」；模块边界速查见 `AGENTS.md §三`
+
+---
+
+## 九、领域背景笔记（各域开工前读对应一份）
+
+旧 9 份 handoff（单链 session 交接，已蒸馏并 `git rm`，原文见 commit 95528cd 之前）→ 改为按域**活文档**，长效知识为主，agent 在开发中持续维护：
+
+| 文件 | 域 | 内容来源（旧 handoff） |
+|---|---|---|
+| `docs/notes-data.md` | D | 计算工具 · Xan数据库 · 规则记忆(数据) · 探索(数据探索) |
+| `docs/notes-engine.md` | E | 工作流 · AnaX · 实验室 · 探索(对话/skill/业务需求) |
+| `docs/notes-viz.md` | V | Dashboard · 探索(报告/汇报/审核/黄金策) · 规则记忆(trace/token/KG) |
+| `docs/notes-infra.md` | 总控 | 缓存命中(缓存 harness) + 接缝层指针 |
+
+**交接机制改革**：停用按-tab 单链巨型 handoff；跨 session 连续性靠 **PR/commit + 本章程状态表 + 各域 notes 活文档**。不再产生 changelog 堆叠。
