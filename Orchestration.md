@@ -191,37 +191,39 @@ web/src/
 | `docs/notes-viz.md` | V | Dashboard · 探索(报告/汇报/审核/黄金策) · 规则记忆(trace/token/KG) |
 | `docs/notes-infra.md` | 总控 | 缓存命中(缓存 harness) + 接缝层指针 |
 
-**交接机制改革**：停用按-tab 单链巨型 handoff；跨 session 连续性靠 **PR/commit + 各域 notes §0 状态快照 + 本章程总览**。不再产生 changelog 堆叠。
+**交接机制改革**：停用按-tab 单链巨型 handoff；跨 session 连续性靠 **各域 notes §0 状态快照 + 本章程总览 + 用户手动提交的 commit 历史**。不再产生 changelog 堆叠。
 
 ---
 
 ## 十、Session 连续性 SOP（替代旧 handoff-generate / handoff-load）
 
-**原则**：信息分层 + 状态**覆盖**不堆叠。各信息归属见 §九上方表。`notes-<域>.md §0` 是该域的"当前状态快照"，agent 独占编辑（零并发冲突）。
+**原则**：信息分层 + 状态**覆盖**不堆叠。`notes-<域>.md §0` 是该域"当前状态快照"，agent 独占编辑（零并发冲突）。
+**所有 agent（含 Claude 总控）一律不碰 git** —— 提交时机 / 粒度 / 拆分全部由用户在合适节点手动决定。
 
-### Session 收尾（5 步）
-1. `npm run typecheck` + `npm run build`（D 另跑数据探索隔离 grep）→ 必须全绿。
-2. **commit**（Conventional Commits，message 写清「做了什么 + 验证了什么」）；分支则 `push` + 开/更新 PR（PR 描述 = 本次范围 + 验证结论）。
-3. **覆盖更新**自己域 `notes-<域>.md §0`：进度 / 下一步 / 阻塞 / 开放问题（不堆历史，旧状态被覆盖，历史在 git）。
-4. 本次产生的**长效知识**（新踩坑 / 新决策含"为什么" / 新约束）→ 追加或修订到 `notes-<域>.md` 正文对应小节。
-5. 需总控拍板的事项 → 写进 `notes §0 开放问题` 或 PR 评论 `@总控`。
+| 信息类型 | 载体 | 谁写 |
+|---|---|---|
+| 当前状态（干到哪/下一步/阻塞） | `notes-<域>.md §0`（覆盖式） | 域 agent |
+| 长效知识（为什么/踩坑/约束） | `notes-<域>.md` 正文（追加） | 域 agent |
+| 本次改了什么（改动清单） | 收尾时列出 → 用户据此手动提交 | agent 列、用户提交 |
+| 跨域里程碑/集成状态 | 本章程 §八 | 总控 |
 
-### Session 开场（4 步）
-1. `git pull`；读自己域 `notes-<域>.md §0`（上次状态 + 下一步）+ 本章程 §八（全局里程碑）。
-2. 读 `notes-<域>.md` 正文（领域背景）+ `KICKOFF-P0.md`（当前阶段任务）+ `AGENTS.md`（安全/工程约定）。
-3. `git log --oneline -10 -- <自己域文件>` 看上次具体改动；必要时 `git diff`。
-4. 按 `notes §0「下一步」`开干。
+### Session 收尾（4 步，无 git）
+1. `npm run typecheck` + `npm run build`（D 另跑数据探索隔离 grep）→ 全绿；不绿则修复。
+2. **覆盖**自己域 `notes-<域>.md §0`（进度/下一步/阻塞/开放问题）——这是下个 session 接续的唯一可靠依据，务必写充分。
+3. 新踩坑 / 决策(含"为什么") / 约束 → 追加进 `notes-<域>.md` 正文。
+4. 列本次改动文件清单（逐条说明），提示用户自行 review 后提交。**不执行任何 git 操作。**
+
+### Session 开场（3 步，无 git）
+1. 读自己域 `notes-<域>.md §0`（上次状态+下一步）+ 本章程 §八。
+2. 读 `notes-<域>.md` 正文 + `KICKOFF-P0.md` + `AGENTS.md`。
+3. 先汇报（本域状态/上次遗留/本次下一步与第一步动作/阻塞），用户确认后再开干。**不执行 git。**
 
 ### 谁更新什么
-- **域 agent**：自己域 `notes §0`（覆盖）+ 正文（追加长效）+ commit/PR。**不碰** Orchestration / 他域 notes / 接缝层。
-- **总控**：本章程 §八（跨域里程碑/集成状态）+ `notes-infra.md` + 跨域契约（types.ts）。
+- **域 agent**：自己域 `notes §0`（覆盖）+ 正文（追加长效）+ 收尾列改动清单。**不碰** git / Orchestration / 他域 notes / 接缝层。
+- **总控**：本章程 §八 + `notes-infra.md` + 跨域契约（`types.ts`）。
+- **用户**：在合适节点手动 `git add/commit`（决定时机与粒度）。
 
-### 旧 skill 处置 + 项目命令
-`handoff-generate` / `handoff-load`（全局 skill，他项目仍用）→ **本项目停用**，不再生成单链 handoff。
-本项目改用两个**项目级 slash command**（`.claude/commands/`，仅本项目生效、不影响全局）自动执行上述 SOP：
-- **`/px-wrapup [域]`** — Session 收尾（校验→commit/PR→覆盖 notes §0→沉淀长效知识）
-- **`/px-resume [域]`** — Session 开场（拉取→读状态/背景/任务→定位上次改动→给起步计划）
-
-> 命名带 `px-` 前缀：避免与 Claude Code 内置 `/resume`（恢复历史会话）等命令混淆。
-
-域参数留空时按当前 git 分支推断。三个外部 agent（opencode/codex/antigravity）读不到 `.claude/commands/`，可直接复制这两个 `.md` 正文作为 prompt 使用（其中 `!`git…`` 预取行需自行手动跑）。
+### 命令与通用 prompt
+- **通用 prompt（任意 agent 复制即用）**：`docs/prompts/px-wrapup.prompt.md`、`docs/prompts/px-resume.prompt.md`（纯文本、无 git、无 Claude Code 特性）。三个外部 agent（opencode/codex/antigravity）直接复制正文使用。
+- **Claude Code 项目命令**：`/px-wrapup [域]`、`/px-resume [域]`（`.claude/commands/`，用 `@` 引用上面同一份 prompt → 单一来源不重复）。`px-` 前缀避免与内置 `/resume` 混淆。
+- 旧 `handoff-generate` / `handoff-load`（全局 skill，他项目仍用）→ **本项目停用**。
