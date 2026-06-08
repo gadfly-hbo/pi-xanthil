@@ -1,44 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelRightOpen, CircleAlert, Database, TriangleAlert, Store, FlaskConical } from "lucide-react";
+import { PanelRightOpen, CircleAlert, TriangleAlert } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/Sidebar";
-import { ChatPane } from "@/components/ChatPane";
-import { MultiAgentExecutionPane } from "@/components/MultiAgentExecutionPane";
-import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { type UiMessage } from "@/components/MessageRow";
 import { PreviewPane } from "@/components/PreviewPane";
 import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useTabVisibility } from "@/lib/useTabVisibility";
 import { getSubTabsForTab, type SubTab } from "@/lib/constants";
-import { Placeholder } from "@/components/Placeholder";
-import { ResearchLabPane } from "@/components/ResearchLabPane";
-import { WeatherPane } from "@/components/WeatherPane";
-import { SkillLabPane } from "@/components/SkillLabPane";
-import { ToolLabPane } from "@/components/ToolLabPane";
-import { AggregatePane } from "@/components/AggregatePane";
-import { ExtractionPane } from "@/components/ExtractionPane";
-import { TokenStatsPane } from "@/components/TokenStatsPane";
-import { TracePane } from "@/components/TracePane";
-import { RulesPane } from "@/components/RulesPane";
-import { BusinessRequirementPane } from "@/components/BusinessRequirementPane";
-import { DataExplorationPane } from "@/components/DataExplorationPane";
-import { BusinessContextPane } from "@/components/BusinessContextPane";
-import { IndicatorsPane } from "@/components/IndicatorsPane";
-import { GoldenStrategyPane } from "@/components/GoldenStrategyPane";
-import { AnaXPane } from "@/components/AnaXPane";
-import { ModelLabPane } from "@/components/ModelLabPane";
-import { BiDashboardPane } from "@/components/BiDashboardPane";
-import { ModelRunHistoryDashboard } from "@/components/ModelRunHistoryDashboard";
-import { ReportHistoryPane } from "@/components/ReportHistoryPane";
-import { KnowledgeGraphPane } from "@/components/KnowledgeGraphPane";
-import { AnaXReadmePane } from "@/components/AnaXReadmePane";
-import { HypothesisPane } from "@/components/HypothesisPane";
-import { ChangeManagementPane } from "@/components/ChangeManagementPane";
-import { CasesPane } from "@/components/CasesPane";
-import { SqlConnectPane } from "@/components/SqlConnectPane";
-import { PresentationVersionPane } from "@/components/PresentationVersionPane";
-import { ReportReviewPane } from "@/components/ReportReviewPane";
+import { DataTabs } from "@/tabs/DataTabs";
+import { EngineTabs } from "@/tabs/EngineTabs";
+import { VizTabs } from "@/tabs/VizTabs";
+import type { TabContext } from "@/tabs/types";
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
@@ -589,6 +562,19 @@ export default function App() {
     setArtifactRefreshKey((current) => current + 1);
   }, []);
 
+  const tabCtx: TabContext = {
+    activeTab, activeSubTab, setActiveSubTab,
+    activeWorkspaceId, activeSessionId, folderScope,
+    model, models, setModel,
+    messages, running, runtime, compacting, runtimeNotice,
+    onSend, onStop, compactContext, refreshRuntime,
+    canPromoteToWorkflow, openPromote, openDistill,
+    exploreSeed, setExploreSeed,
+    handleReportPathsChange, setArtifactRefreshKey, refreshRulesPromptInfo,
+    activeFlow, flows, rulesPromptEnabled,
+    pendingRestoreRunId, handleRestoreConsumed, handleRequestRestoreRun,
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {sidebarOpen && (
@@ -714,219 +700,9 @@ export default function App() {
 
         <div className="flex min-h-0 flex-1">
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
-            {/* Explore tab */}
-            {activeTab === "explore" && activeSubTab === "view" && (
-              <ChatPane
-                messages={messages}
-                running={running}
-                disabled={!activeSessionId}
-                workspaceId={activeWorkspaceId}
-                folderScope={folderScope}
-                model={model}
-                models={models}
-                onModelChange={setModel}
-                onSend={onSend}
-                onStop={onStop}
-                runtime={runtime}
-                compacting={compacting}
-                runtimeNotice={runtimeNotice}
-                onCompact={() => void compactContext()}
-                onRefreshRuntime={() => void refreshRuntime()}
-                canPromoteToWorkflow={canPromoteToWorkflow}
-                onPromoteToWorkflow={openPromote}
-                canDistillSkill={canPromoteToWorkflow}
-                onDistillSkill={openDistill}
-              />
-            )}
-            {activeTab === "explore" && activeSubTab === "business_requirement" && (
-              <BusinessRequirementPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} onBusinessContextChanged={() => void refreshRulesPromptInfo()} onExploreFields={(fieldHints, source) => { setExploreSeed({ fieldHints, source }); setActiveSubTab("data_exploration"); }} />
-            )}
-            {activeTab === "explore" && activeSubTab === "draw_data" && (
-              <FolderPathsPane scope={folderScope} folder="draw_data" />
-            )}
-            {activeTab === "explore" && activeSubTab === "clean_data" && (
-              <FolderPathsPane scope={folderScope} folder="clean_data" />
-            )}
-            {activeTab === "explore" && activeSubTab === "data_exploration" && (
-              <DataExplorationPane scope={folderScope} seed={exploreSeed} onSeedDismiss={() => setExploreSeed(null)} />
-            )}
-            {activeTab === "explore" && activeSubTab === "report" && (
-              <FolderPathsPane scope={folderScope} folder="report" onPathsChange={handleReportPathsChange} />
-            )}
-
-            {activeTab === "explore" && activeSubTab === "presentation_version" && (
-              <PresentationVersionPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
-            )}
-            {activeTab === "explore" && activeSubTab === "report_review" && (
-              <ReportReviewPane scope={folderScope} model={model} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
-            )}
-            {activeTab === "explore" && activeSubTab === "golden_strategy" && (
-              <GoldenStrategyPane scope={{ type: "session", sessionId: activeSessionId }} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
-            )}
-
-            {/* Workflow (multi-agent) tab */}
-            {activeTab === "multi" && activeSubTab === "view" && (
-              <MultiAgentExecutionPane
-                flow={activeFlow?.kind === "multi" ? activeFlow : null}
-                models={models}
-                model={model}
-                onModelChange={setModel}
-                rulesPromptEnabled={rulesPromptEnabled}
-              />
-            )}
-            {activeTab === "multi" && activeSubTab === "business_requirement" && (
-              <BusinessRequirementPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} onBusinessContextChanged={() => void refreshRulesPromptInfo()} onExploreFields={(fieldHints, source) => { setExploreSeed({ fieldHints, source }); setActiveSubTab("data_exploration"); }} />
-            )}
-            {activeTab === "multi" && activeSubTab === "draw_data" && (
-              <FolderPathsPane scope={folderScope} folder="draw_data" />
-            )}
-            {activeTab === "multi" && activeSubTab === "clean_data" && (
-              <FolderPathsPane scope={folderScope} folder="clean_data" />
-            )}
-            {activeTab === "multi" && activeSubTab === "data_exploration" && (
-              <DataExplorationPane scope={folderScope} seed={exploreSeed} onSeedDismiss={() => setExploreSeed(null)} />
-            )}
-            {activeTab === "multi" && activeSubTab === "report" && (
-              <FolderPathsPane scope={folderScope} folder="report" onPathsChange={handleReportPathsChange} />
-            )}
-
-            {activeTab === "multi" && activeSubTab === "presentation_version" && (
-              <PresentationVersionPane scope={folderScope} model={model} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
-            )}
-            {activeTab === "multi" && activeSubTab === "report_review" && (
-              <ReportReviewPane scope={folderScope} model={model} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
-            )}
-            {activeTab === "multi" && activeSubTab === "golden_strategy" && (
-              <GoldenStrategyPane scope={{ type: "flow", flow: activeFlow?.kind === "multi" ? activeFlow : null }} models={models} onGenerated={() => setArtifactRefreshKey((current) => current + 1)} />
-            )}
-
-            {/* Aggregate tab */}
-            {activeTab === "aggregate" && activeSubTab === "view" && (
-              <AggregatePane model={model} models={models} />
-            )}
-            {activeTab === "aggregate" && activeSubTab === "extraction" && (
-              <ExtractionPane workspaceId={activeWorkspaceId} />
-            )}
-            {activeTab === "aggregate" && activeSubTab === "sql_connect" && (
-              <SqlConnectPane workspaceId={activeWorkspaceId} />
-            )}
-            {/* Rule Memory tab */}
-            {activeTab === "rule_memory" && activeSubTab === "rules" && (
-              <RulesPane workspaceId={activeWorkspaceId} onRulesChanged={() => void refreshRulesPromptInfo()} />
-            )}
-            {activeTab === "rule_memory" && activeSubTab === "business_context" && (
-              <BusinessContextPane workspaceId={activeWorkspaceId} onChanged={() => void refreshRulesPromptInfo()} />
-            )}
-            {activeTab === "rule_memory" && activeSubTab === "indicators" && (
-              <IndicatorsPane workspaceId={activeWorkspaceId} onStandardsChanged={() => void refreshRulesPromptInfo()} />
-            )}
-            {activeTab === "rule_memory" && activeSubTab === "cases" && (
-              <CasesPane workspaceId={activeWorkspaceId} onChanged={() => void refreshRulesPromptInfo()} />
-            )}
-            {activeTab === "rule_memory" && activeSubTab === "trace" && (
-              <TracePane workspaceId={activeWorkspaceId} onRulesChanged={() => void refreshRulesPromptInfo()} />
-            )}
-            {activeTab === "rule_memory" && activeSubTab === "token_stats" && (
-              <TokenStatsPane workspaceId={activeWorkspaceId} />
-            )}
-            {activeTab === "rule_memory" && activeSubTab === "knowledge_graph" && (
-              <KnowledgeGraphPane workspaceId={activeWorkspaceId} onSynced={() => void refreshRulesPromptInfo()} />
-            )}
-            {/* Xan数据库 tab */}
-            {activeTab === "xan_db" && activeSubTab === "the-crowd" && (
-              <Placeholder
-                icon={Database}
-                title="the-crowd"
-                hint="人群数据库管理，即将推出"
-              />
-            )}
-            {activeTab === "xan_db" && activeSubTab === "industry" && (
-              <Placeholder
-                icon={Database}
-                title="行业"
-                hint="行业数据管理，即将推出"
-              />
-            )}
-            {activeTab === "xan_db" && activeSubTab === "weather" && (
-              <WeatherPane />
-            )}
-            {activeTab === "xan_db" && activeSubTab === "business_district" && (
-              <Placeholder
-                icon={Store}
-                title="商圈"
-                hint="商圈数据管理，即将推出"
-              />
-            )}
-            {activeTab === "xan_db" && activeSubTab === "competitor" && (
-              <Placeholder
-                icon={Database}
-                title="竞品"
-                hint="竞品数据管理，即将推出"
-              />
-            )}
-            {/* Research Lab tab */}
-            {activeTab === "research_lab" && activeSubTab === "view" && (
-              <ResearchLabPane
-                workspaceId={activeWorkspaceId}
-                flows={flows}
-                model={model}
-                models={models}
-                onModelChange={setModel}
-              />
-            )}
-            {activeTab === "research_lab" && activeSubTab === "skill" && (
-              <SkillLabPane
-                workspaceId={activeWorkspaceId}
-                model={model}
-                models={models}
-                onModelChange={setModel}
-              />
-            )}
-            {activeTab === "research_lab" && activeSubTab === "tool" && (
-              <ToolLabPane workspaceId={activeWorkspaceId} model={model} models={models} />
-            )}
-            {activeTab === "research_lab" && activeSubTab === "model" && (
-              <ModelLabPane
-                model={model}
-                models={models}
-                mode="all"
-                restoreRunId={pendingRestoreRunId}
-                onRestoreConsumed={handleRestoreConsumed}
-              />
-            )}
-            {activeTab === "research_lab" && activeSubTab === "dlf" && (
-              <Placeholder
-                icon={FlaskConical}
-                title="DLF"
-                hint="DLF 模块管理，即将推出"
-              />
-            )}
-            {/* AnaX tab */}
-            {activeTab === "anax" && activeSubTab === "view" && (
-              <AnaXPane
-                workspaceId={activeWorkspaceId}
-                model={model}
-                models={models}
-                rulesPromptEnabled={rulesPromptEnabled}
-              />
-            )}
-            {activeTab === "anax" && activeSubTab === "hypothesis" && (
-              <HypothesisPane workspaceId={activeWorkspaceId} />
-            )}
-            {activeTab === "anax" && activeSubTab === "change_mgmt" && (
-              <ChangeManagementPane workspaceId={activeWorkspaceId} />
-            )}
-            {activeTab === "anax" && activeSubTab === "readme" && (
-              <AnaXReadmePane />
-            )}
-            {/* Dashboard tab -> BI 看板 */}
-            {activeTab === "dashboard" && activeSubTab === "view" && <BiDashboardPane />}
-            {/* Dashboard tab -> 报告历史 */}
-            {activeTab === "dashboard" && activeSubTab === "report_history" && <ReportHistoryPane />}
-            {/* Dashboard tab -> 模型历史（模型工坊调用统计） */}
-            {activeTab === "dashboard" && activeSubTab === "model_history" && (
-              <ModelRunHistoryDashboard onRequestRestore={handleRequestRestoreRun} />
-            )}
+            <DataTabs ctx={tabCtx} />
+            <EngineTabs ctx={tabCtx} />
+            <VizTabs ctx={tabCtx} />
           </div>
 
           {activeTab === "explore" && activeSessionId && activeSubTab === "view" &&

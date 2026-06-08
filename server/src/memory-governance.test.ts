@@ -52,7 +52,7 @@ test("rule versions increment and conflicts can be detected", () => {
 
   const conflicts = db.detectRuleConflicts(workspace.id);
   assert.ok(conflicts.some((conflict) => [conflict.ruleAId, conflict.ruleBId].includes(a.id) && [conflict.ruleAId, conflict.ruleBId].includes(b.id)));
-  db.updateRuleConflictStatus(conflicts[0].id, "ignored");
+  db.updateRuleConflictStatus(conflicts[0]!.id, "ignored");
   assert.equal(db.listRuleConflicts(workspace.id, "ignored").length, 1);
 });
 

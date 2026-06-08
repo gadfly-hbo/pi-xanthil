@@ -3,6 +3,7 @@ import { execFile, execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
+import { registerDomainRoutes } from "./routes/index.ts";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -5056,6 +5057,9 @@ app.post("/api/flows/:id/import", upload.any(), (req, res) => {
   updateFlowSourceName(flow.id, topFolder);
   res.json({ ok: true, sourceName: topFolder, count: items.length });
 });
+
+// ---- domain route slots (绞杀者接缝层; legacy 路由仍在本文件) ----
+registerDomainRoutes(app);
 
 const server = app.listen(PORT, () => {
   console.log(`[xanthil] gateway listening on http://localhost:${PORT}`);

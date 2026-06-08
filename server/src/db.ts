@@ -5,9 +5,13 @@ import { mkdirSync, statSync } from "node:fs";
 import { DB_PATH, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
 import type { AnalysisCase, AnalysisCaseInput, AnaxGateConfig, AnalysisStandard, AnalysisStandardKind, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalInput, ChangeProposalStatus, CreateRuleResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, KgEdge, KgNode, KgNodeType, KgRelation, MemoryEvalVariant, MemoryEvaluation, MemoryEvaluationDetail, MemoryEvaluationResult, MemoryInjectionRecord, MemoryInjectionSnapshot, MemoryProposal, MemoryProposalRiskFlag, MemoryFailureAttribution, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, RuleConflict, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, PiUsage, PredictionResult, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, SkillCurationProposalRecord, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillEvalSet, SkillEvalTask, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, StaleNode, StaleNodeReason, StoredFlowMessage, StoredMessage, TokenUsageStats, TokenUsageTargetKind, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, TraceErrorType, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
 import { parseEvaluationError, serializeEvaluationError } from "./evaluation-errors.ts";
+import { initSharedTables } from "./db/shared.ts";
+import { initDataTables } from "./db/data.ts";
+import { initEngineTables } from "./db/engine.ts";
+import { initVizTables } from "./db/viz.ts";
 
 ensureDirs(); // DB opens at import time — guarantee the data dir exists first.
-const db = new DatabaseSync(DB_PATH);
+export const db = new DatabaseSync(DB_PATH);
 
 // ---- migrations ----
 try {
@@ -719,6 +723,12 @@ try {
 }
 
 // ---- workspaces ----
+
+// ---- domain table slots (绞杀者接缝层; 各域新表建在 db/<域>.ts) ----
+initSharedTables();
+initDataTables();
+initEngineTables();
+initVizTables();
 
 export function createWorkspace(name: string): Workspace {
   const id = randomUUID();
@@ -2383,9 +2393,10 @@ export function detectRuleConflicts(workspaceId: string): RuleConflict[] {
     for (let j = i + 1; j < rules.length; j++) {
       const a = rules[i];
       const b = rules[j];
+      if (!a || !b) continue;
       const conflict = detectRuleConflictReason(a, b);
       if (!conflict) continue;
-      const [ruleAId, ruleBId] = [a.id, b.id].sort();
+      const [ruleAId, ruleBId] = [a.id, b.id].sort() as [string, string];
       insert.run(randomUUID(), workspaceId, ruleAId, ruleBId, conflict.reason, conflict.severity, now, now);
     }
   }
