@@ -6,6 +6,15 @@
 
 ---
 
+## 0. 当前状态（总控维护，覆盖式）
+
+- 最近更新：2026-06-08 · 总控
+- 进度：第 0 步接缝重构完成；缓存 harness 三层已闭环（自动回填未真实验证）
+- 下一步：评审三域 P0 PR；P0 收口后定义 `MetricDefinition` 双侧契约
+- 开放问题：缓存回填效果待真实双 session 验证
+
+---
+
 ## 一、缓存命中 Harness（降 token 消耗）
 
 **核心约束（必读）**：pi-xanthil **不直接调模型**，所有请求经 `pi` CLI（`runPiTurn` spawn 子进程 + `--session-id` 复用会话 + `--system-prompt` 注入）。因此**无法直接设 `cache_control` 断点**，只能靠「稳定字节前缀」让 provider 的 prompt/prefix cache 自动命中——所有优化围绕这一点。

@@ -191,4 +191,30 @@ web/src/
 | `docs/notes-viz.md` | V | Dashboard · 探索(报告/汇报/审核/黄金策) · 规则记忆(trace/token/KG) |
 | `docs/notes-infra.md` | 总控 | 缓存命中(缓存 harness) + 接缝层指针 |
 
-**交接机制改革**：停用按-tab 单链巨型 handoff；跨 session 连续性靠 **PR/commit + 本章程状态表 + 各域 notes 活文档**。不再产生 changelog 堆叠。
+**交接机制改革**：停用按-tab 单链巨型 handoff；跨 session 连续性靠 **PR/commit + 各域 notes §0 状态快照 + 本章程总览**。不再产生 changelog 堆叠。
+
+---
+
+## 十、Session 连续性 SOP（替代旧 handoff-generate / handoff-load）
+
+**原则**：信息分层 + 状态**覆盖**不堆叠。各信息归属见 §九上方表。`notes-<域>.md §0` 是该域的"当前状态快照"，agent 独占编辑（零并发冲突）。
+
+### Session 收尾（5 步）
+1. `npm run typecheck` + `npm run build`（D 另跑数据探索隔离 grep）→ 必须全绿。
+2. **commit**（Conventional Commits，message 写清「做了什么 + 验证了什么」）；分支则 `push` + 开/更新 PR（PR 描述 = 本次范围 + 验证结论）。
+3. **覆盖更新**自己域 `notes-<域>.md §0`：进度 / 下一步 / 阻塞 / 开放问题（不堆历史，旧状态被覆盖，历史在 git）。
+4. 本次产生的**长效知识**（新踩坑 / 新决策含"为什么" / 新约束）→ 追加或修订到 `notes-<域>.md` 正文对应小节。
+5. 需总控拍板的事项 → 写进 `notes §0 开放问题` 或 PR 评论 `@总控`。
+
+### Session 开场（4 步）
+1. `git pull`；读自己域 `notes-<域>.md §0`（上次状态 + 下一步）+ 本章程 §八（全局里程碑）。
+2. 读 `notes-<域>.md` 正文（领域背景）+ `KICKOFF-P0.md`（当前阶段任务）+ `AGENTS.md`（安全/工程约定）。
+3. `git log --oneline -10 -- <自己域文件>` 看上次具体改动；必要时 `git diff`。
+4. 按 `notes §0「下一步」`开干。
+
+### 谁更新什么
+- **域 agent**：自己域 `notes §0`（覆盖）+ 正文（追加长效）+ commit/PR。**不碰** Orchestration / 他域 notes / 接缝层。
+- **总控**：本章程 §八（跨域里程碑/集成状态）+ `notes-infra.md` + 跨域契约（types.ts）。
+
+### 旧 skill 处置
+`handoff-generate` / `handoff-load` **停用**（不再生成单链 handoff）。如要保留触发习惯，可改造为"读/写 `notes-<域>.md §0`"——是否改造由用户定。
