@@ -67,6 +67,31 @@
   .note { color: var(--faint); font-size: 13px; margin-top: 20px; }
   .legend { color: var(--muted); font-size: 13px; margin: 0 0 18px; }
   code { background: var(--panel2); padding: 1px 5px; border-radius: 4px; font-size: 12px; }
+
+  textarea#noteText { width: 100%; min-height: 92px; background: var(--panel2);
+    border: 1px solid var(--border); border-radius: 8px; color: var(--fg); padding: 12px;
+    font-family: inherit; font-size: 14px; line-height: 1.55; resize: vertical; }
+  textarea#noteText:focus { outline: none; border-color: var(--accent); }
+  .note-actions { display: flex; justify-content: flex-end; margin-top: 10px; }
+  .note-actions .copy { margin-top: 0; min-width: 120px; }
+  .note-bar { display: flex; align-items: center; gap: 16px; margin: 20px 0 14px; }
+  .note-bar label { color: var(--muted); font-size: 13px; display: flex; align-items: center; gap: 6px; cursor: pointer; }
+  .note-bar .copy { margin-top: 0; padding: 7px 14px; }
+  .note-item { background: var(--panel); border: 1px solid var(--border); border-radius: 10px;
+    padding: 12px 14px; margin-bottom: 10px; display: flex; gap: 12px; align-items: flex-start; }
+  .note-item input[type=checkbox] { margin-top: 4px; cursor: pointer; }
+  .note-item .ncol { flex: 1; min-width: 0; }
+  .note-item .nt { white-space: pre-wrap; word-break: break-word; font-size: 14px; color: #cdd2d7; }
+  .note-item .nm { color: var(--faint); font-size: 12px; margin-top: 6px; }
+  .note-item .ndel { background: none; border: none; color: var(--faint); cursor: pointer;
+    font-size: 13px; padding: 2px 6px; font-family: inherit; }
+  .note-item .ndel:hover { color: #f87171; }
+
+  .hgroup { margin-left: auto; display: flex; gap: 8px; }
+  .hbtn { background: var(--panel2); color: var(--fg); border: 1px solid var(--border);
+    border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit; }
+  .hbtn:hover { background: #2a2d33; }
+  .hbtn.ok { background: #10331f; border-color: #1f6b3b; color: #4ade80; }
 </style>
 </head>
 <body>
@@ -75,10 +100,12 @@
     <h1>苍耳 pi-Xanthil</h1>
     <span class="ver" id="verBadge">v2.0</span>
   </header>
-  <p class="tagline">本地优先的 AI 数据分析工作台 · 多 Agent 协同开发 Wiki（任务派发 + 版本历史）</p>
+  <p class="tagline">本地优先的 AI 数据分析工作台 · 多 Agent 协同开发 Wiki（任务派发 + 快修 + 随手记 + 版本历史）</p>
 
   <div class="tabs">
     <button class="tab active" data-view="dispatch">📋 任务派发</button>
+    <button class="tab" data-view="hotfix">🔧 快修任务</button>
+    <button class="tab" data-view="notes">📝 随手记</button>
     <button class="tab" data-view="prompts">🧩 常用 prompts</button>
     <button class="tab" data-view="changelog">📖 版本历史</button>
   </div>
@@ -92,8 +119,32 @@
     </details>
   </section>
 
+  <section id="hotfix" class="view">
+    <p class="legend">快修任务由<b>总控判定安全后</b>发布，任意 agent 可复制领取、<b>顺序</b>执行（<b>不指定域</b>）；执行规范见「常用 prompts」→ <code>/px-hotfix</code>。<span style="color:var(--x)">⚠️</span> 触及数据安全红线（数据探索子树 / <code>draw_data</code> / <code>clean_data</code>）的快修<b>不在此发布</b>，由总控转交指定域 agent 迭代（进「任务派发」）。</p>
+    <div class="grid" id="hotfixGrid"></div>
+  </section>
+
+  <section id="notes" class="view">
+    <p class="legend">随手记迭代灵感 / 备忘 —— 存浏览器本地（localStorage），<b>刷新不丢、不入库、不分发</b>。勾选多条可合并复制，后续整段发给总控做任务生成与派发。<kbd style="font-size:11px">⌘/Ctrl+Enter</kbd> 快速保存。</p>
+    <div class="note-input">
+      <textarea id="noteText" placeholder="记点什么…（纯文字）"></textarea>
+      <div class="note-actions"><button class="copy" id="noteSave">＋ 保存</button></div>
+    </div>
+    <div class="note-bar">
+      <label><input type="checkbox" id="noteAll" /> 全选</label>
+      <button class="copy" id="noteCopySel">📋 复制选中</button>
+      <span id="noteCount" class="agent"></span>
+      <span class="hgroup">
+        <button class="hbtn" id="exportAll" title="把随手记导出为 JSON 备份（防清缓存丢失）">⬇ 导出</button>
+        <button class="hbtn" id="importAll" title="从 JSON 备份恢复随手记（合并去重）">⬆ 导入</button>
+        <input type="file" id="importFile" accept="application/json,.json" hidden />
+      </span>
+    </div>
+    <div id="noteList"></div>
+  </section>
+
   <section id="prompts" class="view">
-    <p class="legend">本项目 Session 开场/收尾通用 prompt（无 git，任意 agent 复制即用）。Claude Code 里也可直接用 <code>/px-resume</code>、<code>/px-wrapup</code> 命令。</p>
+    <p class="legend">本项目 Session 开场/收尾通用 prompt（无 git，任意 agent 复制即用）。Claude Code 里也可直接用 <code>/px-resume</code>、<code>/px-wrapup</code>、<code>/px-hotfix</code> 命令。</p>
     <div class="grid" id="promptList"></div>
     <script type="text/plain" id="src-resume"># pi-xanthil · Session 开场 SOP（通用 prompt，适用任意 agent）
 
@@ -123,6 +174,22 @@
 ⛔ **不要执行任何 git 操作**（add / commit / push / PR 等）。是否提交、何时提交、提交粒度——全部由用户在合适节点手动决定。最后提示用户："改动已就绪，可自行 review 后提交。"
 
 约束：只改本域文件；不碰他域文件 / 接缝层骨架（`index.ts` `db.ts` `App.tsx` `api.ts` `types.ts` `constants.ts`）/ `.claude/settings.local.json` / `.understand-anything/*`。涉及这些先停下问用户。</script>
+    <script type="text/plain" id="src-hotfix"># pi-xanthil · 快修通道 SOP（跨域小修小补，通用 prompt，适用任意 agent）
+
+你正在为 pi-xanthil 做一次**快修（hotfix）**：小 bug / 小修小补，**不**走「需求拆解 → 按域 brief → 分发」重流程。前提：单一工作目录 + 顺序开发（无并发），故可临时让**任一** agent 跨域改文件——owner 制度防的是并行撞车，对一次性顺序修改不构成硬约束。
+
+依次执行，每步简述结果：
+
+1. **判红线（不可破）**：先确定本次要改哪些文件。若命中**数据安全敏感域** → 立即停下，转交总控（Claude）或懂 `AGENTS.md §一` LLM 隔离铁律的 agent，**不要自行快修**：
+   - `web/src/components/DataExplorationPane.tsx` 及 `data-exploration/` 整棵子树
+   - 任何读写 `draw_data`（原始数据）/ `clean_data`（聚合数据）的路径与逻辑
+   原因：不熟该域约束的 agent 修"小 bug"时极易顺手 import LLM API = 数据泄漏。
+2. **最小改动修复**：先读相关文件 + grep 确认结构，**只改 bug 涉及的代码**——不顺手优化、不扩大范围、不碰接缝层骨架（`index.ts` `db.ts` `App.tsx` `api.ts` `types.ts` `constants.ts`）。需动这些 → 停下提交总控。
+3. **校验**：跑 `npm run typecheck` + `npm run build`，必须全绿。若改动触及数据探索子树，**额外**跑隔离 grep（见 `AGENTS.md`），应无任何匹配。任一不绿 → 停下修复，不进入下一步。
+4. **不自行写他域 notes**：快修执行者通常不是该域 owner。若修复中发现**新踩坑 / 新约束 / 新决策** → **不要**自己改 `docs/notes-<域>.md`，而是在回报里单列「建议总控补进 `notes-<域>` 的内容」，由总控落地。
+5. **列改动清单 + 回流终审**：列出改了哪些文件、各一句话说明 bug 与 fix；声明已回流总控终审。总控代码复核 + 集成校验是质量关口，快修**不跳过**（快修未经该域 owner 领域校验，终审更重要）。
+
+⛔ **不要执行任何 git 操作**（add / commit / push / PR）。提交时机 / 粒度由用户手动决定。最后提示用户："快修已就绪并通过自检，待总控终审后可自行提交。"</script>
   </section>
 
   <section id="changelog" class="view">
@@ -190,6 +257,21 @@ const TASKS = [
 4. 不碰 git；集成验证通过后返回"可提交"结论 + 改动清单，由用户手动提交。` },
 ];
 
+/* 快修任务（hotfix）── 总控维护 ──
+   用户告知小 bug → 总控判红线 → 【安全】拆成 brief 发布于此供任意 agent 复制领取(不指定域)。
+   【触红线】(DataExplorationPane/data-exploration 子树、draw_data/clean_data) 不发布此处，
+   由总控告知用户改用指定域 agent 迭代(进 TASKS 任务派发)。每条 brief 末尾引导按 /px-hotfix SOP 执行。
+   status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
+   字段: { status, title, brief }（无 dom —— 不指定域）。 */
+const HOTFIX = [
+  // 示例（领取后删除/改状态）：
+  // { status: "todo", title: "xxx 按钮点击无响应", brief:
+  // `【快修】xxx 组件点击无响应。
+  // 涉及文件：web/src/components/XxxPane.tsx（非数据安全红线域，可任意领取）。
+  // 复现：... / 期望：...
+  // 执行：按 /px-hotfix SOP —— 判红线 → 最小改动 → typecheck+build 绿 → 回流总控终审，全程不碰 git。` },
+];
+
 /* 版本历史：每次发版 / 阶段归档时在数组顶部追加一条 */
 const CHANGELOG = [
   { ver: "2.0", date: "2026-06-08", current: true, title: "多 Agent 协同体系建立", items: [
@@ -251,10 +333,14 @@ document.body.addEventListener("click", (e) => {
   const btn = e.target.closest(".copy");
   if (!btn) return;
   const isPrompt = !!btn.dataset.prompt;
+  const isHf = btn.dataset.hf != null;
+  const isTask = btn.dataset.i != null;
+  if (!isPrompt && !isHf && !isTask) return; // 随手记等按钮有独立 handler，此处跳过
   const text = isPrompt
     ? document.getElementById("src-" + btn.dataset.prompt).textContent.trim()
+    : isHf ? HOTFIX[+btn.dataset.hf].brief
     : TASKS[+btn.dataset.i].brief;
-  const label = isPrompt ? "📋 复制 prompt" : "📋 复制任务";
+  const label = isPrompt ? "📋 复制 prompt" : isHf ? "📋 复制快修" : "📋 复制任务";
   copyText(text).then(() => {
     btn.textContent = "✓ 已复制"; btn.classList.add("done");
     setTimeout(() => { btn.textContent = label; btn.classList.remove("done"); }, 1800);
@@ -264,6 +350,7 @@ document.body.addEventListener("click", (e) => {
 const PROMPTS = [
   { id: "resume", title: "/px-resume · Session 开场", desc: "读状态/背景/任务 → 先汇报再开干（无 git）" },
   { id: "wrapup", title: "/px-wrapup · Session 收尾", desc: "校验 → 覆盖 notes §0 → 沉淀知识 → 列改动清单（无 git）" },
+  { id: "hotfix", title: "/px-hotfix · 快修通道", desc: "跨域小修小补 → 判红线 / 最小改动 / 校验 / 回流终审（无 git）" },
 ];
 const promptList = document.getElementById("promptList");
 PROMPTS.forEach((p) => {
@@ -281,6 +368,31 @@ PROMPTS.forEach((p) => {
   card.querySelector(".brief").textContent = src ? src.textContent.trim() : "";
   promptList.appendChild(card);
 });
+
+function buildHotfixCard(h, i) {
+  const st = STATUS[h.status] || STATUS.todo;
+  const card = document.createElement("div");
+  card.className = "card" + (h.status === "done" ? " is-done" : "");
+  card.innerHTML =
+    '<div class="card-top" style="background:var(--x)"></div>' +
+    '<div class="card-body">' +
+      '<div class="dom"><span class="chip" style="background:var(--x)">🔧</span>' +
+        '<b>快修任务</b><span class="agent">· 任意 agent 顺序领取</span>' +
+        '<span class="st ' + st.cls + '">' + st.label + '</span></div>' +
+      '<div class="task-title">' + h.title + '</div>' +
+      '<pre class="brief"></pre>' +
+      '<button class="copy" data-hf="' + i + '">📋 复制快修</button>' +
+    '</div>';
+  card.querySelector(".brief").textContent = h.brief;
+  return card;
+}
+
+const hotfixGrid = document.getElementById("hotfixGrid");
+if (HOTFIX.length === 0) {
+  hotfixGrid.innerHTML = '<p style="color:var(--faint);font-size:13px;margin:6px 2px 0">暂无快修任务 —— 收到小 bug 时由总控判定安全后发布于此，供任意 agent 复制领取（不指定域）；触红线的快修转指定域 agent 迭代。</p>';
+} else {
+  HOTFIX.forEach((h, i) => hotfixGrid.appendChild(buildHotfixCard(h, i)));
+}
 
 function copyText(text) {
   if (navigator.clipboard && window.isSecureContext) return navigator.clipboard.writeText(text);
@@ -303,6 +415,104 @@ CHANGELOG.forEach((c) => {
       '<span class="cl-date">' + c.date + '</span><span class="cl-title">' + c.title + '</span></div>' +
     '<ul>' + c.items.map((x) => '<li>' + x + '</li>').join("") + '</ul>';
   cl.appendChild(el);
+});
+
+/* ── 随手记（localStorage 本地备忘，纯前端） ── */
+const NOTES_KEY = "px_notes";
+const noteList = document.getElementById("noteList");
+const noteText = document.getElementById("noteText");
+function loadNotes() { try { return JSON.parse(localStorage.getItem(NOTES_KEY)) || []; } catch (_) { return []; } }
+function saveNotes(n) { localStorage.setItem(NOTES_KEY, JSON.stringify(n)); }
+function fmtTs(ts) {
+  const d = new Date(ts), p = (x) => String(x).padStart(2, "0");
+  return d.getFullYear() + "-" + p(d.getMonth() + 1) + "-" + p(d.getDate()) + " " + p(d.getHours()) + ":" + p(d.getMinutes());
+}
+function renderNotes() {
+  const notes = loadNotes();
+  document.getElementById("noteCount").textContent = notes.length ? notes.length + " 条" : "";
+  document.getElementById("noteAll").checked = false;
+  if (!notes.length) {
+    noteList.innerHTML = '<p style="color:var(--faint);font-size:13px;margin:6px 2px">还没有随手记 —— 在上面记一条吧。</p>';
+    return;
+  }
+  noteList.innerHTML = "";
+  notes.forEach((n) => {
+    const it = document.createElement("div");
+    it.className = "note-item";
+    it.innerHTML =
+      '<input type="checkbox" class="nck" data-id="' + n.id + '" />' +
+      '<div class="ncol"><div class="nt"></div><div class="nm">' + fmtTs(n.ts) + '</div></div>' +
+      '<button class="ndel" data-id="' + n.id + '">删除</button>';
+    it.querySelector(".nt").textContent = n.text;
+    noteList.appendChild(it);
+  });
+}
+document.getElementById("noteSave").addEventListener("click", () => {
+  const t = noteText.value.trim();
+  if (!t) return;
+  const notes = loadNotes();
+  notes.unshift({ id: Date.now() + "-" + Math.random().toString(36).slice(2, 7), text: t, ts: Date.now() });
+  saveNotes(notes); noteText.value = ""; renderNotes(); noteText.focus();
+});
+noteText.addEventListener("keydown", (e) => {
+  if ((e.metaKey || e.ctrlKey) && e.key === "Enter") { e.preventDefault(); document.getElementById("noteSave").click(); }
+});
+noteList.addEventListener("click", (e) => {
+  const del = e.target.closest(".ndel");
+  if (!del) return;
+  saveNotes(loadNotes().filter((n) => n.id !== del.dataset.id));
+  renderNotes();
+});
+document.getElementById("noteAll").addEventListener("change", (e) => {
+  document.querySelectorAll(".nck").forEach((c) => { c.checked = e.target.checked; });
+});
+document.getElementById("noteCopySel").addEventListener("click", (e) => {
+  const ids = [...document.querySelectorAll(".nck:checked")].map((c) => c.dataset.id);
+  const notes = loadNotes();
+  const picked = ids.length ? notes.filter((n) => ids.includes(n.id)) : notes; // 未勾选则复制全部
+  if (!picked.length) return;
+  const text = picked.map((n) => n.text).join("\n\n---\n\n");
+  copyText(text).then(() => {
+    const b = e.target.closest("button"), old = b.textContent;
+    b.textContent = "✓ 已复制 " + picked.length + " 条"; b.classList.add("done");
+    setTimeout(() => { b.textContent = old; b.classList.remove("done"); }, 1800);
+  });
+});
+renderNotes();
+
+/* ── 随手记备份：导出/导入 JSON（仅随手记 —— 其他 tab 由源码+git 兜底，不会因清缓存丢失） ── */
+function downloadJSON(obj, fname) {
+  const blob = new Blob([JSON.stringify(obj, null, 2)], { type: "application/json" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url; a.download = fname;
+  document.body.appendChild(a); a.click(); a.remove();
+  URL.revokeObjectURL(url);
+}
+document.getElementById("exportAll").addEventListener("click", (e) => {
+  downloadJSON({
+    app: "pi-xanthil-notes", exportedAt: new Date().toISOString(), notes: loadNotes(),
+  }, "px-notes-" + new Date().toISOString().slice(0, 10) + ".json");
+  const b = e.currentTarget, old = b.textContent;
+  b.textContent = "✓ 已导出"; b.classList.add("ok");
+  setTimeout(() => { b.textContent = old; b.classList.remove("ok"); }, 1600);
+});
+document.getElementById("importAll").addEventListener("click", () => document.getElementById("importFile").click());
+document.getElementById("importFile").addEventListener("change", (e) => {
+  const f = e.target.files[0];
+  if (!f) return;
+  const r = new FileReader();
+  r.onload = () => {
+    let data;
+    try { data = JSON.parse(r.result); } catch (_) { alert("导入失败：不是合法的 JSON 文件。"); return; }
+    const incoming = Array.isArray(data.notes) ? data.notes : null;
+    if (!incoming) { alert("导入失败：文件中未找到 notes（随手记）数据。"); return; }
+    const cur = loadNotes(), seen = new Set(cur.map((n) => n.id));
+    const fresh = incoming.filter((n) => n && n.id && n.text && !seen.has(n.id));
+    saveNotes([...fresh, ...cur]); renderNotes();
+    alert("已导入随手记 " + fresh.length + " 条（按 id 合并去重，不覆盖现有）。");
+  };
+  r.readAsText(f); e.target.value = "";
 });
 
 document.querySelectorAll(".tab").forEach((tab) => {
