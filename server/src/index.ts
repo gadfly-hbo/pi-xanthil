@@ -4,6 +4,7 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { registerDomainRoutes } from "./routes/index.ts";
+import { parseAggregationBuffer } from "./bi-dataset-parser.ts";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -4626,40 +4627,8 @@ function parseBiSlot(value: unknown): BiDatasetSlot | null {
   return VALID_BI_SLOTS_SET.has(s as BiDatasetSlot) ? (s as BiDatasetSlot) : null;
 }
 
-function parseBiDatasetFromBuffer(buf: Buffer, filename: string): { columns: string[]; rows: Array<Record<string, unknown>> } {
-  const lower = filename.toLowerCase();
-  let wb: XLSX.WorkBook;
-  if (lower.endsWith(".csv") || lower.endsWith(".tsv")) {
-    const text = buf.toString("utf8").replace(/^\uFEFF/, "");
-    wb = XLSX.read(text, { type: "string" });
-  } else {
-    wb = XLSX.read(buf, { type: "buffer" });
-  }
-  const sheetName = wb.SheetNames[0];
-  if (!sheetName) throw new Error("workbook has no sheets");
-  const sheet = wb.Sheets[sheetName];
-  if (!sheet) throw new Error("first sheet is empty");
-  const aoa = XLSX.utils.sheet_to_json<unknown[]>(sheet, { header: 1, blankrows: false, defval: null });
-  if (aoa.length === 0) return { columns: [], rows: [] };
-  const headerRow = (aoa[0] ?? []) as unknown[];
-  const columns: string[] = headerRow.map((c, i) => {
-    const v = c == null ? "" : String(c).trim();
-    return v || `col_${i + 1}`;
-  });
-  const rows: Array<Record<string, unknown>> = [];
-  for (let i = 1; i < aoa.length; i++) {
-    const r = (aoa[i] ?? []) as unknown[];
-    if (r.every((c) => c == null || String(c).trim() === "")) continue;
-    const obj: Record<string, unknown> = {};
-    for (let j = 0; j < columns.length; j++) {
-      const key = columns[j];
-      if (key === undefined) continue;
-      obj[key] = r[j] ?? null;
-    }
-    rows.push(obj);
-  }
-  return { columns, rows };
-}
+// \u89E3\u6790\u903B\u8F91\u62BD\u81F3\u5171\u4EAB util bi-dataset-parser.ts\uFF08\u770B\u677F\u805A\u5408\u6570\u636E\u6E90 P0-D \u590D\u7528\uFF09\uFF1B\u6B64\u5904\u4FDD\u7559\u522B\u540D\u4E0D\u6539\u8C03\u7528\u70B9\u3002
+const parseBiDatasetFromBuffer = parseAggregationBuffer;
 
 app.post("/api/bi-datasets/upload", multer({ storage: multer.memoryStorage(), limits: { fileSize: 100 * 1024 * 1024 } }).single("file"), (req, res) => {
   const slot = parseBiSlot(req.body?.slot);

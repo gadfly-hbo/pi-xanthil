@@ -4,7 +4,7 @@
 > 总控 = Claude（Opus）：负责架构、接缝层、接口契约、db migration 审批、跨域集成、**全部代码终审**。
 > 三个编程 Agent 在各自域的 **slot 文件**内开发，**永不触碰接缝层骨架文件**。
 
-最后更新：2026-06-08 · 状态：**第 0 步接缝重构完成** ✅ —— 批1(server routes)✅ 批2a(web api)✅ 批2b(App.tsx 域模块)✅ 批3(db slot)✅；server+web typecheck 全绿(baseline 错误已清)、build 通过。三 agent 可全面并行。
+最后更新：2026-06-09 · 状态：**第 0 步接缝重构完成** ✅ + **P0 推进中** —— 接缝重构批1~3✅；P0-A(D 上传即用)✅、P0-B(V 看板画布·重做)✅、P0-D(D 看板聚合数据源)✅ 均终审+实跑通过；**仅剩 P0-C(E E2E 验证)待进场**，齐活即可发 v2.1。
 
 ---
 
@@ -191,7 +191,16 @@ web/src/
 - [x] **批2a web api slot** — `lib/api/{_http,data,engine,viz,shared}.ts`；api.ts 改为 legacyApi + 域片段 spread 合并；web typecheck + build 绿
 - [x] **批2b App.tsx 域渲染模块** — `tabs/types.ts`(TabContext 契约) + `tabs/{DataTabs,EngineTabs,VizTabs}.tsx`；App.tsx render 块缩为 3 行 + 装配 tabCtx，删 32 个 pane import；全部 subtab 1:1 等价；web typecheck + build 绿。（lazy 代码分割延后做优化批）
 - [x] **批3 db.ts slot** — `db.ts` 导出 `db` 实例 + `db/{shared,data,engine,viz}.ts` 扩展点(init*Tables)，base schema 后调用；清除全部 baseline 错误(db.ts 守卫/元组 + 测试 `!`)；server typecheck 零错误、3 tests 绿
-- [ ] **(优化批，可选)** App.tsx 域模块改 React.lazy 代码分割（named→default 包装）
+**P0 进度（机制 A 回流终审）**：
+- [x] **P0-A 上传即用（D）** — 终审通过 2026-06-08：拖拽上传 CSV/Excel → duckdb-wasm 内存画像，纯前端零 LLM
+- [x] **P0-B 看板画布·重做（V）** — done 2026-06-09：数据源驱动(选 clean_data 聚合集→配维度/指标→荐图)+拖拽/联动+预置模板+持久化；404 已修。终审+UI 实跑通过
+- [x] **P0-D 看板聚合数据源 API（D）** — done 2026-06-09：`/api/bi/aggregations` 列表(按扩展名过滤) + `/:pathId/data` 行列；仅 clean_data、draw_data 403、零 LLM。终审+实跑通过
+- [x] **总控契约前置（done 2026-06-09）** — `types.ts` 双侧定 `BiCell/BiAggregationDataset/BiAggregationData`(columns:string[]，FieldKind 前端推断) + 把 `index.ts` 的 `parseBiDatasetFromBuffer` 抽成共享 `server/src/bi-dataset-parser.ts:parseAggregationBuffer`(index.ts 改为别名复用)；typecheck+build 绿。**D/V 可开工**
+- [ ] **P0-C E2E 验证补课（E）** — 待 Agent-E 进场；P0 三域齐活后归档 changelog v2.1 + 定义 `MetricDefinition` 双侧契约（看板聚合 GET 是其简化前置）
+
+> 教训：终审须含**运行时端到端实跑**，仅 typecheck/build 绿不等于功能可用（KICKOFF P0-C 警告的正是此类）。后续 P0 终审一律加实跑门禁。
+
+- [ ] **(优化批，可选)** App.tsx 域模块改 React.lazy 代码分割（named→default 包装）；echarts 动静混合 import 统一
 - [ ] `MetricDefinition` 语义层契约定义 — 总控（P1 前置）
 - [ ] 三个 agent 接入开发环境 + 阅读本章程 + `AGENTS.md`
 - 参考：审计结论见会话「总纲领-传统BI-AI数据分析工作台」；模块边界速查见 `AGENTS.md §三`

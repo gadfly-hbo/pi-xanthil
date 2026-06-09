@@ -47,7 +47,7 @@ export function VizTabs({ ctx }: { ctx: TabContext }) {
         <KnowledgeGraphPane workspaceId={ctx.activeWorkspaceId} onSynced={() => void ctx.refreshRulesPromptInfo()} />
       )}
 
-      {activeTab === "dashboard" && activeSubTab === "view" && <BiDashboardPane />}
+      {activeTab === "dashboard" && activeSubTab === "view" && <BiDashboardPane workspaceId={ctx.activeWorkspaceId || undefined} />}
       {activeTab === "dashboard" && activeSubTab === "report_history" && <ReportHistoryPane />}
       {activeTab === "dashboard" && activeSubTab === "model_history" && (
         <ModelRunHistoryDashboard onRequestRestore={ctx.handleRequestRestoreRun} />

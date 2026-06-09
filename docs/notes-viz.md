@@ -7,10 +7,14 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-08 · 总控建档
-- 进度：P0-B「看板画布」待启动
-- 下一步：见 `KICKOFF-P0.md` → Agent-V P0-B（首用 `db/viz.ts` 的 `dashboards` 表）
-- 阻塞 / 待总控：`dashboards` 表 schema 需先报总控审
+- 最近更新：2026-06-09 · P0-B 看板重做收尾（接入 D 域 clean_data 聚合池）
+- 进度：已彻底重做看板 `BiDashboardPane` 的数据接入层并修正了 API 契约调用。
+  1. 取消了写死的双 slot 数据源限制，全量接入 D 域 `dataApi.getBiAggregations` 和 `dataApi.getBiAggregationData`。
+  2. 实现向导式配置：先选数据源，再通过动态拉取的数据（利用 `profiling.ts` 推断类型）选择维度与指标，并智能推荐图表类型。
+  3. UI 统一了数据源入口（取消了独立的导入按钮），保留了从预置模板新建的后备方案兼容原有双 slot（留存/召回）。
+  4. 后端路由 `/api` 前缀问题与 D 域 API url 路径不一致问题已全部纠正；对无工作空间、获取聚合列表/详情失败等情况，全部转为明文 `alert()` 和空状态兜底，清除了静默失败。
+- 下一步：等待 P1 里程碑（报告交付 + 看板取数走统一指标语义层契约 `MetricDefinition`）启动。
+- 阻塞 / 待总控：无（当前 V 域前端已完全对接 `dataApi`，若后端接口抛 404 将能正确捕获并提示用户）。
 - 开放问题：无
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
@@ -47,6 +51,10 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - 标签 = 独立表 `report_tags(report_id, tag)` 多对多，**不复用 favorites**（单值布尔会撑歪 schema）；编辑入口在 Drawer footer chips（不做卡片 hover 编辑，防误触）；筛选多选下拉 OR 语义；`allTags` 从内存 entries `useMemo` 算 count（不二次拉 API）。
 - BI dataset 存储 = 独立 `bi_datasets` 表 + `~/.pi-xanthil/bi-datasets/` 目录（**不复用 workspace_paths**，避免引 workspaceId 上下文/选目录流程）；**双副本**（原文件 + 解析后 columns/rows JSON 入 SQLite，`/active` 零再解析直返）；列匹配宽松（alias 归一 + 数值 >1.5 自动 /100）；**上传即生效 + slot 单激活**。
 - 会员表语义（最终版）：每行=统计当月，每列=回看 M-N 月，单元格=当月回购老客里上次购买在 N 月前的占比/人数；删期数切换器，改占比/人数二选一；**着色始终基于原始占比**（切人数视图仍有热力强度）。
+- 看板画布数据聚合格式统一：各图表聚合输出类型强制统一为 `Array<{ name: string; value: number }>`，无维度时返回 `name: "总计"`。此机制根除了不同图表组件间因聚合数据结构不一致导致的 TypeScript Union 类型推导冲突。
+- Dashboard / API 路由约定：所有业务路由必须带有 `/api` 前缀（由于 `index.ts` 中 `app.use(vizRouter)` 未指定前缀，因此 `viz.ts` 内部必须显式声明如 `/api/dashboards`）。
+- Dashboard 交互容错与默认行为：空列表状态下不再自动建表（避免误导用户产生脏数据），改为友好的空状态引导加"一键生成"按钮；所有 API 错误均在 UI 层给予显式反馈（如 alert），禁止静默 `console.error`；旧版留存/召回的固定图表组件不再保留独立入口，功能已完全并入多图画布的默认配置中。
+- 看板数据源解耦重构：从原本绑死的双 slot（`member_retention` / `member_recall`）改造为基于 `api.getBiAggregations` 读取 D 域 `clean_data` 聚合结果池的动态模式。历史的预置看板被收拢为"从模板新建"入口以作向下兼容。
 
 **模型历史 dashboard**
 - row 对齐 = **id 优先，无 id 回退下标**（自动）；diff 导出 MD 单文件全量（meta+字段+行级）；删除接口 `onlyFailed` **缺省 true**（防误删成功记录），显式传 false 才按时间删全部；单行删除按钮**仅失败行**显示（成功记录是有价值历史）；diff 走 `summarizeResult()` 扁平输出，不递归 row-level（28 模型 row 结构差异大，按需展开 UI 复杂度爆炸）。
@@ -65,6 +73,8 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 
 - `scope` 对象引用 bug（同 E）：决策树/TOC Pane 因 `useCallback([scope])` 引用变化每次重渲染清空画布；根治在 Pane 内提取稳定原始值作 deps + `scopeRef` 持最新 scope；内容加载 effect 依赖 `selectedReport?.id`（字符串）而非对象。
 - 报告类文件识别：`report/报告/result/summary/.md` 文件图标高亮琥珀色；运行中每 4s 刷新文件树。
+- DND 排序中 `moved` 元素类型残留：`array.splice` 返回的对象解构后，在 TypeScript 中可能被推导为包含 `undefined`，直接传回 `splice` 插入会引发类型报错。必须使用 `if (moved)` 守卫做存在性包裹以消除编译器报警。
+- API 契约调用陷阱：跨域（V 调用 D 的 REST 接口）获取数据源数据时，必须直接复用已封装的领域 `dataApi.getBiAggregationData` 方法。如果在 V 域侧自行硬编码 `fetch` 拼接路径，极易因对方实际路由细节（如尾部 `/:pathId/data` 的后缀设计）导致偶发的 404 Not Found 漏洞。
 
 ---
 

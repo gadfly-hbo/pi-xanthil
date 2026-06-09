@@ -1342,6 +1342,23 @@ export interface BiDatasetDetail extends BiDatasetSummary {
   rows: Array<Record<string, unknown>>;
 }
 
+// ── 看板聚合数据源契约（P0-D/P0-B 跨域，总控持有）──
+// D 暴露 clean_data 已登记聚合文件为看板可消费的结构化数据源；V 消费走 GET。
+// 字段类型(FieldKind)推断在 V 前端用 profiling.ts 完成，契约只给列名+行。
+export type BiCell = string | number | boolean | null;
+
+export interface BiAggregationDataset {
+  pathId: string; // workspace_paths.id（clean_data & kind=file）
+  name: string;
+  columns: string[];
+  rowCount: number;
+}
+
+export interface BiAggregationData {
+  columns: string[];
+  rows: Array<Record<string, BiCell>>;
+}
+
 export interface ModelLabStatsTopModel {
   modelId: string;
   model: string;

@@ -8,14 +8,16 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-08 · P0-A 代码清理完成
-- 进度：P0-A「上传即用」✅ — 拖拽 CSV/XLSX → duckdb-wasm 直接画像，无需路径登记
-- 代码清理（2026-06-08）：
-  - `FileSelector.tsx`: `ALLOWED_MIME` 从 `Record<string, string[]>` 简化为 `Set<string>`（value 数组从未使用）
-  - `FileSelector.tsx`: `isAllowedFile` 移除冗余的 `file.name.endsWith(...)` 串联（与 `hasAllowedExtension` 完全重复）
-- 下一步：待总控集成终审；P1 指标语义层（总控先定 MetricDefinition 契约）
+- 最近更新：2026-06-09 · P0-D 看板聚合数据源 API 完成
+- 进度：P0-D「看板聚合数据源 API」✅ — clean_data 已登记聚合文件暴露为看板可消费的结构化 GET
+  - `GET /api/bi/aggregations?workspaceId=` → `BiAggregationDataset[]`：列出 workspace 下 folder=clean_data & kind=file 的路径，用 parseAggregationBuffer 解析表头得 columns + rowCount
+  - `GET /api/bi/aggregations/:pathId/data?limit=5000` → `BiAggregationData`：按 pathId 读文件 buffer → parseAggregationBuffer → {columns, rows}
+  - 安全铁律：仅 clean_data；draw_data 返回 403；零 LLM（禁 import 任何 chat/generate/extract api）
+  - 前端方法：`dataApi.getBiAggregations(workspaceId)` / `dataApi.getBiAggregationData(pathId, limit)`
+- 下一步：V 域消费此 API 实现看板画布数据源驱动（选聚合集→配维度/指标→荐图）
 - 阻塞 / 待总控：无
-- 开放问题：无
+- 开放问题：
+  - V 域 `BiDashboardPane.tsx:37` 直接 fetch 时 URL 漏 `/data` 后缀（写的是 `/api/bi/aggregations/${pathId}`，正确应为 `/api/bi/aggregations/${pathId}/data`），建议 V 域改用 `api.getBiAggregationData()` 或修正 URL。D 域不碰他域文件，已告知用户。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 

@@ -8,4 +8,18 @@
 //   export const dataApi = {
 //     listMetrics: () => fetch("/api/metrics").then(json<Metric[]>),
 //   };
-export const dataApi = {};
+
+import { json } from "./_http";
+import type { BiAggregationDataset, BiAggregationData } from "@/types";
+
+export const dataApi = {
+  getBiAggregations: (workspaceId: string) =>
+    fetch(`/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`).then(json<BiAggregationDataset[]>),
+
+  getBiAggregationData: (pathId: string, limit?: number) => {
+    const params = new URLSearchParams();
+    if (limit !== undefined) params.set("limit", String(limit));
+    const qs = params.toString();
+    return fetch(`/api/bi/aggregations/${encodeURIComponent(pathId)}/data${qs ? `?${qs}` : ""}`).then(json<BiAggregationData>);
+  },
+};

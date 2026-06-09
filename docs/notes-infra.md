@@ -8,10 +8,11 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-- 最近更新：2026-06-08 · 总控
-- 进度：总控筹备就位 + P0 启动 —— 接缝重构✅ · 文档治理✅ · 连续性 SOP+`/px-*` 命令✅ · 协作闭环(机制A)+归档✅ · wiki v2.0(任务派发/常用prompts/版本历史 三 tab)✅ · 缓存 harness 三层闭环(回填未验证) · **P0-A 上传即用 done(终审通过)**
-- 下一步：E(P0-C E2E验证)/V(P0-B 看板画布) 待进场；P0 三域齐活后归档进 changelog(v2.1) + 定义 `MetricDefinition` 双侧契约
+- 最近更新：2026-06-09 · 总控
+- 进度：P0 推进中 —— 接缝重构✅ · 文档治理✅ · 连续性 SOP+`/px-*`(resume/wrapup/hotfix)✅ · 协作闭环(机制A)+归档✅ · wiki(5 tab：派发/快修/随手记/prompts/版本历史)✅ · 快修通道固化于 `Orchestration §六`✅ · 随手记 localStorage+导出导入✅ · 缓存 harness 三层闭环(回填未验证) · **P0-A(D 上传即用)✅终审** · **P0-B(V 看板画布)⚠️实跑打回**(路由漏 `/api`→404，已生成 V 修复任务)
+- 下一步：**仅剩 P0-C E2E 验证(E)** 待进场。P0-A(D)✅ · P0-B(V 看板重做)✅ · P0-D(D 聚合数据源)✅ 均终审+实跑通过；总控契约前置✅(`types.ts` `BiAggregation*` + `bi-dataset-parser.ts`)。P0 齐活后归档 changelog(v2.1) + 定义 `MetricDefinition` 双侧契约
 - 开放问题：缓存回填效果待真实双 session 验证
+- **终审教训**：仅 typecheck/build 绿 ≠ 功能可用；后续终审一律加运行时端到端实跑门禁
 
 ---
 

@@ -1,4 +1,32 @@
-// 【Agent-V · 可视交付域】前端 API 方法 slot —— owner: antigravity(Gemini)
-// 约定: 方法加入 vizApi; 经 api.ts 合并后组件用 api.<name>() 调用。
-//   复用请求工具 `import { json } from "./_http"`; 类型从 "@/types" 引入。
-export const vizApi = {};
+import { json } from "./_http";
+
+export interface Dashboard {
+  id: string;
+  workspace_id: string;
+  name: string;
+  layout_json: string;
+  created_at: number;
+  updated_at: number;
+}
+
+export const vizApi = {
+  listDashboards: (workspaceId: string) =>
+    fetch(`/api/dashboards?workspaceId=${encodeURIComponent(workspaceId)}`).then(json<Dashboard[]>),
+  createDashboard: (data: { workspaceId: string; name: string; layoutJson: string }) =>
+    fetch("/api/dashboards", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then(json<Dashboard>),
+  updateDashboard: (id: string, data: { name?: string; layoutJson?: string }) =>
+    fetch(`/api/dashboards/${encodeURIComponent(id)}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }).then(json<Dashboard>),
+  deleteDashboard: (id: string) =>
+    fetch(`/api/dashboards/${encodeURIComponent(id)}`, {
+      method: "DELETE",
+    }).then(json<{ success: boolean }>),
+};
+
