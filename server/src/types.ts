@@ -1172,3 +1172,108 @@ export interface ReportEntry {
   createdAt: number;
 }
 
+
+// ---- onto-xanthil 数据语义层（详见 docs/onto-xanthil-design.md）----
+// 取向：Palantir object/link 绑数据；object=数据集, property=列, link=表间关系。
+
+export interface Ontology {
+  id: string;
+  workspaceId: string;
+  name: string;
+  domain: string;
+  version: string;
+  status: "draft" | "active" | "archived";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ObjectKind = "dataset" | "concept";
+
+export interface ObjectType {
+  id: string;
+  ontologyId: string;
+  kind: ObjectKind;
+  nameCn: string;
+  nameEn?: string;
+  description: string;
+  boundPathId?: string; // kind=dataset → BiAggregationDataset.pathId（clean_data 聚合集）
+  confidence: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type PropertyDataType = "string" | "number" | "boolean" | "date" | "unknown";
+
+export interface PropertyType {
+  id: string;
+  objectTypeId: string;
+  name: string;
+  dataType: PropertyDataType;
+  boundColumn?: string; // dataset-kind → 聚合集列名
+  semanticType?: string; // 语义标注：'金额'/'主键'/'外键' 等
+  description?: string;
+}
+
+export type LinkKind = "join" | "fk" | "is-a" | "part-of" | "related";
+
+export interface LinkType {
+  id: string;
+  ontologyId: string;
+  sourceObjectId: string;
+  targetObjectId: string;
+  kind: LinkKind;
+  joinKeys?: Array<{ source: string; target: string }>; // kind∈{join,fk} 的字段对
+  confidence: number;
+  createdAt: number;
+}
+
+// metric 真源收敛：AnalysisStandard(kind='metric') 超集 + onto 绑定，成为唯一真源。
+export interface MetricDefinition {
+  id: string;
+  workspaceId: string;
+  name: string;
+  category: string;
+  description: string;
+  formula: string;
+  caliber: string;
+  unit: string;
+  objectTypeId?: string; // onto 绑定：归属对象（可空）
+  boundColumns?: string[];
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MetricDefinitionInput {
+  name: string;
+  category: string;
+  description: string;
+  formula: string;
+  caliber: string;
+  unit: string;
+  objectTypeId?: string;
+  boundColumns?: string[];
+}
+
+// 图引擎共享视图契约（R1）：onto 对象与记忆 KG 都投影到此形状，喂给 <GraphCanvas>。
+export interface GraphNode {
+  id: string;
+  type: string;
+  title: string;
+  subtitle?: string;
+  group?: string;
+  meta?: Record<string, unknown>;
+}
+
+export interface GraphEdge {
+  id: string;
+  from: string;
+  to: string;
+  label?: string;
+  kind: string;
+}
+
+export interface OntologyGraph {
+  nodes: GraphNode[];
+  edges: GraphEdge[];
+}

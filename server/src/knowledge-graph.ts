@@ -13,8 +13,10 @@ import {
   clearKgAutoEdges,
   insertKgEdges,
   setKgNodeAiExtractedHash,
+  deleteKgNodesByType,
 } from "./db.ts";
 import type { KgEdgeInput, KgNodeInput } from "./db.ts";
+import { listMetrics } from "./db/viz.ts";
 import { runPiPrompt } from "./pi-adapter.ts";
 import { DIRECT_LLM_ROOT } from "./config.ts";
 import type { KgEdge, KgExtractResult, KgNode, KgRelation, KgSyncResult } from "./types.ts";
@@ -85,18 +87,33 @@ export function syncKnowledgeGraph(workspaceId: string): KgSyncResult {
     });
   }
 
-  const standards = listAnalysisStandards(workspaceId);
-  for (const std of standards) {
-    const nodeInput: KgNodeInput = {
+  // 参照标准文件仍来自 analysis_standards；metric 真源已切到 metric_definitions（P2b'）
+  const refFiles = listAnalysisStandards(workspaceId).filter((s) => s.kind === "reference_file");
+  for (const std of refFiles) {
+    upsertKgNode({
       workspaceId,
-      type: std.kind === "metric" ? "metric" : "ref_file",
+      type: "ref_file",
       sourceKey: `standard:${std.id}`,
       title: std.name,
-      summary: [std.description, std.category, std.formula, std.caliber].filter(Boolean).join(" — ").slice(0, 400),
-      tags: [std.kind, std.category].filter(Boolean),
+      summary: [std.description, std.category].filter(Boolean).join(" — ").slice(0, 400),
+      tags: [std.category].filter(Boolean),
       contentHash: hashContent(std.name + std.description),
-    };
-    upsertKgNode(nodeInput);
+    });
+  }
+
+  // metric 节点来自 metric_definitions；先清旧 metric 节点(含迁移前 standard: 来源的 ghost)
+  deleteKgNodesByType(workspaceId, "metric");
+  const metrics = listMetrics(workspaceId);
+  for (const m of metrics) {
+    upsertKgNode({
+      workspaceId,
+      type: "metric",
+      sourceKey: `metric:${m.id}`,
+      title: m.name,
+      summary: [m.description, m.category, m.formula, m.caliber].filter(Boolean).join(" — ").slice(0, 400),
+      tags: [m.category].filter(Boolean),
+      contentHash: hashContent(m.name + m.description),
+    });
   }
 
   const bizContexts = listBusinessContexts(workspaceId);

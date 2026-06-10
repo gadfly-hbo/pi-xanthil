@@ -1,3 +1,5 @@
+import { OntologyPane } from "@/components/OntologyPane";
+import { QuickNotesPane } from "@/components/QuickNotesPane";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { PresentationVersionPane } from "@/components/PresentationVersionPane";
 import { ReportReviewPane } from "@/components/ReportReviewPane";
@@ -43,6 +45,9 @@ export function VizTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "rule_memory" && activeSubTab === "token_stats" && (
         <TokenStatsPane workspaceId={ctx.activeWorkspaceId} />
       )}
+      {activeTab === "rule_memory" && activeSubTab === "quick_notes" && (
+        <QuickNotesPane />
+      )}
       {activeTab === "rule_memory" && activeSubTab === "knowledge_graph" && (
         <KnowledgeGraphPane workspaceId={ctx.activeWorkspaceId} onSynced={() => void ctx.refreshRulesPromptInfo()} />
       )}
@@ -51,6 +56,10 @@ export function VizTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "dashboard" && activeSubTab === "report_history" && <ReportHistoryPane />}
       {activeTab === "dashboard" && activeSubTab === "model_history" && (
         <ModelRunHistoryDashboard onRequestRestore={ctx.handleRequestRestoreRun} />
+      )}
+
+      {activeTab === "onto_xanthil" && (activeSubTab === "onto_objects" || activeSubTab === "onto_links" || activeSubTab === "onto_metrics" || activeSubTab === "onto_graph" || activeSubTab === "onto_import") && (
+        <OntologyPane workspaceId={ctx.activeWorkspaceId} section={activeSubTab} />
       )}
     </>
   );

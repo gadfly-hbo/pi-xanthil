@@ -1,4 +1,4 @@
-import { Database, Store } from "lucide-react";
+import { Database, Store, Wrench, CircleX, Tags, Workflow } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { DataExplorationPane } from "@/components/DataExplorationPane";
@@ -41,6 +41,9 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "aggregate" && activeSubTab === "sql_connect" && (
         <SqlConnectPane workspaceId={ctx.activeWorkspaceId} />
       )}
+      {activeTab === "aggregate" && activeSubTab === "tool_use" && (
+        <Placeholder icon={Wrench} title="tool-use" hint="工具调用计算，即将推出" />
+      )}
 
       {activeTab === "rule_memory" && activeSubTab === "rules" && (
         <RulesPane workspaceId={ctx.activeWorkspaceId} onRulesChanged={() => void ctx.refreshRulesPromptInfo()} />
@@ -53,6 +56,15 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       )}
       {activeTab === "rule_memory" && activeSubTab === "cases" && (
         <CasesPane workspaceId={ctx.activeWorkspaceId} onChanged={() => void ctx.refreshRulesPromptInfo()} />
+      )}
+      {activeTab === "rule_memory" && activeSubTab === "failure_memory" && (
+        <Placeholder icon={CircleX} title="失败记忆" hint="记录分析失败案例与教训，即将推出" />
+      )}
+      {activeTab === "rule_memory" && activeSubTab === "field_memory" && (
+        <Placeholder icon={Tags} title="字段记忆" hint="沉淀字段口径与语义，即将推出" />
+      )}
+      {activeTab === "rule_memory" && activeSubTab === "process_memory" && (
+        <Placeholder icon={Workflow} title="流程记忆" hint="沉淀分析流程与方法论，即将推出" />
       )}
 
       {activeTab === "xan_db" && activeSubTab === "the-crowd" && (

@@ -555,8 +555,8 @@ export function GoldenStrategyPane({
         </div>
       )}
 
-      <div className="min-h-0 flex-1">
-        <main className="h-full min-w-0">
+      <div className="flex min-h-0 flex-1">
+        <main className="h-full min-w-0 flex-1">
           {activeResult ? (
             <StrategyCanvas nodes={activeResult.nodes} />
           ) : (
@@ -565,6 +565,24 @@ export function GoldenStrategyPane({
             </div>
           )}
         </main>
+        {/* 业务洞见：基于当前决策模型演绎结果提炼（脚手架，LLM 提炼下一轮接入） */}
+        <aside className="flex w-80 shrink-0 flex-col border-l border-neutral-200 bg-neutral-50/40 dark:border-neutral-800 dark:bg-neutral-950/40">
+          <div className="flex h-10 shrink-0 items-center gap-1.5 border-b border-neutral-200 px-3 text-[12.5px] font-semibold text-neutral-800 dark:border-neutral-800 dark:text-neutral-200">
+            <Sparkles className="h-3.5 w-3.5 text-violet-500" strokeWidth={1.75} />
+            业务洞见
+          </div>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3">
+            {activeResult ? (
+              <p className="text-[12px] leading-5 text-neutral-400">
+                基于「{ANALYSIS_MODELS.find((item) => item.id === activeResult.analysisModel)?.label ?? activeResult.analysisModel}」决策模型演绎结果提炼业务洞见，即将推出。
+              </p>
+            ) : (
+              <p className="text-[12px] leading-5 text-neutral-400">
+                生成决策模型图示后，这里将基于演绎结果自动提炼业务洞见。
+              </p>
+            )}
+          </div>
+        </aside>
       </div>
     </div>
   );

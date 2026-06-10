@@ -1,25 +1,11 @@
 import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
-  ReactFlow,
-  Background,
-  BackgroundVariant,
-  Controls,
-  Handle,
-  Position,
-  useEdgesState,
-  useNodesState,
-  type Connection,
-  type Edge,
-  type Node,
-  type NodeProps,
-} from "@xyflow/react";
-import "@xyflow/react/dist/style.css";
-import {
   AlertCircle, BarChart2, BookOpen, EyeOff, Eye, FileText,
   Globe, Network, RefreshCw, Search, Sparkles, Tag, X, Trash2,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
+import { GraphCanvas, type GraphCanvasNode, type GraphCanvasEdge } from "@/components/GraphCanvas";
 import type { KgEdge, KgExtractResult, KgNode, KgNodeType, KgRelation, KgSyncResult } from "@/types";
 
 // ---- constants ----
@@ -69,86 +55,9 @@ const CLUSTER_CENTERS: Record<KgNodeType, [number, number]> = {
 
 const ALL_RELATIONS: KgRelation[] = ["related_to", "references", "supports", "derived_from"];
 
-// ---- layout ----
-
-function layoutNodes(nodes: KgNode[]): Node[] {
-  const byType = new Map<KgNodeType, KgNode[]>();
-  for (const n of nodes) {
-    if (!byType.has(n.type)) byType.set(n.type, []);
-    byType.get(n.type)!.push(n);
-  }
-  const positioned: Node[] = [];
-  for (const [type, group] of byType) {
-    const [cx, cy] = CLUSTER_CENTERS[type];
-    const count = group.length;
-    const radius = count <= 1 ? 0 : Math.max(90, Math.sqrt(count) * 58);
-    group.forEach((n, i) => {
-      const angle = count <= 1 ? 0 : (2 * Math.PI * i) / count - Math.PI / 2;
-      positioned.push({
-        id: n.id,
-        type: "kgNode",
-        position: { x: cx + radius * Math.cos(angle) - 70, y: cy + radius * Math.sin(angle) - 20 },
-        data: { node: n },
-      });
-    });
-  }
-  return positioned;
-}
-
-function toRFEdges(edges: KgEdge[]): Edge[] {
-  return edges.map((e) => ({
-    id: e.id,
-    source: e.fromId,
-    target: e.toId,
-    label: RELATION_LABELS[e.relation],
-    style: { stroke: e.auto ? "#94a3b8" : "#6366f1", strokeWidth: Math.max(1, e.weight * 0.8), strokeDasharray: e.auto ? undefined : "4 2" },
-    labelStyle: { fontSize: 10, fill: "#94a3b8" },
-    labelBgStyle: { fill: "transparent" },
-    animated: e.relation === "references",
-    data: { edge: e },
-  }));
-}
-
-// ---- custom node ----
-
-interface KgNodeData extends Record<string, unknown> { node: KgNode }
-type KgRFNode = Node<KgNodeData>;
-
-function KgNodeComponent({ data, selected }: NodeProps<KgRFNode>) {
-  const { node } = data;
-  const color = TYPE_COLORS[node.type];
-  return (
-    <div
-      className={cn("w-36 rounded-lg border-2 bg-white px-2.5 py-2 shadow-sm transition-opacity dark:bg-neutral-900", selected && "shadow-md")}
-      style={{ borderColor: color }}
-    >
-      <Handle type="target" position={Position.Left} style={{ background: color, width: 6, height: 6 }} />
-      <div className="flex items-center gap-1.5">
-        <span style={{ color }} className="shrink-0">{TYPE_ICONS[node.type]}</span>
-        <span className="text-[10px] font-medium" style={{ color }}>{TYPE_LABELS[node.type]}</span>
-      </div>
-      <p className="mt-1 line-clamp-2 text-[11.5px] font-medium text-neutral-800 dark:text-neutral-200">{node.title}</p>
-      <Handle type="source" position={Position.Right} style={{ background: color, width: 6, height: 6 }} />
-    </div>
-  );
-}
-
-const nodeTypes = { kgNode: KgNodeComponent as React.ComponentType<NodeProps> };
-
-// ---- legend ----
-
-function Legend() {
-  return (
-    <div className="absolute bottom-4 left-4 z-10 flex flex-col gap-1.5 rounded-lg border border-neutral-200 bg-white/90 p-3 text-[11px] backdrop-blur-sm dark:border-neutral-700 dark:bg-neutral-900/90">
-      {(Object.entries(TYPE_LABELS) as [KgNodeType, string][]).map(([type, label]) => (
-        <div key={type} className="flex items-center gap-2">
-          <span className="h-2.5 w-2.5 rounded-full" style={{ background: TYPE_COLORS[type] }} />
-          <span className="text-neutral-600 dark:text-neutral-400">{label}</span>
-        </div>
-      ))}
-    </div>
-  );
-}
+const KG_LEGEND = (Object.entries(TYPE_LABELS) as [KgNodeType, string][]).map(([group, label]) => ({
+  group, label, color: TYPE_COLORS[group],
+}));
 
 // ---- connection modal ----
 
@@ -336,8 +245,6 @@ function NodeListView({ nodes, onSelectNode, onToggleHidden }: { nodes: KgNode[]
 // ---- main pane ----
 
 export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: string | null; onSynced?: () => void }) {
-  const [rfNodes, setRfNodes, onNodesChange] = useNodesState<Node>([]);
-  const [rfEdges, setRfEdges, onEdgesChange] = useEdgesState<Edge>([]);
   const [rawNodes, setRawNodes] = useState<KgNode[]>([]);
   const [rawEdges, setRawEdges] = useState<KgEdge[]>([]);
   const [syncing, setSyncing] = useState(false);
@@ -360,29 +267,36 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
       ]);
       setRawNodes(kgNodes);
       setRawEdges(kgEdges);
-      setRfNodes(layoutNodes(kgNodes));
-      setRfEdges(toRFEdges(kgEdges));
       setError(null);
     } catch (err) {
       setError(String(err));
     }
-  }, [workspaceId, setRfNodes, setRfEdges]);
+  }, [workspaceId]);
 
   useEffect(() => { void load(true); }, [load]);
 
-  // Apply search highlight to ReactFlow nodes
-  useEffect(() => {
-    if (!searchQuery.trim()) {
-      setRfNodes((prev) => prev.map((n) => ({ ...n, style: {} })));
-      return;
-    }
-    const q = searchQuery.toLowerCase();
-    setRfNodes((prev) => prev.map((n) => {
-      const raw = rawNodes.find((r) => r.id === n.id);
-      const matches = raw && (raw.title.toLowerCase().includes(q) || raw.summary.toLowerCase().includes(q) || raw.tags.some((t) => t.toLowerCase().includes(q)));
-      return { ...n, style: { opacity: matches ? 1 : 0.15, transition: "opacity 0.15s" } };
-    }));
-  }, [searchQuery, setRfNodes, rawNodes]);
+  // KgNode/KgEdge → GraphCanvas 视图契约
+  const gcNodes = useMemo<GraphCanvasNode[]>(() => rawNodes.map((n) => ({
+    id: n.id,
+    title: n.title,
+    group: n.type,
+    color: TYPE_COLORS[n.type],
+    icon: TYPE_ICONS[n.type],
+    groupLabel: TYPE_LABELS[n.type],
+  })), [rawNodes]);
+
+  const gcEdges = useMemo<GraphCanvasEdge[]>(() => rawEdges.map((e) => ({
+    id: e.id,
+    from: e.fromId,
+    to: e.toId,
+    label: RELATION_LABELS[e.relation],
+    color: e.auto ? "#94a3b8" : "#6366f1",
+    dashed: !e.auto,
+    animated: e.relation === "references",
+    width: Math.max(1, e.weight * 0.8),
+  })), [rawEdges]);
+
+  const hiddenIds = useMemo(() => new Set(rawNodes.filter((n) => n.hidden).map((n) => n.id)), [rawNodes]);
 
   const handleSync = useCallback(async () => {
     if (!workspaceId || syncing) return;
@@ -416,18 +330,18 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
     }
   }, [workspaceId, extracting, load, onSynced]);
 
-  const handleNodeClick = useCallback((_: React.MouseEvent, rfNode: Node) => {
-    const kgNode = rawNodes.find((n) => n.id === rfNode.id);
+  const handleNodeClick = useCallback((id: string) => {
+    const kgNode = rawNodes.find((n) => n.id === id);
     if (kgNode) { setSelectedNode(kgNode); setSelectedEdge(null); }
   }, [rawNodes]);
 
-  const handleEdgeClick = useCallback((_: React.MouseEvent, edge: Edge) => {
-    const kgEdge = rawEdges.find((e) => e.id === edge.id);
+  const handleEdgeClick = useCallback((id: string) => {
+    const kgEdge = rawEdges.find((e) => e.id === id);
     if (kgEdge) { setSelectedEdge(kgEdge); setSelectedNode(null); }
   }, [rawEdges]);
 
-  const handleConnect = useCallback((conn: Connection) => {
-    if (conn.source && conn.target) setPendingConn({ fromId: conn.source, toId: conn.target });
+  const handleConnect = useCallback((fromId: string, toId: string) => {
+    setPendingConn({ fromId, toId });
   }, []);
 
   const confirmConnection = useCallback(async (relation: KgRelation) => {
@@ -559,32 +473,24 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
 
       <div className="relative flex-1 overflow-hidden">
         {view === "graph" ? (
-          visibleNodes.length === 0 ? (
-            <div className="flex h-full flex-col items-center justify-center gap-3 text-neutral-400">
-              <Network className="h-10 w-10 opacity-25" strokeWidth={1} />
-              <p className="text-[13px]">图谱为空</p>
-              <p className="text-[12px]">点击「更新图谱」从 rules / 指标体系 / 业务环境 / workflow 报告中摄入节点</p>
-            </div>
-          ) : (
-            <ReactFlow
-              nodes={rfNodes.filter((n) => !rawNodes.find((r) => r.id === n.id)?.hidden)}
-              edges={rfEdges}
-              onNodesChange={onNodesChange}
-              onEdgesChange={onEdgesChange}
-              onNodeClick={handleNodeClick}
-              onEdgeClick={handleEdgeClick}
-              onConnect={handleConnect}
-              nodeTypes={nodeTypes}
-              fitView
-              fitViewOptions={{ padding: 0.15 }}
-              minZoom={0.2}
-              maxZoom={2}
-            >
-              <Background variant={BackgroundVariant.Dots} gap={20} size={1} color="#e5e7eb" />
-              <Controls />
-              <Legend />
-            </ReactFlow>
-          )
+          <GraphCanvas
+            nodes={gcNodes}
+            edges={gcEdges}
+            clusterCenters={CLUSTER_CENTERS}
+            legend={KG_LEGEND}
+            searchQuery={searchQuery}
+            hiddenIds={hiddenIds}
+            onNodeClick={handleNodeClick}
+            onEdgeClick={handleEdgeClick}
+            onConnect={handleConnect}
+            emptyHint={
+              <div className="flex flex-col items-center gap-3">
+                <Network className="h-10 w-10 opacity-25" strokeWidth={1} />
+                <p className="text-[13px]">图谱为空</p>
+                <p className="text-[12px]">点击「更新图谱」从 rules / 指标体系 / 业务环境 / workflow 报告中摄入节点</p>
+              </div>
+            }
+          />
         ) : (
           <NodeListView nodes={rawNodes} onSelectNode={setSelectedNode} onToggleHidden={handleToggleHidden} />
         )}

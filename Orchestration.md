@@ -4,7 +4,7 @@
 > 总控 = Claude（Opus）：负责架构、接缝层、接口契约、db migration 审批、跨域集成、**全部代码终审**。
 > 三个编程 Agent 在各自域的 **slot 文件**内开发，**永不触碰接缝层骨架文件**。
 
-最后更新：2026-06-09 · 状态：**第 0 步接缝重构完成** ✅ + **P0 推进中** —— 接缝重构批1~3✅；P0-A(D 上传即用)✅、P0-B(V 看板画布·重做)✅、P0-D(D 看板聚合数据源)✅ 均终审+实跑通过；**仅剩 P0-C(E E2E 验证)待进场**，齐活即可发 v2.1。
+最后更新：2026-06-10 · 状态：**第 0 步接缝重构完成** ✅ + **P0 推进中** —— 接缝重构批1~3✅；P0-A(D 上传即用)✅、P0-B(V 看板画布·重做)✅、P0-D(D 看板聚合数据源)✅ 均终审+实跑通过；**仅剩 P0-C(E E2E 验证)待进场**，齐活即可发 v2.1。**另：onto-xanthil 数据语义层全期(P1/P2/P3/P2b')交付完毕**（总控独立开发，`MetricDefinition` 契约随之落地，详见 `docs/onto-xanthil-design.md`）。
 
 ---
 
@@ -197,11 +197,15 @@ web/src/
 - [x] **P0-D 看板聚合数据源 API（D）** — done 2026-06-09：`/api/bi/aggregations` 列表(按扩展名过滤) + `/:pathId/data` 行列；仅 clean_data、draw_data 403、零 LLM。终审+实跑通过
 - [x] **总控契约前置（done 2026-06-09）** — `types.ts` 双侧定 `BiCell/BiAggregationDataset/BiAggregationData`(columns:string[]，FieldKind 前端推断) + 把 `index.ts` 的 `parseBiDatasetFromBuffer` 抽成共享 `server/src/bi-dataset-parser.ts:parseAggregationBuffer`(index.ts 改为别名复用)；typecheck+build 绿。**D/V 可开工**
 - [ ] **P0-C E2E 验证补课（E）** — 待 Agent-E 进场；P0 三域齐活后归档 changelog v2.1 + 定义 `MetricDefinition` 双侧契约（看板聚合 GET 是其简化前置）
+- [~] **工作流创建链路修复（P0-C 范畴 · 健壮版）** — 根因：创建链路赌 pi 自愿把 workflow.json 写进 cwd(flow 目录)、后端不兜底 → pi 提问停住 或 写错目录(被用户绝对输出路径约束压过) → UI 永远"等待 pi 生成工作流节点"。
+  - [x] **总控后端**（done 2026-06-09）：`index.ts` flow handler 加 `captureWorkflowFromText`(fenced 块/自报路径/裸 JSON 三路捕获)+`parseWorkflowCandidate`，run 结束若 flow 目录无合法 workflow.json 则捕获+规范化回填；typecheck/build 绿
+  - [ ] **E 前端**（已派 wiki E 卡）：硬化 CreationPane 创建 prompt(禁提问+钉死 flow 目录+输出目录约束不适用 workflow.json) + pi 提问/空态 UI 反馈 → 与总控后端联调实跑
 
 > 教训：终审须含**运行时端到端实跑**，仅 typecheck/build 绿不等于功能可用（KICKOFF P0-C 警告的正是此类）。后续 P0 终审一律加实跑门禁。
 
+- [x] **onto-xanthil 数据语义层（总控独立开发，done 2026-06-10）** — 新模块，Palantir 取向 + 借 nano-ontoprompt 工程、做轻、面向数据分析。P1 契约/db/路由/前端骨架+聚合集生成 · P2a 共享 `GraphCanvas`(KG 改用同底座) · P2b/P2b' **metric 完全切源**(`metric_definitions` 唯一真源，3 注入管线+IndicatorsPane 全切，启动迁移先拷后删旧行) · P3 文档导入+pi LLM 抽取。五能力(对象/关系/指标/图谱/导入)齐活，均实跑。详见 `docs/onto-xanthil-design.md`
+- [x] `MetricDefinition` 语义层契约定义 — 总控（done 2026-06-10，随 onto-xanthil 落地，`metric_definitions` 为唯一真源）
 - [ ] **(优化批，可选)** App.tsx 域模块改 React.lazy 代码分割（named→default 包装）；echarts 动静混合 import 统一
-- [ ] `MetricDefinition` 语义层契约定义 — 总控（P1 前置）
 - [ ] 三个 agent 接入开发环境 + 阅读本章程 + `AGENTS.md`
 - 参考：审计结论见会话「总纲领-传统BI-AI数据分析工作台」；模块边界速查见 `AGENTS.md §三`
 

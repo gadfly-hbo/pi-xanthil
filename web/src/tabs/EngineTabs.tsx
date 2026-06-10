@@ -81,16 +81,16 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
         <Placeholder icon={FlaskConical} title="DLF" hint="DLF 模块管理，即将推出" />
       )}
 
-      {activeTab === "anax" && activeSubTab === "view" && (
+      {activeTab === "research_lab" && activeSubTab === "anax_view" && (
         <AnaXPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} rulesPromptEnabled={ctx.rulesPromptEnabled} />
       )}
-      {activeTab === "anax" && activeSubTab === "hypothesis" && (
+      {activeTab === "research_lab" && activeSubTab === "hypothesis" && (
         <HypothesisPane workspaceId={ctx.activeWorkspaceId} />
       )}
-      {activeTab === "anax" && activeSubTab === "change_mgmt" && (
+      {activeTab === "research_lab" && activeSubTab === "change_mgmt" && (
         <ChangeManagementPane workspaceId={ctx.activeWorkspaceId} />
       )}
-      {activeTab === "anax" && activeSubTab === "readme" && <AnaXReadmePane />}
+      {activeTab === "research_lab" && activeSubTab === "readme" && <AnaXReadmePane />}
     </>
   );
 }

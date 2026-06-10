@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calculator, CheckCircle2, FileText, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
-import type { AnalysisStandard, AnalysisStandardInput, AnalysisStandardKind } from "@/types";
+import type { AnalysisStandard, AnalysisStandardInput, AnalysisStandardKind, MetricDefinition } from "@/types";
 
 type FormState = AnalysisStandardInput & { id: string | null };
 
@@ -38,6 +38,7 @@ function toInput(form: FormState): AnalysisStandardInput {
 
 export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceId: string | null; onStandardsChanged?: () => void }) {
   const [standards, setStandards] = useState<AnalysisStandard[]>([]);
+  const [metricDefs, setMetricDefs] = useState<MetricDefinition[]>([]); // metric 真源 = metric_definitions（P2b'）
   const [promptInfo, setPromptInfo] = useState<{ prompt: string; count: number; updatedAt: number | null }>({ prompt: "", count: 0, updatedAt: null });
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
@@ -50,12 +51,14 @@ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceI
     setLoading(true);
     setError("");
     try {
-      const [list, prompt] = await Promise.all([
+      const [list, prompt, mets] = await Promise.all([
         api.listStandards(workspaceId),
         api.getStandardsPrompt(workspaceId),
+        api.listMetrics(workspaceId),
       ]);
       setStandards(list);
       setPromptInfo(prompt);
+      setMetricDefs(mets);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -72,8 +75,13 @@ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceI
     onStandardsChanged?.();
   }, [refresh, onStandardsChanged]);
 
-  const metrics = useMemo(() => standards.filter((s) => s.kind === "metric"), [standards]);
   const files = useMemo(() => standards.filter((s) => s.kind === "reference_file"), [standards]);
+  // metric 来自 metric_definitions，适配成 AnalysisStandard 形状供 StandardSection 复用渲染
+  const metrics = useMemo<AnalysisStandard[]>(() => metricDefs.map((m) => ({
+    id: m.id, workspaceId: m.workspaceId, kind: "metric", name: m.name, category: m.category,
+    description: m.description, formula: m.formula, caliber: m.caliber, unit: m.unit,
+    filePath: "", fileHash: null, enabled: m.enabled, createdAt: m.createdAt, updatedAt: m.updatedAt,
+  })), [metricDefs]);
 
   const toggle = async (s: AnalysisStandard) => {
     await api.updateStandardEnabled(s.id, !s.enabled);
@@ -84,6 +92,17 @@ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceI
   const remove = async (s: AnalysisStandard) => {
     if (!window.confirm(`确认删除「${s.name}」？`)) return;
     await api.deleteStandard(s.id);
+    void afterMutation();
+  };
+
+  // metric 真源切到 metric_definitions（P2b'）：指标的 toggle/delete 走 metric API
+  const toggleMetric = async (s: AnalysisStandard) => {
+    await api.updateMetric(s.id, { enabled: !s.enabled });
+    void afterMutation();
+  };
+  const removeMetric = async (s: AnalysisStandard) => {
+    if (!window.confirm(`确认删除「${s.name}」？`)) return;
+    await api.deleteMetric(s.id);
     void afterMutation();
   };
 
@@ -100,8 +119,15 @@ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceI
     setSaving(true);
     setError("");
     try {
-      if (form.id) await api.updateStandard(form.id, toInput(form));
-      else await api.createStandard(workspaceId, toInput(form));
+      if (form.kind === "metric") {
+        const m = { name: form.name, category: form.category, description: form.description, formula: form.formula, caliber: form.caliber, unit: form.unit };
+        if (form.id) await api.updateMetric(form.id, m);
+        else await api.createMetric(workspaceId, m);
+      } else if (form.id) {
+        await api.updateStandard(form.id, toInput(form));
+      } else {
+        await api.createStandard(workspaceId, toInput(form));
+      }
       setForm(null);
       await afterMutation();
     } catch (err) {
@@ -181,7 +207,7 @@ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceI
           <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 text-[12px] leading-5 text-neutral-700 dark:bg-neutral-950 dark:text-neutral-300">{promptInfo.prompt || "暂无启用标准"}</pre>
         </div>
 
-        <StandardSection title="指标口径" icon={Calculator} items={metrics} onToggle={toggle} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={remove} />
+        <StandardSection title="指标口径" icon={Calculator} items={metrics} onToggle={toggleMetric} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={removeMetric} />
         <StandardSection title="参照标准文件" icon={FileText} items={files} onToggle={toggle} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={remove} />
       </div>
     </div>

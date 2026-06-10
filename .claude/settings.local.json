@@ -143,7 +143,11 @@
       "Bash(git -C /Users/huangbo/Dev/Projects/pi-xanthil diff server/src/index.ts)",
       "Bash(pi -p --mode json --no-extensions --model \"volcengine-plan/deepseek-v4-pro\" --system-prompt \"你是一个简洁的助手。\" \"只回复两个字：你好\")",
       "Bash(grep -nE \"^db\\\\.exec\\\\\\(|^\\\\}\\\\\\);$|^  \\\\`\\\\\\);$\" server/src/db.ts)",
-      "Bash(git rm *)"
+      "Bash(git rm *)",
+      "Bash(sed -n '2445,2535p' db.ts)",
+      "Bash(sed -n '1308,1348p' index.ts)",
+      "Bash(sed -n '60,110p' memory-injection.ts)",
+      "Bash(sed -n '85,100p' knowledge-graph.ts)"
     ]
   }
 }

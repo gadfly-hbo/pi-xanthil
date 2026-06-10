@@ -6,6 +6,7 @@ import {
   buildEnabledStandardsPrompt,
   listAnalysisCases,
   listAnalysisStandards,
+  listEnabledMetricDefinitions,
   listBusinessContexts,
   listKgNodes,
   listRuleMemories,
@@ -76,7 +77,11 @@ function collectMemoryPromptParts(workspaceId: string, targetScope?: "chat" | "w
   const cases = buildEnabledCasesPrompt(workspaceId);
   const kg = buildKgPrompt(workspaceId);
   const ruleIds = listRuleMemories(workspaceId).filter((rule) => rule.enabled && (!targetScope || rule.scope === "global" || rule.scope === targetScope)).map((rule) => rule.id);
-  const standardIds = listAnalysisStandards(workspaceId).filter((standard) => standard.enabled).map((standard) => standard.id);
+  // metric 真源 = metric_definitions（P2b'）；reference_file 仍在 analysis_standards
+  const standardIds = [
+    ...listAnalysisStandards(workspaceId).filter((s) => s.enabled && s.kind === "reference_file").map((s) => s.id),
+    ...listEnabledMetricDefinitions(workspaceId).map((m) => m.id),
+  ];
   const businessContextIds = listBusinessContexts(workspaceId).filter((context) => context.enabled).map((context) => context.id);
   const caseIds = listAnalysisCases(workspaceId).filter((analysisCase) => analysisCase.enabled).map((analysisCase) => analysisCase.id);
   const kgNodeIds = listKgNodes(workspaceId).map((node) => node.id);

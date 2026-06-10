@@ -859,6 +859,49 @@ function validatePromotedWorkflow(flowRoot: string): void {
   writeFlowFile(flowRoot, "workflow.json", JSON.stringify(workflow, null, 2));
 }
 
+// 从一段文本解析出合法 workflow（nodes 非空 + edges 为数组），失败返回 null。
+function parseWorkflowCandidate(raw: string): WorkflowLike | null {
+  let obj: unknown;
+  try { obj = JSON.parse(raw); } catch { return null; }
+  if (typeof obj !== "object" || obj === null) return null;
+  const wf = obj as { nodes?: unknown; edges?: unknown };
+  if (!Array.isArray(wf.nodes) || wf.nodes.length === 0) return null;
+  if (!Array.isArray(wf.edges)) return null;
+  try { return normalizeWorkflowModels(obj as WorkflowLike); } catch { return null; }
+}
+
+// 创建链路兜底：pi 可能因用户的输出目录约束把 workflow.json 写到别处、或只在对话里给出 JSON。
+// 从本轮 assistant 输出捕获 workflow：① fenced 代码块 ② pi 自报的 .../workflow.json 绝对路径文件 ③ 整段裸 JSON。
+function captureWorkflowFromText(text: string): WorkflowLike | null {
+  if (!text || !text.trim()) return null;
+  const candidates: string[] = [];
+  const fence = /```(?:json|workflow|JSON)?\s*([\s\S]*?)```/g;
+  let fm: RegExpExecArray | null;
+  while ((fm = fence.exec(text))) { if (fm[1]) candidates.push(fm[1].trim()); }
+  const pathRe = /(\/[^\s"'`)]+?workflow\.json)/g;
+  let pm: RegExpExecArray | null;
+  while ((pm = pathRe.exec(text))) {
+    const p = pm[1];
+    try { if (p && existsSync(p) && statSync(p).isFile()) candidates.push(readFileSync(p, "utf8")); } catch { /* ignore unreadable path */ }
+  }
+  const trimmed = text.trim();
+  if (trimmed.startsWith("{")) candidates.push(trimmed);
+  for (const raw of candidates) {
+    const wf = parseWorkflowCandidate(raw);
+    if (wf) return wf;
+  }
+  return null;
+}
+
+// 取 pi 消息内容里的文本部分用于捕获。
+function flowMessageText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter((c): c is { type: string; text: string } => !!c && typeof c === "object" && (c as { type?: unknown }).type === "text" && typeof (c as { text?: unknown }).text === "string")
+    .map((c) => c.text)
+    .join("\n");
+}
+
 async function compileSessionWorkflow(
   flowId: string,
   sessionId: string,
@@ -5419,6 +5462,7 @@ async function handleSendFlow(
     fallbackOutputDir: flow.folderPath,
   }, flowChatAnalyses);
 
+  let capturedText = "";
   const run = runPiTurn({
     // pi runs *inside* the flow folder so its file tools see the workflow as cwd.
     workspaceRoot: flow.folderPath,
@@ -5438,6 +5482,7 @@ async function handleSendFlow(
       if (event.type === "message_end") {
         const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
         if (m.role !== "user") addFlowMessage(flow.id, m.role, m.content, m.usage ?? null);
+        if (m.role === "assistant") capturedText += "\n" + flowMessageText(m.content);
         if (m.errorMessage) traceFlowEvent(flow.id, "message_error", "failed", m.errorMessage, { role: m.role, stopReason: m.stopReason });
       }
     },
@@ -5446,6 +5491,19 @@ async function handleSendFlow(
   activeFlowRuns.set(flow.id, active);
   try {
     const code = await run.done;
+    // 兜底：若 flow 目录仍无合法 workflow.json（pi 写错目录/只在对话给出 JSON），从本轮输出捕获并回填。
+    // pi 中途提问停住的情形捕获不到（无 workflow 产出），交由前端 CreationPane 提示用户应答。
+    if (code === 0 && !active.aborted && !readWorkflow(flow.folderPath)) {
+      try {
+        const captured = captureWorkflowFromText(capturedText);
+        if (captured) {
+          writeFlowFile(flow.folderPath, "workflow.json", JSON.stringify(captured, null, 2));
+          traceFlowEvent(flow.id, "workflow_captured", "success", "创建链路：从 pi 输出捕获并回填 workflow.json 到 flow 目录", {});
+        }
+      } catch (err) {
+        traceFlowEvent(flow.id, "workflow_capture_failed", "failed", String(err), {});
+      }
+    }
     traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : code === 0 ? "success" : "failed", code === 0 ? null : `pi exited with code ${String(code)}`, { code, aborted: active.aborted });
     send(ws, { type: "run_end", flowId: flow.id, code, aborted: active.aborted });
   } finally {

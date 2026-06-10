@@ -9,6 +9,7 @@ import { initSharedTables } from "./db/shared.ts";
 import { initDataTables } from "./db/data.ts";
 import { initEngineTables } from "./db/engine.ts";
 import { initVizTables } from "./db/viz.ts";
+import type { MetricDefinition } from "./types.ts";
 
 ensureDirs(); // DB opens at import time — guarantee the data dir exists first.
 export const db = new DatabaseSync(DB_PATH);
@@ -729,6 +730,46 @@ initSharedTables();
 initDataTables();
 initEngineTables();
 initVizTables();
+migrateMetricStandardsToDefinitions();
+
+/**
+ * P2b' metric 完全切源迁移（一次性·幂等·先拷后删）：
+ * 把 analysis_standards(kind='metric') 拷入 metric_definitions（同名跳过），
+ * 再删除已确认拷贝的旧 metric 行。此后 metric 唯一真源 = metric_definitions。
+ * 幂等：删除后无 metric 行可迁移；reference_file 行不受影响。
+ */
+function migrateMetricStandardsToDefinitions(): void {
+  try {
+    const rows = db.prepare(
+      "SELECT workspace_id AS wid, name, category, description, formula, caliber, unit, enabled, created_at AS createdAt, updated_at AS updatedAt FROM analysis_standards WHERE kind = 'metric'"
+    ).all() as unknown as Array<{
+      wid: string; name: string; category: string; description: string; formula: string;
+      caliber: string; unit: string; enabled: number; createdAt: number; updatedAt: number;
+    }>;
+    if (rows.length === 0) return;
+    const insert = db.prepare(
+      "INSERT INTO metric_definitions (id, workspace_id, name, category, description, formula, caliber, unit, object_type_id, bound_columns, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)"
+    );
+    const exists = db.prepare("SELECT 1 FROM metric_definitions WHERE workspace_id = ? AND name = ? LIMIT 1");
+    const delRow = db.prepare("DELETE FROM analysis_standards WHERE workspace_id = ? AND kind = 'metric' AND name = ?");
+    db.exec("BEGIN");
+    try {
+      for (const r of rows) {
+        if (!exists.get(r.wid, r.name)) {
+          insert.run(randomUUID(), r.wid, r.name, r.category, r.description, r.formula, r.caliber, r.unit, r.enabled, r.createdAt, r.updatedAt);
+        }
+        delRow.run(r.wid, r.name); // 已确认存在于 metric_definitions 后再删旧行
+      }
+      db.exec("COMMIT");
+    } catch (e) {
+      db.exec("ROLLBACK");
+      throw e;
+    }
+    console.log(`[xanthil] metric migration: moved ${rows.length} metric standards → metric_definitions`);
+  } catch (err) {
+    console.error("[xanthil] metric migration failed (non-fatal):", err);
+  }
+}
 
 export function createWorkspace(name: string): Workspace {
   const id = randomUUID();
@@ -2502,12 +2543,26 @@ export function deleteAnalysisStandard(id: string): void {
   db.prepare("DELETE FROM analysis_standards WHERE id = ?").run(id);
 }
 
-export function buildEnabledStandardsPrompt(workspaceId: string): { prompt: string; count: number; updatedAt: number | null } {
-  const enabled = listAnalysisStandards(workspaceId).filter((s) => s.enabled);
-  if (enabled.length === 0) return { prompt: "", count: 0, updatedAt: null };
+/**
+ * metric 真源 = metric_definitions（P2b' 完全切源）。db.ts 内裸查避免 base→slot 循环依赖。
+ */
+export function listEnabledMetricDefinitions(workspaceId: string): MetricDefinition[] {
+  const rows = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, name, category, description, formula, caliber, unit, object_type_id AS objectTypeId, bound_columns AS boundColumns, enabled, created_at AS createdAt, updated_at AS updatedAt FROM metric_definitions WHERE workspace_id = ? AND enabled = 1 ORDER BY category, name"
+  ).all(workspaceId) as unknown as Array<Omit<MetricDefinition, "enabled" | "boundColumns" | "objectTypeId"> & { enabled: number; boundColumns: string | null; objectTypeId: string | null }>;
+  return rows.map((r) => ({
+    ...r,
+    objectTypeId: r.objectTypeId ?? undefined,
+    boundColumns: r.boundColumns ? (JSON.parse(r.boundColumns) as string[]) : undefined,
+    enabled: Boolean(r.enabled),
+  }));
+}
 
-  const metrics = enabled.filter((s) => s.kind === "metric");
-  const files = enabled.filter((s) => s.kind === "reference_file");
+export function buildEnabledStandardsPrompt(workspaceId: string): { prompt: string; count: number; updatedAt: number | null } {
+  const metrics = listEnabledMetricDefinitions(workspaceId);
+  const files = listAnalysisStandards(workspaceId).filter((s) => s.enabled && s.kind === "reference_file");
+  if (metrics.length === 0 && files.length === 0) return { prompt: "", count: 0, updatedAt: null };
+
   const lines: string[] = ["<xanthil-standards>", "以下为本工作区的分析标准与口径，分析时须严格遵守："];
 
   if (metrics.length > 0) {
@@ -2536,10 +2591,11 @@ export function buildEnabledStandardsPrompt(workspaceId: string): { prompt: stri
   }
 
   lines.push("</xanthil-standards>");
+  const all = [...metrics, ...files];
   return {
     prompt: lines.join("\n"),
-    count: enabled.length,
-    updatedAt: Math.max(...enabled.map((s) => s.updatedAt)),
+    count: all.length,
+    updatedAt: Math.max(...all.map((s) => s.updatedAt)),
   };
 }
 
@@ -3555,6 +3611,10 @@ export function deleteKgEdge(id: string): boolean {
 
 export function deleteKgNodesForSource(workspaceId: string, sourceKeyPrefix: string): void {
   db.prepare("DELETE FROM kg_nodes WHERE workspace_id = ? AND source_key LIKE ?").run(workspaceId, `${sourceKeyPrefix}%`);
+}
+
+export function deleteKgNodesByType(workspaceId: string, type: string): void {
+  db.prepare("DELETE FROM kg_nodes WHERE workspace_id = ? AND type = ?").run(workspaceId, type);
 }
 
 export function clearKgAutoEdges(workspaceId: string): void {

@@ -4,10 +4,11 @@ import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/Sidebar";
 import { type UiMessage } from "@/components/MessageRow";
 import { PreviewPane } from "@/components/PreviewPane";
+import { CleanDataDocsColumn } from "@/components/CleanDataDocsColumn";
 import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useTabVisibility } from "@/lib/useTabVisibility";
-import { getSubTabsForTab, type SubTab } from "@/lib/constants";
+import { getSubTabsForTab, LAB_ANAX_SUB_TABS, LAB_ANAX_SUB_IDS, type SubTab } from "@/lib/constants";
 import { DataTabs } from "@/tabs/DataTabs";
 import { EngineTabs } from "@/tabs/EngineTabs";
 import { VizTabs } from "@/tabs/VizTabs";
@@ -79,6 +80,9 @@ export default function App() {
   // activeSessionId is read inside the gateway listener — keep a ref in sync.
   const activeRef = useRef<string | null>(null);
   activeRef.current = activeSessionId;
+
+  // 侧边栏「非活动自动收起」：鼠标离开延时收起，拖拽改宽（userSelect=none）时不收。
+  const collapseTimer = useRef<number | undefined>(undefined);
 
   const refreshRulesPromptInfo = useCallback(async () => {
     if (!activeWorkspaceId) {
@@ -376,7 +380,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : tab === "onto_xanthil" ? "onto_objects" : "view");
   }, []);
 
   const handleRequestRestoreRun = useCallback((runId: string) => {
@@ -613,7 +617,15 @@ export default function App() {
               onOpenSettings={() => setSettingsOpen(true)}
             />
           </div>
-          <div className="hidden md:block">
+          <div
+            className="hidden md:block"
+            onMouseEnter={() => { if (collapseTimer.current) window.clearTimeout(collapseTimer.current); }}
+            onMouseLeave={() => {
+              collapseTimer.current = window.setTimeout(() => {
+                if (document.body.style.userSelect !== "none") setSidebarOpen(false);
+              }, 300);
+            }}
+          >
             <Sidebar
               workspaces={workspaces}
               activeWorkspaceId={activeWorkspaceId}
@@ -663,12 +675,18 @@ export default function App() {
             setActiveTab("rule_memory");
             setActiveSubTab("token_stats");
           }}
+          onOpenQuickNotes={() => {
+            setActiveTab("rule_memory");
+            setActiveSubTab("quick_notes");
+          }}
         />
 
-        {/* Sub-tab strip: 工作视图 | 原始数据 | 聚合数据 | 报告输出 */}
+        {/* Sub-tab strip: 工作视图 | 原始数据 | 聚合数据 | 报告输出。实验室顶部 = workflow/…/AnaX；AnaX 子项见下方左竖栏。 */}
         <div className="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
           {getSubTabsForTab(activeTab).filter((t) => isVisible(activeTab + ":" + t.id)).map((t) => {
-            const active = t.id === activeSubTab;
+            // 实验室的 AnaX 顶部 tab（id=anax_view）在其任一二级子项激活时保持高亮。
+            const active = t.id === activeSubTab
+              || (activeTab === "research_lab" && t.id === "anax_view" && LAB_ANAX_SUB_IDS.has(activeSubTab));
             return (
               <button
                 key={t.id}
@@ -699,6 +717,32 @@ export default function App() {
         </div>
 
         <div className="flex min-h-0 flex-1">
+          {/* 实验室·AnaX：仅当激活 AnaX 顶部 tab 时，其二级 tab 以左侧竖栏呈现 */}
+          {activeTab === "research_lab" && LAB_ANAX_SUB_IDS.has(activeSubTab) && (
+            <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
+              {LAB_ANAX_SUB_TABS.map((t) => {
+                const active = t.id === activeSubTab;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveSubTab(t.id)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1.5 text-left text-[12.5px] transition-colors",
+                      active
+                        ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+                        : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+          {/* 探索·工作视图：左侧「聚合数据」只读文档竖栏（红线域，纯读取+复制） */}
+          {activeTab === "explore" && activeSubTab === "view" && (
+            <CleanDataDocsColumn scope={folderScope} />
+          )}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <DataTabs ctx={tabCtx} />
             <EngineTabs ctx={tabCtx} />

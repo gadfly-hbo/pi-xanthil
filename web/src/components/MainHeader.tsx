@@ -1,17 +1,17 @@
-import { PanelLeftOpen, Compass, Bot, Users, Calculator, BookOpen, Database, FlaskConical, Cpu, type LucideIcon } from "lucide-react";
+import { PanelLeftOpen, Compass, Network, Users, Calculator, BookOpen, Database, FlaskConical, Cpu, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type Tab = "explore" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "anax" | "dashboard";
+export type Tab = "explore" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "dashboard" | "onto_xanthil";
 
 export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "explore", label: "探索", icon: Compass },
   { id: "multi", label: "工作流", icon: Users },
   { id: "aggregate", label: "计算工具", icon: Calculator },
   { id: "rule_memory", label: "规则记忆", icon: BookOpen },
-  { id: "xan_db", label: "Xan数据库", icon: Database },
   { id: "research_lab", label: "实验室", icon: FlaskConical },
-  { id: "anax", label: "AnaX", icon: Bot },
+  { id: "xan_db", label: "Xan数据库", icon: Database },
   { id: "dashboard", label: "Dashboard", icon: Cpu },
+  { id: "onto_xanthil", label: "onto-xanthil", icon: Network },
 ];
 
 interface Props {
@@ -30,6 +30,7 @@ interface Props {
   rulesPromptUpdatedAt: number | null;
   onToggleRulesPrompt: () => void;
   onOpenTokenStats: () => void;
+  onOpenQuickNotes: () => void;
 }
 
 export function MainHeader(p: Props) {
@@ -122,6 +123,13 @@ export function MainHeader(p: Props) {
           className="inline-flex h-7 items-center rounded-md px-2 text-[11.5px] text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
         >
           token统计
+        </button>
+        <button
+          onClick={p.onOpenQuickNotes}
+          title="随手记：工作日志与备忘"
+          className="inline-flex h-7 items-center rounded-md px-2 text-[11.5px] text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+        >
+          随手记
         </button>
       </div>
     </header>
