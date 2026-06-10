@@ -1255,6 +1255,70 @@ export interface MetricDefinitionInput {
   boundColumns?: string[];
 }
 
+// ─── 本体形式化层（P6，对齐 nano LogicRule/Action）───────────────────────
+// LogicRule = 本体的形式化约束/规则；OntoAction = 可触发的可执行动作（含 functionCode）。
+export interface LogicRule {
+  id: string;
+  ontologyId: string;
+  nameCn: string;
+  nameEn?: string;
+  description: string;
+  formula: string; // 形式化表达（可空文本）
+  linkedObjectIds: string[]; // 关联的对象（object_types.id），双向关联
+  confidence: number;
+  createdAt: number;
+  updatedAt: number;
+}
+export interface LogicRuleInput {
+  nameCn: string;
+  nameEn?: string;
+  description?: string;
+  formula?: string;
+  linkedObjectIds?: string[];
+  confidence?: number;
+}
+
+export interface OntoAction {
+  id: string;
+  ontologyId: string;
+  nameCn: string;
+  nameEn?: string;
+  description: string;
+  executionRule: string; // 触发条件描述
+  functionCode: string; // 可执行代码（Python；质检做 AST 语法校验）
+  linkedObjectIds: string[];
+  linkedLogicIds: string[]; // 关联的逻辑规则（logic_rules.id）
+  confidence: number;
+  createdAt: number;
+  updatedAt: number;
+}
+export interface OntoActionInput {
+  nameCn: string;
+  nameEn?: string;
+  description?: string;
+  executionRule?: string;
+  functionCode?: string;
+  linkedObjectIds?: string[];
+  linkedLogicIds?: string[];
+  confidence?: number;
+}
+
+// ─── 抽取 Prompt 管理（P8，对齐 nano Prompt 表：命名+版本化+模板复用）──────
+export interface OntoPrompt {
+  id: string;
+  workspaceId: string;
+  name: string;
+  content: string; // 含 {{content}} 文档正文占位符
+  version: string;
+  createdAt: number;
+  updatedAt: number;
+}
+export interface OntoPromptInput {
+  name: string;
+  content: string;
+  version?: string;
+}
+
 // 图引擎共享视图契约（R1）：onto 对象与记忆 KG 都投影到此形状，喂给 <GraphCanvas>。
 export interface GraphNode {
   id: string;

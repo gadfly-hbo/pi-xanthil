@@ -10,6 +10,12 @@ import type {
   LinkKind,
   MetricDefinition,
   MetricDefinitionInput,
+  LogicRule,
+  LogicRuleInput,
+  OntoAction,
+  OntoActionInput,
+  OntoPrompt,
+  OntoPromptInput,
 } from "../types.ts";
 
 export interface DbDashboard {
@@ -107,6 +113,41 @@ function initOntoTables(): void {
       created_at     INTEGER NOT NULL,
       updated_at     INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS logic_rules (
+      id                TEXT PRIMARY KEY,
+      ontology_id       TEXT NOT NULL REFERENCES ontologies(id) ON DELETE CASCADE,
+      name_cn           TEXT NOT NULL,
+      name_en           TEXT,
+      description       TEXT NOT NULL DEFAULT '',
+      formula           TEXT NOT NULL DEFAULT '',
+      linked_object_ids TEXT NOT NULL DEFAULT '[]',
+      confidence        REAL NOT NULL DEFAULT 1.0,
+      created_at        INTEGER NOT NULL,
+      updated_at        INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS onto_actions (
+      id                TEXT PRIMARY KEY,
+      ontology_id       TEXT NOT NULL REFERENCES ontologies(id) ON DELETE CASCADE,
+      name_cn           TEXT NOT NULL,
+      name_en           TEXT,
+      description       TEXT NOT NULL DEFAULT '',
+      execution_rule    TEXT NOT NULL DEFAULT '',
+      function_code     TEXT NOT NULL DEFAULT '',
+      linked_object_ids TEXT NOT NULL DEFAULT '[]',
+      linked_logic_ids  TEXT NOT NULL DEFAULT '[]',
+      confidence        REAL NOT NULL DEFAULT 1.0,
+      created_at        INTEGER NOT NULL,
+      updated_at        INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS onto_prompts (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name         TEXT NOT NULL,
+      content      TEXT NOT NULL DEFAULT '',
+      version      TEXT NOT NULL DEFAULT 'v1.0',
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
   `);
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_ontologies_ws ON ontologies(workspace_id);`);
@@ -114,6 +155,9 @@ function initOntoTables(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_property_types_obj ON property_types(object_type_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_link_types_onto ON link_types(ontology_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_metric_defs_ws ON metric_definitions(workspace_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_logic_rules_onto ON logic_rules(ontology_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_onto_actions_onto ON onto_actions(ontology_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_onto_prompts_ws ON onto_prompts(workspace_id);`);
   } catch {
     // ignore
   }
@@ -477,4 +521,170 @@ export function backfillMetricsFromStandards(workspaceId: string): { migrated: n
     migrated++;
   }
   return { migrated, skipped };
+}
+
+// ---- LogicRule（本体形式化规则层，P6）----
+interface LogicRuleRow {
+  id: string; ontology_id: string; name_cn: string; name_en: string | null;
+  description: string; formula: string; linked_object_ids: string; confidence: number;
+  created_at: number; updated_at: number;
+}
+function parseIdList(s: string | null): string[] {
+  if (!s) return [];
+  try { const v = JSON.parse(s); return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; }
+}
+function parseLogicRule(r: LogicRuleRow): LogicRule {
+  return {
+    id: r.id, ontologyId: r.ontology_id, nameCn: r.name_cn, nameEn: r.name_en ?? undefined,
+    description: r.description, formula: r.formula, linkedObjectIds: parseIdList(r.linked_object_ids),
+    confidence: r.confidence, createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function listLogicRules(ontologyId: string): LogicRule[] {
+  return (db.prepare("SELECT * FROM logic_rules WHERE ontology_id = ? ORDER BY created_at").all(ontologyId) as unknown as LogicRuleRow[]).map(parseLogicRule);
+}
+
+export function createLogicRule(ontologyId: string, input: LogicRuleInput): LogicRule {
+  const id = randomUUID();
+  const now = Date.now();
+  const row: LogicRule = {
+    id, ontologyId, nameCn: input.nameCn, nameEn: input.nameEn,
+    description: input.description ?? "", formula: input.formula ?? "",
+    linkedObjectIds: input.linkedObjectIds ?? [], confidence: input.confidence ?? 1.0,
+    createdAt: now, updatedAt: now,
+  };
+  db.prepare(
+    "INSERT INTO logic_rules (id, ontology_id, name_cn, name_en, description, formula, linked_object_ids, confidence, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, ontologyId, row.nameCn, row.nameEn ?? null, row.description, row.formula, JSON.stringify(row.linkedObjectIds), row.confidence, now, now);
+  return row;
+}
+
+export function updateLogicRule(id: string, patch: Partial<LogicRuleInput>): LogicRule | undefined {
+  const r = db.prepare("SELECT * FROM logic_rules WHERE id = ?").get(id) as unknown as LogicRuleRow | undefined;
+  if (!r) return undefined;
+  const existing = parseLogicRule(r);
+  const next: LogicRule = {
+    ...existing,
+    nameCn: patch.nameCn ?? existing.nameCn,
+    nameEn: patch.nameEn ?? existing.nameEn,
+    description: patch.description ?? existing.description,
+    formula: patch.formula ?? existing.formula,
+    linkedObjectIds: patch.linkedObjectIds ?? existing.linkedObjectIds,
+    confidence: patch.confidence ?? existing.confidence,
+    updatedAt: Date.now(),
+  };
+  db.prepare(
+    "UPDATE logic_rules SET name_cn = ?, name_en = ?, description = ?, formula = ?, linked_object_ids = ?, confidence = ?, updated_at = ? WHERE id = ?"
+  ).run(next.nameCn, next.nameEn ?? null, next.description, next.formula, JSON.stringify(next.linkedObjectIds), next.confidence, next.updatedAt, id);
+  return next;
+}
+
+export function deleteLogicRule(id: string): boolean {
+  return db.prepare("DELETE FROM logic_rules WHERE id = ?").run(id).changes > 0;
+}
+
+// ---- OntoAction（可执行动作层，P6）----
+interface OntoActionRow {
+  id: string; ontology_id: string; name_cn: string; name_en: string | null;
+  description: string; execution_rule: string; function_code: string;
+  linked_object_ids: string; linked_logic_ids: string; confidence: number;
+  created_at: number; updated_at: number;
+}
+function parseOntoAction(r: OntoActionRow): OntoAction {
+  return {
+    id: r.id, ontologyId: r.ontology_id, nameCn: r.name_cn, nameEn: r.name_en ?? undefined,
+    description: r.description, executionRule: r.execution_rule, functionCode: r.function_code,
+    linkedObjectIds: parseIdList(r.linked_object_ids), linkedLogicIds: parseIdList(r.linked_logic_ids),
+    confidence: r.confidence, createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function listOntoActions(ontologyId: string): OntoAction[] {
+  return (db.prepare("SELECT * FROM onto_actions WHERE ontology_id = ? ORDER BY created_at").all(ontologyId) as unknown as OntoActionRow[]).map(parseOntoAction);
+}
+
+export function createOntoAction(ontologyId: string, input: OntoActionInput): OntoAction {
+  const id = randomUUID();
+  const now = Date.now();
+  const row: OntoAction = {
+    id, ontologyId, nameCn: input.nameCn, nameEn: input.nameEn,
+    description: input.description ?? "", executionRule: input.executionRule ?? "",
+    functionCode: input.functionCode ?? "", linkedObjectIds: input.linkedObjectIds ?? [],
+    linkedLogicIds: input.linkedLogicIds ?? [], confidence: input.confidence ?? 1.0,
+    createdAt: now, updatedAt: now,
+  };
+  db.prepare(
+    "INSERT INTO onto_actions (id, ontology_id, name_cn, name_en, description, execution_rule, function_code, linked_object_ids, linked_logic_ids, confidence, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, ontologyId, row.nameCn, row.nameEn ?? null, row.description, row.executionRule, row.functionCode, JSON.stringify(row.linkedObjectIds), JSON.stringify(row.linkedLogicIds), row.confidence, now, now);
+  return row;
+}
+
+export function updateOntoAction(id: string, patch: Partial<OntoActionInput>): OntoAction | undefined {
+  const r = db.prepare("SELECT * FROM onto_actions WHERE id = ?").get(id) as unknown as OntoActionRow | undefined;
+  if (!r) return undefined;
+  const existing = parseOntoAction(r);
+  const next: OntoAction = {
+    ...existing,
+    nameCn: patch.nameCn ?? existing.nameCn,
+    nameEn: patch.nameEn ?? existing.nameEn,
+    description: patch.description ?? existing.description,
+    executionRule: patch.executionRule ?? existing.executionRule,
+    functionCode: patch.functionCode ?? existing.functionCode,
+    linkedObjectIds: patch.linkedObjectIds ?? existing.linkedObjectIds,
+    linkedLogicIds: patch.linkedLogicIds ?? existing.linkedLogicIds,
+    confidence: patch.confidence ?? existing.confidence,
+    updatedAt: Date.now(),
+  };
+  db.prepare(
+    "UPDATE onto_actions SET name_cn = ?, name_en = ?, description = ?, execution_rule = ?, function_code = ?, linked_object_ids = ?, linked_logic_ids = ?, confidence = ?, updated_at = ? WHERE id = ?"
+  ).run(next.nameCn, next.nameEn ?? null, next.description, next.executionRule, next.functionCode, JSON.stringify(next.linkedObjectIds), JSON.stringify(next.linkedLogicIds), next.confidence, next.updatedAt, id);
+  return next;
+}
+
+export function deleteOntoAction(id: string): boolean {
+  return db.prepare("DELETE FROM onto_actions WHERE id = ?").run(id).changes > 0;
+}
+
+// ---- OntoPrompt（抽取 prompt 管理，P8）----
+interface OntoPromptRow {
+  id: string; workspace_id: string; name: string; content: string;
+  version: string; created_at: number; updated_at: number;
+}
+function parseOntoPrompt(r: OntoPromptRow): OntoPrompt {
+  return { id: r.id, workspaceId: r.workspace_id, name: r.name, content: r.content, version: r.version, createdAt: r.created_at, updatedAt: r.updated_at };
+}
+
+export function listOntoPrompts(workspaceId: string): OntoPrompt[] {
+  return (db.prepare("SELECT * FROM onto_prompts WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId) as unknown as OntoPromptRow[]).map(parseOntoPrompt);
+}
+
+export function createOntoPrompt(workspaceId: string, input: OntoPromptInput): OntoPrompt {
+  const id = randomUUID();
+  const now = Date.now();
+  const row: OntoPrompt = { id, workspaceId, name: input.name, content: input.content, version: input.version ?? "v1.0", createdAt: now, updatedAt: now };
+  db.prepare(
+    "INSERT INTO onto_prompts (id, workspace_id, name, content, version, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, workspaceId, row.name, row.content, row.version, now, now);
+  return row;
+}
+
+export function updateOntoPrompt(id: string, patch: Partial<OntoPromptInput>): OntoPrompt | undefined {
+  const r = db.prepare("SELECT * FROM onto_prompts WHERE id = ?").get(id) as unknown as OntoPromptRow | undefined;
+  if (!r) return undefined;
+  const existing = parseOntoPrompt(r);
+  const next: OntoPrompt = {
+    ...existing,
+    name: patch.name ?? existing.name,
+    content: patch.content ?? existing.content,
+    version: patch.version ?? existing.version,
+    updatedAt: Date.now(),
+  };
+  db.prepare("UPDATE onto_prompts SET name = ?, content = ?, version = ?, updated_at = ? WHERE id = ?")
+    .run(next.name, next.content, next.version, next.updatedAt, id);
+  return next;
+}
+
+export function deleteOntoPrompt(id: string): boolean {
+  return db.prepare("DELETE FROM onto_prompts WHERE id = ?").run(id).changes > 0;
 }

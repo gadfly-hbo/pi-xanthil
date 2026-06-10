@@ -205,6 +205,7 @@ web/src/
 
 - [x] **onto-xanthil 数据语义层（总控独立开发，done 2026-06-10）** — 新模块，Palantir 取向 + 借 nano-ontoprompt 工程、做轻、面向数据分析。P1 契约/db/路由/前端骨架+聚合集生成 · P2a 共享 `GraphCanvas`(KG 改用同底座) · P2b/P2b' **metric 完全切源**(`metric_definitions` 唯一真源，3 注入管线+IndicatorsPane 全切，启动迁移先拷后删旧行) · P3 文档导入+pi LLM 抽取。五能力(对象/关系/指标/图谱/导入)齐活，均实跑。详见 `docs/onto-xanthil-design.md`
 - [x] `MetricDefinition` 语义层契约定义 — 总控（done 2026-06-10，随 onto-xanthil 落地，`metric_definitions` 为唯一真源）
+- [x] **onto-xanthil 对照 nano-ontoprompt 差距对齐 P4~P8（总控独立开发，done 2026-06-10）** — 通读参考产品全量后端核查后逐项补齐「本体完整性」5 项差距，均 typecheck/build 绿 + 运行时实跑（共 63 项）：**P4** 质检 validator 2→7 检查(`onto-validator.ts`) · **P5** 导出 JSON/YAML/CSV/HTML/Turtle 五格式纯字符串零依赖(`onto-export.ts`) · **P6** Logic Rule + Action 层(双侧契约+`logic_rules`/`onto_actions` 两表+8 路由+前端两 Section+2 子tab) · **P7** 抽取覆盖四类(logic/action)+四类校准+validator ⑥⑦ · **P8** 文档上传(.md/.txt/.csv)+`onto_prompts` 表 prompt 管理(模板版本化)。详见 `docs/onto-xanthil-design.md §9`
 - [ ] **(优化批，可选)** App.tsx 域模块改 React.lazy 代码分割（named→default 包装）；echarts 动静混合 import 统一
 - [ ] 三个 agent 接入开发环境 + 阅读本章程 + `AGENTS.md`
 - 参考：审计结论见会话「总纲领-传统BI-AI数据分析工作台」；模块边界速查见 `AGENTS.md §三`

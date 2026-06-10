@@ -58,7 +58,7 @@ export function VizTabs({ ctx }: { ctx: TabContext }) {
         <ModelRunHistoryDashboard onRequestRestore={ctx.handleRequestRestoreRun} />
       )}
 
-      {activeTab === "onto_xanthil" && (activeSubTab === "onto_objects" || activeSubTab === "onto_links" || activeSubTab === "onto_metrics" || activeSubTab === "onto_graph" || activeSubTab === "onto_import") && (
+      {activeTab === "onto_xanthil" && (activeSubTab === "onto_readme" || activeSubTab === "onto_objects" || activeSubTab === "onto_links" || activeSubTab === "onto_metrics" || activeSubTab === "onto_logic" || activeSubTab === "onto_actions" || activeSubTab === "onto_graph" || activeSubTab === "onto_import") && (
         <OntologyPane workspaceId={ctx.activeWorkspaceId} section={activeSubTab} />
       )}
     </>

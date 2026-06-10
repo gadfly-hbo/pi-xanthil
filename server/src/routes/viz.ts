@@ -27,11 +27,26 @@ import {
   updateMetric,
   deleteMetric,
   backfillMetricsFromStandards,
+  listLogicRules,
+  createLogicRule,
+  updateLogicRule,
+  deleteLogicRule,
+  listOntoActions,
+  createOntoAction,
+  updateOntoAction,
+  deleteOntoAction,
+  listOntoPrompts,
+  createOntoPrompt,
+  updateOntoPrompt,
+  deleteOntoPrompt,
 } from "../db/viz.ts";
 import { getWorkspacePath } from "../db.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { extractOntologyFromText } from "../onto-extract.ts";
+import { exportOntology, type ExportFormat } from "../onto-export.ts";
 import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind } from "../types.ts";
+
+const EXPORT_FORMATS: ExportFormat[] = ["json", "yaml", "csv", "html", "ttl"];
 
 /**
  * 【Agent-V · 可视交付域】HTTP 路由 slot —— owner: antigravity(Gemini)
@@ -306,14 +321,55 @@ vizRouter.get("/api/ontologies/:oid/graph", (req, res) => {
 
 // ---- 文档导入 / pi LLM 抽取（P3）----
 vizRouter.post("/api/ontologies/:oid/extract", async (req, res) => {
-  const { text, model } = req.body ?? {};
+  const { text, model, promptTemplate } = req.body ?? {};
   if (!text || typeof text !== "string" || !text.trim()) {
     res.status(400).json({ error: "text required" }); return;
   }
   if (!getOntology(req.params.oid)) { res.status(404).json({ error: "ontology not found" }); return; }
   try {
-    const result = await extractOntologyFromText(req.params.oid, text, model || undefined);
+    const result = await extractOntologyFromText(req.params.oid, text, model || undefined, typeof promptTemplate === "string" ? promptTemplate : undefined);
     res.json(result);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ---- OntoPrompt（抽取 prompt 管理，P8）----
+vizRouter.get("/api/workspaces/:id/onto-prompts", (req, res) => {
+  try { res.json(listOntoPrompts(req.params.id)); }
+  catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.post("/api/workspaces/:id/onto-prompts", (req, res) => {
+  const b = req.body ?? {};
+  if (!b.name || typeof b.content !== "string") { res.status(400).json({ error: "name and content required" }); return; }
+  try { res.json(createOntoPrompt(req.params.id, { name: String(b.name), content: b.content, version: b.version })); }
+  catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.patch("/api/onto-prompts/:promptId", (req, res) => {
+  try {
+    const updated = updateOntoPrompt(req.params.promptId, req.body ?? {});
+    if (!updated) { res.status(404).json({ error: "prompt not found" }); return; }
+    res.json(updated);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.delete("/api/onto-prompts/:promptId", (req, res) => {
+  try {
+    if (!deleteOntoPrompt(req.params.promptId)) { res.status(404).json({ error: "prompt not found" }); return; }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ---- 本体导出（P5：JSON/YAML/CSV/HTML/Turtle，纯字符串构建零依赖）----
+vizRouter.get("/api/ontologies/:oid/export", (req, res) => {
+  const format = String(req.query.format ?? "json") as ExportFormat;
+  if (!EXPORT_FORMATS.includes(format)) { res.status(400).json({ error: `format must be one of ${EXPORT_FORMATS.join("/")}` }); return; }
+  try {
+    const artifact = exportOntology(req.params.oid, format);
+    if (!artifact) { res.status(404).json({ error: "ontology not found" }); return; }
+    res.setHeader("Content-Type", `${artifact.mime}; charset=utf-8`);
+    res.setHeader("Content-Disposition", `attachment; filename="${encodeURIComponent(artifact.filename)}"`);
+    res.send(artifact.content);
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });
 
@@ -354,4 +410,75 @@ vizRouter.delete("/api/metrics/:metricId", (req, res) => {
 vizRouter.post("/api/workspaces/:id/metrics/backfill-from-standards", (req, res) => {
   try { res.json(backfillMetricsFromStandards(req.params.id)); }
   catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ---- LogicRule（本体形式化规则层，P6）----
+vizRouter.get("/api/ontologies/:oid/logic-rules", (req, res) => {
+  try {
+    if (!getOntology(req.params.oid)) { res.status(404).json({ error: "ontology not found" }); return; }
+    res.json(listLogicRules(req.params.oid));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.post("/api/ontologies/:oid/logic-rules", (req, res) => {
+  const b = req.body ?? {};
+  if (!b.nameCn) { res.status(400).json({ error: "nameCn required" }); return; }
+  try {
+    if (!getOntology(req.params.oid)) { res.status(404).json({ error: "ontology not found" }); return; }
+    res.json(createLogicRule(req.params.oid, {
+      nameCn: String(b.nameCn), nameEn: b.nameEn, description: b.description,
+      formula: b.formula, linkedObjectIds: b.linkedObjectIds, confidence: b.confidence,
+    }));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.patch("/api/logic-rules/:ruleId", (req, res) => {
+  try {
+    const updated = updateLogicRule(req.params.ruleId, req.body ?? {});
+    if (!updated) { res.status(404).json({ error: "logic rule not found" }); return; }
+    res.json(updated);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.delete("/api/logic-rules/:ruleId", (req, res) => {
+  try {
+    if (!deleteLogicRule(req.params.ruleId)) { res.status(404).json({ error: "logic rule not found" }); return; }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ---- OntoAction（可执行动作层，P6）----
+vizRouter.get("/api/ontologies/:oid/actions", (req, res) => {
+  try {
+    if (!getOntology(req.params.oid)) { res.status(404).json({ error: "ontology not found" }); return; }
+    res.json(listOntoActions(req.params.oid));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.post("/api/ontologies/:oid/actions", (req, res) => {
+  const b = req.body ?? {};
+  if (!b.nameCn) { res.status(400).json({ error: "nameCn required" }); return; }
+  try {
+    if (!getOntology(req.params.oid)) { res.status(404).json({ error: "ontology not found" }); return; }
+    res.json(createOntoAction(req.params.oid, {
+      nameCn: String(b.nameCn), nameEn: b.nameEn, description: b.description,
+      executionRule: b.executionRule, functionCode: b.functionCode,
+      linkedObjectIds: b.linkedObjectIds, linkedLogicIds: b.linkedLogicIds, confidence: b.confidence,
+    }));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.patch("/api/actions/:actionId", (req, res) => {
+  try {
+    const updated = updateOntoAction(req.params.actionId, req.body ?? {});
+    if (!updated) { res.status(404).json({ error: "action not found" }); return; }
+    res.json(updated);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.delete("/api/actions/:actionId", (req, res) => {
+  try {
+    if (!deleteOntoAction(req.params.actionId)) { res.status(404).json({ error: "action not found" }); return; }
+    res.json({ success: true });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
 });

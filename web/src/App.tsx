@@ -8,7 +8,7 @@ import { CleanDataDocsColumn } from "@/components/CleanDataDocsColumn";
 import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useTabVisibility } from "@/lib/useTabVisibility";
-import { getSubTabsForTab, LAB_ANAX_SUB_TABS, LAB_ANAX_SUB_IDS, type SubTab } from "@/lib/constants";
+import { getSubTabsForTab, LAB_ANAX_SUB_TABS, LAB_ANAX_SUB_IDS, ONTO_SUB_TABS, type SubTab } from "@/lib/constants";
 import { DataTabs } from "@/tabs/DataTabs";
 import { EngineTabs } from "@/tabs/EngineTabs";
 import { VizTabs } from "@/tabs/VizTabs";
@@ -380,7 +380,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : tab === "onto_xanthil" ? "onto_objects" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : tab === "onto_xanthil" ? "onto_readme" : "view");
   }, []);
 
   const handleRequestRestoreRun = useCallback((runId: string) => {
@@ -681,7 +681,9 @@ export default function App() {
           }}
         />
 
-        {/* Sub-tab strip: 工作视图 | 原始数据 | 聚合数据 | 报告输出。实验室顶部 = workflow/…/AnaX；AnaX 子项见下方左竖栏。 */}
+        {/* Sub-tab strip: 工作视图 | 原始数据 | 聚合数据 | 报告输出。实验室顶部 = workflow/…/AnaX；AnaX 子项见下方左竖栏。
+            onto-xanthil 的二级 tab 全部以左侧竖栏呈现（见下方），故此处顶部条对 onto 隐藏。 */}
+        {activeTab !== "onto_xanthil" && (
         <div className="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
           {getSubTabsForTab(activeTab).filter((t) => isVisible(activeTab + ":" + t.id)).map((t) => {
             // 实验室的 AnaX 顶部 tab（id=anax_view）在其任一二级子项激活时保持高亮。
@@ -715,8 +717,31 @@ export default function App() {
             );
           })}
         </div>
+        )}
 
         <div className="flex min-h-0 flex-1">
+          {/* onto-xanthil：全部二级 tab 以左侧竖栏呈现（说明/对象/关系/指标/逻辑/动作/图谱/导入） */}
+          {activeTab === "onto_xanthil" && (
+            <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
+              {ONTO_SUB_TABS.filter((t) => isVisible("onto_xanthil:" + t.id)).map((t) => {
+                const active = t.id === activeSubTab;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveSubTab(t.id)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1.5 text-left text-[12.5px] transition-colors",
+                      active
+                        ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+                        : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
           {/* 实验室·AnaX：仅当激活 AnaX 顶部 tab 时，其二级 tab 以左侧竖栏呈现 */}
           {activeTab === "research_lab" && LAB_ANAX_SUB_IDS.has(activeSubTab) && (
             <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">

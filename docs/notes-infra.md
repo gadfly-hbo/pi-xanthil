@@ -11,10 +11,12 @@
 - 最近更新：2026-06-10 · 总控
 - 进度（接缝/治理底座）：接缝重构批1~3✅ · 文档治理✅ · 连续性 SOP+`/px-*`✅ · 协作闭环(机制A)+归档✅ · wiki(5 tab)✅ · 快修通道固化✅ · 随手记✅ · 缓存 harness 三层闭环(回填未真验) · P0-A/B/D 均终审+实跑✅；**仅剩 P0-C E2E 验证(E)待进场**
 - **onto-xanthil 全期交付完毕 ✅**（2026-06-10 总控独立开发，详见 `docs/onto-xanthil-design.md` + wiki 已完成区）：数据语义层(Palantir 取向·借 nano 工程·做轻)。P1 契约/db/路由/前端骨架+聚合集生成 · P2a 共享 `GraphCanvas`(KG 改用同底座) · P2b/P2b' **metric 完全切源**(`metric_definitions` 唯一真源，3 注入管线+IndicatorsPane 全切，启动迁移先拷后删旧行) · P3 文档导入+pi LLM 抽取(`onto-extract.ts`)。五能力(对象/关系/指标/图谱/导入)齐活，均实跑通过
-- 下一步：① **P0-C E2E 验证(E)** 待进场，P0 齐活后归档 changelog v2.1；② onto-xanthil 前端 UI 未浏览器实跑(指标记忆 metric 切源 / KG 图谱重构 / onto 各页)，建议 `npm run dev` 点检；③ 工作流「创建」链路 E 前端待联调(见下)
-- 开放问题：① 缓存回填效果待真实双 session 验证 ② onto metric 切源动了 D 域 live 注入功能，须真实对话验证指标注入生效
+- **onto-xanthil 差距对齐 P4~P8 ✅**（2026-06-10 总控独立开发，对照参考产品 `nano-ontoprompt` 全量核查，详见 `docs/onto-xanthil-design.md §9`）：**P4** 质检 `onto-validator.ts` 2→7 检查(结构/字段/引用/去重/kind白名单/function_code启发式/linked语义引用) · **P5** `onto-export.ts` 五格式导出(JSON/YAML/CSV/HTML/Turtle，纯字符串零依赖,超 nano 无需 rdflib/pyyaml) · **P6** `logic_rules`/`onto_actions` 两表(Logic Rule+Action 层全链路:契约/db/8路由/前端两Section/2子tab/导出并入) · **P7** 抽取覆盖四类(entity/relation/logic/action)+四类校准+拆出可测 `processExtractionOutput` · **P8** `onto_prompts` 表 prompt 管理(模板版本化,{{content}}占位)+文档上传(.md/.txt/.csv 客户端FileReader)。全绿+实跑 63 项
+- **onto-xanthil readme + 左竖栏 + 滚动修复 ✅**（2026-06-10）：①加二级 tab `onto_readme`「说明」(纯静态文档:概念表/各子页操作详解/供应链示例)，设为 onto 默认落地页 ②onto 全部二级 tab **改左侧竖栏**呈现(顶部条对 onto 隐藏,仿 AnaX `LAB_ANAX_SUB_TABS` 范式) ③修 `OntologyPane` 根容器无滚动 bug(父级 `min-h-0` 裁切超长内容→加 `h-full overflow-y-auto` 外壳)
+- 下一步：① **P0-C E2E 验证(E)** 待进场，P0 齐活后归档 changelog v2.1；② **onto-xanthil 全部新 UI 仍未浏览器实跑点检**(逻辑/动作/说明子tab、左竖栏切换、导出下拉、文件上传、prompt 编辑器、metric 切源注入)，强烈建议 `npm run dev` 走一遍真实交互(逻辑/db 层已 63 项实跑，但浏览器渲染/交互未验)；③ 工作流「创建」链路 E 前端待联调(见下)
+- 开放问题：① 缓存回填效果待真实双 session 验证 ② onto metric 切源动了 D 域 live 注入功能，须真实对话验证指标注入生效 ③ onto 抽取的 `function_code` 仅启发式校验(TS 侧无法 ast.parse Python)，若要真语法门禁需接 pi(按需) ④ Turtle 导出对 logic/action 暂未映射(OWL 语义有限,按需)
 - 进行中 bug：**工作流「创建」链路**——总控后端✅(`index.ts` `captureWorkflowFromText` 三路捕获+回填)，待 E 前端(CreationPane 硬化 prompt+空态反馈，已派卡)联调实跑；捕获逻辑全静态验证，**未真跑联调**
-- UI 导航台账：实验室重组 + 规则记忆 6 模块 + tab 增删排序 + 探索红线只读栏 + onto-xanthil 五子tab，详见 §四
+- UI 导航台账：实验室重组 + 规则记忆 6 模块 + tab 增删排序 + 探索红线只读栏 + **onto-xanthil 8 子tab(说明/对象/关系/指标/逻辑/动作/图谱/导入)·左竖栏呈现**，详见 §四
 - **关键约束/坑**：① `node:sqlite` 的 `DatabaseSync` **无 `.transaction()`**(better-sqlite3 才有)，事务用 `db.exec("BEGIN"/"COMMIT"/"ROLLBACK")` ② metric 真源 = `metric_definitions`(非 `analysis_standards`)，analysis_standards 仅留 `reference_file`
 - **终审教训**：仅 typecheck/build 绿 ≠ 功能可用；终审一律加运行时端到端实跑门禁
 
@@ -68,7 +70,9 @@
 导航 = 接缝层，改动只在总控 slot：一级 tab `MainHeader.TABS`（`Tab` 类型）；二级 tab `lib/constants.ts` 各 `*_SUB_TABS` + `getSubTabsForTab`；渲染分发 `tabs/{DataTabs,EngineTabs,VizTabs}.tsx`；布局/二级条/侧栏在 `App.tsx`。
 
 **一级 tab 现序**：探索 · 工作流 · 计算工具 · 规则记忆 · **实验室** · **Xan数据库** · Dashboard · **onto-xanthil**。
-- `anax` 一级 tab 已**移除**（并入实验室）；`onto_xanthil` 已落地（**已移出 `VIEW_ONLY_TABS`**，`ONTO_SUB_TABS` 五子tab：对象/关系/指标/图谱/导入；pane=`OntologyPane`，渲染分发在 VizTabs；默认子tab `onto_objects` 在 `App.tsx handleTabChange`）。
+- `anax` 一级 tab 已**移除**（并入实验室）；`onto_xanthil` 已落地（**已移出 `VIEW_ONLY_TABS`**，`ONTO_SUB_TABS` **8 子tab：说明/对象/关系/指标/逻辑/动作/图谱/导入**；pane=`OntologyPane`，渲染分发在 VizTabs；默认子tab `onto_readme` 在 `App.tsx handleTabChange`）。
+  - **二级 tab 全部以左侧竖栏呈现**（2026-06-10，仿 AnaX 范式）：`App.tsx` 顶部二级条对 `onto_xanthil` 隐藏（`activeTab !== "onto_xanthil"` 守卫），改在内容区左侧渲染 `ONTO_SUB_TABS` 竖栏（`isVisible` 过滤，与 AnaX `LAB_ANAX_SUB_TABS` 同款样式）。`onto_logic`/`onto_actions`(P6) + `onto_readme`(说明页，纯静态文档，无需 workspace/本体即可看) 三子tab 后加。
+  - **⚠ 坑：内容区 pane 必须自带 `overflow-y-auto`**。内容容器是 `min-h-0 flex-1`（弹性高度），pane 根若无滚动样式，超出视口的内容会被**直接裁切**（无滚动条）。`OntologyPane` 曾因此 readme 长内容看不到下半屏 → 根包一层 `h-full min-h-0 flex-1 overflow-y-auto` 修复。新建长内容 pane 一律加此外壳。
 
 **实验室（research_lab）= 两级嵌套**：
 - 顶部横向 `LAB_SUB_TABS` = workflow/skill/tool/model/DLF/**AnaX**（AnaX 顶部 tab id 复用 `anax_view`）。
