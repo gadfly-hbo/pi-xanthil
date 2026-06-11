@@ -178,7 +178,11 @@
       "Bash(awk 'NR>=410 && NR<=470 && /status: \"/' /Users/huangbo/Dev/Projects/pi-xanthil/docs/wiki.html)",
       "Bash(awk 'NR>=367 && NR<=520 && /status: \"\\(todo|done\\)\", title:/ {match\\($0,/title: \"[^\"]*\"/\\); print NR\": \"substr\\($0,RSTART+7,40\\)}' docs/wiki.html)",
       "Bash(awk 'NR>=367 && NR<=520' docs/wiki.html)",
-      "Bash(awk -F'NR' '{print}')"
+      "Bash(awk -F'NR' '{print}')",
+      "Bash(sh /Users/huangbo/.claude/statusline-command.sh)",
+      "WebFetch(domain:docs.claude.com)",
+      "Bash(grep -n '^];$\\\\|^const TASKS\\\\|^const HOTFIX\\\\|^const CHANGELOG' docs/wiki.html)",
+      "Bash(git -c core.quotepath=false ls-files)"
     ]
   }
 }

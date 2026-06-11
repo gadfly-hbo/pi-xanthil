@@ -4,7 +4,7 @@
 > 总控 = Claude（Opus）：负责架构、接缝层、接口契约、db migration 审批、跨域集成、**全部代码终审**。
 > 三个编程 Agent 在各自域的 **slot 文件**内开发，**永不触碰接缝层骨架文件**。
 
-最后更新：2026-06-10 · 状态：**第 0 步接缝重构完成** ✅ + **P0 推进中** —— 接缝重构批1~3✅；P0-A(D 上传即用)✅、P0-B(V 看板画布·重做)✅、P0-D(D 看板聚合数据源)✅ 均终审+实跑通过；**仅剩 P0-C(E E2E 验证)待进场**，齐活即可发 v2.1。**另：onto-xanthil 数据语义层全期(P1/P2/P3/P2b')交付完毕**（总控独立开发，`MetricDefinition` 契约随之落地，详见 `docs/onto-xanthil-design.md`）。
+最后更新：2026-06-11 · 状态：**第 0 步接缝重构完成** ✅ + **P0 全部齐活** ✅ —— 接缝重构批1~3✅；P0-A(D 上传即用)✅、P0-B(V 看板画布·重做)✅、P0-C(E E2E 验证补课)✅、P0-D(D 看板聚合数据源)✅ 均终审+实跑通过；**P0 收口，待归档 changelog v2.1**（SQL 真实库 + AnaX flywheel UI 实跑降级 P1 遗留）。**另：onto-xanthil 数据语义层全期(P1/P2/P3/P2b')交付完毕**（总控独立开发，`MetricDefinition` 契约随之落地，详见 `docs/onto-xanthil-design.md`）。
 
 ---
 
@@ -196,7 +196,7 @@ web/src/
 - [x] **P0-B 看板画布·重做（V）** — done 2026-06-09：数据源驱动(选 clean_data 聚合集→配维度/指标→荐图)+拖拽/联动+预置模板+持久化；404 已修。终审+UI 实跑通过
 - [x] **P0-D 看板聚合数据源 API（D）** — done 2026-06-09：`/api/bi/aggregations` 列表(按扩展名过滤) + `/:pathId/data` 行列；仅 clean_data、draw_data 403、零 LLM。终审+实跑通过
 - [x] **总控契约前置（done 2026-06-09）** — `types.ts` 双侧定 `BiCell/BiAggregationDataset/BiAggregationData`(columns:string[]，FieldKind 前端推断) + 把 `index.ts` 的 `parseBiDatasetFromBuffer` 抽成共享 `server/src/bi-dataset-parser.ts:parseAggregationBuffer`(index.ts 改为别名复用)；typecheck+build 绿。**D/V 可开工**
-- [ ] **P0-C E2E 验证补课（E）** — 待 Agent-E 进场；P0 三域齐活后归档 changelog v2.1 + 定义 `MetricDefinition` 双侧契约（看板聚合 GET 是其简化前置）
+- [x] **P0-C E2E 验证补课（E）** — done 2026-06-11，总控回流终审通过。AnaX 8 阶段(business→archive)喂真实 `clean_data` 留存聚合数据真跑：修复后 `data_gate` 不再卡(综合评分阈值改为只硬卡整体数据质量 stage)、`insight` fan-out concurrency=3 真实触发、补齐 12 假设后 `review_gate` pass、`verify`/`archive` code=0、隔离假设库 upsert 12 条；skill 蒸馏全链路 smoke 修复 `extractSkillMarkdown()`(取最后一个 frontmatter)→保存后 `listSkills()` 识别 `source:project`/`available:true`。终审复跑：server typecheck ✅ + web build ✅ + 33 engine tests ✅(anax-gate/multi-agent-runner)。**遗留降级 P1**：SQL 真实库链路(缺 PG/MySQL 凭据无法本机真跑)、AnaX archive flywheel 需 UI/WS 正常入口再实跑一次。**P0 四块(A/B/C/D)全部齐活**，可归档 v2.1。`MetricDefinition` 双侧契约已随 onto-xanthil 落地(`metric_definitions` 唯一真源)
 - [x] **工作流创建链路修复（P0-C 范畴 · 健壮版）** — done 2026-06-11，终审+联调实跑通过。根因：创建链路赌 pi 自愿写 workflow.json 到 cwd、后端不兜底 → pi 提问停住/写错目录 → UI 空等。三层协同：总控后端 `index.ts captureWorkflowFromText` 三路捕获+回填；E `MultiAgentExecutionPane` prompt 硬化(禁提问+钉死 flow 目录) + `CreationPane` 重试轮询/提问可回复/超时空态引导
 
 > 教训：终审须含**运行时端到端实跑**，仅 typecheck/build 绿不等于功能可用（KICKOFF P0-C 警告的正是此类）。后续 P0 终审一律加实跑门禁。

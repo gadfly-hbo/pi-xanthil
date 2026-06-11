@@ -200,7 +200,7 @@
 
 <script>
 /* ════════════ 数据区（迭代时在此追加；渲染逻辑见下方） ════════════ */
-const VERSION = "2.0";
+const VERSION = "2.1";
 
 const DOMAINS = {
   D: { name: "数据基座", agent: "opencode (deepseek/glm)", color: "var(--d)" },
@@ -227,135 +227,6 @@ const TASKS = [
 【后续 · 功能落地（P2–P5，按 decision-intelligence-plan）】决策看板/工作台/助手/复盘的真实实现 + 后端（routes/decision.ts、db/decision.ts、sim/ 推演引擎，并在 routes/index.ts 注册、db init 接入）。
 
 收尾：不执行 git；改完列改动清单并回流总控终审。` },
-
-  { dom: "D", status: "done", title: "P0-A 上传即用", brief:
-`✅ 已完成并通过总控终审（2026-06-08）。
-
-成果：拖拽/点击上传 CSV·Excel → 浏览器内 duckdb-wasm 直接建表画像（纯内存方案，数据零出浏览器，无需路径登记）。
-改动文件：web/src/components/DataExplorationPane.tsx、data-exploration/FileSelector.tsx（复用现有 registerFile/profileTable 管线，lib 未改）。
-终审：数据安全隔离 grep 无匹配、纯前端零 LLM、仅限 D 域 slot、typecheck+build 绿；收尾清理(isAllowedFile 简化 + ALLOWED_MIME 改 Set)已复审通过。
-范围说明：纯内存表，刷新即丢、不跨 session 复用（用户已接受；持久化如需可后续增强）。
-待整个 P0(D+E+V)完成时归档进版本历史。` },
-
-  { dom: "E", status: "todo", title: "P0-C E2E 验证补课", brief:
-`你是 pi-xanthil 项目的 Agent-E（智能引擎域）。
-开工必读：docs/notes-engine.md + AGENTS.md + Orchestration.md。
-规则：只改 E 域 slot，不碰接缝层骨架与他域文件；全程不执行任何 git。
-
-【任务 · P0-C E2E 验证补课】（头号产品风险：大量功能 build 绿但端到端未验证）
-1) AnaX 8 阶段真跑：准备真实留存聚合数据(综合评分≥7)登记到 clean_data → 一句话诉求跑完 business→…→archive，重点看 insight fan-out(concurrency:3) / 假设库 flywheel 写入 / 各 gate 裁决，确认不再卡 data_gate。
-2) skill 蒸馏全链路 smoke：对话 → 沉淀 skill → 提炼 → 预览/改名 → 保存 → 确认 listSkills 识别为 project skill + SkillSelector 出现（验证 LLM frontmatter 稳定性）。
-3) SQL 连接真实库：连 PostgreSQL/MySQL 实测取数 → 导出 → 注册路径。
-产出：修复清单（每条链路的 bug+fix）+ 验证报告（每条链路结论）。这是验证型任务，交付"可信的绿"，不是新代码量。
-收尾：typecheck + build 绿 → 覆盖 docs/notes-engine.md §0 → 列改动清单（不要 git）。` },
-
-  { dom: "D", status: "done", title: "P0-D 看板聚合数据源 API", brief:
-`✅ 已完成并通过总控终审 + 运行时实跑（2026-06-09）。
-
-成果：把 clean_data 已登记聚合文件暴露为看板可消费的结构化数据源（替代写死的 member_retention/recall 双 slot）。
-改动文件：server/src/routes/data.ts（GET /api/bi/aggregations 列表 + /:pathId/data 行列）、web/src/lib/api/data.ts（getBiAggregations/getBiAggregationData）。
-契约：types.ts 双侧 BiCell/BiAggregationDataset/BiAggregationData（总控前置），复用 parseAggregationBuffer 共享 util。
-终审+实跑：列表正确（按扩展名过滤 .csv/.tsv/.xlsx/.xls，排除 .md/报告噪声）、留存 csv 取数行列正确、draw_data→403（按 folder 判）、零 LLM、仅 D 域 slot、typecheck+build 绿。
-待整个 P0（含 E 的 P0-C）完成时归档进版本历史。` },
-
-  { dom: "V", status: "done", title: "P0-B 看板画布·重做（数据源驱动）", brief:
-`✅ 已完成并通过总控终审 + 运行时实跑（2026-06-09）。
-
-成果：看板从"两个固定会员数据集的图表器"重做为面向用户聚合数据的通用看板——数据源驱动向导（选 clean_data 聚合源→配维度/指标/聚合→按 FieldKind 荐图）+ 拖拽/联动 + 预置模板（留存/召回）+ 看板持久化。
-改动文件：components/BiDashboardPane.tsx、routes/viz.ts（四路由补 /api 前缀修 404）、db/viz.ts（dashboards 表+CRUD）、lib/api/viz.ts、tabs/VizTabs.tsx。
-终审+实跑：创建/列表/保存/刷新恢复正常（404 根因已修）、消费 D 的 dataApi GET、零 LLM、仅 V 域 slot、typecheck+build 绿；UI 实跑（建看板→选源→配指标→出图→拖拽/联动→刷新恢复→预置模板）用户验收通过。
-遗留（V 已清）：scratch-viz.py/.ts 调试脚本已删。后续优化（非阻断）：Excel 序列号日期(cohort_month)显示、echarts 动静混合 import。
-待整个 P0（含 E 的 P0-C）完成时归档进版本历史。` },
-
-  { dom: "E", status: "done", title: "工作流创建链路修复（创建即生成·健壮版）", brief:
-`✅ 已完成并通过总控终审 + 联调实跑（2026-06-11）。
-
-Bug：创建链路赌 pi 自愿把 workflow.json 写进 cwd(flow 目录)、后端不兜底 → pi 中途提问停住 / 被用户绝对输出路径约束带偏写到项目目录 → UI 永远"等待 pi 生成工作流节点"。
-三层协同修复：
-· prompt 硬化（E·MultiAgentExecutionPane）：禁中途提问/等确认 + workflow.json 永远写当前工作目录 + 用户"输出到某目录"只适用业务产物、不适用 workflow.json。
-· 后端捕获回填（总控·index.ts captureWorkflowFromText）：run 结束若 flow 目录无合法 workflow.json，从 pi 输出三路捕获(fenced/自报路径/裸 JSON)→规范化→回填，pi 写哪都能落地。
-· 前端兜底（E·CreationPane）：readWorkflowWithRetry 轮询 + pi 提问可回复 + 45s 超时/空态引导「导入」。
-验证：typecheck+build 绿 + 浏览器联调实跑通过(创建带输出目录约束→workflow.json 落 flow 目录→UI 显节点；pi 提问可回复)。
-改动文件：MultiAgentExecutionPane.tsx、CreationPane.tsx(E)、index.ts(总控)。` },
-
-  { dom: "X", status: "doing", title: "P0 期间总控职责", brief:
-`总控（Claude）P0 期间职责（自留，不分发）：
-1. 评审三域回流产物：逐域代码终审 + 跨域集成验证(typecheck+build+接口对接)。
-2. P0 收口后定义 MetricDefinition 双侧契约(server/src/types.ts + web/src/types.ts)，供 D 实现、E/V 消费。
-3. 维护 Orchestration.md §八 里程碑 + 本 wiki 任务区与归档。
-4. 不碰 git；集成验证通过后返回"可提交"结论 + 改动清单，由用户手动提交。` },
-
-  { dom: "X", status: "done", title: "onto-xanthil P1 数据语义层骨架（总控独立开发）", brief:
-`✅ 总控完成并实跑通过（2026-06-10）。新功能模块 onto-xanthil（参考 nano-ontoprompt + Palantir ontology，做轻、面向数据分析场景）。方案详见 docs/onto-xanthil-design.md。
-融合策略：B 共底座·双视图（与规则记忆·知识图谱并立，P2 抽共享 <GraphCanvas>）；metric 真源 P1 已建表，P2 完成收敛迁移。
-
-【P1 已交付】
-1. 契约（types.ts 双侧）：Ontology / ObjectType / PropertyType / LinkType / MetricDefinition / GraphNode·Edge·OntologyGraph。
-2. db slot（db/viz.ts）：5 表 ontologies/object_types/property_types/link_types/metric_definitions + 全套 CRUD。
-3. 路由（routes/viz.ts）：ontologies/objects/properties/links/graph/metrics CRUD + objects/from-aggregation（clean_data 聚合集→对象+字段，零 LLM，draw_data 403）。
-4. 前端：constants ONTO_SUB_TABS(对象/关系/指标/图谱)、移出 VIEW_ONLY_TABS、App 默认子tab、VizTabs 接线、新 OntologyPane.tsx。
-5. api 客户端（lib/api/viz.ts）：onto 全量方法。
-
-【验证】typecheck + build 全绿；运行时冒烟实跑：本体 CRUD / 对象创建 / 图谱投影 / 指标 CRUD / 级联删除 全通过。
-【下一步】P2：抽 <GraphCanvas> 共享 + metric 真源收敛迁移（动 D 域 IndicatorsPane / analysis_standards，非破坏式 backfill）；P3：文档导入 + pi LLM 抽取。` },
-
-  { dom: "X", status: "done", title: "onto-xanthil P2 共享图引擎 + metric backfill（总控独立开发）", brief:
-`✅ 总控完成并实跑通过（2026-06-10）。承接 onto-xanthil P1。方案见 docs/onto-xanthil-design.md。
-
-【P2a 共享图引擎】
-1. 新 GraphCanvas.tsx：从 KnowledgeGraphPane 抽出 ReactFlow 渲染层为通用组件（吃 GraphNode/GraphEdge + 颜色/聚类中心/Legend/搜索高亮/点击/连边/隐藏）。
-2. onto 图谱（OntologyPane GraphSection）：从 P1 文本投影换成真实 GraphCanvas，拖拽连线即建 related 关系。
-3. KnowledgeGraphPane 改用 GraphCanvas：删除自有 layout/node/Legend，外壳(工具栏/sync/extract/详情/列表/隐藏)全保留。视觉与交互等价。
-
-【P2b metric 真源（止于 backfill）】
-1. backfillMetricsFromStandards(db/viz.ts)：analysis_standards(kind=metric)→metric_definitions，幂等(同名跳过)、非破坏式(不删不改旧表)。
-2. 路由 POST /api/workspaces/:id/metrics/backfill-from-standards + onto 指标页「从指标记忆导入」按钮。
-3. ⚠️ 完全切源(P2b')推后：发现 analysis_standards(metric) 耦合 3 条 live 注入管线(standards-prompt/memory-injection/knowledge-graph)，高风险，经用户确认止于 backfill。
-
-【验证】typecheck + build 全绿；运行时冒烟：onto 图谱/连边、backfill 幂等(migrated 1→skipped 1)、KG 端点正常，测试数据已清。
-⚠️ KG 图谱 UI 重构未在浏览器实跑，建议 npm run dev 切「规则记忆→知识图谱」点一遍确认无回归。
-【下一步】P2b'(完全切源·谨慎单开) + P3(文档导入 + pi LLM 抽取)。` },
-
-  { dom: "X", status: "done", title: "onto-xanthil P3 文档导入 + pi LLM 抽取（总控独立开发）", brief:
-`✅ 总控完成并真实 pi 实跑通过（2026-06-10）。承接 onto-xanthil P2，onto 三期主体收口。方案见 docs/onto-xanthil-design.md。
-
-【P3 交付】
-1. 新 server/src/onto-extract.ts：经 runPiPrompt（pi CLI，**不直接调模型**，复用 KG extract 同款机制 + DIRECT_LLM_ROOT）抽取实体/关系。借 nano-ontoprompt 工程精华轻量版：置信度客观校准(进图+0.05/无描述-0.05)、分级质检门禁(空实体=FATAL 不落库)、名称模糊解析(substring+共有字符)。文档关系仅产 is-a/part-of/related。
-2. 路由 POST /api/ontologies/:oid/extract { text, model? }，返回 创建数 + 质检报告。
-3. 前端：ONTO_SUB_TABS 加「导入」子tab；OntologyPane ImportSection（粘贴文档→抽取→质检报告/结果展示）；api extractOntology。
-
-【验证】typecheck + build 全绿；运行时实跑：校验路径(空text 400/坏本体 404)；**真实 pi 抽取**电商供应链测试文档→8 concept 对象 + 12 语义关系，质检通过、零悬空关系、落库正确，测试数据已清。
-【下一步】仅剩 P2b'（metric 完全切源·高风险单开）。onto-xanthil 对象/关系/指标/图谱/导入 五能力齐活。` },
-
-  { dom: "X", status: "done", title: "onto-xanthil P2b' metric 完全切源（总控独立开发·高风险）", brief:
-`✅ 总控完成并真实迁移实跑通过（2026-06-10）。metric_definitions 成唯一真源，收口 onto-xanthil 全期。方案见 docs/onto-xanthil-design.md。
-
-【背景】P2 期间发现 analysis_standards(kind=metric) 耦合 3 条 live 注入管线，经用户拍板本次执行完全切源。
-
-【交付】
-1. db.ts：新 listEnabledMetricDefinitions（裸查 metric_definitions 避免 base→slot 循环）；buildEnabledStandardsPrompt metric 段改读 metric_definitions、reference_file 仍读 analysis_standards；启动迁移 migrateMetricStandardsToDefinitions（先拷后删旧 metric 行，幂等，db.exec BEGIN/COMMIT/ROLLBACK——node:sqlite 无 .transaction()）；新 deleteKgNodesByType。
-2. memory-injection.ts：standardIds = reference_file ids(analysis_standards) + metric ids(metric_definitions)。
-3. knowledge-graph.ts：metric 节点改从 metric_definitions(sourceKey=metric:)，sync 前 deleteKgNodesByType 清旧 ghost；ref_file 仍来自 analysis_standards。
-4. IndicatorsPane：metric 段 CRUD(toggle/edit/delete/save) 切 metric API，适配 MetricDefinition→AnalysisStandard 视图复用渲染；reference_file 不动。
-
-【验证】typecheck + build 全绿；运行时实跑：插旧 metric 标准→重启触发迁移(日志 moved 1，旧行删除、metric_definitions 接管)；standards-prompt count=2 两段(指标口径/参照标准文件)齐全；KG sync metric 节点 sourceKey=metric: 无 ghost；测试数据已清。
-【收口】onto-xanthil P1/P2/P3/P2b' 全期交付完毕。
-⚠️ 前端 UI(指标记忆 metric 增删改/启用、注入预览)未浏览器实跑，建议 npm run dev 切「规则记忆→指标记忆」点一遍确认无回归。` },
-
-  { dom: "X", status: "done", title: "Xan数据库·行业/竞品模块（总控直接出 MVP）", brief:
-`✅ 总控完成并真实 pi 实跑通过（2026-06-11）。Xan 数据库 5 子页中「行业」「竞品」两个占位 → 可运行真数据 MVP。数据来源经用户拍板＝pi agent 联网检索生成结构化情报（与天气同属外部公开数据层，非用户明细）。
-
-【方向（用户拍板）】pi agent 联网检索生成 · 总控直接出可运行 MVP · 行业/竞品保持两个独立子页。
-
-【交付】
-1. 契约（types.ts 双侧）：IndustryIntel（市场规模/增速/集中度/趋势/五力 forces/基准/风险/机会）、CompetitorIntel（profiles 竞品档案/对标矩阵/替代风险/建议）。
-2. 后端（routes/data.ts）：POST .../industry/analyze 与 .../competitor/analyze —— 经 runPiPrompt 产结构化 JSON + 本地 extractJson(去 fenced) + 防御式 coerce(字段补全/score·share clamp 0-100)。只发行业名/品牌名，不读任何工作区数据。
-3. 前端 api（lib/api/data.ts）：analyzeIndustry / analyzeCompetitor。
-4. 前端 Pane（新 2 文件）：IndustryPane（五力雷达 + 指标卡 + 趋势/基准/风险/机会）、CompetitorPane（份额条形图 + 竞品档案卡 + 对标矩阵表 + 替代风险/建议）；DataTabs.tsx 两占位换真 Pane。
-
-【验证】server typecheck 绿（我的文件 web typecheck 零报错）；真实 pi 端到端：行业「服饰零售」200/约 59s（市场规模约 1.3 万亿、五力 5 项含具体说明）、竞品「森马」200/约 131s（自动识别 优衣库/ZARA/H&M/美邦/以纯 5 竞品，含份额/对标/替代风险/建议）。
-【红线】属外部公开数据层（同天气）：零工作区数据外发、不读 draw_data/clean_data。
-⚠️ web/src/tabs/DecisionTabs.tsx（他人 WIP，引用未定义 decision 类型）是 vite build 唯一拦路项，与本任务无关，未动。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──
@@ -572,7 +443,16 @@ B. 彻底拆除（更干净，碰接缝层）：移除 POST 端点与 createSess
 
 /* 版本历史：每次发版 / 阶段归档时在数组顶部追加一条 */
 const CHANGELOG = [
-  { ver: "2.0", date: "2026-06-08", current: true, title: "多 Agent 协同体系建立", items: [
+  { ver: "2.1", date: "2026-06-11", current: true, title: "P0 收口 + onto-xanthil 数据语义层", items: [
+    "P0-A 上传即用(D)：拖拽 CSV/Excel → duckdb-wasm 内存画像，纯前端零 LLM",
+    "P0-B 看板画布·重做(V)：数据源驱动(选 clean_data 聚合源→配维度/指标→荐图)+拖拽/联动+预置模板+持久化",
+    "P0-C E2E 验证补课(E)：AnaX 8 阶段真实数据真跑(data_gate 修复/insight fan-out concurrency=3/假设库 flywheel upsert 12 条)+skill 蒸馏全链路 smoke(extractSkillMarkdown 修复)。SQL 真实库验证因缺 PG/MySQL 凭据降级 P1 遗留",
+    "P0-D 看板聚合数据源 API(D)：clean_data 聚合集暴露为看板可消费结构化源，draw_data 403、零 LLM",
+    "工作流创建链路修复(E+总控)：三层协同(prompt 硬化+后端三路捕获回填 captureWorkflowFromText+前端轮询兜底)根治'创建即生成'空等",
+    "onto-xanthil 数据语义层全期(总控 P1/P2/P3/P2b'+P4~P8)：对象/关系/指标/图谱/导入五能力 + metric_definitions 唯一真源(MetricDefinition 契约) + 质检 validator 7 项/五格式导出/Logic Rule+Action 层。详见 docs/onto-xanthil-design.md",
+    "Xan数据库 行业/竞品 MVP(总控)：pi agent 联网检索生成结构化情报(IndustryIntel/CompetitorIntel)，属外部公开数据层、零工作区数据外发",
+  ]},
+  { ver: "2.0", date: "2026-06-08", current: false, title: "多 Agent 协同体系建立", items: [
     "确立总控(Claude) + 三域(D 数据基座 / E 智能引擎 / V 可视交付)分工，引入 opencode·codex·antigravity 协作",
     "接缝重构(绞杀者)：index.ts→routes/、db.ts→db/、App.tsx→tabs/、api.ts→lib/api/，三域获独占 slot 可并行；清除全部 baseline typecheck 错误",
     "文档治理：9 份单链巨型 handoff(~685KB) 蒸馏为 4 份按域活文档 docs/notes-*.md",
