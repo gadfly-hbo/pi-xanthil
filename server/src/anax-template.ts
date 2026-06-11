@@ -38,7 +38,9 @@ const RECOMMENDATIONS_BLOCK = `
     "expectedImpact": "预期影响"
   }
 ]
-\`\`\``;
+\`\`\`
+
+约束：即使你已经把完整归档报告写入文件，也必须在本轮回复末尾原样输出上述 \`\`\`anax-hypotheses\`\`\` 块；系统只会读取本轮回复中的结构块来写入假设库。`;
 
 const ARCHIVE_HYPOTHESES_BLOCK = `
 
@@ -77,7 +79,12 @@ const VERDICT_BLOCK_INSTRUCTIONS = `
 }
 \`\`\`
 
-注意：最终 pass/blocked 由系统硬阈值决定（置信度≥medium、证据≥2、数据质量≥7），你的 modelVerdict 仅作参考。`;
+注意：最终 pass/blocked 由系统硬阈值决定（置信度≥medium、证据≥2、数据质量≥7），你的 modelVerdict 仅作参考。
+
+裁决字段约束：
+- redLines 只填写真正需要阻断的违规项；通过项、未触发项、PASS 项不要放入 redLines。
+- stages[].confidence 表示你对该阶段"验证结论"的置信度，不表示假设是否成立。假设被证据推翻但证据充分时，confidence 仍应为 medium/high。
+- 分项风险（如时效性、口径清晰度）可在 summary 中说明；只有整体数据质量或关键阶段低于阈值时才设为 blocked。`;
 
 // ---- Full 9-node workflow (AnaX v3.0) ----
 
@@ -185,7 +192,7 @@ export function buildAnaxWorkflow(): WorkflowDef {
           source: "plan",
           marker: "anax-hypotheses-plan",
           concurrency: 3,
-          maxItems: 8,
+          maxItems: 12,
           itemVar: "item",
         },
         prompt: [

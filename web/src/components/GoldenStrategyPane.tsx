@@ -14,7 +14,13 @@ import { AlertTriangle, BrainCircuit, Check, Loader2, RefreshCw, Sparkles } from
 import { useBusinessRequirementContexts, type BusinessRequirementContextScope } from "@/components/useBusinessRequirementContexts";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { Flow, FlowTreeNode, GoldenStrategyError, GoldenStrategyModelId, GoldenStrategyNode, GoldenStrategyResult, PiModel } from "@/types";
+
+interface GoldenStrategyBatchResult {
+  results: GoldenStrategyResult[];
+  errors: GoldenStrategyError[];
+}
 
 type Scope =
   | { type: "session"; sessionId: string | null }
@@ -217,28 +223,46 @@ export function GoldenStrategyPane({
   const [selectedReportId, setSelectedReportId] = useState("");
   const [content, setContent] = useState("");
   const [selectedAnalysisModels, setSelectedAnalysisModels] = useState<GoldenStrategyModelId[]>(["decision_tree"]);
-  const [activeResultModel, setActiveResultModel] = useState<GoldenStrategyModelId | null>(null);
   const [model, setModel] = useState(DEFAULT_MODEL);
   const [prompt, setPrompt] = useState("");
-  const [results, setResults] = useState<GoldenStrategyResult[]>([]);
-  const [resultErrors, setResultErrors] = useState<GoldenStrategyError[]>([]);
   const [loadingReports, setLoadingReports] = useState(false);
   const [loadingContent, setLoadingContent] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
   const scopeRef = useRef(scope);
   scopeRef.current = scope;
 
+  const scopeType = scope.type;
+  const scopeSessionId = scope.type === "session" ? scope.sessionId : null;
+  const scopeFlowId = scope.type === "flow" ? scope.flow?.id ?? null : null;
+
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
+  const taskKey = useMemo(
+    () =>
+      selectedReport
+        ? "golden:" + (scopeSessionId ?? scopeFlowId ?? "") + ":" + (selectedReport.runId ?? "") + ":" + selectedReport.path
+        : "golden:__inactive__",
+    [scopeSessionId, scopeFlowId, selectedReport],
+  );
+  const task = useResumableTask<GoldenStrategyBatchResult>(taskKey);
+  const generating = task.status === "running";
+  const results = task.data?.results ?? [];
+  const resultErrors = task.data?.errors ?? [];
+  const taskError = task.error;
+  const [activeResultModel, setActiveResultModel] = useState<GoldenStrategyModelId | null>(null);
+
+  useEffect(() => {
+    if (task.status !== "done") return;
+    setActiveResultModel((current) => current ?? task.data?.results[0]?.analysisModel ?? null);
+    const firstModel = task.data?.results[0]?.model;
+    if (firstModel) setModel((prev) => prev === firstModel ? prev : firstModel);
+  }, [task.status, task.data]);
+
   const primarySelectedAnalysis = ANALYSIS_MODELS.find((item) => item.id === selectedAnalysisModels[0]) ?? DEFAULT_ANALYSIS_MODEL;
   const recommendations = useMemo(
     () => selectedReport && content.trim() ? recommendAnalysisModels(basenamePath(selectedReport.path), content) : [],
     [content, selectedReport],
   );
   const activeResult = results.find((item) => item.analysisModel === activeResultModel) ?? results[0] ?? null;
-  const scopeType = scope.type;
-  const scopeSessionId = scope.type === "session" ? scope.sessionId : null;
-  const scopeFlowId = scope.type === "flow" ? scope.flow?.id ?? null : null;
   const businessRequirementScope = useMemo<BusinessRequirementContextScope | null>(() => {
     if (scopeType === "session") return scopeSessionId ? { type: "session", sessionId: scopeSessionId } : null;
     return scopeFlowId ? { type: "flow", flowId: scopeFlowId } : null;
@@ -263,8 +287,6 @@ export function GoldenStrategyPane({
     setReports([]);
     setSelectedReportId("");
     setContent("");
-    setResults([]);
-    setResultErrors([]);
     setActiveResultModel(null);
     try {
       if (sc.type === "session") {
@@ -315,8 +337,6 @@ export function GoldenStrategyPane({
 
   useEffect(() => {
     setContent("");
-    setResults([]);
-    setResultErrors([]);
     setActiveResultModel(null);
     if (!selectedReport) return;
     const sc = scopeRef.current;
@@ -352,12 +372,9 @@ export function GoldenStrategyPane({
   const generate = useCallback(async () => {
     const sc = scopeRef.current;
     if (!selectedReport || !content.trim() || generating || selectedAnalysisModels.length === 0) return;
-    setGenerating(true);
     setError("");
-    setResults([]);
-    setResultErrors([]);
     setActiveResultModel(null);
-    try {
+    await task.start(async () => {
       const result = await api.generateGoldenStrategyBatch({
         source: selectedReport.source,
         sessionId: sc.type === "session" ? sc.sessionId ?? undefined : undefined,
@@ -373,20 +390,13 @@ export function GoldenStrategyPane({
           jsonPath: selectedBusinessRequirement.jsonPath,
         } : undefined,
       });
-      setResults(result.results);
-      setResultErrors(result.errors);
-      setActiveResultModel(result.results[0]?.analysisModel ?? null);
-      if (result.results[0]?.model) setModel(result.results[0].model);
       if (result.results.length > 0) onGenerated?.();
       if (result.results.length === 0 && result.errors.length > 0) {
-        setError(result.errors.map((item) => `${item.analysisModel}: ${item.error}`).join("\n"));
+        throw new Error(result.errors.map((item) => `${item.analysisModel}: ${item.error}`).join("\n"));
       }
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setGenerating(false);
-    }
-  }, [content, generating, model, onGenerated, prompt, selectedAnalysisModels, selectedBusinessRequirement, selectedReport]);
+      return { results: result.results, errors: result.errors };
+    });
+  }, [content, generating, model, onGenerated, prompt, selectedAnalysisModels, selectedBusinessRequirement, selectedReport, task]);
 
   const emptyHint =
     scope.type === "session"
@@ -518,10 +528,10 @@ export function GoldenStrategyPane({
         </div>
       </div>
 
-      {error && (
+      {(error || taskError) && (
         <div className="flex items-center gap-1.5 border-b border-rose-100 bg-rose-50 px-4 py-2 text-[12px] text-rose-600 dark:border-rose-950 dark:bg-rose-950/30 dark:text-rose-300">
           <AlertTriangle className="h-3.5 w-3.5" />
-          {error}
+          {error || taskError}
         </div>
       )}
       {results.length > 0 && (

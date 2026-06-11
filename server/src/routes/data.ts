@@ -109,7 +109,76 @@ function extractJson(text: string): unknown {
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error(`LLM response has no JSON object: ${raw.slice(0, 200)}`);
-  return JSON.parse(raw.slice(start, end + 1)) as unknown;
+  const slice = raw.slice(start, end + 1);
+  try {
+    return JSON.parse(slice) as unknown;
+  } catch (err) {
+    const sanitized = sanitizeBarePlaceholders(slice);
+    if (sanitized === slice) throw err;
+    try {
+      return JSON.parse(sanitized) as unknown;
+    } catch {
+      throw err;
+    }
+  }
+}
+
+/**
+ * 兜底：将值位置（`:` 或 `[` 或 `,` 之后）的裸非法 token（如 X / N/A / 待定 / 未知 / 无）
+ * 替换为 0；字符串字面量内部不动。配合 coerce 层的 asNum，X→0 能被正常 clamp。
+ * 字符串型字段被替换成 0 后，asStr 仍能兜成 "0"，不至于整段炸。
+ */
+function sanitizeBarePlaceholders(s: string): string {
+  let out = "";
+  let i = 0;
+  const len = s.length;
+  while (i < len) {
+    const ch = s[i]!;
+    if (ch === '"') {
+      // copy whole string literal verbatim (handle escaped quotes)
+      out += ch;
+      i++;
+      while (i < len) {
+        const c = s[i]!;
+        out += c;
+        if (c === "\\" && i + 1 < len) {
+          out += s[i + 1];
+          i += 2;
+          continue;
+        }
+        i++;
+        if (c === '"') break;
+      }
+      continue;
+    }
+    if (ch === ":" || ch === "[" || ch === ",") {
+      out += ch;
+      i++;
+      // skip whitespace
+      while (i < len && /\s/.test(s[i]!)) {
+        out += s[i];
+        i++;
+      }
+      if (i >= len) continue;
+      const next = s[i]!;
+      // already a valid value start
+      if (next === '"' || next === "{" || next === "[" || next === "-" || (next >= "0" && next <= "9")) continue;
+      // capture bare token until comma / closing bracket / newline / whitespace
+      let j = i;
+      while (j < len && !/[,}\]\n\r]/.test(s[j]!)) j++;
+      const token = s.slice(i, j).trim();
+      if (!token) continue;
+      // keep valid JSON literals
+      if (token === "true" || token === "false" || token === "null") continue;
+      // bare placeholder → replace with 0
+      out += "0";
+      i = j;
+      continue;
+    }
+    out += ch;
+    i++;
+  }
+  return out;
 }
 
 const asStr = (v: unknown, d = ""): string => (typeof v === "string" ? v : typeof v === "number" ? String(v) : d);
@@ -191,7 +260,7 @@ function buildIndustryPrompt(industry: string): string {
   "risks": ["风险1", "风险2"],
   "opportunities": ["机会1", "机会2"]
 }
-score 取 0-100，表示该力对行业的压力强度(越高压力越大)。`;
+score 取 0-100，表示该力对行业的压力强度(越高压力越大)。所有数值字段必须是阿拉伯数字，无法估算请填 0；严禁使用 X / N/A / 待定 / 未知 等占位符（会导致 JSON 解析失败）。`;
 }
 
 const COMPETITOR_SYSTEM =
@@ -215,7 +284,7 @@ function buildCompetitorPrompt(brand: string, competitors: string[]): string {
   "substitutionRisk": "替代风险定性评估",
   "recommendations": ["策略建议1", "建议2"]
 }
-marketSharePct 取 0-100，表示该竞品估计市场份额百分比。`;
+marketSharePct 取 0-100，表示该竞品估计市场份额百分比。所有数值字段必须是阿拉伯数字，无法估算请填 0；严禁使用 X / N/A / 待定 / 未知 等占位符（会导致 JSON 解析失败）。`;
 }
 
 dataRouter.post("/api/workspaces/:id/industry/analyze", async (req, res) => {

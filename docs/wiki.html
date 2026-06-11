@@ -267,22 +267,16 @@ const TASKS = [
 遗留（V 已清）：scratch-viz.py/.ts 调试脚本已删。后续优化（非阻断）：Excel 序列号日期(cohort_month)显示、echarts 动静混合 import。
 待整个 P0（含 E 的 P0-C）完成时归档进版本历史。` },
 
-  { dom: "E", status: "todo", title: "工作流创建链路修复（创建即生成·健壮版）", brief:
-`你是 pi-xanthil 项目的 Agent-E（智能引擎域）。修复「工作流→创建」核心链路 bug（属 P0-C E2E 验证范畴）。
-开工必读：docs/notes-engine.md + AGENTS.md + Orchestration.md。规则：只改 E 域 slot，不碰接缝层骨架/他域；不执行 git。
-分工：后端兜底（index.ts:5422 flow chat handler 捕获+回填 workflow.json）由总控做（legacy 冻结文件）；本卡是 E 的前端部分（CreationPane.tsx）。
+  { dom: "E", status: "done", title: "工作流创建链路修复（创建即生成·健壮版）", brief:
+`✅ 已完成并通过总控终审 + 联调实跑（2026-06-11）。
 
-【Bug（总控已定位）】
-创建链路完全依赖 pi 自愿把 workflow.json 写进 cwd(=flow 目录)，后端不捕获/不校验/不回填。两失效模式：① pi 中途提问("是否按推荐方案生成?")停下→永远 spinning；② 用户业务 prompt 含绝对输出路径约束→pi 把 workflow.json 写到项目目录→flow 目录空→UI 永远"等待 pi 生成工作流节点"。
-
-【E 前端修复要点（CreationPane.tsx）】
-1) 硬化创建 systemPrompt：明确"直接生成、不要中途提问；workflow.json 必须写入当前工作目录(flow 根)；用户其它输出目录约束不适用于 workflow.json 本身（它是 UI 载体）"。
-2) UI 反馈：pi 停下提问时把问题作为可回复提示呈现（不再静默"等待…"）；run 结束仍无 workflow 时给可操作空态（含「导入」按钮指引）+ 超时提示。
-3) 与总控后端联调：总控会在 flow handler 落地"捕获 pi 输出/扫描写出的 workflow→规范化→写入 flow 目录"，E 轮询 flowWorkflowGet 拿到后正常渲染即可。
-
-【验收·必须实跑（与总控后端联调）】
-工作流 tab→创建→输入需求(含一个"输出到某项目目录"的约束)→pi 生成→workflow.json 落入当前 flow 目录→UI 显示节点(非 inferred 空)；pi 若提问→UI 显示问题且可回复继续→最终生成并可执行。
-收尾：typecheck+build 绿 + 实跑结论 → 覆盖 notes-engine §0 → 列改动清单（不要 git）。` },
+Bug：创建链路赌 pi 自愿把 workflow.json 写进 cwd(flow 目录)、后端不兜底 → pi 中途提问停住 / 被用户绝对输出路径约束带偏写到项目目录 → UI 永远"等待 pi 生成工作流节点"。
+三层协同修复：
+· prompt 硬化（E·MultiAgentExecutionPane）：禁中途提问/等确认 + workflow.json 永远写当前工作目录 + 用户"输出到某目录"只适用业务产物、不适用 workflow.json。
+· 后端捕获回填（总控·index.ts captureWorkflowFromText）：run 结束若 flow 目录无合法 workflow.json，从 pi 输出三路捕获(fenced/自报路径/裸 JSON)→规范化→回填，pi 写哪都能落地。
+· 前端兜底（E·CreationPane）：readWorkflowWithRetry 轮询 + pi 提问可回复 + 45s 超时/空态引导「导入」。
+验证：typecheck+build 绿 + 浏览器联调实跑通过(创建带输出目录约束→workflow.json 落 flow 目录→UI 显节点；pi 提问可回复)。
+改动文件：MultiAgentExecutionPane.tsx、CreationPane.tsx(E)、index.ts(总控)。` },
 
   { dom: "X", status: "doing", title: "P0 期间总控职责", brief:
 `总控（Claude）P0 期间职责（自留，不分发）：
@@ -371,6 +365,139 @@ const TASKS = [
    status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
    字段: { status, title, brief }（无 dom —— 不指定域）。 */
 const HOTFIX = [
+  { status: "done", title: "推广断点续传到其余 LLM 长任务 Pane（黄金策/onto抽取/聚合LLM/报告审核 等 8 处）", brief:
+`✅ 总控终审通过（2026-06-11）：resumableTask.ts 落地，GoldenStrategy/Ontology/Aggregate/ReportReview/Presentation/BusinessRequirement/Toc/DecisionTree 8 个 Pane 均接 useResumableTask；web build 绿。
+
+【背景】承接快修「联网检索类 Pane 切 tab 丢进度」。全量排查后，除行业/竞品/天气外，pi-xanthil 还有 8 处「调用 LLM 跑一段时间、进度只存组件本地 state」的地方，切 tab 同样丢进度。本条把 resumableTask 机制推广过去。
+依赖：必须在「联网检索类 Pane」那条的 resumableTask.ts 落地后做；建议同一 agent 顺序连做这两条。
+
+【排查清单（已确认，含标志位/LLM调用/结果去向）】
+A 类 · 高危（结果纯内存，切走彻底丢，优先修）：
+1. GoldenStrategyPane — 标志 generating；api.generateGoldenStrategyBatch；results 纯内存 useState(223)。
+2. OntologyPane 抽取 — 标志 busy(705)；api.extractOntology(755)；result 纯内存 setResult(706)。最慢（就是 pi 超时那条），最该续传。
+3. AggregatePane — 标志 sending；api.directLlmPrompt(116)；llmResponse 纯内存。聚合数据发 LLM 分析。
+4. ReportReviewPane 审核 — 标志 reviewing(138)；api.reviewReport(255)；reviewContent 等纯内存（有 loadHistory 半恢复，仍退初始态）。
+B 类 · 中危（结果已写文件落地，可从历史重看，但中途切走仍退初始态 → 体感同样是白跑一次）：
+5. PresentationVersionPane — generating(67)；api.generatePresentationVersion(138)；写文件 generatedPath。
+6. BusinessRequirementPane — generating(436)/extractingDraft(435)；generateBusinessRequirement(731)/extractBusinessRequirementDraft(602)/generateBusinessRequirementClarifyingQuestions(877)；写文件。
+7. DecisionTreePane — generating(229)；api.generateDecisionTree(331)；写 html(370)。
+8. TocPane — generating(238)；api.generateTocGraph(338)；写 html(376)。
+9. ReportReviewPane autoFix — fixing(139)；api.autoFixReport(279)；写回文件(301)。
+排除（勿动）：ModelLabPane 已有 restoreRunId 历史恢复(EngineTabs:78) · 工作流/AnaX/multi-agent 走 gateway+runId 续跑（另一套架构）。
+
+【方案 — 复用 resumableTask.ts】每处把「进行中标志 + 结果」从本地 useState 改为 useResumableTask(key)：标志=status==='running'，结果/错误从 hook 取；触发按钮调 start(() => api.xxx(...))。组件卸载不 abort，切回 mount 自动 rehydrate。
+key 原则：用能唯一确定「这一次任务上下文」的现有字段拼字符串（避免插值，用 + 拼），保证同上下文唯一在飞、不同上下文互不串。示例：
+- 黄金策 = "golden:" + (sessionId 或 flowId) + ":" + selectedReport.runId + ":" + selectedReport.path
+- onto抽取 = "onto-extract:" + oid
+- 聚合LLM = "agg-llm:" + fileName + ":" + groupBy.join(",")
+- 报告审核 = "report-review:" + pathId + ":" + relPath
+- 汇报版本 = "presentation:" + (scope 的 workspaceId/sessionId)
+- 业务需求 = "bizreq-gen:" + pathId（抽取另起 "bizreq-extract:" + pathId）
+- 决策树 = "dtree:" + (sessionId 或 flowId) + ":" + selectedReport.runId
+- TOC = "toc:" + (sessionId 或 flowId) + ":" + selectedReport.runId
+输入框/选择态等本地 UI state 维持不变，进度不丢为第一优先。B 类落文件的，原 onGenerated/loadHistory 回调保留（续传与落库不冲突）。
+
+【范围 / 文件边界】仅改上列组件文件（8 个，文件级独占）+ 只读不改 resumableTask.ts。不碰接缝骨架（App/api/constants/types）、不碰后端、不改任何 LLM 路由。
+可分批：A 类 4 处优先（纯内存、价值最高）；B 类 5 处次之，领取者时间不足可只交 A 类、在回报标注 B 类未做，由总控决定是否另起一轮。
+
+【验收】
+1. A 类：点生成/抽取/分析/审核 → 立刻切 tab → 切回仍在转圈或已出结果，不退初始态。
+2. 同 key 重复触发不重复发起；不同上下文互不串。
+3. npm run typecheck(web) + npm run build 全绿。
+
+【红线】非数据安全域：不碰 DataExplorationPane/data-exploration、不读写 draw_data/clean_data、不新增任何 LLM 调用（仅复用各 Pane 既有 api）。纯前端、无新依赖。
+
+【执行】按 /px-hotfix SOP：判红线（总控已判 = 安全）→ 复用 resumableTask 机制最小改动 → typecheck+build 绿 → 回流总控终审，全程不碰 git。新踩坑/约束写进回报由总控落 notes-viz / notes-engine / notes-data。` },
+
+  { status: "done", title: "联网检索类 Pane 切 tab 丢失进度（行业/竞品/天气无断点续跑）", brief:
+`✅ 总控终审通过（2026-06-11）：Industry/Competitor 接 useResumableTask，切 tab 不丢进度；Weather 按 brief 取舍（秒级返回+已有 useEffect 自动重拉）未改造；web build 绿。
+
+【现象】Xan数据库下 行业/竞品 情报点「生成情报」后，切到别的 tab 再切回 → 进度丢失、退回初始态，等于白跑（后台 fetch 其实没停，只是组件卸载后没人接结果）。天气一并纳入（见「范围注」）。对比：工作流-执行 切回能续跑。
+
+【根因】三个 Pane 把 loading/error/data 放在组件本地 useState（IndustryPane:27-29 / CompetitorPane:23-25 / WeatherPane:96-98）。切 tab → 组件 unmount → 本地 state 清零 → 切回 mount = 初始态。后端 /industry/analyze、/competitor/analyze 是同步阻塞 POST、无 job/runId 概念，组件卸载后返回的结果无处落。
+（注：工作流-执行能续跑是另一套架构 —— gateway 长连接 + 后端持久 runId 重连恢复，本次不照搬、不碰后端。）
+
+【方案 — 前端状态提升（纯前端，零后端改动）】总控已定契约，照此实现：
+新建共享 web/src/lib/resumableTask.ts（module-level 单例 store + hook）：
+- store: Map<string, Entry>；Entry = { status: 'idle'|'running'|'done'|'error', data?, error?, promise?, listeners:Set<fn> }。
+- startResumableTask(key, runner): 若该 key 已 running 则复用在飞 promise（不重复发起）；否则置 running、跑 runner，完成写 data/done、异常写 error，末尾 notify listeners。组件卸载不影响（promise 挂在 module 层，不绑组件生命周期、不 abort）。
+- useResumableTask(key): 用 useSyncExternalStore 订阅该 key，返回 { status, data, error, start }。mount 时直接读当前 Entry 即自动 rehydrate（在跑→显示转圈、已完成→显示结果）。
+- key 约定（避免插值，按字符串拼）：行业 = "industry:" + workspaceId；竞品 = "competitor:" + workspaceId；天气 = "weather:" + city + ":" + startDate + ":" + endDate。保证同一上下文唯一在飞。
+
+三个 Pane 改造：删本地 loading/error/data 三个 useState，换成 useResumableTask；提交按钮调 start(() => api.analyzeXxx(...))；loading = status==='running'，data/error 从 hook 取。输入框文本(industry/brand/rivals/city)仍可本地 state，进度不丢为第一优先，输入框回填为次要。
+
+【范围 / 文件边界（4 个，文件级独占，无接缝骨架）】
+- 新建 web/src/lib/resumableTask.ts（共享工具，非 api.ts/constants.ts 骨架）
+- web/src/components/IndustryPane.tsx
+- web/src/components/CompetitorPane.tsx
+- web/src/components/WeatherPane.tsx
+范围注：Weather 走 open-meteo 直连、秒级返回，且已有 useEffect 自动重拉(WeatherPane:133)，"切回丢失"体感最弱 —— 领取者评估若改造收益低，可仅做 Industry/Competitor，Weather 在回报里说明取舍、不强改。核心是 Industry/Competitor 两个 LLM 长任务（竞品曾实测 131s）。
+
+【验收】
+1. 行业/竞品：点生成 → 立刻切别的 tab → 1 分钟后切回 → 仍在转圈或已出结果，不退初始态。
+2. 同 key 重复点不重复发起请求；不同 workspace 互不串。
+3. npm run typecheck(web) + npm run build 全绿。
+
+【红线】非数据安全域：不碰 DataExplorationPane/data-exploration 子树、不读写 draw_data/clean_data、不引入任何新 LLM 调用（仅复用既有 api.analyzeIndustry/analyzeCompetitor 与 open-meteo）。store 纯内存、无新依赖。
+
+【执行】按 /px-hotfix SOP：判红线（总控已判 = 安全）→ 最小改动 → typecheck+build 绿 → 回流总控终审，全程不碰 git。新踩坑/约束写进回报，由总控落 notes-data。` },
+
+  { status: "done", title: "竞品/行业情报 500：LLM 输出非法 JSON（占位符 X）后端零容错", brief:
+`✅ 总控终审通过（2026-06-11）：data.ts extractJson 加 sanitizeBarePlaceholders 容错（值位裸 token X/N/A/待定等→0/空后重试 parse）+ prompt 禁占位符；server typecheck 绿。
+
+【现象】Xan数据库 竞品情报「生成情报」报 500：{"error":"SyntaxError: Unexpected token 'X', ...\\"marketSharePct\\": X,... is not valid JSON"}。pi agent 联网检索时，无法估算市场份额就把 marketSharePct 填成裸字面量 X（占位符），整段 JSON 解析失败、情报全废。
+
+【根因（已取证）】server/src/routes/data.ts:106 extractJson() = 截出 {...} 后直接 JSON.parse，对 LLM 的非法 token（X / N/A / 待定 等占位符）零容错 → 抛 SyntaxError → 路由 catch 返 500（data.ts:259-260）。
+- prompt 模板 data.ts:200-218 给了数字示例 "marketSharePct": 20、末尾说明「取 0-100」，但未显式禁止占位符，thinking 模型在无把握时仍会写 X。
+- 同源风险：行业(coerceIndustry/data.ts:235)、黄金策等共用同一 extractJson，任何数值字段被填占位符都会同样 500。
+
+【方案（二选一或叠加，建议叠加，纯后端最小改动）】
+A. extractJson 容错（主）：JSON.parse 失败时，对截出的 json 串做一次「裸非法值兜底」——把形如 : X / : N/A / : 待定 / : 未知（值位置的非字符串非数字裸 token）替换为 0（数值位）或 "" 后重试 parse；二次仍失败再抛原错。保证单个占位符不整段炸。coerce 层已有 asNum 兜底(data.ts:116)，清洗后 X→0 能被正常 clamp。
+B. prompt 加固（辅）：COMPETITOR_SYSTEM / buildCompetitorPrompt 末尾补一句「所有数值字段必须是阿拉伯数字，无法估算填 0，严禁用 X/N/A/待定 等占位符」。行业 prompt 同步加。
+
+【范围 / 文件边界（接缝外，后端单文件）】仅改 server/src/routes/data.ts（extractJson + 两个 prompt 常量）。不碰前端、不碰数据安全域、不改 pi 路由。
+【验收】1. 构造 marketSharePct: X 的 mock 输出，extractJson 不再抛、X 落为 0。2. 真机重跑竞品情报不再 500（thinking 模型波动，至少占位符不再致命）。3. server typecheck 绿。
+【红线】非数据安全域；仅改解析容错与 prompt 文案，不新增 LLM 调用、不碰 draw_data/clean_data。
+【执行】/px-hotfix SOP：判红线（总控已判=安全）→ 最小改动 → server typecheck 绿 → 回流总控终审，不碰 git。落 notes-data/notes-engine。` },
+
+  { status: "done", title: "onto-xanthil 文档抽取实体不完整：6000 字符硬截断 + 实体≤15 上限", brief:
+`✅ 总控终审通过（2026-06-11）：onto-extract.ts CONTENT_LIMIT 6000→24000，长文后半段实体可进 LLM；server typecheck 绿。
+
+【现象】onto-xanthil 数据语义层「文档 → pi 抽取（对象/关系/逻辑/动作）」，上传较长文档后，抽出的实体明显不全（用户实测发现遗漏）。
+
+【根因（已取证，双重限制）】
+1. 主因·硬截断：server/src/onto-extract.ts:16 CONTENT_LIMIT=6000，:185 const content = text.slice(0, CONTENT_LIMIT) —— 文档超过 6000 字符的部分根本没进 LLM prompt，后半段实体永远抽不到。这就是「处理文档有上限」的真相：上限=6000 字符（非按文档数，是按单篇字符数）。
+2. 次因·数量上限：prompt onto-extract.ts:182 要求「实体 ≤15、关系 ≤25、逻辑 ≤10、动作 ≤10」，即便短文档，概念多于 15 也会被模型自行裁掉。
+
+【方案（建议分两层，纯后端）】
+A. 提高/移除字符上限（主）：CONTENT_LIMIT 6000→ 调高（如 24000，配合现 timeoutMs 180s + 已落地的 --no-tools 省 token，长文已可承载）；或更稳的分块抽取——按段切 N 块、逐块 extract、processExtractionOutput 合并去重（已有质检去重流水线 onto-extract.ts:206 可复用）。领取者按文档典型长度评估：单纯调高上限=最小改动优先；分块=更彻底但工作量大，时间不足可只交「调高上限」并在回报标注分块未做。
+B. 放宽数量上限（辅，按需）：实体/关系/逻辑/动作的 ≤N 配额按需上调，避免长文档被数量裁剪。注意与 LLM 输出质量权衡，不盲目放大。
+
+【范围 / 文件边界（后端单文件）】仅改 server/src/onto-extract.ts（CONTENT_LIMIT / buildPrompt / 可选 prompt 配额）。若做分块，仍在本文件内组织，不碰接缝、不碰前端、不碰数据安全域。
+【验收】1. 上传 >6000 字符文档，文档后半段的核心实体能被抽到。2. 抽取仍在 180s 超时内（thinking 模型，必要时分块降单次负载）。3. server typecheck 绿。
+【红线】非数据安全域；仅调抽取上限/分块逻辑，不新增独立 LLM 路由（复用 runPiPrompt）、不碰 draw_data/clean_data。
+【执行】/px-hotfix SOP：判红线（总控已判=安全）→ 最小改动 → server typecheck 绿 → 回流总控终审，不碰 git。落 notes-engine。` },
+
+  { status: "done", title: "任务栏(任务/会话) 与 工作流 彻底解耦（去除休眠的 workflow_id 联动）", brief:
+`✅ 总控终审通过（2026-06-11）：采纳方案 A — db.ts listSessions 加 WHERE workflow_id IS NULL，任务栏只显示纯任务会话；server typecheck 绿；wiki:461 备注已同步。
+
+【背景】用户定：去除「跑工作流也在任务栏建任务」这条约定，任务栏任务与工作流分离、互不影响。对应原 done 条目「左侧主栏改造」里记的「本次按人工约定不做自动联动」——现正式落为永久分离。
+
+【现状（已取证）】实际层面已分离：前端建会话 App.tsx:282 createSession 不传 workflowId；工作流走独立 flows 列表(App.tsx:167 listFlows)；gateway 已过滤 flow 事件(App.tsx:221-222)。但 schema/接口残留休眠联动：
+- sessions 表有 workflow_id 列(db.ts:113 建表 / 851 INSERT)，createSession(ws,title,workflowId) 仍接受它(db.ts:847)。
+- POST /api/workspaces/:id/sessions 仍透传 workflowId(index.ts:1101-1102)。
+- listSessions(db.ts:856) SELECT 不带 WHERE workflow_id 过滤 → 隐患：任何带 workflowId 的 session 都会混进任务栏「任务」区(Sidebar.tsx:202-208)。
+
+【方案（二选一，A 为快修推荐）】
+A. 防御性过滤（最小、低风险）：listSessions 加 WHERE workflow_id IS NULL —— 任务栏只显示纯任务会话，工作流即便建了带 workflowId 的 session 也不污染。一处 SQL 改动。
+B. 彻底拆除（更干净，碰接缝层）：移除 POST 端点与 createSession 的 workflowId 参数透传、前端 api.createSession 的可选 workflowId(api.ts:257-261)；workflow_id 列保留休眠（不删表，避免 migration）。
+
+【接缝提示·重要】本条涉及接缝骨架（db.ts / index.ts / web api.ts / types），按多 agent 分工属总控亲改或严格把关域，不自由派发给域 agent。建议总控亲自做 A（单行 SQL），B 视收益评估。
+【附带】同步更新 docs/wiki.html:461 那条 done brief 的备注：把「本次按人工约定，不做自动联动」改为「已正式分离，任务栏不含 workflow 会话」。
+【验收】1. 跑工作流后，左侧「任务」区不出现工作流相关条目。2. 新建/重命名/删除任务栏任务不影响工作流列表，反之亦然。3. typecheck（A 仅后端 / B 前后端）绿。
+【红线】非数据安全域；不删 sessions 表/列（仅过滤或断参数透传），不碰 draw_data/clean_data。
+【执行】总控主导，按 SOP 最小改动 → typecheck 绿 → 自检 → 不碰 git。落 notes-engine（接缝变更）。` },
+
   { status: "done", title: "pi 调用超时根因修复（runPiPrompt 接口模式：--no-tools + 超时上调）", brief:
 `✅ 总控完成（2026-06-11），运行时复现取证。onto-xanthil 文档抽取报 500 "pi prompt timed out after 90000 ms"，多模块同类超时。
 
@@ -391,7 +518,7 @@ const HOTFIX = [
 【改动项】
 1. 精选收藏：删 UI 入口（侧栏区块 + 工作流行的收藏星标按钮）；后端 favorites 表/路由保留休眠（仅前端清理 state/handler/bootstrap）。
 2. 「探索」会话区 → 重命名「任务」（一个会话=一个任务）。
-3. 工作流列表：从左侧主栏移出 → 迁入「工作流 · 工作视图」内左侧竖栏（新增 components/FlowListColumn.tsx：选择/新建/重命名/删除，可收起；排除 AnaX 模板派生 flow）。"跑工作流也在任务栏建任务" 本次按人工约定，不做自动联动（用户定）。
+3. 工作流列表：从左侧主栏移出 → 迁入「工作流 · 工作视图」内左侧竖栏（新增 components/FlowListColumn.tsx：选择/新建/重命名/删除，可收起；排除 AnaX 模板派生 flow）。"跑工作流也在任务栏建任务" 已正式分离，任务栏不含 workflow 会话（listSessions 加 WHERE workflow_id IS NULL 防御过滤，schema/接口字段休眠保留）。
 
 【改动文件（3）】components/Sidebar.tsx（删精选收藏+工作流两区、改标题、精简 props）· App.tsx（去 favorites state/handler/props + 接 FlowListColumn）· 新增 components/FlowListColumn.tsx。
 

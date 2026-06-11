@@ -305,14 +305,18 @@ function escapeRegExp(value: string): string {
  * Returns null when absent or unparseable (callers degrade to a single turn).
  */
 export function extractMarkerArray(text: string, marker: string): unknown[] | null {
-  const match = text.match(new RegExp("```" + escapeRegExp(marker) + "\\s*\\n([\\s\\S]+?)```"));
-  if (!match?.[1]) return null;
-  try {
-    const parsed = JSON.parse(match[1].trim()) as unknown;
-    return Array.isArray(parsed) ? parsed : null;
-  } catch {
-    return null;
+  const blocks = text.matchAll(new RegExp("```" + escapeRegExp(marker) + "(?:[ \\t]*\\r?\\n|[ \\t]*)?([\\s\\S]+?)```", "g"));
+  let latest: unknown[] | null = null;
+  for (const match of blocks) {
+    if (!match[1]) continue;
+    try {
+      const parsed = JSON.parse(match[1].trim()) as unknown;
+      if (Array.isArray(parsed)) latest = parsed;
+    } catch {
+      // Keep scanning: models may quote an invalid example before the final block.
+    }
   }
+  return latest;
 }
 
 /**

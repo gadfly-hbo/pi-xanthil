@@ -1,7 +1,8 @@
-import { useCallback, useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { AlertTriangle, ClipboardList, Compass, FileText, FolderOpen, Loader2, Pencil, RefreshCw, Save, Sparkles, X } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { BusinessContextCategory, FlowTreeNode, WorkspacePath } from "@/types";
 
 type Scope =
@@ -431,9 +432,6 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
   const [activeResult, setActiveResult] = useState<"clarification" | "framework" | "diff">("framework");
   const [editingFramework, setEditingFramework] = useState(false);
   const [loadingPaths, setLoadingPaths] = useState(false);
-  const [clarifying, setClarifying] = useState(false);
-  const [extractingDraft, setExtractingDraft] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [diffing, setDiffing] = useState(false);
   const [sinkingContext, setSinkingContext] = useState(false);
   const [savingFramework, setSavingFramework] = useState(false);
@@ -441,6 +439,25 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
   const [saveMessage, setSaveMessage] = useState("");
   const [extractMessage, setExtractMessage] = useState("");
   const [error, setError] = useState("");
+
+  const taskKeySuffix = selectedPathId || "__no_path__";
+  const generateTask = useResumableTask<{
+    path: string;
+    jsonPath: string;
+    content: string;
+    structured: unknown;
+  }>("bizreq-gen:" + taskKeySuffix);
+  const extractTask = useResumableTask<{
+    draft: Partial<RequirementDraft>;
+    changed: number;
+  }>("bizreq-extract:" + taskKeySuffix);
+  const clarifyTask = useResumableTask<{ content: string }>("bizreq-clarify:" + taskKeySuffix);
+  const generating = generateTask.status === "running";
+  const extractingDraft = extractTask.status === "running";
+  const clarifying = clarifyTask.status === "running";
+  const lastAppliedExtractRef = useRef<unknown>(null);
+  const lastAppliedGenerateRef = useRef<unknown>(null);
+  const lastAppliedClarifyRef = useRef<unknown>(null);
 
   const selectedPath = useMemo(
     () => paths.find((path) => String(path.id) === selectedPathId) ?? null,
@@ -595,47 +612,50 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
 
   const extractDraftFromDocuments = async () => {
     if (!selectedPath || !canExtractDraft) return;
-    setExtractingDraft(true);
     setExtractMessage("");
     setError("");
-    try {
+    await extractTask.start(async () => {
       const result = await api.extractBusinessRequirementDraft({
         pathId: selectedPath.id,
         documents: documents.map(documentPayload),
         model: model || undefined,
       });
-      const fields: Array<keyof RequirementDraft> = [
-        "projectName",
-        "businessBackground",
-        "businessGoal",
-        "businessQuestions",
-        "decisionScenario",
-        "stakeholders",
-        "knownData",
-        "constraints",
-        "outputPreference",
-        "extraPrompt",
-      ];
-      setDraft((current) => {
-        const next = { ...current };
-        let changed = 0;
-        for (const field of fields) {
-          const value = result.draft[field]?.trim() ?? "";
-          if (!value) continue;
-          if (overwriteExtractedDraft || !next[field].trim()) {
-            next[field] = value;
-            changed += 1;
-          }
-        }
-        setExtractMessage(changed > 0 ? `已提取 ${changed} 个字段` : "没有可填充的新字段");
-        return next;
-      });
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setExtractingDraft(false);
-    }
+      return { draft: result.draft, changed: 0 };
+    });
   };
+
+  useEffect(() => {
+    if (extractTask.status !== "done" || !extractTask.data) return;
+    if (lastAppliedExtractRef.current === extractTask.data) return;
+    lastAppliedExtractRef.current = extractTask.data;
+    const draftResult = extractTask.data.draft;
+    const fields: Array<keyof RequirementDraft> = [
+      "projectName",
+      "businessBackground",
+      "businessGoal",
+      "businessQuestions",
+      "decisionScenario",
+      "stakeholders",
+      "knownData",
+      "constraints",
+      "outputPreference",
+      "extraPrompt",
+    ];
+    setDraft((current) => {
+      const next = { ...current };
+      let changed = 0;
+      for (const field of fields) {
+        const value = draftResult[field]?.trim() ?? "";
+        if (!value) continue;
+        if (overwriteExtractedDraft || !next[field].trim()) {
+          next[field] = value;
+          changed += 1;
+        }
+      }
+      setExtractMessage(changed > 0 ? `已提取 ${changed} 个字段` : "没有可填充的新字段");
+      return next;
+    });
+  }, [extractTask.status, extractTask.data, overwriteExtractedDraft]);
 
   const previewDocument = async (document: RequirementDocument) => {
     setDocumentPreviews((current) => ({
@@ -716,7 +736,6 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
 
   const generate = useCallback(async () => {
     if (!canGenerate || !selectedPath) return;
-    setGenerating(true);
     setError("");
     setGeneratedPath("");
     setGeneratedJsonPath("");
@@ -727,7 +746,7 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
     setEditingFramework(false);
     setSinkMessage("");
     setSaveMessage("");
-    try {
+    await generateTask.start(async () => {
       const result = await api.generateBusinessRequirement({
         pathId: selectedPath.id,
         documents: documents.map(documentPayload),
@@ -745,21 +764,30 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
         },
         model: model || undefined,
       });
-      setGeneratedPath(result.path);
-      setGeneratedJsonPath(result.jsonPath);
-      setGeneratedContent(result.content);
-      setEditedContent(result.content);
-      setGeneratedStructured(isStructuredOutput(result.structured) ? result.structured : null);
-      setDiffContent("");
-      setActiveResult("framework");
       void loadVersions(selectedPath.id);
       onGenerated?.();
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setGenerating(false);
-    }
-  }, [canGenerate, documents, draft, loadVersions, model, onGenerated, selectedPath]);
+      return {
+        path: result.path,
+        jsonPath: result.jsonPath,
+        content: result.content,
+        structured: result.structured,
+      };
+    });
+  }, [canGenerate, documents, draft, loadVersions, model, onGenerated, selectedPath, generateTask]);
+
+  useEffect(() => {
+    if (generateTask.status !== "done" || !generateTask.data) return;
+    if (lastAppliedGenerateRef.current === generateTask.data) return;
+    lastAppliedGenerateRef.current = generateTask.data;
+    const data = generateTask.data;
+    setGeneratedPath(data.path);
+    setGeneratedJsonPath(data.jsonPath);
+    setGeneratedContent(data.content);
+    setEditedContent(data.content);
+    setGeneratedStructured(isStructuredOutput(data.structured) ? data.structured : null);
+    setDiffContent("");
+    setActiveResult("framework");
+  }, [generateTask.status, generateTask.data]);
 
   const startEditFramework = () => {
     if (!generatedContent || !generatedPath) return;
@@ -871,9 +899,8 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
 
   const clarify = useCallback(async () => {
     if (!canClarify) return;
-    setClarifying(true);
     setError("");
-    try {
+    await clarifyTask.start(async () => {
       const result = await api.generateBusinessRequirementClarifyingQuestions({
         pathId: selectedPath?.id,
         documents: documents.map(documentPayload),
@@ -891,14 +918,17 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
         },
         model: model || undefined,
       });
-      setClarificationContent(result.content);
-      setActiveResult("clarification");
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setClarifying(false);
-    }
-  }, [canClarify, documents, draft, model, selectedPath]);
+      return { content: result.content };
+    });
+  }, [canClarify, documents, draft, model, selectedPath, clarifyTask]);
+
+  useEffect(() => {
+    if (clarifyTask.status !== "done" || !clarifyTask.data) return;
+    if (lastAppliedClarifyRef.current === clarifyTask.data) return;
+    lastAppliedClarifyRef.current = clarifyTask.data;
+    setClarificationContent(clarifyTask.data.content);
+    setActiveResult("clarification");
+  }, [clarifyTask.status, clarifyTask.data]);
 
   const pathHint = paths.length === 0
     ? "请先在「报告输出」tab 添加报告输出文件夹或文件"
@@ -953,10 +983,10 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
         </button>
       </div>
 
-      {error && (
+      {(error || generateTask.error || extractTask.error || clarifyTask.error) && (
         <div className="flex items-center gap-1.5 border-b border-rose-100 bg-rose-50 px-4 py-2 text-[12px] text-rose-600 dark:border-rose-950 dark:bg-rose-950/30 dark:text-rose-300">
           <AlertTriangle className="h-3.5 w-3.5" />
-          {error}
+          {error || generateTask.error || extractTask.error || clarifyTask.error}
         </div>
       )}
 

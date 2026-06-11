@@ -856,7 +856,7 @@ export function createSession(workspaceId: string, title: string, workflowId: st
 export function listSessions(workspaceId: string): Session[] {
   return db
     .prepare(
-      "SELECT id, workspace_id AS workspaceId, title, workflow_id AS workflowId, created_at AS createdAt, updated_at AS updatedAt FROM sessions WHERE workspace_id = ? ORDER BY updated_at DESC",
+      "SELECT id, workspace_id AS workspaceId, title, workflow_id AS workflowId, created_at AS createdAt, updated_at AS updatedAt FROM sessions WHERE workspace_id = ? AND workflow_id IS NULL ORDER BY updated_at DESC",
     )
     .all(workspaceId) as unknown as Session[];
 }

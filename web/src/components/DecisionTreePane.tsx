@@ -13,6 +13,7 @@ import {
 import { AlertTriangle, Download, GitBranch, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { DecisionTreeNode, Flow, FlowTreeNode, PiModel } from "@/types";
 
 type Scope =
@@ -222,11 +223,9 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
   const [reports, setReports] = useState<ReportOption[]>([]);
   const [selectedReportId, setSelectedReportId] = useState("");
   const [content, setContent] = useState("");
-  const [tree, setTree] = useState<DecisionTreeNode[]>([]);
   const [selectedModel, setSelectedModel] = useState(DEFAULT_MODEL);
   const [loadingReports, setLoadingReports] = useState(false);
   const [loadingContent, setLoadingContent] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [error, setError] = useState("");
@@ -241,6 +240,13 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
   const scopeSessionId = scope.type === "session" ? scope.sessionId : null;
   const scopeFlowId = scope.type === "flow" ? scope.flow?.id ?? null : null;
 
+  const taskKey = selectedReport
+    ? "dtree:" + (scopeSessionId ?? scopeFlowId ?? "") + ":" + (selectedReport.runId ?? "") + ":" + selectedReport.path
+    : "dtree:__inactive__";
+  const task = useResumableTask<{ nodes: DecisionTreeNode[]; model: string }>(taskKey);
+  const generating = task.status === "running";
+  const tree = task.data?.nodes ?? [];
+
   useEffect(() => {
     if (models.some((item) => item.id === selectedModel)) return;
     const next = models.find((item) => item.id === DEFAULT_MODEL) ?? models.find((item) => item.isDefault) ?? models[0];
@@ -254,7 +260,6 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
     setReports([]);
     setSelectedReportId("");
     setContent("");
-    setTree([]);
     try {
       if (sc.type === "session") {
         if (!sc.sessionId) return;
@@ -304,7 +309,6 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
 
   useEffect(() => {
     setContent("");
-    setTree([]);
     if (!selectedReport) return;
     const sc = scopeRef.current;
     setLoadingContent(true);
@@ -324,10 +328,9 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
 
   const generate = useCallback(async () => {
     const sc = scopeRef.current;
-    if (!selectedReport || !content.trim()) return;
-    setGenerating(true);
+    if (!selectedReport || !content.trim() || generating) return;
     setError("");
-    try {
+    await task.start(async () => {
       const result = await api.generateDecisionTree({
         source: selectedReport.source,
         sessionId: sc.type === "session" ? sc.sessionId ?? undefined : undefined,
@@ -336,14 +339,14 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
         path: selectedReport.path,
         model: selectedModel || DEFAULT_MODEL,
       });
-      setTree(result.nodes);
-      setSelectedModel(result.model);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setGenerating(false);
-    }
-  }, [content, selectedModel, selectedReport]);
+      return { nodes: result.nodes, model: result.model };
+    });
+  }, [content, selectedModel, selectedReport, task, generating]);
+
+  useEffect(() => {
+    if (task.status !== "done" || !task.data) return;
+    if (task.data.model) setSelectedModel((current) => current === task.data!.model ? current : task.data!.model);
+  }, [task.status, task.data]);
 
   const saveAsImage = useCallback(async () => {
     if (tree.length === 0) return;
@@ -442,10 +445,10 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
         </button>
       </div>
 
-      {error && (
+      {(error || task.error) && (
         <div className="flex items-center gap-1.5 border-b border-rose-100 bg-rose-50 px-4 py-2 text-[12px] text-rose-600 dark:border-rose-950 dark:bg-rose-950/30 dark:text-rose-300">
           <AlertTriangle className="h-3.5 w-3.5" />
-          {error}
+          {error || task.error}
         </div>
       )}
       {saveMsg && (

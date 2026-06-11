@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Database, GitBranch, Calculator, Plus, Trash2, Network, RefreshCw, Download, Upload } from "lucide-react";
 import { api } from "@/lib/api";
+import { useResumableTask } from "@/lib/resumableTask";
 import { GraphCanvas, type GraphCanvasNode, type GraphCanvasEdge } from "@/components/GraphCanvas";
 import type { OntoExtractResult } from "@/lib/api/viz";
 import type { OntoPrompt } from "@/types";
@@ -702,14 +703,19 @@ const PROMPT_STARTER = `请从以下文档中抽取领域本体的「实体」�
 
 function ImportSection({ workspaceId, oid, onError }: { workspaceId: string; oid: string; onError: (s: string) => void }) {
   const [text, setText] = useState("");
-  const [busy, setBusy] = useState(false);
-  const [result, setResult] = useState<OntoExtractResult | null>(null);
+  const extractTask = useResumableTask<OntoExtractResult>("onto-extract:" + oid);
+  const busy = extractTask.status === "running";
+  const result = extractTask.data ?? null;
   // Prompt 管理（P8）
   const [prompts, setPrompts] = useState<OntoPrompt[]>([]);
   const [showPrompt, setShowPrompt] = useState(false);
   const [activePromptId, setActivePromptId] = useState("");
   const [promptName, setPromptName] = useState("");
   const [promptContent, setPromptContent] = useState("");
+
+  useEffect(() => {
+    if (extractTask.status === "error" && extractTask.error) onError(extractTask.error);
+  }, [extractTask.status, extractTask.error, onError]);
 
   const loadPrompts = useCallback(async () => {
     try { setPrompts(await api.listOntoPrompts(workspaceId)); } catch (e) { onError(String(e)); }
@@ -747,14 +753,11 @@ function ImportSection({ workspaceId, oid, onError }: { workspaceId: string; oid
   }, [activePromptId, loadPrompts, onError]);
 
   const run = useCallback(async () => {
-    if (!text.trim()) return;
-    setBusy(true);
-    setResult(null);
+    if (!text.trim() || busy) return;
     // 仅当自定义 prompt 含 {{content}} 占位时才覆盖默认模板
     const promptTemplate = activePromptId && promptContent.includes("{{content}}") ? promptContent : undefined;
-    try { setResult(await api.extractOntology(oid, { text, promptTemplate })); }
-    catch (e) { onError(String(e)); } finally { setBusy(false); }
-  }, [text, oid, activePromptId, promptContent, onError]);
+    await extractTask.start(() => api.extractOntology(oid, { text, promptTemplate }));
+  }, [text, busy, oid, activePromptId, promptContent, extractTask]);
 
   return (
     <div className="space-y-3">

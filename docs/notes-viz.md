@@ -7,15 +7,15 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-09 · P0-B 看板重做收尾（接入 D 域 clean_data 聚合池）
-- 进度：已彻底重做看板 `BiDashboardPane` 的数据接入层并修正了 API 契约调用。
-  1. 取消了写死的双 slot 数据源限制，全量接入 D 域 `dataApi.getBiAggregations` 和 `dataApi.getBiAggregationData`。
-  2. 实现向导式配置：先选数据源，再通过动态拉取的数据（利用 `profiling.ts` 推断类型）选择维度与指标，并智能推荐图表类型。
-  3. UI 统一了数据源入口（取消了独立的导入按钮），保留了从预置模板新建的后备方案兼容原有双 slot（留存/召回）。
-  4. 后端路由 `/api` 前缀问题与 D 域 API url 路径不一致问题已全部纠正；对无工作空间、获取聚合列表/详情失败等情况，全部转为明文 `alert()` 和空状态兜底，清除了静默失败。
-- 下一步：等待 P1 里程碑（报告交付 + 看板取数走统一指标语义层契约 `MetricDefinition`）启动。
-- 阻塞 / 待总控：无（当前 V 域前端已完全对接 `dataApi`，若后端接口抛 404 将能正确捕获并提示用户）。
-- 开放问题：无
+- 最近更新：2026-06-11 · 断点续传范式推广到 viz 长任务 Pane（承接行业/竞品 hotfix，总控终审）
+- 进度：
+  - **续传推广**：复用 `web/src/lib/resumableTask.ts` 的 `useResumableTask`，把「LLM 长任务 + 进度只存本地 useState」的 viz Pane 改为 module 层续传——`GoldenStrategyPane` `ReportReviewPane`(审核/autoFix) `PresentationVersionPane` `TocPane` `DecisionTreePane` `BusinessRequirementPane` `AggregatePane`（onto 抽取由 E 域同批做）。切 tab 不丢进度；key 用业务上下文 id 拼（范式 canonical 见 notes-data「续跑范式」条）。
+  - 顺带修复：`BusinessRequirementPane` 改造时清掉了之前阻塞全局 web typecheck 的 `setGenerating/setClarifying` 未定义错误 → `npm run build` 现已恢复全绿（此前 notes-data 标的 build 阻塞已解除）。
+  - P0-B 看板（`BiDashboardPane` 数据源解耦重做）= V 域主线，状态见 §三/§四，本批未动。
+- 校验：`cd server && npm run typecheck` ✅；`cd web && npm run build`（tsc+vite）✅ built（echarts 动态导入/chunk-size 为既有 benign warning，非 error）。
+- 下一步：P1（报告交付 + 看板取数走 `MetricDefinition` 语义层契约）未启动；续传范式真机回归（切 tab→1 分钟后切回是否仍转圈/出结果）由用户实测。
+- 阻塞 / 待总控：无。
+- 开放问题：`resumableTask` store 永不 GC（同 notes-data 开放问题③）——当前 key 量级可忽略，未来挂高频 key（探索/聚合）需评估 LRU。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -63,6 +63,7 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - LLM 评审输出**结构化 JSON**（`reviewMarkdown` + `annotations[]` + `totalScore`），而非纯 Markdown → 行内批注与评分可解析。
 - 审核历史**物化为 `review_history/*.json` 文件**（按 `pathId+relPath` 过滤），不走数据库。
 - Diff 复用 `BusinessRequirementPane` 的 **LCS 行级算法，前端计算**，不新增后端 API；AI 修改后自动切 Diff tab。
+- **LLM 长任务「切 tab 续跑」范式**（2026-06-11 hotfix 已落）：黄金策 / 审核(含 autoFix) / 汇报版本 / TOC / 决策树 / 业务需求 / 聚合 等 Pane 的「进行中标志 + 结果」一律**不放组件 `useState`**，改用 `web/src/lib/resumableTask.ts` 的 `useResumableTask(key)`（module 层 store，unmount 不 abort，mount 自动 rehydrate）。范式与 key 约定细节见 notes-data 同名条（D 域 canonical）。**落文件的 Pane**（汇报/业务需求/TOC/决策树等）原 `onGenerated`/`loadHistory` 回调**保留**，续传与落库不冲突。新增此类长任务 Pane 一律走此范式，勿再用本地 useState 存 loading/data。
 
 **知识图谱 / trace**（可视化部分）
 - 知识图谱挂「规则记忆」二级 tab（非顶栏独立）；Phase A 结构化图谱优先（无 LightRAG 依赖）；摄入 = 手动触发 + 变更累积；注入折叠进 `injectRulesPrompt` 开关；节点**隐藏而非物理删除**。

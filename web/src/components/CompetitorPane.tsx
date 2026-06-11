@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, lazy, Suspense } from "react";
 import { Swords, Search, Loader2, ShieldAlert, Target } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { CompetitorIntel } from "@/types";
 
 const ReactECharts = lazy(() => import("echarts-for-react"));
@@ -20,30 +21,24 @@ interface CompetitorPaneProps {
 export function CompetitorPane({ workspaceId, model }: CompetitorPaneProps) {
   const [brand, setBrand] = useState("");
   const [rivals, setRivals] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [data, setData] = useState<CompetitorIntel | null>(null);
+  const taskKey = "competitor:" + workspaceId;
+  const { status, data, error, start } = useResumableTask<CompetitorIntel>(taskKey);
+  const loading = status === "running";
+  const [localError, setLocalError] = useState("");
 
   const run = useCallback(async () => {
     const target = brand.trim();
     if (!target) return;
     if (!workspaceId) {
-      setError("请先选择一个工作区");
+      setLocalError("请先选择一个工作区");
       return;
     }
     const competitors = rivals.split(/[,，、\s]+/).map((s) => s.trim()).filter(Boolean);
-    setLoading(true);
-    setError("");
-    setData(null);
-    try {
-      const intel = await api.analyzeCompetitor(workspaceId, target, competitors, model || undefined);
-      setData(intel);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId, model, brand, rivals]);
+    setLocalError("");
+    void start(() => api.analyzeCompetitor(workspaceId, target, competitors, model || undefined));
+  }, [workspaceId, model, brand, rivals, start]);
+
+  const displayError = localError || error || "";
 
   const shareOption = useMemo(() => {
     if (!data || data.profiles.length === 0) return null;
@@ -117,9 +112,9 @@ export function CompetitorPane({ workspaceId, model }: CompetitorPaneProps) {
           </div>
         </div>
 
-        {error && (
+        {displayError && (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
-            {error}
+            {displayError}
           </div>
         )}
 

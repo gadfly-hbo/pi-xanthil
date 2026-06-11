@@ -3,6 +3,7 @@ import { Calculator, Check, Clipboard, Download, FileSpreadsheet, Loader2, SendH
 import { buildPythonPrompt, profileDataset, readLocalDataset, runAggregation, toCsv, type AggregateDsl, type AggregateOperation, type DateGranularity, type LocalDataset } from "@/lib/aggregate";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { PiModel } from "@/types";
 
 const OPERATIONS: { id: AggregateOperation; label: string }[] = [
@@ -43,9 +44,10 @@ export function AggregatePane({ model, models }: Props) {
   // LLM send flow
   const [sendModel, setSendModel] = useState(model ?? "");
   const [question, setQuestion] = useState("");
-  const [sending, setSending] = useState(false);
-  const [sendError, setSendError] = useState("");
-  const [llmResponse, setLlmResponse] = useState("");
+  const llmTask = useResumableTask<{ text: string }>("agg-llm:" + fileName + ":" + groupBy.join(","));
+  const sending = llmTask.status === "running";
+  const sendError = llmTask.error ?? "";
+  const llmResponse = llmTask.data?.text ?? "";
 
   const numericColumns = dataset?.columns.filter((column) => column.type === "number") ?? [];
   const dateColumns = dataset?.columns.filter((column) => column.type === "date") ?? [];
@@ -84,7 +86,6 @@ export function AggregatePane({ model, models }: Props) {
       setGroupBy([]);
       setDateColumn("");
       setMetrics(["count:"]);
-      setLlmResponse("");
     } catch (err) {
       setDataset(null);
       setError(String(err));
@@ -99,9 +100,6 @@ export function AggregatePane({ model, models }: Props) {
 
   const sendToLlm = async () => {
     if (!result?.rows.length || sending) return;
-    setSending(true);
-    setSendError("");
-    setLlmResponse("");
     const csvText = toCsv(result.rows);
     const text = [
       question.trim() || "请基于以下聚合数据给出分析洞察。",
@@ -112,14 +110,10 @@ export function AggregatePane({ model, models }: Props) {
       csvText,
       "```",
     ].join("\n");
-    try {
+    await llmTask.start(async () => {
       const res = await api.directLlmPrompt({ text, model: sendModel || undefined });
-      setLlmResponse(res.text);
-    } catch (err) {
-      setSendError(String(err));
-    } finally {
-      setSending(false);
-    }
+      return { text: res.text };
+    });
   };
 
   return (

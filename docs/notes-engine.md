@@ -7,11 +7,21 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-08 · 总控建档
-- 进度：P0-C「E2E 验证补课」待启动
-- 下一步：见 `KICKOFF-P0.md` → Agent-E P0-C（AnaX 8 阶段真跑优先）
-- 阻塞 / 待总控：需真实留存聚合数据（综合评分≥7）才能跑通 AnaX
-- 开放问题：无
+- 最近更新：2026-06-11 · onto-xanthil 文档抽取上限 hotfix（实体抽不全根治）
+- 进度：
+  - **hotfix · onto-extract 文档硬截断**：`server/src/onto-extract.ts:16` `CONTENT_LIMIT 6000 → 24000`（thinking 模型 180s 超时下可承载，≈ 中文 1.2-1.6 万 token）；同步把 prompt 配额放宽（实体 15→40 / 关系 25→60 / 逻辑 10→20 / 动作 10→20）。
+  - 单文件改动，不碰 pi 路由、不新增 LLM 调用，仅复用 `runPiPrompt`。
+  - **hotfix · 任务栏↔工作流解耦**（总控主导）：`server/src/db.ts:859` `listSessions` SQL 加 `AND workflow_id IS NULL`，任务栏（任务/会话区）只显示纯任务会话，跑工作流不再污染任务列表；`workflow_id` 列与 `createSession`/POST 接口字段**休眠保留**（不删表、不动接缝接口）。`docs/wiki.html` 相关备注已同步「已正式分离」。
+- 校验：`cd server && npm run typecheck`：✅ 全绿；`cd web && npm run build`（tsc+vite）：✅ 全绿（2026-06-11 总控终审复跑）。
+- 下一步：
+  - ① 用户验证长文档抽取覆盖度（>6000 字符文档后半段实体是否能抽到、180s 内是否完成）。
+  - ② 极超长文档（>24000 字符）后半段仍会被截，**分块抽取作为后续 enhancement**——`processExtractionOutput` 是纯函数，已有同名去重 + `resolveId` 模糊匹配，对同一 `ontologyId` 多次调用天然合并落库；分块的真正难点是切分（建议按段落边界 + 200 字 overlap，不要简单 `slice(0, N)`）。
+  - ③ 现有"按 nameCn 去重"对分块友好但对编辑不友好（line 234 早 return，后入块描述更富也不会更新）——明确 TODO。
+- 阻塞 / 待总控：无（本次单文件 hotfix typecheck 全绿）。
+- 开放问题：
+  - **CONTENT_LIMIT 上调隐藏成本**：thinking 模型输入 token 增加 → 输出 reasoning 也膨胀，180s 超时极端情况可能踩边。回退策略：CONTENT_LIMIT 改 18000/16000，或上分块。需用户实测后定。
+  - **配额上调隐藏成本**：要求模型产出更多对象时单条质量可能下降；已有 `calibrate()` 自动衰减低质条目 confidence。若发现"长文档抽出一堆边缘概念"，应反向调低配额。
+  - ~~全局 typecheck/build 被 `ReportReviewPane.tsx` / `BusinessRequirementPane.tsx` 阻断~~ **已解决**（2026-06-11 总控终审：续传推广改造这两个 Pane 后，`cd web && npm run build` 全绿；全局 build 阻塞清除）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -80,10 +90,24 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **pi CLI 调用**：`runPiPrompt()` 用 `--no-skills`，**不要用 `--no-extensions`**（会禁用模型 provider 扩展导致 LLM 调用失败）。见 `pi-adapter.ts`。
 - `scope` 对象字面量每次渲染新引用 → `useCallback([scope])` 重建 → effect 清空画布。根治：Pane 内提取稳定原始值（scopeType/scopeSessionId/scopeFlowId）作 deps，不改 App.tsx 内联写法（项目惯例）。
 - 流式响应中断（`Stream ended without finish_reason`）：建议切 MiniMax-M3 重试，长报告分块写文件。
+- **onto-extract 文档抽取的两层硬上限**（2026-06-11 hotfix 已调）：①`CONTENT_LIMIT`（字符截断，原 6000 → 现 24000）是真正决定"能不能看到文档后半段"的开关；②prompt 配额（实体/关系/逻辑/动作 ≤N）是次级限制，长文档若超配额会被模型自行裁掉。**所有抽取调优必须双层一起看**，只调一层都不够。
+- **onto-extract 分块抽取的"合并几乎免费"**：`processExtractionOutput` 是纯函数 + 已有同名去重（entity nameCn / logic nameCn / link `src|tgt|kind`）+ `resolveId` 模糊匹配，对同一 `ontologyId` 多次调用可天然合并落库。未来要做分块只需在 `extractOntologyFromText` 外层切分 + 串行多次跑 `runPiPrompt` + 逐次喂 `processExtractionOutput`，**不必动质检流水线**。但分块切分本身是难点：按段落边界（双换行/标题）切 + ~200 字 overlap，不要 `slice(0, N)`。
+- **onto-extract "按名去重"对编辑不友好**：line 233-241 已存在则 `continue`，后入块即便 description 更富也不会更新。未来要做"以新换旧/取富者"需改这段逻辑；这是分块上线前要先解决的 TODO。
 
 ---
 
-## 五、未验证 / 历史待办（真实优先级见 KICKOFF-P0）
+## 五、已接入缝变更（时间倒序）
+
+### 2026-06-11：工作流与任务栏正式分离（A 方案）
+- **总控主导**。`server/src/db.ts:859` — `listSessions` SQL 加 `AND workflow_id IS NULL`，任务栏不再返回带 workflowId 的 session。
+- POST 端点 `workflowId` 参数透传、前端 `api.createSession` 的 `workflowId` 参数、sessions 表 `workflow_id` 列均**休眠保留**（不拆除）。
+- `docs/wiki.html:511` done brief 备注同步更新。
+- 验收：`typecheck` 绿（仅后端改动）。验证方法：工作流运行后 `/api/workspaces/:id/sessions` 应无 workflow 会话；无 `git` 操作。
+- **红线检查**：未碰 `draw_data`/`clean_data`，未删表/列。
+
+---
+
+## 六、未验证 / 历史待办（真实优先级见 KICKOFF-P0）
 
 - ⚠️ **AnaX 8 阶段链路从未真实 E2E 执行**（fan-out/flywheel/gate 全在 fake adapter 下跑通）；喂真实留存聚合数据（综合评分≥7）才跑得出价值，否则必卡 `data_gate` → **KICKOFF P0-C 核心**。
 - skill 蒸馏全链路 smoke（提炼→预览→保存→listSkills 出现）未实跑，需验证 LLM frontmatter 稳定性 → P0-C。
@@ -91,7 +115,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 
 ---
 
-## 六、P1：Notebook + 语义层消费
+## 七、P1：Notebook + 语义层消费
 
 - Notebook（SQL/Python/MD 混排）为 E 域 P1。
 - 指标语义层 `MetricDefinition`（总控定契约、D 实现）：E 生成 SQL 时**强制引用 metric 口径**，不自造。

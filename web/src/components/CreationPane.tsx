@@ -46,6 +46,9 @@ interface Milestone {
 }
 
 const FALLBACK_COLORS = ["#0ea5e9", "#10b981", "#f59e0b", "#ef4444", "#8b5cf6", "#ec4899", "#14b8a6", "#f97316"];
+const WORKFLOW_REFRESH_ATTEMPTS = 6;
+const WORKFLOW_REFRESH_DELAY_MS = 700;
+const WORKFLOW_WAIT_TIMEOUT_MS = 45_000;
 
 function nodeColor(node: WorkflowNode, idx: number): string {
   return node.color || FALLBACK_COLORS[idx % FALLBACK_COLORS.length]!;
@@ -58,6 +61,30 @@ function nodeIcon(node: WorkflowNode): string {
 function isQuestion(text: string): boolean {
   if (text.length > 300) return false;
   return /[？?]/.test(text) || /^(请|能否|可以|是否|怎么|如何|什么|哪|谁|几点|多少)/.test(text.trim());
+}
+
+function lastAssistantQuestion(messages: UiMessage[]): string | null {
+  for (const message of [...messages].reverse()) {
+    if (message.role !== "assistant") continue;
+    const text = textOf(message.content).trim();
+    if (text && isQuestion(text)) return text;
+  }
+  return null;
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => window.setTimeout(resolve, ms));
+}
+
+async function readWorkflowWithRetry(flowId: string): Promise<WorkflowDef | null> {
+  let last: WorkflowDef | null = null;
+  for (let i = 0; i < WORKFLOW_REFRESH_ATTEMPTS; i += 1) {
+    const result = await api.flowWorkflowGet(flowId);
+    last = result.workflow;
+    if (last && last.nodes.length > 0) return last;
+    if (i < WORKFLOW_REFRESH_ATTEMPTS - 1) await delay(WORKFLOW_REFRESH_DELAY_MS);
+  }
+  return last;
 }
 
 function inferProgress(
@@ -136,12 +163,15 @@ export function CreationPane(p: Props) {
   const [editingNodeId, setEditingNodeId] = useState<string | null>(null);
   const [expandedMsgIds, setExpandedMsgIds] = useState<Set<string>>(new Set());
   const [flowState, setFlowState] = useState<Flow>(p.flow);
+  const [activeSince, setActiveSince] = useState<number | null>(null);
+  const [clock, setClock] = useState(() => Date.now());
 
   const flowIdRef = useRef(p.flow.id);
   flowIdRef.current = p.flow.id;
   const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const generationRunning = flowState.generationStatus === "generating";
 
   useEffect(() => {
     api.listFlowMessages(p.flow.id).then((rows: StoredFlowMessage[]) => {
@@ -167,11 +197,11 @@ export function CreationPane(p: Props) {
           if (timer) clearInterval(timer);
           const [messageRows, workflowResult] = await Promise.all([
             api.listFlowMessages(p.flow.id),
-            api.flowWorkflowGet(p.flow.id),
+            readWorkflowWithRetry(p.flow.id),
           ]);
           if (cancelled) return;
           setMessages(messageRows.map((row) => ({ id: nextId(), role: row.role, content: asBlocks(row.content) })));
-          setWorkflow(workflowResult.workflow);
+          setWorkflow(workflowResult);
         }
       } catch {
         // Keep polling; the local dev server may be restarting.
@@ -191,7 +221,7 @@ export function CreationPane(p: Props) {
         setChatRunning(true);
       } else if (msg.type === "run_end" && !msg.runId && msg.flowId === flowIdRef.current) {
         setChatRunning(false);
-        api.flowWorkflowGet(flowIdRef.current).then((r) => setWorkflow(r.workflow)).catch(() => {});
+        readWorkflowWithRetry(flowIdRef.current).then((next) => setWorkflow(next)).catch(() => {});
       } else if (msg.type === "error" && !msg.runId && msg.flowId === flowIdRef.current) {
         setChatRunning(false);
         setMessages((m) => [...m, { id: nextId(), role: "assistant", content: [], error: msg.message }]);
@@ -212,12 +242,26 @@ export function CreationPane(p: Props) {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [messages]);
 
+  useEffect(() => {
+    if (!chatRunning && !generationRunning) {
+      setActiveSince(null);
+      setClock(Date.now());
+      return;
+    }
+    setActiveSince((current) => current ?? Date.now());
+    const timer = window.setInterval(() => setClock(Date.now()), 1000);
+    return () => window.clearInterval(timer);
+  }, [chatRunning, generationRunning]);
+
   function autosize() {
     const ta = taRef.current;
     if (!ta) return;
     ta.style.height = "auto";
     ta.style.height = `${Math.min(ta.scrollHeight, 100)}px`;
   }
+
+  const pendingQuestion = lastAssistantQuestion(messages);
+  const canReplyDuringGeneration = generationRunning && !chatRunning && Boolean(pendingQuestion);
 
   const sendText = useCallback(
     (text: string) => {
@@ -240,11 +284,11 @@ export function CreationPane(p: Props) {
 
   const submit = useCallback(() => {
     const text = input.trim();
-    if (!text || chatRunning || flowState.generationStatus === "generating") return;
+    if (!text || chatRunning || (generationRunning && !canReplyDuringGeneration)) return;
     sendText(text);
     setInput("");
     requestAnimationFrame(autosize);
-  }, [input, chatRunning, flowState.generationStatus, sendText]);
+  }, [input, chatRunning, generationRunning, canReplyDuringGeneration, sendText]);
 
   const onImport = useCallback(
     async (files: FileList) => {
@@ -291,7 +335,9 @@ export function CreationPane(p: Props) {
 
   const progress = inferProgress(workflow, messages, chatRunning);
   const hasNodes = workflow && workflow.nodes.length > 0;
-  const generationRunning = flowState.generationStatus === "generating";
+  const activeWaitMs = activeSince ? clock - activeSince : 0;
+  const showWorkflowTimeout = !hasNodes && (chatRunning || generationRunning) && activeWaitMs > WORKFLOW_WAIT_TIMEOUT_MS;
+  const showStoppedEmpty = !hasNodes && messages.length > 0 && !chatRunning && !generationRunning;
 
   // Compute node card sizing based on count
   const nodeCount = workflow?.nodes.length ?? 0;
@@ -313,6 +359,16 @@ export function CreationPane(p: Props) {
       {flowState.generationStatus === "failed" && (
         <div className="shrink-0 border-b border-rose-200 bg-rose-50 px-4 py-2 text-[11.5px] text-rose-600 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300">
           工作流生成失败：{flowState.generationError ?? "未知错误"}。可以在下方对话中补充要求后重试。
+        </div>
+      )}
+      {!hasNodes && pendingQuestion && !chatRunning && (
+        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11.5px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+          pi 正在等待回复：{pendingQuestion}
+        </div>
+      )}
+      {showWorkflowTimeout && (
+        <div className="shrink-0 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11.5px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
+          已等待 {Math.floor(activeWaitMs / 1000)} 秒仍未读取到 workflow.json。若 pi 停在确认问题，请在下方直接回复；若已生成到其它目录，可点击「导入」选择该文件夹。
         </div>
       )}
       {/* ── Top half: Architecture + Progress ── */}
@@ -358,13 +414,40 @@ export function CreationPane(p: Props) {
         <div className="min-h-0 flex-1 overflow-auto p-4">
           {!hasNodes ? (
             <div className="flex h-full items-center justify-center text-[12px] text-neutral-400 dark:text-neutral-500">
-              {chatRunning || generationRunning ? (
-                <span className="flex items-center gap-2">
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                  pi 正在设计工作流架构…
-                </span>
+              {pendingQuestion && !chatRunning ? (
+                <div className="flex max-w-md flex-col items-center gap-2 text-center">
+                  <span className="font-medium text-amber-600 dark:text-amber-400">pi 正在等待你的回复</span>
+                  <span className="leading-5 text-neutral-500 dark:text-neutral-400">{pendingQuestion}</span>
+                </div>
+              ) : chatRunning || generationRunning ? (
+                <div className="flex max-w-md flex-col items-center gap-2 text-center">
+                  <span className="flex items-center gap-2">
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                    pi 正在设计工作流架构…
+                  </span>
+                  {showWorkflowTimeout && (
+                    <span className="text-[11px] leading-4 text-amber-600 dark:text-amber-400">
+                      如果 pi 已经停下提问，直接在下方回复；如果 workflow.json 被写到业务输出目录，使用右上角「导入」载入该目录。
+                    </span>
+                  )}
+                </div>
               ) : messages.length === 0 ? (
                 "在下方描述需求，pi 将自动设计工作流"
+              ) : showStoppedEmpty ? (
+                <div className="flex max-w-md flex-col items-center gap-2 text-center">
+                  <span className="font-medium text-neutral-700 dark:text-neutral-200">未读取到 workflow.json</span>
+                  <span className="leading-5 text-neutral-500 dark:text-neutral-400">
+                    可以让 pi 继续生成并明确写入当前 flow 根目录；如果文件已生成到其它项目目录，请导入包含 workflow.json 的文件夹。
+                  </span>
+                  <button
+                    onClick={() => fileRef.current?.click()}
+                    disabled={importing}
+                    className="inline-flex h-7 items-center gap-1.5 rounded border border-neutral-200 px-2.5 text-[11px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  >
+                    {importing ? <RefreshCw className="h-3 w-3 animate-spin" /> : <FolderUp className="h-3 w-3" />}
+                    导入 workflow 文件夹
+                  </button>
+                </div>
               ) : (
                 "等待 pi 生成工作流节点…"
               )}
@@ -492,7 +575,7 @@ export function CreationPane(p: Props) {
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex h-6 shrink-0 items-center gap-2 border-b border-neutral-100 px-4 dark:border-neutral-800">
           <span className="text-[9.5px] font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">对话</span>
-          {(chatRunning || generationRunning) && (
+          {(chatRunning || generationRunning) && !canReplyDuringGeneration && (
             <span className="flex items-center gap-1 text-[9.5px] text-amber-500">
               <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
               pi 工作中
@@ -570,7 +653,7 @@ export function CreationPane(p: Props) {
                   </div>
                 );
               })}
-              {(chatRunning || generationRunning) && (
+              {(chatRunning || generationRunning) && !canReplyDuringGeneration && (
                 <div className="flex items-center gap-2 text-[11px] text-neutral-400">
                   <span className="inline-block h-2.5 w-1.5 animate-pulse bg-neutral-300 dark:bg-neutral-600" />
                   pi 正在处理…
@@ -593,7 +676,7 @@ export function CreationPane(p: Props) {
               <textarea
                 ref={taRef}
                 value={input}
-                disabled={generationRunning}
+                disabled={generationRunning && !canReplyDuringGeneration}
                 onChange={(e) => {
                   setInput(e.target.value);
                   autosize();
@@ -605,7 +688,7 @@ export function CreationPane(p: Props) {
                   }
                 }}
                 rows={1}
-                placeholder={generationRunning ? "正在从探索对话生成工作流..." : "描述需求或告诉 pi 修复问题，Shift+Enter 发送"}
+                placeholder={canReplyDuringGeneration ? "回复 pi 的问题，Shift+Enter 发送" : generationRunning ? "正在从探索对话生成工作流..." : "描述需求或告诉 pi 修复问题，Shift+Enter 发送"}
                 className="min-h-[30px] w-full resize-none bg-transparent px-3 py-1.5 text-[12.5px] leading-5 text-neutral-900 outline-none placeholder:text-neutral-400 disabled:opacity-50 dark:text-neutral-100 dark:placeholder:text-neutral-500"
               />
             </div>
@@ -625,10 +708,10 @@ export function CreationPane(p: Props) {
               </label>
               <button
                 onClick={chatRunning ? stopChat : submit}
-                disabled={generationRunning || (!chatRunning && !input.trim())}
+                disabled={(generationRunning && !canReplyDuringGeneration) || (!chatRunning && !input.trim())}
                 className={cn(
                   "inline-flex h-7 w-7 items-center justify-center rounded-full transition-colors",
-                  generationRunning || (!chatRunning && !input.trim())
+                  (generationRunning && !canReplyDuringGeneration) || (!chatRunning && !input.trim())
                     ? "bg-neutral-200 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600"
                     : "bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white",
                 )}

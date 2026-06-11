@@ -51,8 +51,25 @@ export function extractSkillMarkdown(raw: string): string {
   let text = raw.trim();
   const fence = text.match(/^```(?:markdown|md)?\s*\n([\s\S]*?)\n```$/);
   if (fence?.[1]) text = fence[1].trim();
-  const fmStart = text.indexOf("---");
-  if (fmStart > 0) text = text.slice(fmStart);
+  const namedStarts = [...text.matchAll(/(?:^|\n)---\s*\nname\s*:/g)];
+  if (namedStarts.length > 0) {
+    const start = namedStarts[namedStarts.length - 1]!.index ?? 0;
+    text = text.slice(text[start] === "\n" ? start + 1 : start).trim();
+    return text.endsWith("\n") ? text : `${text}\n`;
+  }
+  const candidates: string[] = [];
+  const frontmatter = /(?:^|\n)---\s*\n([\s\S]*?)\n---/g;
+  for (const match of text.matchAll(frontmatter)) {
+    if (match[1]?.includes("```")) continue;
+    const start = match.index ?? 0;
+    const candidate = text.slice(text[start] === "\n" ? start + 1 : start).trim();
+    if (parseSkillName(candidate) && parseSkillDescription(candidate)) candidates.push(candidate);
+  }
+  if (candidates.length > 0) text = candidates[candidates.length - 1]!;
+  else {
+    const fmStart = text.indexOf("---");
+    if (fmStart > 0) text = text.slice(fmStart);
+  }
   return text.endsWith("\n") ? text : `${text}\n`;
 }
 
@@ -63,6 +80,15 @@ export function parseSkillName(content: string): string | undefined {
   const nameLine = match[1].split("\n").find((line) => /^name\s*:/.test(line));
   if (!nameLine) return undefined;
   const value = nameLine.replace(/^name\s*:/, "").trim().replace(/^["']|["']$/g, "");
+  return value || undefined;
+}
+
+function parseSkillDescription(content: string): string | undefined {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!match?.[1]) return undefined;
+  const descriptionLine = match[1].split("\n").find((line) => /^description\s*:/.test(line));
+  if (!descriptionLine) return undefined;
+  const value = descriptionLine.replace(/^description\s*:/, "").trim().replace(/^["']|["']$/g, "");
   return value || undefined;
 }
 

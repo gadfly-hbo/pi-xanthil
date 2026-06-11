@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, Clock, FileText, Loader2, MessageSquareText, Pencil, RefreshCw, Sparkles, Wand2, GitCompare } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { FlowTreeNode, PiModel, WorkspacePath } from "@/types";
 
 type Scope =
@@ -43,6 +44,18 @@ interface HistoryEntry {
 }
 
 type ResultTab = "review" | "annotations" | "diff" | "edit";
+
+interface ReviewTaskResult {
+  content: string;
+  annotations: Annotation[];
+  totalScore: number;
+  reportContent: string;
+}
+
+interface AutoFixTaskResult {
+  path: string;
+  content: string;
+}
 
 const DEFAULT_REVIEW_PROMPT = `你是一名专业的数据分析报告评审专家。请从以下维度对报告进行结构化评审：
 
@@ -135,10 +148,25 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
   const [activeTab, setActiveTab] = useState<ResultTab>("review");
   const [history, setHistory] = useState<HistoryEntry[]>([]);
   const [loading, setLoading] = useState(false);
-  const [reviewing, setReviewing] = useState(false);
-  const [fixing, setFixing] = useState(false);
   const [error, setError] = useState("");
   const [selectedModel, setSelectedModel] = useState(() => model || defaultModelId(models));
+
+  const selectedReport = useMemo(
+    () => reports.find((report) => report.id === selectedReportId) ?? null,
+    [reports, selectedReportId],
+  );
+
+  const reviewKey = selectedReport
+    ? "report-review:" + selectedReport.pathId + ":" + selectedReport.relPath
+    : "report-review:__inactive__";
+  const fixKey = selectedReport
+    ? "report-autofix:" + selectedReport.pathId + ":" + selectedReport.relPath
+    : "report-autofix:__inactive__";
+  const reviewTask = useResumableTask<ReviewTaskResult>(reviewKey);
+  const fixTask = useResumableTask<AutoFixTaskResult>(fixKey);
+  const reviewing = reviewTask.status === "running";
+  const fixing = fixTask.status === "running";
+
 
   useEffect(() => {
     if (model) setSelectedModel(model);
@@ -149,11 +177,6 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
       setSelectedModel(defaultModelId(models));
     }
   }, [models, model, selectedModel]);
-
-  const selectedReport = useMemo(
-    () => reports.find((report) => report.id === selectedReportId) ?? null,
-    [reports, selectedReportId],
-  );
 
   const isMdReport = useMemo(() => {
     if (!selectedReport) return false;
@@ -241,7 +264,6 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
 
   const startReview = useCallback(async () => {
     if (!selectedReport || !prompt.trim() || reviewing) return;
-    setReviewing(true);
     setError("");
     setReviewContent("");
     setAnnotations([]);
@@ -251,31 +273,37 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
     setFixedContent("");
     setEditingContent("");
     setActiveTab("review");
-    try {
+    await reviewTask.start(async () => {
       const result = await api.reviewReport({
         pathId: selectedReport.pathId,
         relPath: selectedReport.relPath,
         prompt: prompt.trim(),
         model: selectedModel || undefined,
       });
-      setReviewContent(result.content);
-      setAnnotations(result.annotations ?? []);
-      setTotalScore(result.totalScore ?? 0);
-      setOriginalContent(result.reportContent);
-      setEditingContent(result.reportContent);
-      void loadHistory();
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setReviewing(false);
-    }
-  }, [reviewing, selectedModel, prompt, selectedReport, loadHistory]);
+      return {
+        content: result.content,
+        annotations: result.annotations ?? [],
+        totalScore: result.totalScore ?? 0,
+        reportContent: result.reportContent,
+      };
+    });
+    void loadHistory();
+  }, [reviewing, selectedModel, prompt, selectedReport, reviewTask, loadHistory]);
+
+  useEffect(() => {
+    if (reviewTask.status !== "done" || !reviewTask.data) return;
+    const data = reviewTask.data;
+    setReviewContent(data.content);
+    setAnnotations(data.annotations);
+    setTotalScore(data.totalScore);
+    setOriginalContent(data.reportContent);
+    setEditingContent(data.reportContent);
+  }, [reviewTask.status, reviewTask.data]);
 
   const autoFix = useCallback(async () => {
     if (!selectedReport || !reviewContent || fixing) return;
-    setFixing(true);
     setError("");
-    try {
+    await fixTask.start(async () => {
       const result = await api.autoFixReport({
         pathId: selectedReport.pathId,
         relPath: selectedReport.relPath,
@@ -283,17 +311,18 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
         prompt: prompt.trim(),
         model: selectedModel || undefined,
       });
-      setFixedPath(result.path);
-      setFixedContent(result.content);
-      setEditingContent(result.content);
-      setActiveTab("diff");
       onGenerated?.();
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setFixing(false);
-    }
-  }, [fixing, selectedModel, onGenerated, prompt, reviewContent, selectedReport]);
+      return { path: result.path, content: result.content };
+    });
+  }, [fixing, selectedModel, onGenerated, prompt, reviewContent, selectedReport, fixTask]);
+
+  useEffect(() => {
+    if (fixTask.status !== "done" || !fixTask.data) return;
+    setFixedPath(fixTask.data.path);
+    setFixedContent(fixTask.data.content);
+    setEditingContent(fixTask.data.content);
+    setActiveTab("diff");
+  }, [fixTask.status, fixTask.data]);
 
   const saveManualEdit = useCallback(async () => {
     if (!selectedReport || !editingContent.trim()) return;
@@ -363,10 +392,10 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
         </button>
       </div>
 
-      {error && (
+      {(error || reviewTask.error || fixTask.error) && (
         <div className="flex items-center gap-1.5 border-b border-rose-100 bg-rose-50 px-4 py-2 text-[12px] text-rose-600 dark:border-rose-950 dark:bg-rose-950/30 dark:text-rose-300">
           <AlertTriangle className="h-3.5 w-3.5" />
-          {error}
+          {error || reviewTask.error || fixTask.error}
         </div>
       )}
 

@@ -13,6 +13,7 @@ import {
 import { AlertTriangle, Download, Gauge, GitFork, Loader2, RefreshCw, Sparkles, Target } from "lucide-react";
 import { api, type TocGraphItem } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { Flow, FlowTreeNode, PiModel } from "@/types";
 
 type Scope =
@@ -231,11 +232,9 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
   const [reports, setReports] = useState<ReportOption[]>([]);
   const [selectedReportId, setSelectedReportId] = useState("");
   const [content, setContent] = useState("");
-  const [graph, setGraph] = useState<TocGraphItem[]>([]);
   const [model, setModel] = useState(DEFAULT_TOC_MODEL);
   const [loadingReports, setLoadingReports] = useState(false);
   const [loadingContent, setLoadingContent] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [saving, setSaving] = useState(false);
   const [saveMsg, setSaveMsg] = useState("");
   const [error, setError] = useState("");
@@ -250,6 +249,13 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
   const scopeSessionId = scope.type === "session" ? scope.sessionId : null;
   const scopeFlowId = scope.type === "flow" ? scope.flow?.id ?? null : null;
 
+  const taskKey = selectedReport
+    ? "toc:" + (scopeSessionId ?? scopeFlowId ?? "") + ":" + (selectedReport.runId ?? "") + ":" + selectedReport.path
+    : "toc:__inactive__";
+  const task = useResumableTask<{ nodes: TocGraphItem[]; model?: string }>(taskKey);
+  const generating = task.status === "running";
+  const graph = task.data?.nodes ?? [];
+
   useEffect(() => {
     if (models.some((item) => item.id === model)) return;
     setModel(defaultModelId(models));
@@ -262,7 +268,6 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
     setReports([]);
     setSelectedReportId("");
     setContent("");
-    setGraph([]);
     try {
       if (sc.type === "session") {
         if (!sc.sessionId) return;
@@ -312,7 +317,6 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
 
   useEffect(() => {
     setContent("");
-    setGraph([]);
     if (!selectedReport) return;
     const sc = scopeRef.current;
     setLoadingContent(true);
@@ -332,9 +336,8 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
   const generate = useCallback(async () => {
     const sc = scopeRef.current;
     if (!selectedReport || !content.trim() || generating) return;
-    setGenerating(true);
     setError("");
-    try {
+    await task.start(async () => {
       const result = await api.generateTocGraph({
         reportName: basenamePath(selectedReport.path),
         content,
@@ -342,14 +345,14 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
         sessionId: sc.type === "session" ? sc.sessionId ?? undefined : undefined,
         flowId: sc.type === "flow" ? sc.flow?.id : undefined,
       });
-      setGraph(result.nodes);
-      if (result.model) setModel(result.model);
-    } catch (err) {
-      setError(String(err));
-    } finally {
-      setGenerating(false);
-    }
-  }, [content, generating, model, selectedReport]);
+      return { nodes: result.nodes, model: result.model };
+    });
+  }, [content, generating, model, selectedReport, task]);
+
+  useEffect(() => {
+    if (task.status !== "done" || !task.data?.model) return;
+    setModel((current) => current === task.data!.model ? current : task.data!.model!);
+  }, [task.status, task.data]);
 
   const saveAsImage = useCallback(async () => {
     if (graph.length === 0) return;
@@ -449,10 +452,10 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
         </button>
       </div>
 
-      {error && (
+      {(error || task.error) && (
         <div className="flex items-center gap-1.5 border-b border-rose-100 bg-rose-50 px-4 py-2 text-[12px] text-rose-600 dark:border-rose-950 dark:bg-rose-950/30 dark:text-rose-300">
           <AlertTriangle className="h-3.5 w-3.5" />
-          {error}
+          {error || task.error}
         </div>
       )}
       {saveMsg && (

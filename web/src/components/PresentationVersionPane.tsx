@@ -3,6 +3,7 @@ import { AlertTriangle, FileText, Loader2, RefreshCw, Sparkles } from "lucide-re
 import { Markdown } from "@/components/Markdown";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
 import { api } from "@/lib/api";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { FlowTreeNode, WorkspacePath } from "@/types";
 
 type Scope =
@@ -24,6 +25,13 @@ interface ReportOption {
 }
 
 const DEFAULT_PROMPT = "请基于原详细报告，提炼一份用于汇报和沟通的简化 Markdown 版本。保留核心结论、关键数据支撑、风险与下一步建议，语言简洁清晰。";
+
+interface PresentationTaskResult {
+  path: string;
+  content: string;
+  storylinePath: string;
+  storylineHtml: string;
+}
 
 function isReportFile(name: string): boolean {
   return /\.(md|markdown|txt)$/i.test(name);
@@ -64,8 +72,15 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
   const [storylineHtml, setStorylineHtml] = useState("");
   const [activeResult, setActiveResult] = useState<"presentation" | "storyline">("presentation");
   const [loading, setLoading] = useState(false);
-  const [generating, setGenerating] = useState(false);
   const [error, setError] = useState("");
+
+  const scopeKeyPart = scope
+    ? scope.type === "workspace" ? scope.workspaceId
+      : scope.type === "session" ? scope.sessionId
+      : scope.flowId
+    : "__no_scope__";
+  const task = useResumableTask<PresentationTaskResult>("presentation:" + scopeKeyPart);
+  const generating = task.status === "running";
 
   const selectedReport = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
@@ -127,14 +142,13 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
 
   const generate = useCallback(async () => {
     if (!selectedReport || !prompt.trim() || generating) return;
-    setGenerating(true);
     setError("");
     setGeneratedPath("");
     setGeneratedContent("");
     setStorylinePath("");
     setStorylineHtml("");
     setActiveResult("presentation");
-    try {
+    await task.start(async () => {
       const result = await api.generatePresentationVersion({
         pathId: selectedReport.pathId,
         relPath: selectedReport.relPath,
@@ -146,17 +160,23 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
           jsonPath: selectedBusinessRequirement.jsonPath,
         } : undefined,
       });
-      setGeneratedPath(result.path);
-      setGeneratedContent(result.content);
-      setStorylinePath(result.storylinePath);
-      setStorylineHtml(result.storylineHtml);
       onGenerated?.();
-    } catch (err) {
-      setError(displayGenerateError(err));
-    } finally {
-      setGenerating(false);
-    }
-  }, [generating, model, onGenerated, prompt, selectedBusinessRequirement, selectedReport]);
+      return {
+        path: result.path,
+        content: result.content,
+        storylinePath: result.storylinePath,
+        storylineHtml: result.storylineHtml,
+      };
+    });
+  }, [generating, model, onGenerated, prompt, selectedBusinessRequirement, selectedReport, task]);
+
+  useEffect(() => {
+    if (task.status !== "done" || !task.data) return;
+    setGeneratedPath(task.data.path);
+    setGeneratedContent(task.data.content);
+    setStorylinePath(task.data.storylinePath);
+    setStorylineHtml(task.data.storylineHtml);
+  }, [task.status, task.data]);
 
   const emptyHint = paths.length === 0
     ? "请先在「报告输出」tab 添加报告输出文件夹或文件"
@@ -199,10 +219,10 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
         </button>
       </div>
 
-      {error && (
+      {(error || task.error) && (
         <div className="flex items-center gap-1.5 border-b border-rose-100 bg-rose-50 px-4 py-2 text-[12px] text-rose-600 dark:border-rose-950 dark:bg-rose-950/30 dark:text-rose-300">
           <AlertTriangle className="h-3.5 w-3.5" />
-          {error}
+          {error || (task.error ? displayGenerateError(task.error) : "")}
         </div>
       )}
 

@@ -477,6 +477,11 @@ function planText(items: unknown): string {
 
 test("extractMarkerArray parses a fenced JSON array and ignores non-arrays/garbage", () => {
   assert.deepEqual(extractMarkerArray(planText([{ id: "H1" }]), "anax-hypotheses-plan"), [{ id: "H1" }]);
+  assert.deepEqual(extractMarkerArray("```anax-hypotheses-plan[{\"id\":\"H2\"}]\n```", "anax-hypotheses-plan"), [{ id: "H2" }]);
+  assert.deepEqual(
+    extractMarkerArray("```anax-hypotheses-plan\nnot json\n```\n```anax-hypotheses-plan[{\"id\":\"H3\"}]\n```", "anax-hypotheses-plan"),
+    [{ id: "H3" }],
+  );
   assert.equal(extractMarkerArray("no block here", "anax-hypotheses-plan"), null);
   assert.equal(extractMarkerArray("```anax-hypotheses-plan\n{\"id\":1}\n```", "anax-hypotheses-plan"), null);
   assert.equal(extractMarkerArray("```anax-hypotheses-plan\nnot json\n```", "anax-hypotheses-plan"), null);

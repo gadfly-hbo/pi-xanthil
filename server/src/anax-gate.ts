@@ -55,20 +55,28 @@ export interface GateVerdict {
   summary: string;
 }
 
+function isPassingRedLine(redLine: RedLine): boolean {
+  const text = `${redLine.id ?? ""} ${redLine.desc ?? ""}`.toLowerCase();
+  return /\bpass\b/.test(text) || text.includes("通过") || text.includes("未触发") || text.includes("无红线");
+}
+
 /**
  * Extract the structured verdict from a gate node's pi output.
  * Returns null when no (valid) ```anax-verdict``` block is present.
  */
 export function extractVerdict(text: string): RawVerdict | null {
-  const match = text.match(/```anax-verdict\s*\n([\s\S]+?)```/);
-  if (!match?.[1]) return null;
-  try {
-    const parsed = JSON.parse(match[1].trim()) as RawVerdict;
-    if (typeof parsed !== "object" || parsed === null) return null;
-    return parsed;
-  } catch {
-    return null;
+  const blocks = text.matchAll(/```anax-verdict(?:[ \t]*\r?\n|[ \t]*)?([\s\S]+?)```/g);
+  let latest: RawVerdict | null = null;
+  for (const match of blocks) {
+    if (!match[1]) continue;
+    try {
+      const parsed = JSON.parse(match[1].trim()) as RawVerdict;
+      if (typeof parsed === "object" && parsed !== null) latest = parsed;
+    } catch {
+      // Keep scanning: models may quote an invalid example before the final block.
+    }
   }
+  return latest;
 }
 
 function normalizeConfidence(value: unknown): Confidence | undefined {
@@ -76,6 +84,17 @@ function normalizeConfidence(value: unknown): Confidence | undefined {
   // "medium-high" is a common model output; treat as "high" (model uses it when evidence is strong).
   if (value === "medium-high") return "high";
   return undefined;
+}
+
+function isAggregateDataQualityStage(stage: string): boolean {
+  const normalized = stage.trim().toLowerCase();
+  return (
+    normalized === "data"
+    || normalized === "data_quality"
+    || normalized.includes("综合")
+    || normalized.includes("overall")
+    || normalized.includes("数据质量")
+  );
 }
 
 export interface GateThresholds {
@@ -93,7 +112,7 @@ export interface GateThresholds {
 export function enforceGate(raw: RawVerdict, stageId: string, thresholds?: GateThresholds): GateVerdict {
   const t = thresholds ?? GATE_THRESHOLDS;
   const reasons: string[] = [];
-  const redLines = Array.isArray(raw.redLines) ? raw.redLines : [];
+  const redLines = Array.isArray(raw.redLines) ? raw.redLines.filter((rl) => !isPassingRedLine(rl)) : [];
   const stages = Array.isArray(raw.stages) ? raw.stages : [];
 
   for (const rl of redLines) {
@@ -108,17 +127,18 @@ export function enforceGate(raw: RawVerdict, stageId: string, thresholds?: GateT
   const isReviewGate = stageId === "review_gate";
 
   for (const s of stages) {
+    const isAggregateDataStage = stageId === "data_gate" ? isAggregateDataQualityStage(s.stage) : true;
     const conf = normalizeConfidence(s.confidence);
-    if (conf && CONFIDENCE_SCORE[conf] < CONFIDENCE_SCORE[t.minConfidence]) {
+    if (isAggregateDataStage && conf && CONFIDENCE_SCORE[conf] < CONFIDENCE_SCORE[t.minConfidence]) {
       reasons.push(`[${s.stage}] 置信度 ${conf} 低于 ${t.minConfidence}`);
     }
     const isDataSubStage = isReviewGate && s.stage.toLowerCase().includes("data");
-    if (!isReviewGate || !isDataSubStage) {
+    if (isAggregateDataStage && (!isReviewGate || !isDataSubStage)) {
       if (typeof s.evidence === "number" && s.evidence < t.minEvidenceCount) {
         reasons.push(`[${s.stage}] 证据数 ${s.evidence} 低于 ${t.minEvidenceCount}`);
       }
     }
-    if (!isReviewGate) {
+    if (!isReviewGate && isAggregateDataStage) {
       if (typeof s.dataQuality === "number" && s.dataQuality < t.minDataQualityScore) {
         reasons.push(`[${s.stage}] 数据质量 ${s.dataQuality} 低于 ${t.minDataQualityScore}`);
       }
@@ -195,10 +215,12 @@ export function deterministicRedLineCheck(
 
     // RL06: any hypothesis flagged crossValidate:true must have cross-validation
     // evidence in the insight output (the insight prompt explicitly demands this).
-    const hypoMatch = planText.match(/```anax-hypotheses-plan\s*\n([\s\S]+?)```/);
-    if (hypoMatch?.[1]) {
+    const hypoMatches = planText.matchAll(/```anax-hypotheses-plan(?:[ \t]*\r?\n|[ \t]*)?([\s\S]+?)```/g);
+    for (const hypoMatch of hypoMatches) {
+      if (!hypoMatch[1]) continue;
       try {
         const hypotheses = JSON.parse(hypoMatch[1].trim()) as Array<{ id: string; crossValidate?: boolean }>;
+        if (!Array.isArray(hypotheses)) continue;
         const needCross = hypotheses.filter((h) => h.crossValidate === true);
         if (needCross.length > 0 && !insightText.includes("交叉验证")) {
           extra.push(
@@ -206,8 +228,9 @@ export function deterministicRedLineCheck(
               `但 insight 输出中未发现"交叉验证"内容`,
           );
         }
+        break;
       } catch {
-        // Unparseable block — skip; LLM verdict still applies.
+        // Unparseable block — keep scanning; LLM verdict still applies.
       }
     }
 

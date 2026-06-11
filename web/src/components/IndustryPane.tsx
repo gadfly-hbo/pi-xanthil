@@ -2,6 +2,7 @@ import { useCallback, useMemo, useState, lazy, Suspense } from "react";
 import { Factory, Search, Loader2, TrendingUp, AlertTriangle, Lightbulb, Gauge } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
+import { useResumableTask } from "@/lib/resumableTask";
 import type { IndustryIntel } from "@/types";
 
 const ReactECharts = lazy(() => import("echarts-for-react"));
@@ -24,29 +25,23 @@ interface IndustryPaneProps {
 
 export function IndustryPane({ workspaceId, model }: IndustryPaneProps) {
   const [industry, setIndustry] = useState("");
-  const [loading, setLoading] = useState(false);
-  const [error, setError] = useState("");
-  const [data, setData] = useState<IndustryIntel | null>(null);
+  const taskKey = "industry:" + workspaceId;
+  const { status, data, error, start } = useResumableTask<IndustryIntel>(taskKey);
+  const loading = status === "running";
+  const [localError, setLocalError] = useState("");
 
   const run = useCallback(async (name: string) => {
     const target = name.trim();
     if (!target) return;
     if (!workspaceId) {
-      setError("请先选择一个工作区");
+      setLocalError("请先选择一个工作区");
       return;
     }
-    setLoading(true);
-    setError("");
-    setData(null);
-    try {
-      const intel = await api.analyzeIndustry(workspaceId, target, model || undefined);
-      setData(intel);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : String(e));
-    } finally {
-      setLoading(false);
-    }
-  }, [workspaceId, model]);
+    setLocalError("");
+    void start(() => api.analyzeIndustry(workspaceId, target, model || undefined));
+  }, [workspaceId, model, start]);
+
+  const displayError = localError || error || "";
 
   const forcesOption = useMemo(() => {
     if (!data || data.forces.length === 0) return null;
@@ -129,9 +124,9 @@ export function IndustryPane({ workspaceId, model }: IndustryPaneProps) {
           </div>
         </div>
 
-        {error && (
+        {displayError && (
           <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-800 dark:bg-red-950 dark:text-red-400">
-            {error}
+            {displayError}
           </div>
         )}
 

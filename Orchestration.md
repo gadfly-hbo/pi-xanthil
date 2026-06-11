@@ -197,9 +197,7 @@ web/src/
 - [x] **P0-D 看板聚合数据源 API（D）** — done 2026-06-09：`/api/bi/aggregations` 列表(按扩展名过滤) + `/:pathId/data` 行列；仅 clean_data、draw_data 403、零 LLM。终审+实跑通过
 - [x] **总控契约前置（done 2026-06-09）** — `types.ts` 双侧定 `BiCell/BiAggregationDataset/BiAggregationData`(columns:string[]，FieldKind 前端推断) + 把 `index.ts` 的 `parseBiDatasetFromBuffer` 抽成共享 `server/src/bi-dataset-parser.ts:parseAggregationBuffer`(index.ts 改为别名复用)；typecheck+build 绿。**D/V 可开工**
 - [ ] **P0-C E2E 验证补课（E）** — 待 Agent-E 进场；P0 三域齐活后归档 changelog v2.1 + 定义 `MetricDefinition` 双侧契约（看板聚合 GET 是其简化前置）
-- [~] **工作流创建链路修复（P0-C 范畴 · 健壮版）** — 根因：创建链路赌 pi 自愿把 workflow.json 写进 cwd(flow 目录)、后端不兜底 → pi 提问停住 或 写错目录(被用户绝对输出路径约束压过) → UI 永远"等待 pi 生成工作流节点"。
-  - [x] **总控后端**（done 2026-06-09）：`index.ts` flow handler 加 `captureWorkflowFromText`(fenced 块/自报路径/裸 JSON 三路捕获)+`parseWorkflowCandidate`，run 结束若 flow 目录无合法 workflow.json 则捕获+规范化回填；typecheck/build 绿
-  - [ ] **E 前端**（已派 wiki E 卡）：硬化 CreationPane 创建 prompt(禁提问+钉死 flow 目录+输出目录约束不适用 workflow.json) + pi 提问/空态 UI 反馈 → 与总控后端联调实跑
+- [x] **工作流创建链路修复（P0-C 范畴 · 健壮版）** — done 2026-06-11，终审+联调实跑通过。根因：创建链路赌 pi 自愿写 workflow.json 到 cwd、后端不兜底 → pi 提问停住/写错目录 → UI 空等。三层协同：总控后端 `index.ts captureWorkflowFromText` 三路捕获+回填；E `MultiAgentExecutionPane` prompt 硬化(禁提问+钉死 flow 目录) + `CreationPane` 重试轮询/提问可回复/超时空态引导
 
 > 教训：终审须含**运行时端到端实跑**，仅 typecheck/build 绿不等于功能可用（KICKOFF P0-C 警告的正是此类）。后续 P0 终审一律加实跑门禁。
 

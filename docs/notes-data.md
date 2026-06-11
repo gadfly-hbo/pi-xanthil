@@ -8,18 +8,23 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-11 · Xan数据库「行业」「竞品」两子页 MVP 完成（总控直接出，真实 pi 实跑通过）
-- 进度：Xan 数据库 5 子页 — 天气✅、行业✅(新)、竞品✅(新)；the-crowd / 商圈 仍占位
-  - **方向（用户拍板）**：数据源＝pi agent 联网检索生成结构化情报（与天气同属"外部公开数据"层，非用户明细）；总控直接出可运行 MVP；行业/竞品保持两个独立子页。
-  - **后端**（`routes/data.ts`，新增）：`POST /api/workspaces/:id/industry/analyze` { industry, model? }、`POST .../competitor/analyze` { brand, competitors?, model? } → `runPiPrompt`(pi-adapter) 产结构化 JSON → 本地 `extractJson`(去 ```fenced```) → 防御式 coerce(字段补全 / score·share clamp 0-100)。**只发行业名/品牌名，不读任何工作区数据**。
-  - **契约**（types.ts 双侧）：`IndustryIntel`(marketSize/marketGrowth/concentration/trends/forces 五力/benchmarks/risks/opportunities)、`CompetitorIntel`(profiles 竞品档案/comparison 对标矩阵/substitutionRisk/recommendations)。
-  - **前端**：`lib/api/data.ts` 加 `analyzeIndustry`/`analyzeCompetitor`；新 `IndustryPane.tsx`(五力雷达+指标卡+趋势/基准/风险/机会)、`CompetitorPane.tsx`(份额条形图+竞品档案卡+对标矩阵表+替代风险/建议)；`tabs/DataTabs.tsx` 两占位换真 Pane。
-  - **实跑验证**：行业「服饰零售」HTTP 200/约 59s（市场规模约 1.3 万亿、五力 5 项含具体说明）；竞品「森马」200/约 131s（自动识别 优衣库/ZARA/H&M/美邦/以纯，含份额/对标/替代风险/建议）。pi `better-sqlite3` 扩展报错仅 stderr，被 NDJSON 解析忽略，不影响结果。
-- 下一步：① the-crowd / 商圈 两占位可按同范式(pi 联网检索 or 外部 API)补齐；② 行业/竞品情报可考虑缓存(db/data.ts 当前仍是空 stub)避免每次重跑 1-2 分钟；③ 与黄金策 Porter 五力 / 定价模型 competitor_price / model-lab competitor_substitution_risk 做语义联动。
-- 阻塞 / 待总控：无。（原 `vite build` 拦路项 `DecisionTabs.tsx` 经用户拍板，已在接缝层补 `decision` Tab(`MainHeader.tsx`) + 4 个 `decision_*` SubTab(`constants.ts`) 字面量 → server typecheck + web build 全绿。注：仅补类型字面量，decision 模块导航/渲染未接线，待其 owner 续做。）
+- 最近更新：2026-06-11 · Xan数据库 3 个 hotfix（行业/竞品续跑 + 竞品占位符 500 容错）
+- 进度：
+  - **hotfix-1 · 行业/竞品 tab 切回进度不丢**：新建 `web/src/lib/resumableTask.ts`（module-level store + `useSyncExternalStore` hook）；`IndustryPane.tsx` / `CompetitorPane.tsx` 删本地 loading/error/data 三 useState，换 `useResumableTask`。key = `industry:` + workspaceId / `competitor:` + workspaceId。**Weather 未改**（open-meteo 秒级返回 + useEffect 自动重拉，体感无丢失，按总控授权取舍）。
+  - **hotfix-2 · 竞品 `marketSharePct: X` 致命 500**：`routes/data.ts` 的 `extractJson` 失败时跑 `sanitizeBarePlaceholders`（字符串感知扫描器，仅替换值位置裸非法 token → `0`），重试 parse；行业 + 竞品 prompt 末尾补 "数值字段必须阿拉伯数字，无法估算填 0；严禁 X/N/A/待定/未知"。7 个 mock 用例（含 X / N/A / 中文占位符 / 嵌套 / 数组 / 字符串内 X / 合法 JSON）全过。
+- 校验：
+  - `cd server && npm run typecheck`：✅ 全绿
+  - `cd web && npm run build`：✅ 全绿（2026-06-11 总控终审复跑；此前 `BusinessRequirementPane.tsx` 的 3 个 ts2552 已被 V 域「续传推广」改造一并修复，build 阻塞解除）。
+  - 数据探索 LLM 隔离 grep：✅ 空匹配
+- 下一步：
+  - ① 行业/竞品 真机回归（tab 切走→1 分钟后切回是否仍在转圈/出结果）由用户实测。
+  - ② `extractJson` 同源风险：黄金策、未来其他结构化 JSON 路由若复用该模式，建议把 `sanitizeBarePlaceholders` 提到 `server/src/json-utils.ts` 复用 + 同步加 prompt "禁占位符" 文案。
+  - ③ `resumableTask` store 永不 GC，当前 key 量级（workspace 数）可忽略；未来若挂到探索/聚合等高频 key，需评估 LRU。
+- 阻塞 / 待总控：无（hotfix 链路 typecheck 全绿、mock 验证全过）。
 - 开放问题：
-  - V 域 `BiDashboardPane.tsx:37` 直接 fetch 漏 `/data` 后缀（历史项，未核实是否已修），建议改用 `api.getBiAggregationData()`。
-  - 「行业/竞品」属外部公开情报，pi 实际"联网"能力取决于 pi cli 自身工具；当前 prompt 指示"有联网优先检索，否则基于知识估算并标注"，未强约束真实检索。
+  - V 域 `BiDashboardPane.tsx:37` 直接 fetch 漏 `/data` 后缀（历史项，未核实是否已修）。
+  - 「行业/竞品」属外部公开情报，pi 实际"联网"能力取决于 pi cli 自身工具；当前 prompt "有联网优先检索"，未强约束真实检索。
+  - ~~web typecheck 被 `BusinessRequirementPane.tsx` 阻塞~~ **已解决**（2026-06-11：V 域续传推广改造该 Pane 时清掉 setGenerating/setClarifying 未定义错误，`npm run build` 全绿）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -85,6 +90,8 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **行业/竞品 走后端而非前端直连**（区别于天气）：因 pi 进程 spawn 在 server 端（`runPiPrompt`），故必须经 `routes/data.ts` 的 `*/analyze` 端点。LLM 产出走「文本输入→结构化 JSON→`extractJson` 去 fenced→防御式 coerce」范式（同 index.ts TOC/KG 套路，但 coerce 在 data 域本地实现，不 import index.ts 私有函数）。
 - **数据安全**：行业/竞品属"外部公开情报"层，请求只发用户输入的行业名/品牌名，**不读任何 workspace 原始/聚合数据**——故不违反数据安全铁律，与天气同级（外部数据）。
 - pi 默认 model 现可用（memory 旧记的 `deepseek-v4-flash` 报 developer-role 400 已不复现）；server spawn 需要 pi 绝对路径时用 `XANTHIL_PI_BIN` 覆盖（`pi` 是 shell function，`which pi` 解析不到，真实路径 `~/Dev/Env/npm-global/bin/pi`）。
+- **行业/竞品长任务"切 tab 续跑"范式**（2026-06-11 hotfix）：长任务（>10s 的 LLM 调用）禁用本地组件 useState 存 loading/data/error，必须用 `web/src/lib/resumableTask.ts` 的 `useResumableTask(key)`。store 在 module 层，promise 不绑组件生命周期，组件 unmount 不影响后台 fetch；mount 时 `useSyncExternalStore` 自动 rehydrate。**key 约定**："业务前缀:" + 业务上下文 id（如 `industry:` + workspaceId）；同 key 重复发起会复用在飞 promise，不重复请求。短任务（秒级 + 已有 useEffect 自动重拉，如 Weather）不必接入。
+- **LLM 结构化 JSON 占位符兜底**（2026-06-11 hotfix）：`routes/data.ts:extractJson` 现有 `sanitizeBarePlaceholders` 二级兜底——thinking 模型在无法估算数值时常写裸 `X` / `N/A` / `待定` / `未知`，导致 `JSON.parse` 整段炸返 500。Sanitize 仅在值位置（`:` / `[` / `,` 之后）替换裸非法 token 为 `0`，字符串字面量内部不动；配合 coerce 层 `asNum` 自然 clamp。**新增同类路由（黄金策等）若复用 `extractJson` 模式，建议把 sanitize 提到 `server/src/json-utils.ts` 共用 + 同步加 prompt "数值字段必须阿拉伯数字，无法估算填 0；严禁 X/N/A/待定/未知"**。
 
 ---
 
@@ -93,6 +100,9 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - `listKgNodes` 两个 SELECT 分支（含 `includeHidden=false` 默认路径）**都**要 `ai_extracted_hash AS aiExtractedHash`，否则跳过逻辑失效。
 - `pg`/`mysql2` 在 `--experimental-strip-types` 下的 ESM import 兼容性**未验证**；若报错改 `createRequire` 或动态 `import()`。
 - WeatherPane：`Record` 常量结尾 `};` 勿写成 `);`；数组访问/`toISOString().split` 返回含 `undefined`，需 `!`/`?? ""` 兜底。
+- **resumableTask snapshot 引用稳定性**（2026-06-11）：`useResumableTask` 内用 `WeakMap<Entry, snapshot>` 缓存——`useSyncExternalStore` 要求 `getSnapshot` 在状态未变时返回**同一对象引用**，否则触发 React 18 "getSnapshot should be cached" 警告 + 无限重渲染。任何复制此 hook 到其他模块的人必须保留 WeakMap 缓存逻辑。
+- **resumableTask key 命名硬约束**：按字符串拼，不用模板字符串（避免拼写抖动）；同一上下文必须 key 唯一在飞。当前 store 是 module 单例 + 永不 GC，工作区数量级 OK；未来高频 key 需评估 LRU。
+- **sanitizeBarePlaceholders 已知不完美点**：字符串型字段被 LLM 写裸占位符（如 `"summary": 待定`）会被替换为 `0` 而非 `""`，前端会显示字面 "0"。可接受（不致命），如需精细化需按字段类型映射，但 parse 时无类型信息——本次不做。
 
 ---
 
