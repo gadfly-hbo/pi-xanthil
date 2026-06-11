@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Building2, CheckCircle2, Pencil, Plus, RefreshCw, Save, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { sharedApi } from "@/lib/api/shared";
 import type { BusinessContext, BusinessContextCategory } from "@/types";
 
 const CATEGORIES: { id: BusinessContextCategory; label: string; hint: string }[] = [
@@ -34,18 +35,21 @@ export function BusinessContextPane({ workspaceId, onChanged }: { workspaceId: s
   const [draft, setDraft] = useState<EditDraft>(EMPTY_DRAFT);
   const [creating, setCreating] = useState(false);
   const [newDraft, setNewDraft] = useState<EditDraft>(EMPTY_DRAFT);
+  const [enablements, setEnablements] = useState<Map<string, boolean>>(new Map());
 
   const refresh = useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
     setError("");
     try {
-      const [nextItems, nextPrompt] = await Promise.all([
+      const [nextItems, nextPrompt, nextEnablements] = await Promise.all([
         api.listBusinessContexts(workspaceId),
         api.getBusinessContextPrompt(workspaceId),
+        sharedApi.listMemoryEnablements(workspaceId, "business_context"),
       ]);
       setItems(nextItems);
       setPromptInfo(nextPrompt);
+      setEnablements(new Map(nextEnablements.map((e) => [e.itemId, e.enabled])));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -67,8 +71,15 @@ export function BusinessContextPane({ workspaceId, onChanged }: { workspaceId: s
   }, [items]);
 
   const toggle = async (item: BusinessContext) => {
-    await api.updateBusinessContextEnabled(item.id, !item.enabled);
-    setItems((current) => current.map((it) => it.id === item.id ? { ...it, enabled: !it.enabled, updatedAt: Date.now() } : it));
+    if (!workspaceId) return;
+    const current = enablements.get(item.id) ?? false;
+    const next = !current;
+    await sharedApi.setMemoryEnablement(workspaceId, "business_context", item.id, next);
+    setEnablements((prev) => {
+      const m = new Map(prev);
+      m.set(item.id, next);
+      return m;
+    });
     await refreshPrompt();
   };
 
@@ -82,9 +93,9 @@ export function BusinessContextPane({ workspaceId, onChanged }: { workspaceId: s
     if (!draft.title.trim()) return;
     const payload = { category: draft.category, title: draft.title.trim(), content: draft.content.trim() };
     await api.updateBusinessContext(id, payload);
-    setItems((current) => current.map((item) => item.id === id ? { ...item, ...payload, updatedAt: Date.now() } : item));
     setEditingId(null);
-    await refreshPrompt();
+    await refresh();
+    onChanged?.();
   };
 
   const startCreate = (category: BusinessContextCategory) => {
@@ -95,19 +106,19 @@ export function BusinessContextPane({ workspaceId, onChanged }: { workspaceId: s
 
   const saveCreate = async () => {
     if (!workspaceId || !newDraft.title.trim()) return;
-    const created = await api.createBusinessContext(workspaceId, { category: newDraft.category, title: newDraft.title.trim(), content: newDraft.content.trim() });
-    setItems((current) => [created, ...current]);
+    await api.createBusinessContext(workspaceId, { category: newDraft.category, title: newDraft.title.trim(), content: newDraft.content.trim() });
     setCreating(false);
     setNewDraft(EMPTY_DRAFT);
-    await refreshPrompt();
+    await refresh();
+    onChanged?.();
   };
 
   const remove = async (item: BusinessContext) => {
-    if (!window.confirm(`删除业务环境「${item.title}」？此操作不可恢复。`)) return;
+    if (!window.confirm(`删除业务环境「${item.title}」？此操作不可恢复（全局池删除，所有工作区都将失效）。`)) return;
     await api.deleteBusinessContext(item.id);
-    setItems((current) => current.filter((it) => it.id !== item.id));
     if (editingId === item.id) setEditingId(null);
-    await refreshPrompt();
+    await refresh();
+    onChanged?.();
   };
 
   const copyPrompt = async () => {
@@ -195,6 +206,7 @@ export function BusinessContextPane({ workspaceId, onChanged }: { workspaceId: s
                 <div className="space-y-2">
                   {list.map((item) => {
                     const editing = editingId === item.id;
+                    const wsEnabled = enablements.get(item.id) ?? false;
                     return (
                       <div key={item.id} className="rounded-xl border border-neutral-200 bg-white p-3.5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
                         {editing ? (
@@ -209,14 +221,17 @@ export function BusinessContextPane({ workspaceId, onChanged }: { workspaceId: s
                           <div className="flex items-start gap-3">
                             <div className="min-w-0 flex-1">
                               <div className="flex flex-wrap items-center gap-2">
-                                <h3 className={`text-[13px] font-semibold ${item.enabled ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-400 line-through"}`}>{item.title}</h3>
+                                <h3 className={`text-[13px] font-semibold ${wsEnabled ? "text-neutral-900 dark:text-neutral-100" : "text-neutral-400 line-through"}`}>{item.title}</h3>
                                 <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700">{CATEGORY_LABEL[item.category]}</span>
+                                {item.workspaceId !== workspaceId && (
+                                  <span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10.5px] text-amber-600 dark:border-amber-800 dark:text-amber-400">来源</span>
+                                )}
                               </div>
                               {item.content && <p className="mt-1.5 whitespace-pre-wrap text-[12px] leading-5 text-neutral-500">{item.content}</p>}
                             </div>
                             <div className="flex shrink-0 items-center gap-1.5">
-                              <button onClick={() => void toggle(item)} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] ${item.enabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
-                                <CheckCircle2 className="h-3.5 w-3.5" /> {item.enabled ? "启用" : "停用"}
+                              <button onClick={() => void toggle(item)} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] ${wsEnabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+                                <CheckCircle2 className="h-3.5 w-3.5" /> 本工作区{wsEnabled ? "启用" : "停用"}
                               </button>
                               <button onClick={() => startEdit(item)} className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1.5 text-[12px] dark:border-neutral-700"><Pencil className="h-3.5 w-3.5" /> 编辑</button>
                               <button onClick={() => void remove(item)} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1.5 text-[12px] text-red-600 dark:border-red-900 dark:text-red-400"><Trash2 className="h-3.5 w-3.5" /></button>

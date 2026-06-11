@@ -182,7 +182,15 @@
       "Bash(sh /Users/huangbo/.claude/statusline-command.sh)",
       "WebFetch(domain:docs.claude.com)",
       "Bash(grep -n '^];$\\\\|^const TASKS\\\\|^const HOTFIX\\\\|^const CHANGELOG' docs/wiki.html)",
-      "Bash(git -c core.quotepath=false ls-files)"
+      "Bash(git -c core.quotepath=false ls-files)",
+      "Bash(git -C /Users/huangbo/Dev/Projects/pi-xanthil ls-files)",
+      "Bash(rg -n \"CREATE TABLE IF NOT EXISTS \\(rule_memories|analysis_standards|analysis_cases|business_contexts|failure_memor|field_memor|process_memor|kg_nodes|kg_edges|trace_events|metric_definitions\\)\" server/src/db.ts server/src/db/*.ts)",
+      "Bash(rg -n \"export function \\(listRuleMemories|buildEnabledRulesPrompt|listAnalysisStandards|buildEnabledStandardsPrompt|listBusinessContexts|buildEnabledBusinessContextPrompt|listAnalysisCases|buildEnabledCasesPrompt|listEnabledMetricDefinitions|listMetricDefinitions\\)\" server/src/db.ts server/src/db/*.ts)",
+      "Bash(rg -n \"updateRuleEnabled|updateRulesEnabled\" server/src/db.ts server/src/routes/*.ts web/src/lib/api*.ts web/src/lib/api/*.ts)",
+      "Bash(sed -n '1,12p' server/src/db/viz.ts)",
+      "Bash(sed -n '1,14p' server/src/memory-injection.ts)",
+      "Bash(sed -n '1,12p' server/src/knowledge-graph.ts)",
+      "Bash(rg -n \"listRuleMemories|listAnalysisStandards|listBusinessContexts|listAnalysisCases|listMetrics|listOntologies|listEnabledMetricDefinitions\" src/*.test.ts)"
     ]
   }
 }

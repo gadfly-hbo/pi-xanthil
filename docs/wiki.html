@@ -227,6 +227,63 @@ const TASKS = [
 【后续 · 功能落地（P2–P5，按 decision-intelligence-plan）】决策看板/工作台/助手/复盘的真实实现 + 后端（routes/decision.ts、db/decision.ts、sim/ 推演引擎，并在 routes/index.ts 注册、db init 接入）。
 
 收尾：不执行 git；改完列改动清单并回流总控终审。` },
+  { dom: "X", status: "done", title: "全局池化·后端改造（总控持有 db.ts / db/viz.ts 查询与注入层）", brief:
+`✅ 总控自做并自检通过（2026-06-11）：P1/P2/P3 后端全部落地。list*(rule/standard/biz_ctx/case/metric/ontology) 改返回全局池；buildEnabled*/detectRuleConflicts/listEnabledMetricDefinitions/KG syncKnowledgeGraph 改按本工作区 enablement 过滤；createX/createOntology/createMetric/backfillMetricsFromStandards 落库后 enableForOrigin。连带改 memory-injection.ts(itemIds 收集) + knowledge-graph.ts(投影按启用集)。server typecheck+web build 绿；全量 96 测试 95 通过（唯一红 memory-injection:158 = P2b' 既有 baseline：测试建 analysis_standard(kind='metric') 但 metric 真源早已切 metric_definitions，与本改动无关，前后均注入空）；按池语义修正 memory-proposal.test:45 的跨 ws 计数断言。**待 D/V 前端跟上后用户提交**。
+
+— 原始需求 —
+需求：onto-xanthil + 规则记忆 9 模块（trace 除外）从「绑单一工作区」改为「全局池 + 按工作区启用」。语义已定：共享单实例（编辑全局生效）/ 全部迁入+仅原工作区启用 / trace 不进池 / KG 不设独立启用（跟随上游投影）/ 失败·字段·流程记忆为占位本轮不实装。
+
+【契约已就位（总控已交付，勿改）】
+- 表 workspace_memory_enablements(workspace_id,item_kind,item_id,enabled,created_at) —— server/src/db/shared.ts
+- 双侧类型 MemoryItemKind / WorkspaceMemoryEnablement —— types.ts
+- API GET/PUT /api/workspaces/:id/memory-enablements —— routes/shared.ts；前端 sharedApi.listMemoryEnablements / setMemoryEnablement
+- 启动幂等 backfill（rule/standard/business_context/case/metric 五类按 origin 工作区建启用记录）—— 已接入 db.ts boot
+- db/shared.ts 工具：listEnabledItemIds(ws,kind) / setMemoryEnablement / enableForOrigin / listWorkspaceEnablements
+
+【待做 · 后端查询/注入改造（均在接缝层 db.ts / db/viz.ts；总控自做）】
+P1(rules 先行验证)：
+1. listRuleMemories(ws) → 返回全局池(所有 rule_memories 行)，不再 WHERE workspace_id。
+2. buildEnabledRulesPrompt(ws,scope) → 注入集合改 join：仅 item_id ∈ listEnabledItemIds(ws,'rule') 且 scope 命中。
+3. 创建 rule 的 POST(index.ts /api/workspaces/:id/rules) → 落库后 enableForOrigin(ws,'rule',id)。
+P2(推广 D 其余三类 + standards)：listAnalysisStandards/listBusinessContexts/listAnalysisCases/listEnabledMetricDefinitions 及对应 buildEnabled* 同 P1 改造(kind: standard/business_context/case/metric)，创建处补 enableForOrigin。
+P3(onto + KG)：
+- onto(粒度=本体整体)：listOntologies(ws) 返回全局池；某工作区"启用本体"=enablement(ws,'ontology',ontologyId)；onto 注入/图谱按启用本体过滤；object/property/link/metric/logic/action 跟随所属本体，不单独建关系；创建本体处 enableForOrigin。(db/viz.ts)
+- KG：buildKgPrompt/syncKnowledgeGraph 改为按本工作区"已启用的 rules/standards/biz_ctx 池条目"重新投影；KG 自身不建 enablement。
+
+【验收】每期 server typecheck + build 绿；切工作区只影响启用集合，池内定义不重复、编辑一处全局生效；新建定义自动在当前工作区启用、他工作区不启用。
+【约束】不动数据安全红线域；db.ts/db/viz.ts 接缝层仅总控写；全程不碰 git。` },
+  { dom: "D", status: "done", title: "规则记忆前端：池视图 + 按工作区启用勾选（偏好/指标/项目/业务环境）", brief:
+`✅ 总控终审通过（2026-06-11）：RulesPane/IndicatorsPane/CasesPane/BusinessContextPane 四 Pane 均接 sharedApi.listMemoryEnablements/setMemoryEnablement；kind 映射正确(rule/metric/standard/case/business_context)；IndicatorsPane 一次性拉全 kind enablement、metric 走 'metric'、参考文件走 'standard'；非本工作区条目标"来源"徽章、按钮文案"本工作区启用/停用"、删除提示警示"全局池删除所有工作区失效"、增删改后 refresh() 重拉池+启用态。未碰接缝层(api.ts/constants/App 零改)。typecheck+build 绿。**待 V 完成后整体提交**。
+
+— 原始需求 —
+需求：规则记忆 4 个实装模块 Pane 从「只显示本工作区条目」改为「全局池列表 + 本工作区启用勾选」。共享单实例：编辑/删除作用于池(全局生效)，勾选只切本工作区启用。
+依赖：总控「全局池化·后端改造」P1/P2 完成(list* 返回池、setMemoryEnablement 可用、创建自动 enableForOrigin)，顺序在其后。
+
+【文件边界(D slot)】RulesPane.tsx(偏好) · IndicatorsPane.tsx(指标 metric + 参考文件 standard) · CasesPane.tsx(项目) · BusinessContextPane.tsx(业务环境)；memory-injection.ts 一般不需动(注入口径在 db.ts 由总控改)。
+
+【待做】
+1. 列表数据源现为全局池 → 每行加「本工作区启用」开关，状态来自 sharedApi.listMemoryEnablements(ws,kind)，切换调 sharedApi.setMemoryEnablement(ws,kind,id,enabled)。
+2. 原"启用/批量启用"按钮(api.updateRuleEnabled/updateRulesEnabled 全局语义) → 改为操作启用关系，不再改定义行 enabled。
+3. 视觉区分"池内定义" vs "本工作区是否启用"；可标注来源工作区(origin)。
+4. kind 映射：偏好→'rule'、指标→'metric'、参考文件→'standard'、项目→'case'、业务环境→'business_context'。
+
+【验收】web typecheck + build 绿；切工作区只变勾选态、定义列表不变；勾选即时生效注入；编辑一条定义在所有启用它的工作区都变。
+【约束】不碰接缝层(types/api.ts/constants/App)；不碰数据探索红线子树；全程不碰 git，回流总控终审。` },
+  { dom: "V", status: "done", title: "onto-xanthil + KG + trace 前端：本体启用 / KG 投影跟随 / trace 跨工作区聚合查看", brief:
+`✅ 总控终审通过（2026-06-11）：OntologyPane 本体列表走全局池 + 加载 'ontology' kind 启用集 + 工具栏"本工作区启用" checkbox(绑 activeOid，toggle→setMemoryEnablement('ontology')→reload)；粒度=本体整体，子实体按 ontology_id 跟随。KG 投影跟随由后端 syncKnowledgeGraph(已按启用集过滤)承担，KnowledgeGraphPane 无独立开关故不改；trace 保持现状不破(决策①，聚合视图按需未做)。未碰接缝层(api.ts/constants/App 零改)。typecheck+build 绿。**全特性闭环，待用户提交**。
+
+— 原始需求 —
+需求：V 域三块配合全局池化。依赖总控「全局池化·后端改造」P3 完成。
+
+【文件边界(V slot)】OntologyPane.tsx · KnowledgeGraphPane.tsx · TracePane.tsx · knowledge-graph.ts(投影口径与总控对齐)。
+
+【待做】
+1. onto(粒度=本体整体)：OntologyPane 本体列表改全局池；每本体加「本工作区启用」开关(kind='ontology', itemId=ontologyId)。对象/关系/指标/逻辑/动作跟随所属本体启用，不单独勾。
+2. KG：知识图谱是 rules/standards/biz_ctx 的投影 → 改为按本工作区"已启用集合"重投影(与总控对齐 buildKgPrompt/syncKnowledgeGraph)；KG 不设独立启用开关。
+3. trace(决策①：不进池)：保持 per-workspace 不变；可选增强"跨工作区聚合查看"只读视图(不引入 enable 概念)。本轮可只做"保持现状不破"，聚合视图按需。
+
+【验收】web typecheck + build 绿；切工作区只变本体启用态；KG 随启用集合重投影；trace 行为不退化。
+【约束】不碰接缝层；不碰数据安全红线；全程不碰 git，回流总控终审。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──

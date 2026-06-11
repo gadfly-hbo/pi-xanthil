@@ -127,7 +127,8 @@ test("memory selection policy omits lower-priority sources when token budget is 
     scope: "global",
   });
   db.createAnalysisStandard(workspace.id, {
-    kind: "metric",
+    // 注入 standards 走 reference_file（metric 真源已切 metric_definitions，P2b'）；用长描述制造 token 压力
+    kind: "reference_file",
     name: "会员复购率",
     category: "会员",
     description: "这是一个较长的指标描述，用于制造 token budget 压力。".repeat(20),

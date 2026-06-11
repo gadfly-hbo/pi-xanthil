@@ -5,11 +5,16 @@ import { mkdirSync, statSync } from "node:fs";
 import { DB_PATH, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
 import type { AnalysisCase, AnalysisCaseInput, AnaxGateConfig, AnalysisStandard, AnalysisStandardKind, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalInput, ChangeProposalStatus, CreateRuleResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, KgEdge, KgNode, KgNodeType, KgRelation, MemoryEvalVariant, MemoryEvaluation, MemoryEvaluationDetail, MemoryEvaluationResult, MemoryInjectionRecord, MemoryInjectionSnapshot, MemoryProposal, MemoryProposalRiskFlag, MemoryFailureAttribution, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, RuleConflict, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, PiUsage, PredictionResult, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, SkillCurationProposalRecord, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillEvalSet, SkillEvalTask, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, StaleNode, StaleNodeReason, StoredFlowMessage, StoredMessage, TokenUsageStats, TokenUsageTargetKind, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, TraceErrorType, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
 import { parseEvaluationError, serializeEvaluationError } from "./evaluation-errors.ts";
-import { initSharedTables } from "./db/shared.ts";
+import { initSharedTables, backfillMemoryEnablements, listEnabledItemIds, enableForOrigin } from "./db/shared.ts";
 import { initDataTables } from "./db/data.ts";
 import { initEngineTables } from "./db/engine.ts";
 import { initVizTables } from "./db/viz.ts";
-import type { MetricDefinition } from "./types.ts";
+import type { MetricDefinition, MemoryItemKind } from "./types.ts";
+
+// 全局池模型：按本工作区启用集合过滤池条目（共享单实例；启用关系见 db/shared.ts）。
+function enabledIds(workspaceId: string, kind: MemoryItemKind): Set<string> {
+  return new Set(listEnabledItemIds(workspaceId, kind));
+}
 
 ensureDirs(); // DB opens at import time — guarantee the data dir exists first.
 export const db = new DatabaseSync(DB_PATH);
@@ -731,6 +736,8 @@ initDataTables();
 initEngineTables();
 initVizTables();
 migrateMetricStandardsToDefinitions();
+// 全局池启用关系 backfill（幂等，须在定义表建好后）。
+backfillMemoryEnablements();
 
 /**
  * P2b' metric 完全切源迁移（一次性·幂等·先拷后删）：
@@ -2336,13 +2343,14 @@ function mapRuleMemory(row: Omit<RuleMemory, "enabled"> & { enabled: number }): 
   };
 }
 
-export function listRuleMemories(workspaceId: string): RuleMemory[] {
+// 全局池：返回所有工作区的规则定义（共享单实例）。"本工作区是否启用" 见 enablement 表。
+export function listRuleMemories(_workspaceId?: string): RuleMemory[] {
   const rows = db.prepare(`
     SELECT id, workspace_id AS workspaceId, title, evidence, source, severity, scope, enabled,
            version, supersedes_rule_id AS supersedesRuleId, change_reason AS changeReason,
            created_at AS createdAt, updated_at AS updatedAt
-    FROM rule_memories WHERE workspace_id = ? ORDER BY updated_at DESC
-  `).all(workspaceId) as unknown as Array<Omit<RuleMemory, "enabled"> & { enabled: number }>;
+    FROM rule_memories ORDER BY updated_at DESC
+  `).all() as unknown as Array<Omit<RuleMemory, "enabled"> & { enabled: number }>;
   return rows.map(mapRuleMemory);
 }
 
@@ -2367,6 +2375,7 @@ export function createRuleMemory(input: {
     INSERT INTO rule_memories (id, workspace_id, title, evidence, source, severity, scope, enabled, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
   `).run(id, input.workspaceId, input.title, input.evidence, input.source, input.severity, input.scope, now, now);
+  enableForOrigin(input.workspaceId, "rule", id); // 新池条目：origin 工作区默认启用
   return { rule: { id, workspaceId: input.workspaceId, title: input.title, evidence: input.evidence, source: input.source, severity: input.severity, scope: input.scope, enabled: true, version: 1, supersedesRuleId: null, changeReason: "", createdAt: now, updatedAt: now }, created: true };
 }
 
@@ -2379,16 +2388,6 @@ export function updateRuleMemory(input: {
 }): void {
   db.prepare("UPDATE rule_memories SET title = ?, evidence = ?, severity = ?, scope = ?, version = version + 1, change_reason = 'manual update', updated_at = ? WHERE id = ?")
     .run(input.title, input.evidence, input.severity, input.scope, Date.now(), input.id);
-}
-
-export function updateRuleMemoryEnabled(id: string, enabled: boolean): void {
-  db.prepare("UPDATE rule_memories SET enabled = ?, updated_at = ? WHERE id = ?").run(enabled ? 1 : 0, Date.now(), id);
-}
-
-export function updateRuleMemoriesEnabled(ids: string[], enabled: boolean): void {
-  const now = Date.now();
-  const stmt = db.prepare("UPDATE rule_memories SET enabled = ?, updated_at = ? WHERE id = ?");
-  for (const id of ids) stmt.run(enabled ? 1 : 0, now, id);
 }
 
 export function deleteRuleMemory(id: string): void {
@@ -2423,7 +2422,8 @@ function mapRuleConflict(row: RuleConflict): RuleConflict {
 }
 
 export function detectRuleConflicts(workspaceId: string): RuleConflict[] {
-  const rules = listRuleMemories(workspaceId).filter((rule) => rule.enabled);
+  const ids = enabledIds(workspaceId, "rule");
+  const rules = listRuleMemories().filter((rule) => ids.has(rule.id));
   const now = Date.now();
   const insert = db.prepare(`
     INSERT OR IGNORE INTO rule_conflicts
@@ -2464,7 +2464,8 @@ export function updateRuleConflictStatus(id: string, status: RuleConflict["statu
 }
 
 export function buildEnabledRulesPrompt(workspaceId: string, targetScope?: "chat" | "workflow"): { prompt: string; count: number; updatedAt: number | null } {
-  const enabledRules = listRuleMemories(workspaceId).filter((rule) => rule.enabled && (!targetScope || rule.scope === "global" || rule.scope === targetScope));
+  const ids = enabledIds(workspaceId, "rule");
+  const enabledRules = listRuleMemories().filter((rule) => ids.has(rule.id) && (!targetScope || rule.scope === "global" || rule.scope === targetScope));
   if (enabledRules.length === 0) return { prompt: "", count: 0, updatedAt: null };
   return {
     prompt: [
@@ -2490,11 +2491,12 @@ const ANALYSIS_STANDARD_COLUMNS = `
   enabled, created_at AS createdAt, updated_at AS updatedAt
 `;
 
-export function listAnalysisStandards(workspaceId: string): AnalysisStandard[] {
+// 全局池：返回所有工作区的标准定义。"本工作区是否启用" 见 enablement 表(kind='standard')。
+export function listAnalysisStandards(_workspaceId?: string): AnalysisStandard[] {
   const rows = db.prepare(`
     SELECT ${ANALYSIS_STANDARD_COLUMNS}
-    FROM analysis_standards WHERE workspace_id = ? ORDER BY updated_at DESC
-  `).all(workspaceId) as unknown as Array<Omit<AnalysisStandard, "enabled"> & { enabled: number }>;
+    FROM analysis_standards ORDER BY updated_at DESC
+  `).all() as unknown as Array<Omit<AnalysisStandard, "enabled"> & { enabled: number }>;
   return rows.map(mapAnalysisStandard);
 }
 
@@ -2521,6 +2523,7 @@ export function createAnalysisStandard(workspaceId: string, input: AnalysisStand
     id, workspaceId, input.kind, input.name, input.category, input.description,
     input.formula, input.caliber, input.unit, input.filePath, input.fileHash, now, now,
   );
+  enableForOrigin(workspaceId, "standard", id); // 新池条目：origin 工作区默认启用
   return { id, workspaceId, ...input, enabled: true, createdAt: now, updatedAt: now };
 }
 
@@ -2535,10 +2538,6 @@ export function updateAnalysisStandard(id: string, input: AnalysisStandardInput)
   );
 }
 
-export function updateAnalysisStandardEnabled(id: string, enabled: boolean): void {
-  db.prepare("UPDATE analysis_standards SET enabled = ?, updated_at = ? WHERE id = ?").run(enabled ? 1 : 0, Date.now(), id);
-}
-
 export function deleteAnalysisStandard(id: string): void {
   db.prepare("DELETE FROM analysis_standards WHERE id = ?").run(id);
 }
@@ -2547,10 +2546,12 @@ export function deleteAnalysisStandard(id: string): void {
  * metric 真源 = metric_definitions（P2b' 完全切源）。db.ts 内裸查避免 base→slot 循环依赖。
  */
 export function listEnabledMetricDefinitions(workspaceId: string): MetricDefinition[] {
+  // 全局池 + 本工作区启用(kind='metric')：从池里筛出本工作区已启用的指标。
+  const ids = enabledIds(workspaceId, "metric");
   const rows = db.prepare(
-    "SELECT id, workspace_id AS workspaceId, name, category, description, formula, caliber, unit, object_type_id AS objectTypeId, bound_columns AS boundColumns, enabled, created_at AS createdAt, updated_at AS updatedAt FROM metric_definitions WHERE workspace_id = ? AND enabled = 1 ORDER BY category, name"
-  ).all(workspaceId) as unknown as Array<Omit<MetricDefinition, "enabled" | "boundColumns" | "objectTypeId"> & { enabled: number; boundColumns: string | null; objectTypeId: string | null }>;
-  return rows.map((r) => ({
+    "SELECT id, workspace_id AS workspaceId, name, category, description, formula, caliber, unit, object_type_id AS objectTypeId, bound_columns AS boundColumns, enabled, created_at AS createdAt, updated_at AS updatedAt FROM metric_definitions ORDER BY category, name"
+  ).all() as unknown as Array<Omit<MetricDefinition, "enabled" | "boundColumns" | "objectTypeId"> & { enabled: number; boundColumns: string | null; objectTypeId: string | null }>;
+  return rows.filter((r) => ids.has(r.id)).map((r) => ({
     ...r,
     objectTypeId: r.objectTypeId ?? undefined,
     boundColumns: r.boundColumns ? (JSON.parse(r.boundColumns) as string[]) : undefined,
@@ -2560,7 +2561,8 @@ export function listEnabledMetricDefinitions(workspaceId: string): MetricDefinit
 
 export function buildEnabledStandardsPrompt(workspaceId: string): { prompt: string; count: number; updatedAt: number | null } {
   const metrics = listEnabledMetricDefinitions(workspaceId);
-  const files = listAnalysisStandards(workspaceId).filter((s) => s.enabled && s.kind === "reference_file");
+  const sids = enabledIds(workspaceId, "standard");
+  const files = listAnalysisStandards().filter((s) => sids.has(s.id) && s.kind === "reference_file");
   if (metrics.length === 0 && files.length === 0) return { prompt: "", count: 0, updatedAt: null };
 
   const lines: string[] = ["<xanthil-standards>", "以下为本工作区的分析标准与口径，分析时须严格遵守："];
@@ -2614,11 +2616,12 @@ function mapBusinessContext(row: Omit<BusinessContext, "enabled"> & { enabled: n
   return { ...row, enabled: Boolean(row.enabled) };
 }
 
-export function listBusinessContexts(workspaceId: string): BusinessContext[] {
+// 全局池：返回所有工作区的业务环境定义。"本工作区是否启用" 见 enablement 表(kind='business_context')。
+export function listBusinessContexts(_workspaceId?: string): BusinessContext[] {
   const rows = db.prepare(`
     SELECT id, workspace_id AS workspaceId, category, title, content, enabled, created_at AS createdAt, updated_at AS updatedAt
-    FROM business_contexts WHERE workspace_id = ? ORDER BY updated_at DESC
-  `).all(workspaceId) as unknown as Array<Omit<BusinessContext, "enabled"> & { enabled: number }>;
+    FROM business_contexts ORDER BY updated_at DESC
+  `).all() as unknown as Array<Omit<BusinessContext, "enabled"> & { enabled: number }>;
   return rows.map(mapBusinessContext);
 }
 
@@ -2635,6 +2638,7 @@ export function createBusinessContext(workspaceId: string, input: BusinessContex
     INSERT INTO business_contexts (id, workspace_id, category, title, content, enabled, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, 1, ?, ?)
   `).run(id, workspaceId, input.category, input.title, input.content, now, now);
+  enableForOrigin(workspaceId, "business_context", id); // 新池条目：origin 工作区默认启用
   return { id, workspaceId, ...input, enabled: true, createdAt: now, updatedAt: now };
 }
 
@@ -2643,22 +2647,13 @@ export function updateBusinessContext(id: string, input: BusinessContextInput): 
     .run(input.category, input.title, input.content, Date.now(), id);
 }
 
-export function updateBusinessContextEnabled(id: string, enabled: boolean): void {
-  db.prepare("UPDATE business_contexts SET enabled = ?, updated_at = ? WHERE id = ?").run(enabled ? 1 : 0, Date.now(), id);
-}
-
-export function updateBusinessContextsEnabled(ids: string[], enabled: boolean): void {
-  const now = Date.now();
-  const stmt = db.prepare("UPDATE business_contexts SET enabled = ?, updated_at = ? WHERE id = ?");
-  for (const id of ids) stmt.run(enabled ? 1 : 0, now, id);
-}
-
 export function deleteBusinessContext(id: string): void {
   db.prepare("DELETE FROM business_contexts WHERE id = ?").run(id);
 }
 
 export function buildEnabledBusinessContextPrompt(workspaceId: string): { prompt: string; count: number; updatedAt: number | null } {
-  const enabled = listBusinessContexts(workspaceId).filter((c) => c.enabled);
+  const ids = enabledIds(workspaceId, "business_context");
+  const enabled = listBusinessContexts().filter((c) => ids.has(c.id));
   if (enabled.length === 0) return { prompt: "", count: 0, updatedAt: null };
 
   const order: BusinessContextCategory[] = ["org", "status", "glossary", "constraint", "history", "goal"];
@@ -2688,11 +2683,12 @@ function mapAnalysisCase(row: Omit<AnalysisCase, "enabled"> & { enabled: number 
   return { ...row, enabled: Boolean(row.enabled) };
 }
 
-export function listAnalysisCases(workspaceId: string): AnalysisCase[] {
+// 全局池：返回所有工作区的项目记忆定义。"本工作区是否启用" 见 enablement 表(kind='case')。
+export function listAnalysisCases(_workspaceId?: string): AnalysisCase[] {
   const rows = db.prepare(`
     SELECT id, workspace_id AS workspaceId, title, category, scenario, approach, conclusion, enabled, created_at AS createdAt, updated_at AS updatedAt
-    FROM analysis_cases WHERE workspace_id = ? ORDER BY updated_at DESC
-  `).all(workspaceId) as unknown as Array<Omit<AnalysisCase, "enabled"> & { enabled: number }>;
+    FROM analysis_cases ORDER BY updated_at DESC
+  `).all() as unknown as Array<Omit<AnalysisCase, "enabled"> & { enabled: number }>;
   return rows.map(mapAnalysisCase);
 }
 
@@ -2702,6 +2698,7 @@ export function createAnalysisCase(workspaceId: string, input: AnalysisCaseInput
   db.prepare(
     "INSERT INTO analysis_cases (id, workspace_id, title, category, scenario, approach, conclusion, enabled, created_at, updated_at) VALUES (?,?,?,?,?,?,?,1,?,?)"
   ).run(id, workspaceId, input.title, input.category, input.scenario, input.approach, input.conclusion, now, now);
+  enableForOrigin(workspaceId, "case", id); // 新池条目：origin 工作区默认启用
   return { id, workspaceId, ...input, enabled: true, createdAt: now, updatedAt: now };
 }
 
@@ -2711,16 +2708,13 @@ export function updateAnalysisCase(id: string, input: AnalysisCaseInput): void {
   ).run(input.title, input.category, input.scenario, input.approach, input.conclusion, Date.now(), id);
 }
 
-export function updateAnalysisCaseEnabled(id: string, enabled: boolean): void {
-  db.prepare("UPDATE analysis_cases SET enabled=?, updated_at=? WHERE id=?").run(enabled ? 1 : 0, Date.now(), id);
-}
-
 export function deleteAnalysisCase(id: string): void {
   db.prepare("DELETE FROM analysis_cases WHERE id=?").run(id);
 }
 
 export function buildEnabledCasesPrompt(workspaceId: string): { prompt: string; count: number; updatedAt: number | null } {
-  const enabled = listAnalysisCases(workspaceId).filter((c) => c.enabled);
+  const ids = enabledIds(workspaceId, "case");
+  const enabled = listAnalysisCases().filter((c) => ids.has(c.id));
   if (enabled.length === 0) return { prompt: "", count: 0, updatedAt: null };
   const blocks = enabled.map((c) =>
     [

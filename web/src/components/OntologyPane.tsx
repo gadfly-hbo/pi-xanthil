@@ -31,19 +31,34 @@ const btnGhost =
 
 export function OntologyPane({ workspaceId, section }: { workspaceId: string | null; section: Section }) {
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
+  const [enablements, setEnablements] = useState<Set<string>>(new Set());
   const [activeOid, setActiveOid] = useState<string>("");
   const [error, setError] = useState("");
 
   const loadOntologies = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      const list = await api.listOntologies(workspaceId);
+      const [list, ens] = await Promise.all([
+        api.listOntologies(workspaceId),
+        api.listMemoryEnablements(workspaceId, "ontology")
+      ]);
       setOntologies(list);
+      setEnablements(new Set(ens.filter((e) => e.enabled).map((e) => e.itemId)));
       setActiveOid((cur) => cur || list[0]?.id || "");
     } catch (e) {
       setError(String(e));
     }
   }, [workspaceId]);
+
+  const toggleEnablement = useCallback(async (oid: string, enabled: boolean) => {
+    if (!workspaceId) return;
+    try {
+      await api.setMemoryEnablement(workspaceId, "ontology", oid, enabled);
+      await loadOntologies();
+    } catch (e) {
+      setError(String(e));
+    }
+  }, [workspaceId, loadOntologies]);
 
   useEffect(() => {
     void loadOntologies();
@@ -113,6 +128,15 @@ export function OntologyPane({ workspaceId, section }: { workspaceId: string | n
         <button onClick={() => void createOntology()} className={btnGhost}><Plus className="inline h-3.5 w-3.5" /> 新建本体</button>
         {activeOid && (
           <>
+            <label className="ml-2 flex items-center gap-1.5 text-[12px] text-neutral-600 dark:text-neutral-300">
+              <input
+                type="checkbox"
+                className="rounded border-neutral-300"
+                checked={enablements.has(activeOid)}
+                onChange={(e) => void toggleEnablement(activeOid, e.target.checked)}
+              />
+              本工作区启用
+            </label>
             <span className="ml-auto inline-flex items-center gap-1 text-neutral-400"><Download className="h-3.5 w-3.5" /></span>
             <select
               className="rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-[11.5px] dark:border-neutral-700 dark:bg-neutral-900"

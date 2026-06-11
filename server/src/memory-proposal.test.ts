@@ -41,8 +41,10 @@ test("approveMemoryProposal blocks high-risk instruction injection proposals", (
   });
 
   assert.ok(proposal.riskFlags.some((flag) => flag.code === "instruction_injection" && flag.severity === "high"));
+  // 全局池模型：listRuleMemories 返回池(跨工作区)，故按"批准前后池内规则数不变"验证高危拦截未落库。
+  const poolBefore = db.listRuleMemories().length;
   assert.throws(() => db.approveMemoryProposal(proposal.id), /high-risk/);
-  assert.equal(db.listRuleMemories(workspace.id).length, 0);
+  assert.equal(db.listRuleMemories().length, poolBefore);
 });
 
 test("rejectMemoryProposal marks pending proposals rejected", () => {

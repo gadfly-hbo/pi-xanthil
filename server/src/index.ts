@@ -25,19 +25,15 @@ import {
   listBusinessContexts,
   createBusinessContext,
   updateBusinessContext,
-  updateBusinessContextEnabled,
-  updateBusinessContextsEnabled,
   deleteBusinessContext,
   buildEnabledCasesPrompt,
   listAnalysisCases,
   createAnalysisCase,
   updateAnalysisCase,
-  updateAnalysisCaseEnabled,
   deleteAnalysisCase,
   listAnalysisStandards,
   createAnalysisStandard,
   updateAnalysisStandard,
-  updateAnalysisStandardEnabled,
   deleteAnalysisStandard,
   listHypotheses,
   createHypothesis,
@@ -126,8 +122,6 @@ import {
   updateToolCaseSet,
   updateWorkflowFavorite,
   updateRuleMemory,
-  updateRuleMemoryEnabled,
-  updateRuleMemoriesEnabled,
   updateWorkspacePathHash,
   createChangeProposal,
   getAnaxGateConfig,
@@ -1138,24 +1132,12 @@ app.post("/api/workspaces/:id/rules", (req, res) => {
 });
 
 app.patch("/api/rules/:id", (req, res) => {
-  if (typeof req.body?.enabled === "boolean") {
-    updateRuleMemoryEnabled(req.params.id, req.body.enabled);
-    return res.json({ ok: true });
-  }
   const title = String(req.body?.title ?? "").trim();
   const evidence = String(req.body?.evidence ?? "").trim();
   const severity = ["low", "medium", "high"].includes(String(req.body?.severity)) ? String(req.body.severity) as "low" | "medium" | "high" : "medium";
   const scope = ["global", "chat", "workflow"].includes(String(req.body?.scope)) ? String(req.body.scope) as "global" | "chat" | "workflow" : "global";
   if (!title) return res.status(400).json({ error: "title required" });
   updateRuleMemory({ id: req.params.id, title, evidence, severity, scope });
-  res.json({ ok: true });
-});
-
-app.patch("/api/workspaces/:id/rules", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0) : [];
-  if (ids.length === 0) return res.status(400).json({ error: "ids required" });
-  updateRuleMemoriesEnabled(ids, Boolean(req.body?.enabled));
   res.json({ ok: true });
 });
 
@@ -1322,10 +1304,6 @@ app.post("/api/workspaces/:id/standards", async (req, res) => {
 });
 
 app.patch("/api/standards/:id", async (req, res) => {
-  if (typeof req.body?.enabled === "boolean" && Object.keys(req.body).length === 1) {
-    updateAnalysisStandardEnabled(req.params.id, req.body.enabled);
-    return res.json({ ok: true });
-  }
   const parsed = await parseStandardInput(req.body);
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
   updateAnalysisStandard(req.params.id, parsed.value);
@@ -1481,21 +1459,9 @@ app.post("/api/workspaces/:id/business-contexts", (req, res) => {
 });
 
 app.patch("/api/business-contexts/:id", (req, res) => {
-  if (typeof req.body?.enabled === "boolean" && Object.keys(req.body).length === 1) {
-    updateBusinessContextEnabled(req.params.id, req.body.enabled);
-    return res.json({ ok: true });
-  }
   const parsed = parseBusinessContextInput(req.body);
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
   updateBusinessContext(req.params.id, parsed.value);
-  res.json({ ok: true });
-});
-
-app.patch("/api/workspaces/:id/business-contexts", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const ids = Array.isArray(req.body?.ids) ? req.body.ids.filter((id: unknown): id is string => typeof id === "string" && id.trim().length > 0) : [];
-  if (ids.length === 0) return res.status(400).json({ error: "ids required" });
-  updateBusinessContextsEnabled(ids, Boolean(req.body?.enabled));
   res.json({ ok: true });
 });
 
@@ -1531,10 +1497,6 @@ app.post("/api/workspaces/:id/cases", (req, res) => {
 });
 
 app.patch("/api/cases/:id", (req, res) => {
-  if (typeof req.body?.enabled === "boolean") {
-    updateAnalysisCaseEnabled(req.params.id, req.body.enabled);
-    return res.json({ ok: true });
-  }
   const title = String(req.body?.title ?? "").trim();
   if (!title) return res.status(400).json({ error: "title required" });
   updateAnalysisCase(req.params.id, {

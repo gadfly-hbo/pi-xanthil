@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { CheckCircle2, Pencil, RefreshCw, Save, ScrollText, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { sharedApi } from "@/lib/api/shared";
 import type { RuleMemory } from "@/types";
 
 type RuleSeverity = RuleMemory["severity"];
@@ -22,18 +23,21 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
   const [selectedIds, setSelectedIds] = useState<string[]>([]);
   const [editingId, setEditingId] = useState<string | null>(null);
   const [draft, setDraft] = useState<EditDraft>({ title: "", evidence: "", severity: "medium", scope: "global" });
+  const [enablements, setEnablements] = useState<Map<string, boolean>>(new Map());
 
   const refresh = useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
     setError("");
     try {
-      const [nextRules, nextPrompt] = await Promise.all([
+      const [nextRules, nextPrompt, nextEnablements] = await Promise.all([
         api.listRules(workspaceId),
         api.getRulesPrompt(workspaceId),
+        sharedApi.listMemoryEnablements(workspaceId, "rule"),
       ]);
       setRules(nextRules);
       setPromptInfo(nextPrompt);
+      setEnablements(new Map(nextEnablements.map((e) => [e.itemId, e.enabled])));
       setSelectedIds((current) => current.filter((id) => nextRules.some((rule) => rule.id === id)));
     } catch (err) {
       setError(String(err));
@@ -55,8 +59,15 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
   };
 
   const toggle = async (rule: RuleMemory) => {
-    await api.updateRuleEnabled(rule.id, !rule.enabled);
-    setRules((current) => current.map((item) => item.id === rule.id ? { ...item, enabled: !item.enabled, updatedAt: Date.now() } : item));
+    if (!workspaceId) return;
+    const current = enablements.get(rule.id) ?? false;
+    const next = !current;
+    await sharedApi.setMemoryEnablement(workspaceId, "rule", rule.id, next);
+    setEnablements((prev) => {
+      const m = new Map(prev);
+      m.set(rule.id, next);
+      return m;
+    });
     await refreshPrompt();
   };
 
@@ -70,8 +81,13 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
 
   const bulkSetEnabled = async (enabled: boolean) => {
     if (!workspaceId || selectedIds.length === 0) return;
-    await api.updateRulesEnabled(workspaceId, selectedIds, enabled);
-    setRules((current) => current.map((rule) => selectedSet.has(rule.id) ? { ...rule, enabled, updatedAt: Date.now() } : rule));
+    const ids = [...selectedIds];
+    await Promise.all(ids.map((id) => sharedApi.setMemoryEnablement(workspaceId, "rule", id, enabled)));
+    setEnablements((prev) => {
+      const m = new Map(prev);
+      for (const id of ids) m.set(id, enabled);
+      return m;
+    });
     await refreshPrompt();
   };
 
@@ -84,17 +100,16 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
     if (!draft.title.trim()) return;
     await api.updateRule(id, { title: draft.title.trim(), evidence: draft.evidence.trim(), severity: draft.severity, scope: draft.scope });
     setEditingId(null);
-    setRules((current) => current.map((rule) => rule.id === id ? { ...rule, ...draft, title: draft.title.trim(), evidence: draft.evidence.trim(), updatedAt: Date.now() } : rule));
-    await refreshPrompt();
+    await refresh();
+    onRulesChanged?.();
   };
 
   const deleteRule = async (rule: RuleMemory) => {
-    if (!window.confirm(`删除规则「${rule.title}」？此操作不可恢复。`)) return;
+    if (!window.confirm(`删除规则「${rule.title}」？此操作不可恢复（全局池删除，所有工作区都将失效）。`)) return;
     await api.deleteRule(rule.id);
-    setRules((current) => current.filter((item) => item.id !== rule.id));
-    setSelectedIds((current) => current.filter((id) => id !== rule.id));
     if (editingId === rule.id) setEditingId(null);
-    await refreshPrompt();
+    await refresh();
+    onRulesChanged?.();
   };
 
   const copyPrompt = async () => {
@@ -146,6 +161,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
             <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-12 text-center text-[13px] text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900/40">暂无 rules，可先从 trace 暂存规则写入</div>
           ) : rules.map((rule) => {
             const editing = editingId === rule.id;
+            const wsEnabled = enablements.get(rule.id) ?? false;
             return (
               <div key={rule.id} className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
                 <div className="flex items-start gap-3">
@@ -175,6 +191,9 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
                           <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700">{rule.source}</span>
                           <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700">{rule.severity}</span>
                           <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700">{rule.scope}</span>
+                          {rule.workspaceId !== workspaceId && (
+                            <span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10.5px] text-amber-600 dark:border-amber-800 dark:text-amber-400">来源</span>
+                          )}
                         </div>
                         <p className="mt-2 text-[12px] leading-5 text-neutral-500">依据：{rule.evidence || "无"}</p>
                         <p className="mt-2 font-mono text-[10.5px] text-neutral-400">updated {new Date(rule.updatedAt).toLocaleString()}</p>
@@ -189,8 +208,8 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
                       </>
                     ) : (
                       <>
-                        <button onClick={() => void toggle(rule)} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] ${rule.enabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
-                          <CheckCircle2 className="h-3.5 w-3.5" /> {rule.enabled ? "启用" : "停用"}
+                        <button onClick={() => void toggle(rule)} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] ${wsEnabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+                          <CheckCircle2 className="h-3.5 w-3.5" /> 本工作区{wsEnabled ? "启用" : "停用"}
                         </button>
                         <button onClick={() => startEdit(rule)} className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1.5 text-[12px] dark:border-neutral-700"><Pencil className="h-3.5 w-3.5" /> 编辑</button>
                         <button onClick={() => void deleteRule(rule)} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2 py-1.5 text-[12px] text-red-600 dark:border-red-900 dark:text-red-400"><Trash2 className="h-3.5 w-3.5" /> 删除</button>

@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db } from "../db.ts";
+import { enableForOrigin } from "./shared.ts";
 import type {
   Ontology,
   ObjectType,
@@ -238,10 +239,12 @@ function parseOntology(r: OntologyRow): Ontology {
   };
 }
 
-export function listOntologies(workspaceId: string): Ontology[] {
+// 全局池（粒度=本体整体）：返回所有工作区的本体。"本工作区是否启用" 见 enablement 表(kind='ontology')。
+// 本体的 object/property/link/logic/action 均按 ontology_id 维度，跟随其本体启用，不单独建关系。
+export function listOntologies(_workspaceId?: string): Ontology[] {
   return (db.prepare(
-    "SELECT * FROM ontologies WHERE workspace_id = ? ORDER BY updated_at DESC"
-  ).all(workspaceId) as unknown as OntologyRow[]).map(parseOntology);
+    "SELECT * FROM ontologies ORDER BY updated_at DESC"
+  ).all() as unknown as OntologyRow[]).map(parseOntology);
 }
 
 export function getOntology(id: string): Ontology | undefined {
@@ -255,6 +258,7 @@ export function createOntology(workspaceId: string, name: string, domain = "", v
   db.prepare(
     "INSERT INTO ontologies (id, workspace_id, name, domain, version, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?)"
   ).run(id, workspaceId, name, domain, version, now, now);
+  enableForOrigin(workspaceId, "ontology", id); // 新本体：origin 工作区默认启用
   return { id, workspaceId, name, domain, version, status: "draft", createdAt: now, updatedAt: now };
 }
 
@@ -451,8 +455,9 @@ function parseMetric(r: MetricRow): MetricDefinition {
   };
 }
 
-export function listMetrics(workspaceId: string): MetricDefinition[] {
-  return (db.prepare("SELECT * FROM metric_definitions WHERE workspace_id = ? ORDER BY category, name").all(workspaceId) as unknown as MetricRow[]).map(parseMetric);
+// 全局池：返回所有工作区的指标定义。"本工作区是否启用" 见 enablement 表(kind='metric')。
+export function listMetrics(_workspaceId?: string): MetricDefinition[] {
+  return (db.prepare("SELECT * FROM metric_definitions ORDER BY category, name").all() as unknown as MetricRow[]).map(parseMetric);
 }
 
 export function getMetric(id: string): MetricDefinition | undefined {
@@ -467,6 +472,7 @@ export function createMetric(workspaceId: string, input: MetricDefinitionInput):
   db.prepare(
     "INSERT INTO metric_definitions (id, workspace_id, name, category, description, formula, caliber, unit, object_type_id, bound_columns, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"
   ).run(id, workspaceId, input.name, input.category, input.description, input.formula, input.caliber, input.unit, input.objectTypeId ?? null, boundJson, now, now);
+  enableForOrigin(workspaceId, "metric", id); // 新池条目：origin 工作区默认启用
   return { id, workspaceId, ...input, enabled: true, createdAt: now, updatedAt: now };
 }
 
@@ -514,9 +520,11 @@ export function backfillMetricsFromStandards(workspaceId: string): { migrated: n
   let migrated = 0, skipped = 0;
   for (const r of rows) {
     if (existing.has(r.name)) { skipped++; continue; }
+    const mid = randomUUID();
     db.prepare(
       "INSERT INTO metric_definitions (id, workspace_id, name, category, description, formula, caliber, unit, object_type_id, bound_columns, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?)"
-    ).run(randomUUID(), workspaceId, r.name, r.category, r.description, r.formula, r.caliber, r.unit, r.enabled, r.created_at, r.updated_at);
+    ).run(mid, workspaceId, r.name, r.category, r.description, r.formula, r.caliber, r.unit, r.enabled, r.created_at, r.updated_at);
+    enableForOrigin(workspaceId, "metric", mid); // 新池条目：origin 工作区默认启用
     existing.add(r.name);
     migrated++;
   }

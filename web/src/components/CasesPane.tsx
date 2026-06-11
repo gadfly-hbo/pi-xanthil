@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { BookOpen, CheckCircle2, FolderKanban, Pencil, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { sharedApi } from "@/lib/api/shared";
 import type { AnalysisCase } from "@/types";
 
 const PRESET_CATEGORIES = ["人群分析", "转化分析", "竞品分析", "用户行为", "产品分析", "留存分析", "其他"];
@@ -24,18 +25,21 @@ export function CasesPane({ workspaceId, onChanged }: { workspaceId: string | nu
   const [search, setSearch] = useState("");
   const [copied, setCopied] = useState(false);
   const [promptInfo, setPromptInfo] = useState<{ prompt: string; count: number; updatedAt: number | null }>({ prompt: "", count: 0, updatedAt: null });
+  const [enablements, setEnablements] = useState<Map<string, boolean>>(new Map());
 
   const refresh = useCallback(async () => {
     if (!workspaceId) { setCases([]); return; }
     setLoading(true);
     setError("");
     try {
-      const [nextCases, nextPrompt] = await Promise.all([
+      const [nextCases, nextPrompt, nextEnablements] = await Promise.all([
         api.listCases(workspaceId),
         api.getCasesPrompt(workspaceId),
+        sharedApi.listMemoryEnablements(workspaceId, "case"),
       ]);
       setCases(nextCases);
       setPromptInfo(nextPrompt);
+      setEnablements(new Map(nextEnablements.map((e) => [e.itemId, e.enabled])));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -63,17 +67,24 @@ export function CasesPane({ workspaceId, onChanged }: { workspaceId: string | nu
   }, [cases, search]);
 
   const toggle = async (c: AnalysisCase) => {
-    await api.updateCaseEnabled(c.id, !c.enabled);
-    setCases((current) => current.map((item) => item.id === c.id ? { ...item, enabled: !item.enabled, updatedAt: Date.now() } : item));
+    if (!workspaceId) return;
+    const current = enablements.get(c.id) ?? false;
+    const next = !current;
+    await sharedApi.setMemoryEnablement(workspaceId, "case", c.id, next);
+    setEnablements((prev) => {
+      const m = new Map(prev);
+      m.set(c.id, next);
+      return m;
+    });
     await refreshPrompt();
   };
 
   const remove = async (c: AnalysisCase) => {
-    if (!window.confirm(`确认删除案例「${c.title}」？此操作不可恢复。`)) return;
+    if (!window.confirm(`确认删除案例「${c.title}」？此操作不可恢复（全局池删除，所有工作区都将失效）。`)) return;
     await api.deleteCase(c.id);
-    setCases((current) => current.filter((item) => item.id !== c.id));
     if (form?.id === c.id) setForm(null);
-    await refreshPrompt();
+    await refresh();
+    onChanged?.();
   };
 
   const save = async () => {
@@ -89,13 +100,12 @@ export function CasesPane({ workspaceId, onChanged }: { workspaceId: string | nu
     };
     if (form.id) {
       await api.updateCase(form.id, payload);
-      setCases((current) => current.map((item) => item.id === form.id ? { ...item, ...payload, updatedAt: Date.now() } : item));
     } else {
-      const created = await api.createCase(workspaceId, payload);
-      setCases((current) => [created, ...current]);
+      await api.createCase(workspaceId, payload);
     }
     setForm(null);
-    await refreshPrompt();
+    await refresh();
+    onChanged?.();
   };
 
   const copyPrompt = async () => {
@@ -281,6 +291,8 @@ export function CasesPane({ workspaceId, onChanged }: { workspaceId: string | nu
               <CaseCard
                 key={c.id}
                 item={c}
+                workspaceId={workspaceId}
+                wsEnabled={enablements.get(c.id) ?? false}
                 onToggle={() => void toggle(c)}
                 onEdit={() => {
                   setError("");
@@ -298,11 +310,15 @@ export function CasesPane({ workspaceId, onChanged }: { workspaceId: string | nu
 
 function CaseCard({
   item,
+  workspaceId,
+  wsEnabled,
   onToggle,
   onEdit,
   onDelete,
 }: {
   item: AnalysisCase;
+  workspaceId: string | null;
+  wsEnabled: boolean;
   onToggle: () => void;
   onEdit: () => void;
   onDelete: () => void;
@@ -317,6 +333,9 @@ function CaseCard({
               <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700">
                 {item.category}
               </span>
+            )}
+            {item.workspaceId !== workspaceId && (
+              <span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10.5px] text-amber-600 dark:border-amber-800 dark:text-amber-400">来源</span>
             )}
           </div>
           {item.scenario && (
@@ -335,9 +354,9 @@ function CaseCard({
         <div className="flex shrink-0 items-center gap-1.5">
           <button
             onClick={onToggle}
-            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] ${item.enabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}
+            className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] ${wsEnabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}
           >
-            <CheckCircle2 className="h-3.5 w-3.5" /> {item.enabled ? "启用" : "停用"}
+            <CheckCircle2 className="h-3.5 w-3.5" /> 本工作区{wsEnabled ? "启用" : "停用"}
           </button>
           <button
             onClick={onEdit}

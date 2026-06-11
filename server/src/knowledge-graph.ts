@@ -17,6 +17,7 @@ import {
 } from "./db.ts";
 import type { KgEdgeInput, KgNodeInput } from "./db.ts";
 import { listMetrics } from "./db/viz.ts";
+import { listEnabledItemIds } from "./db/shared.ts";
 import { runPiPrompt } from "./pi-adapter.ts";
 import { DIRECT_LLM_ROOT } from "./config.ts";
 import type { KgEdge, KgExtractResult, KgNode, KgRelation, KgSyncResult } from "./types.ts";
@@ -73,8 +74,13 @@ function scanMarkdownFiles(dir: string, maxFiles = 30): Array<{ path: string; ti
 }
 
 export function syncKnowledgeGraph(workspaceId: string): KgSyncResult {
+  // 全局池：KG 是 rules/standards/metric/biz_ctx 的投影 —— 仅投影本工作区已启用的池条目（KG 自身不设独立 enablement）。
+  const ruleEnabled = new Set(listEnabledItemIds(workspaceId, "rule"));
+  const stdEnabled = new Set(listEnabledItemIds(workspaceId, "standard"));
+  const metricEnabled = new Set(listEnabledItemIds(workspaceId, "metric"));
+  const bizEnabled = new Set(listEnabledItemIds(workspaceId, "business_context"));
   // ---- 1. Ingest structured sources ----
-  const rules = listRuleMemories(workspaceId);
+  const rules = listRuleMemories().filter((r) => ruleEnabled.has(r.id));
   for (const rule of rules) {
     upsertKgNode({
       workspaceId,
@@ -88,7 +94,7 @@ export function syncKnowledgeGraph(workspaceId: string): KgSyncResult {
   }
 
   // 参照标准文件仍来自 analysis_standards；metric 真源已切到 metric_definitions（P2b'）
-  const refFiles = listAnalysisStandards(workspaceId).filter((s) => s.kind === "reference_file");
+  const refFiles = listAnalysisStandards().filter((s) => stdEnabled.has(s.id) && s.kind === "reference_file");
   for (const std of refFiles) {
     upsertKgNode({
       workspaceId,
@@ -103,7 +109,7 @@ export function syncKnowledgeGraph(workspaceId: string): KgSyncResult {
 
   // metric 节点来自 metric_definitions；先清旧 metric 节点(含迁移前 standard: 来源的 ghost)
   deleteKgNodesByType(workspaceId, "metric");
-  const metrics = listMetrics(workspaceId);
+  const metrics = listMetrics().filter((m) => metricEnabled.has(m.id));
   for (const m of metrics) {
     upsertKgNode({
       workspaceId,
@@ -116,7 +122,7 @@ export function syncKnowledgeGraph(workspaceId: string): KgSyncResult {
     });
   }
 
-  const bizContexts = listBusinessContexts(workspaceId);
+  const bizContexts = listBusinessContexts().filter((c) => bizEnabled.has(c.id));
   for (const ctx of bizContexts) {
     upsertKgNode({
       workspaceId,

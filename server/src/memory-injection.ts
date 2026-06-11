@@ -12,6 +12,7 @@ import {
   listRuleMemories,
   listMemoryUsageStats,
 } from "./db.ts";
+import { listEnabledItemIds } from "./db/shared.ts";
 import { buildKgPrompt } from "./knowledge-graph.ts";
 import type { MemoryInjectionSnapshot, MemorySourceKind, MemorySourceSnapshot, MemoryUsageStats } from "./types.ts";
 
@@ -76,14 +77,19 @@ function collectMemoryPromptParts(workspaceId: string, targetScope?: "chat" | "w
   const standards = buildEnabledStandardsPrompt(workspaceId);
   const cases = buildEnabledCasesPrompt(workspaceId);
   const kg = buildKgPrompt(workspaceId);
-  const ruleIds = listRuleMemories(workspaceId).filter((rule) => rule.enabled && (!targetScope || rule.scope === "global" || rule.scope === targetScope)).map((rule) => rule.id);
+  // 全局池 + 按工作区启用：itemIds 与各 buildEnabled* 注入集合保持一致（按 enablement 过滤，非定义行 enabled）。
+  const ruleEnabled = new Set(listEnabledItemIds(workspaceId, "rule"));
+  const ruleIds = listRuleMemories().filter((rule) => ruleEnabled.has(rule.id) && (!targetScope || rule.scope === "global" || rule.scope === targetScope)).map((rule) => rule.id);
   // metric 真源 = metric_definitions（P2b'）；reference_file 仍在 analysis_standards
+  const standardEnabled = new Set(listEnabledItemIds(workspaceId, "standard"));
   const standardIds = [
-    ...listAnalysisStandards(workspaceId).filter((s) => s.enabled && s.kind === "reference_file").map((s) => s.id),
+    ...listAnalysisStandards().filter((s) => standardEnabled.has(s.id) && s.kind === "reference_file").map((s) => s.id),
     ...listEnabledMetricDefinitions(workspaceId).map((m) => m.id),
   ];
-  const businessContextIds = listBusinessContexts(workspaceId).filter((context) => context.enabled).map((context) => context.id);
-  const caseIds = listAnalysisCases(workspaceId).filter((analysisCase) => analysisCase.enabled).map((analysisCase) => analysisCase.id);
+  const bizEnabled = new Set(listEnabledItemIds(workspaceId, "business_context"));
+  const businessContextIds = listBusinessContexts().filter((context) => bizEnabled.has(context.id)).map((context) => context.id);
+  const caseEnabled = new Set(listEnabledItemIds(workspaceId, "case"));
+  const caseIds = listAnalysisCases().filter((analysisCase) => caseEnabled.has(analysisCase.id)).map((analysisCase) => analysisCase.id);
   const kgNodeIds = listKgNodes(workspaceId).map((node) => node.id);
   return [
     { kind: "businessContext", label: "业务环境", priority: 10, selectionReason: "业务背景优先保留，避免 agent 凭空假设", usage: usageByKind.get("businessContext") ?? null, itemIds: businessContextIds, ...businessContext },

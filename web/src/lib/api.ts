@@ -164,12 +164,8 @@ const legacyApi = {
     fetch(`/api/workspaces/${workspaceId}/rules`).then(json<RuleMemory[]>),
   createRule: (workspaceId: string, payload: { title: string; evidence: string; source: "trace" | "manual"; severity: "low" | "medium" | "high"; scope?: "global" | "chat" | "workflow" }) =>
     fetch(`/api/workspaces/${workspaceId}/rules`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<CreateRuleResult>),
-  updateRuleEnabled: (id: string, enabled: boolean) =>
-    fetch(`/api/rules/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) }).then(json<{ ok: true }>),
   updateRule: (id: string, payload: { title: string; evidence: string; severity: "low" | "medium" | "high"; scope: "global" | "chat" | "workflow" }) =>
     fetch(`/api/rules/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<{ ok: true }>),
-  updateRulesEnabled: (workspaceId: string, ids: string[], enabled: boolean) =>
-    fetch(`/api/workspaces/${workspaceId}/rules`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids, enabled }) }).then(json<{ ok: true }>),
   deleteRule: (id: string) => fetch(`/api/rules/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
   getRulesPrompt: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/rules-prompt`).then(json<{ prompt: string; count: number; updatedAt: number | null }>),
@@ -214,10 +210,6 @@ const legacyApi = {
     fetch(`/api/workspaces/${workspaceId}/business-contexts`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<BusinessContext>),
   updateBusinessContext: (id: string, payload: { category: BusinessContextCategory; title: string; content: string }) =>
     fetch(`/api/business-contexts/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<{ ok: true }>),
-  updateBusinessContextEnabled: (id: string, enabled: boolean) =>
-    fetch(`/api/business-contexts/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) }).then(json<{ ok: true }>),
-  updateBusinessContextsEnabled: (workspaceId: string, ids: string[], enabled: boolean) =>
-    fetch(`/api/workspaces/${workspaceId}/business-contexts`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ ids, enabled }) }).then(json<{ ok: true }>),
   deleteBusinessContext: (id: string) => fetch(`/api/business-contexts/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
   getBusinessContextPrompt: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/business-context-prompt`).then(json<{ prompt: string; count: number; updatedAt: number | null }>),
@@ -228,8 +220,6 @@ const legacyApi = {
     fetch(`/api/workspaces/${workspaceId}/cases`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<AnalysisCase>),
   updateCase: (id: string, payload: { title: string; category: string; scenario: string; approach: string; conclusion: string }) =>
     fetch(`/api/cases/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<{ ok: true }>),
-  updateCaseEnabled: (id: string, enabled: boolean) =>
-    fetch(`/api/cases/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) }).then(json<{ ok: true }>),
   deleteCase: (id: string) => fetch(`/api/cases/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
   getCasesPrompt: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/cases-prompt`).then(json<{ prompt: string; count: number; updatedAt: number | null }>),
@@ -240,8 +230,6 @@ const legacyApi = {
     fetch(`/api/workspaces/${workspaceId}/standards`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<AnalysisStandard>),
   updateStandard: (id: string, payload: AnalysisStandardInput) =>
     fetch(`/api/standards/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify(payload) }).then(json<{ ok: true }>),
-  updateStandardEnabled: (id: string, enabled: boolean) =>
-    fetch(`/api/standards/${id}`, { method: "PATCH", headers: { "content-type": "application/json" }, body: JSON.stringify({ enabled }) }).then(json<{ ok: true }>),
   deleteStandard: (id: string) =>
     fetch(`/api/standards/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
   getStandardsPrompt: (workspaceId: string) =>

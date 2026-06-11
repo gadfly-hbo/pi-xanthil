@@ -7,15 +7,19 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-11 · 断点续传范式推广到 viz 长任务 Pane（承接行业/竞品 hotfix，总控终审）
+- 最近更新：2026-06-11 · V 域本体(Ontology)及相关可视化组件全局池化改造收尾。
 - 进度：
-  - **续传推广**：复用 `web/src/lib/resumableTask.ts` 的 `useResumableTask`，把「LLM 长任务 + 进度只存本地 useState」的 viz Pane 改为 module 层续传——`GoldenStrategyPane` `ReportReviewPane`(审核/autoFix) `PresentationVersionPane` `TocPane` `DecisionTreePane` `BusinessRequirementPane` `AggregatePane`（onto 抽取由 E 域同批做）。切 tab 不丢进度；key 用业务上下文 id 拼（范式 canonical 见 notes-data「续跑范式」条）。
-  - 顺带修复：`BusinessRequirementPane` 改造时清掉了之前阻塞全局 web typecheck 的 `setGenerating/setClarifying` 未定义错误 → `npm run build` 现已恢复全绿（此前 notes-data 标的 build 阻塞已解除）。
-  - P0-B 看板（`BiDashboardPane` 数据源解耦重做）= V 域主线，状态见 §三/§四，本批未动。
-- 校验：`cd server && npm run typecheck` ✅；`cd web && npm run build`（tsc+vite）✅ built（echarts 动态导入/chunk-size 为既有 benign warning，非 error）。
-- 下一步：P1（报告交付 + 看板取数走 `MetricDefinition` 语义层契约）未启动；续传范式真机回归（切 tab→1 分钟后切回是否仍转圈/出结果）由用户实测。
-- 阻塞 / 待总控：无。
-- 开放问题：`resumableTask` store 永不 GC（同 notes-data 开放问题③）——当前 key 量级可忽略，未来挂高频 key（探索/聚合）需评估 LRU。
+  - **OntologyPane**：完成本体列表全局池化，每本体增加「本工作区启用」复选框。开关状态直接与 `workspace_memory_enablements` 的 `ontology` 类型双向绑定。本体内的对象、关系、指标、逻辑和动作不再独立设 enable 开关，均跟随所属的父级本体隐式生效。
+  - **KnowledgeGraphPane / KG Projection**：核对确认 `server/src/knowledge-graph.ts` 中 `syncKnowledgeGraph` 已通过 `listEnabledItemIds` 实现对本工作区启用条目（rules/standards/metrics/biz_ctx）的过滤，KG 对齐了全局池投影口径，无需额外独立 enable 状态管理。
+  - **TracePane**：决策保持原状，维持 per-workspace 不进池行为不变。
+- 校验：`cd web && npm run typecheck` ✅；`cd web && npm run build` ✅ built。
+- 下一步：
+  - 真机联调测试（V 域无法充分测试）：跨工作区验证本体 toggle 的真实效果；核对 KG 投影在真实图谱画布中的展示结果，确保无废弃节点残留或未启用的节点外溢。
+  - 待总控排期并整合其他关联模块的池化。
+- 阻塞 / 待总控：
+  - 本体对象池创建的联动：若在新工作区新建本体，需确认 `enableForOrigin` 能否如期在创建瞬间勾上本工作区状态。
+- 开放问题：
+  - 无新增开放问题。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -68,6 +72,17 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 **知识图谱 / trace**（可视化部分）
 - 知识图谱挂「规则记忆」二级 tab（非顶栏独立）；Phase A 结构化图谱优先（无 LightRAG 依赖）；摄入 = 手动触发 + 变更累积；注入折叠进 `injectRulesPrompt` 开关；节点**隐藏而非物理删除**。
 
+**规则记忆 4 Pane · 全局池化 UI 范式**
+- 列表数据源 = 全局池（`api.listRules/Standards/Cases/BusinessContexts/Metrics` 返回所有 ws 的条目，`workspaceId` 字段表示 origin）；启用态 = `sharedApi.listMemoryEnablements(ws, kind)` 索引 Map。两路独立拉取、独立更新。
+- kind 映射固定：偏好=`rule`、指标=`metric`、参考文件=`standard`、项目=`case`、业务环境=`business_context`（与 `MemoryItemKind` 类型一致；勿在 UI 自创映射）。
+- **toggle 用乐观更新 + 函数式 setState**：`setEnablements(prev => { const m = new Map(prev); m.set(id, next); return m; })`。直接 `new Map(enablements).set(...)` 会捕获 stale closure，快速连点丢更新。`bulkSetEnabled` 同理，循环 set 在函数式 reducer 内做。
+- **创建/编辑/删除一律 `await refresh()` 全量重拉，不本地 patch**：全局池语义下编辑跨 ws 生效，本地 `Date.now()` 假装更新会与真实状态漂移；总控保证创建时 `enableForOrigin` 自动建启用关系，但前端必须 refresh 才能看到新条目的勾选态。
+- **删除提示必须说"全局池删除，所有工作区都将失效"**：避免用户误以为只删本 ws。
+- 视觉契约：来源徽标（`item.workspaceId !== workspaceId` 时渲染琥珀色"来源"）+ toggle 按钮文案统一为"本工作区启用/停用"+ emerald/灰二态分色。
+- `IndicatorsPane` 特殊：metric + reference_file 在同一 Pane 用 `StandardSection` 复用渲染，但 toggle 走不同 kind（`metric` vs `standard`），所以 `listMemoryEnablements(ws)` 不带 kind 过滤，一次拉全，按 id 索引（metric/standard 表 id 不冲突）。
+- `workspaceId!` non-null 断言不可作为类型保证（UI 守卫不被 TS 信任）；toggle 入口必须显式 `if (!workspaceId) return;`。
+- **Ontology 隐式级联**：本体（Ontology）采用了“整体验收”原则，对象/关系/指标/逻辑/动作等从属于本体的条目不设立独立的启用开关，均追随其父本体的启用状态。
+
 ---
 
 ## 四、踩坑 / 陷阱
@@ -76,6 +91,8 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - 报告类文件识别：`report/报告/result/summary/.md` 文件图标高亮琥珀色；运行中每 4s 刷新文件树。
 - DND 排序中 `moved` 元素类型残留：`array.splice` 返回的对象解构后，在 TypeScript 中可能被推导为包含 `undefined`，直接传回 `splice` 插入会引发类型报错。必须使用 `if (moved)` 守卫做存在性包裹以消除编译器报警。
 - API 契约调用陷阱：跨域（V 调用 D 的 REST 接口）获取数据源数据时，必须直接复用已封装的领域 `dataApi.getBiAggregationData` 方法。如果在 V 域侧自行硬编码 `fetch` 拼接路径，极易因对方实际路由细节（如尾部 `/:pathId/data` 的后缀设计）导致偶发的 404 Not Found 漏洞。
+- **全局池 toggle 的 stale closure 陷阱**：写 `setEnablements(new Map(enablements).set(id, next))` 看似 OK，实则 `enablements` 是 render 快照，快速连点第二次仍读旧 Map → 第一次更新丢失。必须用函数式 setState `setEnablements(prev => { const m = new Map(prev); m.set(id, next); return m; })`。同坑在所有"Map/Set state + 高频 toggle"场景重现。
+- **全局池创建后启用态显示停用**：总控约定创建时自动 `enableForOrigin`，但前端如果只 `setItems(...prev, created)` 而不重拉 enablements，新建条目因 enablements Map 里没记录，`get(id) ?? false` 显示"停用"。规避：所有 create/update/delete 一律 `await refresh()` 全量重拉，别想省那一次 round-trip。
 
 ---
 

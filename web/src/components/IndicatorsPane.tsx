@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Calculator, CheckCircle2, FileText, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { sharedApi } from "@/lib/api/shared";
 import type { AnalysisStandard, AnalysisStandardInput, AnalysisStandardKind, MetricDefinition } from "@/types";
 
 type FormState = AnalysisStandardInput & { id: string | null };
@@ -38,27 +39,30 @@ function toInput(form: FormState): AnalysisStandardInput {
 
 export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceId: string | null; onStandardsChanged?: () => void }) {
   const [standards, setStandards] = useState<AnalysisStandard[]>([]);
-  const [metricDefs, setMetricDefs] = useState<MetricDefinition[]>([]); // metric 真源 = metric_definitions（P2b'）
+  const [metricDefs, setMetricDefs] = useState<MetricDefinition[]>([]);
   const [promptInfo, setPromptInfo] = useState<{ prompt: string; count: number; updatedAt: number | null }>({ prompt: "", count: 0, updatedAt: null });
   const [loading, setLoading] = useState(false);
   const [copied, setCopied] = useState(false);
   const [error, setError] = useState("");
   const [form, setForm] = useState<FormState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [enablements, setEnablements] = useState<Map<string, boolean>>(new Map());
 
   const refresh = useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
     setError("");
     try {
-      const [list, prompt, mets] = await Promise.all([
+      const [list, prompt, mets, enabs] = await Promise.all([
         api.listStandards(workspaceId),
         api.getStandardsPrompt(workspaceId),
         api.listMetrics(workspaceId),
+        sharedApi.listMemoryEnablements(workspaceId),
       ]);
       setStandards(list);
       setPromptInfo(prompt);
       setMetricDefs(mets);
+      setEnablements(new Map(enabs.map((e) => [e.itemId, e.enabled])));
     } catch (err) {
       setError(String(err));
     } finally {
@@ -84,24 +88,39 @@ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceI
   })), [metricDefs]);
 
   const toggle = async (s: AnalysisStandard) => {
-    await api.updateStandardEnabled(s.id, !s.enabled);
-    setStandards((cur) => cur.map((item) => item.id === s.id ? { ...item, enabled: !item.enabled } : item));
+    if (!workspaceId) return;
+    const current = enablements.get(s.id) ?? false;
+    const next = !current;
+    await sharedApi.setMemoryEnablement(workspaceId, "standard", s.id, next);
+    setEnablements((prev) => {
+      const m = new Map(prev);
+      m.set(s.id, next);
+      return m;
+    });
     void afterMutation();
   };
 
   const remove = async (s: AnalysisStandard) => {
-    if (!window.confirm(`确认删除「${s.name}」？`)) return;
+    if (!window.confirm(`确认删除「${s.name}」？（全局池删除，所有工作区都将失效）`)) return;
     await api.deleteStandard(s.id);
     void afterMutation();
   };
 
   // metric 真源切到 metric_definitions（P2b'）：指标的 toggle/delete 走 metric API
   const toggleMetric = async (s: AnalysisStandard) => {
-    await api.updateMetric(s.id, { enabled: !s.enabled });
+    if (!workspaceId) return;
+    const current = enablements.get(s.id) ?? false;
+    const next = !current;
+    await sharedApi.setMemoryEnablement(workspaceId, "metric", s.id, next);
+    setEnablements((prev) => {
+      const m = new Map(prev);
+      m.set(s.id, next);
+      return m;
+    });
     void afterMutation();
   };
   const removeMetric = async (s: AnalysisStandard) => {
-    if (!window.confirm(`确认删除「${s.name}」？`)) return;
+    if (!window.confirm(`确认删除「${s.name}」？（全局池删除，所有工作区都将失效）`)) return;
     await api.deleteMetric(s.id);
     void afterMutation();
   };
@@ -207,19 +226,21 @@ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceI
           <pre className="mt-3 max-h-56 overflow-auto whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 text-[12px] leading-5 text-neutral-700 dark:bg-neutral-950 dark:text-neutral-300">{promptInfo.prompt || "暂无启用标准"}</pre>
         </div>
 
-        <StandardSection title="指标口径" icon={Calculator} items={metrics} onToggle={toggleMetric} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={removeMetric} />
-        <StandardSection title="参照标准文件" icon={FileText} items={files} onToggle={toggle} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={remove} />
+        <StandardSection title="指标口径" icon={Calculator} items={metrics} enablements={enablements} workspaceId={workspaceId} onToggle={toggleMetric} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={removeMetric} />
+        <StandardSection title="参照标准文件" icon={FileText} items={files} enablements={enablements} workspaceId={workspaceId} onToggle={toggle} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={remove} />
       </div>
     </div>
   );
 }
 
 function StandardSection({
-  title, icon: Icon, items, onToggle, onEdit, onDelete,
+  title, icon: Icon, items, enablements, workspaceId, onToggle, onEdit, onDelete,
 }: {
   title: string;
   icon: typeof Calculator;
   items: AnalysisStandard[];
+  enablements: Map<string, boolean>;
+  workspaceId: string | null;
   onToggle: (s: AnalysisStandard) => void;
   onEdit: (s: AnalysisStandard) => void;
   onDelete: (s: AnalysisStandard) => void;
@@ -229,7 +250,9 @@ function StandardSection({
       <h3 className="flex items-center gap-1.5 px-1 text-[12px] font-semibold text-neutral-500"><Icon className="h-3.5 w-3.5" /> {title} <span className="text-neutral-400">({items.length})</span></h3>
       {items.length === 0 ? (
         <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-8 text-center text-[12.5px] text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900/40">暂无{title}</div>
-      ) : items.map((s) => (
+      ) : items.map((s) => {
+        const wsEnabled = enablements.get(s.id) ?? false;
+        return (
         <div key={s.id} className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex items-start justify-between gap-3">
             <div className="min-w-0">
@@ -237,6 +260,9 @@ function StandardSection({
                 <h4 className="text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">{s.name}</h4>
                 {s.category && <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700">{s.category}</span>}
                 {s.unit && <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700">单位 {s.unit}</span>}
+                {s.workspaceId !== workspaceId && (
+                  <span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10.5px] text-amber-600 dark:border-amber-800 dark:text-amber-400">来源</span>
+                )}
               </div>
               {s.description && <p className="mt-2 text-[12px] leading-5 text-neutral-600 dark:text-neutral-300">{s.description}</p>}
               {s.kind === "metric" && s.formula && <p className="mt-1 font-mono text-[11px] text-neutral-500">公式：{s.formula}</p>}
@@ -246,15 +272,16 @@ function StandardSection({
               )}
             </div>
             <div className="flex shrink-0 items-center gap-1.5">
-              <button onClick={() => onToggle(s)} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] ${s.enabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
-                <CheckCircle2 className="h-3.5 w-3.5" /> {s.enabled ? "启用" : "停用"}
+              <button onClick={() => onToggle(s)} className={`inline-flex items-center gap-1.5 rounded-md px-2.5 py-1.5 text-[12px] ${wsEnabled ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800"}`}>
+                <CheckCircle2 className="h-3.5 w-3.5" /> 本工作区{wsEnabled ? "启用" : "停用"}
               </button>
               <button onClick={() => onEdit(s)} className="rounded-md border border-neutral-200 p-1.5 text-neutral-500 hover:text-neutral-800 dark:border-neutral-700 dark:hover:text-neutral-200"><Pencil className="h-3.5 w-3.5" /></button>
               <button onClick={() => onDelete(s)} className="rounded-md border border-neutral-200 p-1.5 text-neutral-500 hover:text-red-600 dark:border-neutral-700"><Trash2 className="h-3.5 w-3.5" /></button>
             </div>
           </div>
         </div>
-      ))}
+        );
+      })}
     </div>
   );
 }

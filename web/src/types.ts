@@ -401,6 +401,26 @@ export interface RuleMemory {
   updatedAt: number;
 }
 
+// ---- 工作区记忆启用关系（全局池 + 按工作区启用，总控契约）----
+// 池内定义为「共享单实例」：编辑全局生效；启用关系仅控本工作区"用不用"。
+// 迁移：现有定义按 origin workspace 建启用记录（仅原工作区启用）。
+export type MemoryItemKind =
+  | "rule"             // rule_memories 偏好记忆
+  | "standard"         // analysis_standards 参考文件
+  | "business_context" // business_contexts 业务环境
+  | "case"             // analysis_cases 项目记忆
+  | "metric"           // metric_definitions 指标记忆
+  | "ontology"         // onto-xanthil：启用粒度=本体整体（P3 落地）
+  | "failure" | "field" | "process"; // 预留占位模块（失败/字段/流程记忆）
+
+export interface WorkspaceMemoryEnablement {
+  workspaceId: string;
+  itemKind: MemoryItemKind;
+  itemId: string;
+  enabled: boolean;
+  createdAt: number;
+}
+
 export interface RuleConflict {
   id: string;
   workspaceId: string;
