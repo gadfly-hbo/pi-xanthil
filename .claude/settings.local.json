@@ -169,7 +169,8 @@
       "Bash(awk '/^const HOTFIX = \\\\[/,/^\\\\];/' wiki.html)",
       "Bash(grep -o '`')",
       "Bash(echo \"[exit=$? → 1=无匹配,合规]\")",
-      "Bash(awk '/^const TASKS = \\\\[/,/^\\\\];/' wiki.html)"
+      "Bash(awk '/^const TASKS = \\\\[/,/^\\\\];/' wiki.html)",
+      "Bash(grep -E '需求池机制|模拟决策评估' __TRACKED_VAR__/MEMORY.md)"
     ]
   }
 }

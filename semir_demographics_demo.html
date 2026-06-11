@@ -1,0 +1,1847 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>森马品牌人群画像看板 | Semir Demographics Dashboard</title>
+    <!-- Google Fonts -->
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@300;400;500;600;700;800&family=Outfit:wght@300;400;500;600;700;800&display=swap" rel="stylesheet">
+    <!-- Chart.js CDN -->
+    <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+    <style>
+        :root {
+            --bg-primary: #08090d;
+            --bg-secondary: #0f111a;
+            --card-bg: rgba(18, 20, 32, 0.75);
+            --card-border: rgba(255, 255, 255, 0.08);
+            --card-border-hover: rgba(255, 90, 0, 0.4);
+            --text-primary: #ffffff;
+            --text-secondary: #9ca3af;
+            --semir-orange: #FF5A00;
+            --semir-orange-glow: rgba(255, 90, 0, 0.2);
+            --trendy-purple: #8B5CF6;
+            --trendy-purple-glow: rgba(139, 92, 246, 0.15);
+            --trendy-blue: #3B82F6;
+            --neon-green: #10B981;
+            --neon-amber: #F59E0B;
+            --font-display: 'Outfit', 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+            --font-sans: 'Inter', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+        }
+
+        * {
+            margin: 0;
+            padding: 0;
+            box-sizing: border-box;
+        }
+
+        body {
+            background-color: var(--bg-primary);
+            background-image: 
+                radial-gradient(circle at 10% 20%, rgba(255, 90, 0, 0.06) 0%, transparent 40%),
+                radial-gradient(circle at 90% 80%, rgba(139, 92, 246, 0.07) 0%, transparent 50%),
+                radial-gradient(circle at 50% 50%, rgba(59, 130, 246, 0.03) 0%, transparent 60%);
+            color: var(--text-primary);
+            font-family: var(--font-sans);
+            min-height: 100vh;
+            overflow-x: hidden;
+            padding-bottom: 3rem;
+        }
+
+        /* Ambient Background Grid Effect */
+        body::before {
+            content: '';
+            position: fixed;
+            top: 0;
+            left: 0;
+            width: 100vw;
+            height: 100vh;
+            background-image: linear-gradient(rgba(255,255,255,0.01) 1px, transparent 1px), linear-gradient(90deg, rgba(255,255,255,0.01) 1px, transparent 1px);
+            background-size: 40px 40px;
+            z-index: -1;
+            pointer-events: none;
+        }
+
+        /* Custom Scrollbar */
+        ::-webkit-scrollbar {
+            width: 8px;
+            height: 8px;
+        }
+        ::-webkit-scrollbar-track {
+            background: rgba(255, 255, 255, 0.01);
+        }
+        ::-webkit-scrollbar-thumb {
+            background: rgba(255, 90, 0, 0.3);
+            border-radius: 4px;
+        }
+        ::-webkit-scrollbar-thumb:hover {
+            background: rgba(255, 90, 0, 0.6);
+        }
+
+        header {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 2rem 2rem 1rem 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            border-bottom: 1px solid rgba(255, 255, 255, 0.05);
+        }
+
+        .logo-section {
+            display: flex;
+            align-items: center;
+            gap: 1.25rem;
+        }
+
+        .semir-logo-placeholder {
+            width: 110px;
+            height: 38px;
+            background: linear-gradient(135deg, var(--semir-orange), #ff7b39);
+            border-radius: 6px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            font-family: var(--font-display);
+            font-weight: 800;
+            font-size: 1.25rem;
+            letter-spacing: 2px;
+            color: #fff;
+            box-shadow: 0 0 25px var(--semir-orange-glow);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .semir-logo-placeholder::after {
+            content: '';
+            position: absolute;
+            top: -50%;
+            left: -50%;
+            width: 200%;
+            height: 200%;
+            background: linear-gradient(45deg, transparent, rgba(255,255,255,0.2), transparent);
+            transform: rotate(45deg);
+            animation: shine 4s infinite linear;
+        }
+
+        @keyframes shine {
+            0% { transform: translate(-50%, -50%) rotate(45deg); }
+            100% { transform: translate(50%, 50%) rotate(45deg); }
+        }
+
+        .header-title h1 {
+            font-family: var(--font-display);
+            font-size: 1.75rem;
+            font-weight: 700;
+            background: linear-gradient(to right, #fff, #9ca3af);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+            margin-bottom: 0.25rem;
+        }
+
+        .header-title p {
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            letter-spacing: 1px;
+            display: flex;
+            align-items: center;
+            gap: 8px;
+        }
+
+        .data-source-badge {
+            background: rgba(255, 90, 0, 0.1);
+            color: var(--semir-orange);
+            border: 1px solid rgba(255, 90, 0, 0.25);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-size: 0.7rem;
+            font-weight: 600;
+        }
+
+        .header-meta {
+            text-align: right;
+            font-family: var(--font-display);
+        }
+
+        .time-box {
+            font-size: 1.1rem;
+            font-weight: 600;
+            color: var(--semir-orange);
+        }
+
+        .date-box {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Dashboard Controller (Tabs) */
+        .controls-container {
+            max-width: 1600px;
+            margin: 1.5rem auto 2rem auto;
+            padding: 0 2rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+            flex-wrap: wrap;
+            gap: 1rem;
+        }
+
+        .tabs-wrapper {
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            padding: 4px;
+            border-radius: 30px;
+            display: flex;
+            gap: 4px;
+            backdrop-filter: blur(10px);
+        }
+
+        .tab-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 8px 24px;
+            border-radius: 20px;
+            font-size: 0.9rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+            font-family: var(--font-sans);
+        }
+
+        .tab-btn:hover {
+            color: var(--text-primary);
+        }
+
+        .tab-btn.active {
+            background: var(--semir-orange);
+            color: #fff;
+            box-shadow: 0 4px 15px var(--semir-orange-glow);
+        }
+
+        .overview-stats {
+            display: flex;
+            gap: 1rem;
+            font-size: 0.85rem;
+            color: var(--text-secondary);
+            align-items: center;
+        }
+
+        .status-dot {
+            width: 8px;
+            height: 8px;
+            background-color: var(--neon-amber);
+            border-radius: 50%;
+            display: inline-block;
+            box-shadow: 0 0 10px var(--neon-amber);
+            animation: pulse 2s infinite;
+        }
+
+        @keyframes pulse {
+            0% { transform: scale(0.9); opacity: 0.8; }
+            50% { transform: scale(1.2); opacity: 1; box-shadow: 0 0 15px var(--neon-amber); }
+            100% { transform: scale(0.9); opacity: 0.8; }
+        }
+
+        /* Grid Layout */
+        .dashboard-grid {
+            max-width: 1600px;
+            margin: 0 auto;
+            padding: 0 2rem;
+            display: flex;
+            flex-direction: column;
+            gap: 3rem;
+        }
+
+        /* Dimension Section */
+        .dimension-section {
+            scroll-margin-top: 100px;
+            transition: opacity 0.5s ease, transform 0.5s ease;
+        }
+
+        .section-header {
+            display: flex;
+            align-items: center;
+            gap: 1rem;
+            margin-bottom: 1.5rem;
+            position: relative;
+        }
+
+        .section-header::after {
+            content: '';
+            flex-grow: 1;
+            height: 1px;
+            background: linear-gradient(to right, rgba(255, 90, 0, 0.2), transparent);
+            margin-left: 1rem;
+        }
+
+        .section-num {
+            font-family: var(--font-display);
+            font-size: 1.5rem;
+            font-weight: 800;
+            color: var(--semir-orange);
+            background: rgba(255, 90, 0, 0.1);
+            width: 40px;
+            height: 40px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+            border-radius: 50%;
+            border: 1px solid rgba(255, 90, 0, 0.2);
+        }
+
+        .section-title h2 {
+            font-family: var(--font-display);
+            font-size: 1.4rem;
+            font-weight: 700;
+            letter-spacing: 0.5px;
+        }
+
+        .section-title p {
+            font-size: 0.8rem;
+            color: var(--text-secondary);
+        }
+
+        /* Cards Layout */
+        .cards-row {
+            display: grid;
+            grid-template-columns: repeat(4, 1fr);
+            gap: 1.25rem;
+            margin-bottom: 1.5rem;
+        }
+
+        .card-metric {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 16px;
+            padding: 1.5rem;
+            backdrop-filter: blur(12px);
+            transition: all 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+            position: relative;
+            overflow: hidden;
+        }
+
+        .card-metric::before {
+            content: '';
+            position: absolute;
+            top: 0;
+            left: 0;
+            width: 100%;
+            height: 4px;
+            background: linear-gradient(to right, transparent, transparent);
+            transition: all 0.4s ease;
+        }
+
+        .card-metric:hover::before {
+            background: linear-gradient(to right, var(--semir-orange), var(--trendy-purple));
+        }
+
+        .card-metric:hover {
+            transform: translateY(-5px);
+            border-color: var(--card-border-hover);
+            box-shadow: 0 10px 30px rgba(255, 90, 0, 0.08);
+        }
+
+        .metric-title {
+            font-size: 0.8rem;
+            font-weight: 600;
+            color: var(--text-secondary);
+            text-transform: uppercase;
+            letter-spacing: 1px;
+            margin-bottom: 0.75rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: center;
+        }
+
+        .metric-icon {
+            font-size: 1.2rem;
+            opacity: 0.8;
+        }
+
+        .metric-value {
+            font-family: var(--font-display);
+            font-size: 1.8rem;
+            font-weight: 700;
+            margin-bottom: 0.5rem;
+            background: linear-gradient(to right, #ffffff, #e5e7eb);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+
+        .metric-trend {
+            font-size: 0.75rem;
+            display: flex;
+            align-items: center;
+            gap: 6px;
+        }
+
+        .trend-up {
+            color: var(--neon-green);
+        }
+
+        .trend-neutral {
+            color: var(--trendy-blue);
+        }
+
+        .trend-tgi {
+            background: rgba(255, 90, 0, 0.15);
+            color: var(--semir-orange);
+            padding: 1px 6px;
+            border-radius: 4px;
+            font-weight: 600;
+        }
+
+        /* Charts Layout */
+        .charts-row {
+            display: grid;
+            grid-template-columns: repeat(3, 1fr);
+            gap: 1.5rem;
+        }
+
+        .card-chart {
+            background: var(--card-bg);
+            border: 1px solid var(--card-border);
+            border-radius: 20px;
+            padding: 1.5rem;
+            backdrop-filter: blur(12px);
+            display: flex;
+            flex-direction: column;
+            min-height: 350px;
+            transition: border-color 0.3s ease, box-shadow 0.3s ease;
+        }
+
+        .card-chart:hover {
+            border-color: rgba(255, 255, 255, 0.15);
+            box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+        }
+
+        .chart-header {
+            margin-bottom: 1.25rem;
+            display: flex;
+            justify-content: space-between;
+            align-items: flex-start;
+            gap: 0.5rem;
+        }
+
+        .chart-title h3 {
+            font-size: 1rem;
+            font-weight: 600;
+            color: var(--text-primary);
+        }
+
+        .chart-title p {
+            font-size: 0.75rem;
+            color: var(--text-secondary);
+            margin-top: 0.15rem;
+        }
+
+        .chart-legend-badge {
+            font-size: 0.7rem;
+            background: rgba(255, 255, 255, 0.05);
+            padding: 4px 10px;
+            border-radius: 12px;
+            color: var(--text-secondary);
+            border: 1px solid rgba(255, 255, 255, 0.03);
+            white-space: nowrap;
+        }
+
+        .chart-body {
+            flex-grow: 1;
+            position: relative;
+            width: 100%;
+            height: 240px;
+            display: flex;
+            align-items: center;
+            justify-content: center;
+        }
+
+        /* Switch toggles for levels */
+        .level-switch-container {
+            display: flex;
+            background: rgba(255, 255, 255, 0.03);
+            border: 1px solid var(--card-border);
+            border-radius: 8px;
+            padding: 2px;
+            margin-bottom: 1.25rem;
+        }
+
+        .level-switch-btn {
+            background: transparent;
+            border: none;
+            color: var(--text-secondary);
+            padding: 6px 14px;
+            border-radius: 6px;
+            font-size: 0.8rem;
+            font-weight: 600;
+            cursor: pointer;
+            transition: all 0.3s ease;
+        }
+
+        .level-switch-btn.active {
+            background: rgba(255, 90, 0, 0.15);
+            color: var(--semir-orange);
+            border: 1px solid rgba(255, 90, 0, 0.2);
+        }
+
+        .product-selector {
+            background: rgba(255, 255, 255, 0.05);
+            border: 1px solid var(--card-border);
+            color: var(--text-primary);
+            padding: 6px 14px;
+            border-radius: 8px;
+            font-size: 0.85rem;
+            font-weight: 500;
+            cursor: pointer;
+            outline: none;
+            transition: all 0.3s ease;
+        }
+
+        .product-selector:hover {
+            background: rgba(255, 255, 255, 0.1);
+            border-color: var(--semir-orange);
+        }
+
+        .product-selector option {
+            background-color: var(--bg-secondary);
+            color: var(--text-primary);
+        }
+
+        /* Tag Cloud Visual representation for CSS fallback */
+        .tag-cloud {
+            display: flex;
+            flex-wrap: wrap;
+            gap: 10px;
+            justify-content: center;
+            align-content: center;
+            height: 100%;
+            padding: 10px;
+        }
+
+        .tag-item {
+            padding: 6px 14px;
+            border-radius: 30px;
+            font-size: 0.8rem;
+            font-weight: 500;
+            transition: all 0.3s ease;
+            cursor: default;
+            display: flex;
+            align-items: center;
+            gap: 4px;
+        }
+
+        .tag-item:hover {
+            transform: scale(1.08);
+        }
+
+        .tag-item span {
+            font-size: 0.7rem;
+            opacity: 0.7;
+        }
+
+        .tag-1 { background: rgba(255, 90, 0, 0.15); border: 1px solid rgba(255, 90, 0, 0.3); color: #FF9E66; font-size: 0.95rem; font-weight: bold; }
+        .tag-2 { background: rgba(139, 92, 246, 0.15); border: 1px solid rgba(139, 92, 246, 0.3); color: #C084FC; font-size: 0.9rem; }
+        .tag-3 { background: rgba(59, 130, 246, 0.15); border: 1px solid rgba(59, 130, 246, 0.3); color: #60A5FA; font-size: 0.85rem; }
+        .tag-4 { background: rgba(16, 185, 129, 0.15); border: 1px solid rgba(16, 185, 129, 0.3); color: #34D399; font-size: 0.8rem; }
+        .tag-5 { background: rgba(245, 158, 11, 0.15); border: 1px solid rgba(245, 158, 11, 0.3); color: #FBBF24; font-size: 0.75rem; }
+
+        /* Animation Classes */
+        .hidden-dimension {
+            opacity: 0.05;
+            pointer-events: none;
+            transform: scale(0.98);
+            position: absolute;
+            width: 100%;
+            height: 0;
+            overflow: hidden;
+            margin: 0;
+            padding: 0;
+        }
+
+        /* Safety Warning Alert styling */
+        .safety-alert {
+            background: rgba(245, 158, 11, 0.08);
+            border: 1px solid rgba(245, 158, 11, 0.3);
+            border-radius: 8px;
+            padding: 10px 16px;
+            max-width: 1600px;
+            margin: 1rem auto 0 auto;
+            display: flex;
+            align-items: center;
+            gap: 10px;
+            font-size: 0.8rem;
+            color: #fbbf24;
+        }
+
+        /* Control display blocks */
+        .chart-toggle-view {
+            display: contents;
+        }
+
+        .chart-toggle-view.hidden-view {
+            display: none !important;
+        }
+
+        /* Responsive */
+        @media (max-width: 1200px) {
+            .cards-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .charts-row {
+                grid-template-columns: repeat(2, 1fr);
+            }
+            .charts-row .card-chart:last-child {
+                grid-column: span 2;
+            }
+        }
+
+        @media (max-width: 768px) {
+            header {
+                flex-direction: column;
+                gap: 1rem;
+                text-align: center;
+            }
+            .header-meta {
+                text-align: center;
+            }
+            .controls-container {
+                flex-direction: column;
+                align-items: center;
+            }
+            .cards-row {
+                grid-template-columns: 1fr;
+            }
+            .charts-row {
+                grid-template-columns: 1fr;
+            }
+            .charts-row .card-chart:last-child {
+                grid-column: span 1;
+            }
+        }
+    </style>
+</head>
+<body>
+
+    <!-- Header Section -->
+    <header>
+        <div class="logo-section">
+            <div class="semir-logo-placeholder">Semir</div>
+            <div class="header-title">
+                <h1>森马人群画像看板</h1>
+                <p>
+                    <span>BRAND CONSUMER PROFILE INSIGHTS</span>
+                    <span class="data-source-badge">数据源: 25年5月官旗画像真实数据</span>
+                </p>
+            </div>
+        </div>
+        <div class="header-meta">
+            <div class="time-box" id="live-time">10:00:00</div>
+            <div class="date-box" id="live-date">2026年06月11日 星期四</div>
+        </div>
+    </header>
+
+    <!-- Data Safety Alert (Amber Indicator per AGENTS.md instructions for aggregated data) -->
+    <div class="safety-alert">
+        <svg width="16" height="16" viewBox="0 0 20 20" fill="currentColor">
+            <path fill-rule="evenodd" d="M8.257 3.099c.765-1.36 2.722-1.36 3.486 0l5.58 9.92c.75 1.334-.213 2.98-1.742 2.98H4.42c-1.53 0-2.493-1.646-1.743-2.98l5.58-9.92zM11 13a1 1 0 11-2 0 1 1 0 012 0zm-1-8a1 1 0 00-1 1v3a1 1 0 002 0V6a1 1 0 00-1-1z" clip-rule="evenodd"/>
+        </svg>
+        <span><strong>受控数据知情提示：</strong>本看板正展示经聚合计算后的品牌及抖音成交人群画像（Clean Data 级），已脱敏，仅供内部 Demo 决策使用。</span>
+    </div>
+
+    <!-- Controls / Filters -->
+    <div class="controls-container">
+        <div class="tabs-wrapper">
+            <button class="tab-btn active" onclick="switchDimension('all')">全景看板</button>
+            <button class="tab-btn" onclick="switchDimension('brand')">1. 品牌全景画像</button>
+            <button class="tab-btn" onclick="switchDimension('douyin')">2. 抖音账号画像</button>
+            <button class="tab-btn" onclick="switchDimension('top-product')">3. 爆款成交品类</button>
+        </div>
+        <div class="overview-stats">
+            <span class="status-dot"></span>
+            <span>数据源已连接：已同步 2,987 条标签矩阵</span>
+            <span>|</span>
+            <span>更新频率：静态基准</span>
+        </div>
+    </div>
+
+    <!-- Main Dashboard Body -->
+    <div class="dashboard-grid">
+
+        <!-- DIMENSION 1: BRAND OVERVIEW -->
+        <section id="dim-brand" class="dimension-section">
+            <div class="section-header">
+                <div class="section-num">01</div>
+                <div class="section-title">
+                    <h2>品牌全网大盘基准画像</h2>
+                    <p>Semir Core Brand Demographics & Market Baselines (反推自 TGI 基准值)</p>
+                </div>
+            </div>
+
+            <!-- Metric Cards -->
+            <div class="cards-row">
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>大盘主力性别</span>
+                        <span class="metric-icon">👥</span>
+                    </div>
+                    <div class="metric-value">男/女 均衡</div>
+                    <div class="metric-trend">
+                        <span style="color: var(--text-secondary);">全网大盘男女比例接近 49:45 均衡分布</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>大盘第一主力年龄段</span>
+                        <span class="metric-icon">⏳</span>
+                    </div>
+                    <div class="metric-value">36-40岁</div>
+                    <div class="metric-trend trend-neutral">
+                        <span>占比约 16.3%</span>
+                        <span style="color: var(--text-secondary);">分布较均</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>大盘最大学群</span>
+                        <span class="metric-icon">💼</span>
+                    </div>
+                    <div class="metric-value">都市银发/蓝领</div>
+                    <div class="metric-trend trend-neutral">
+                        <span>合计占比超 30%</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>全网大盘消费力</span>
+                        <span class="metric-icon">📉</span>
+                    </div>
+                    <div class="metric-value">低消费为主</div>
+                    <div class="metric-trend">
+                        <span>全网大盘低消费水平人群占 54.7%</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Row -->
+            <div class="charts-row">
+                <div class="card-chart">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <h3>全网基准性别分布</h3>
+                            <p>全网大盘基准用户男女构成占比</p>
+                        </div>
+                        <span class="chart-legend-badge">Doughnut</span>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="chart-brand-gender"></canvas>
+                    </div>
+                </div>
+                <div class="card-chart">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <h3>大盘年龄代际分布</h3>
+                            <p>大盘常规受众年龄段占比分布</p>
+                        </div>
+                        <span class="chart-legend-badge">Bar Chart</span>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="chart-brand-age"></canvas>
+                    </div>
+                </div>
+                <div class="card-chart">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <h3>大盘主力消费群体</h3>
+                            <p>全网常规八大消费客群结构占比</p>
+                        </div>
+                        <span class="chart-legend-badge">Polar Area</span>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="chart-brand-consumer"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DIMENSION 2: DOUYIN ACCOUNT -->
+        <section id="dim-douyin" class="dimension-section">
+            <div class="section-header">
+                <div class="section-num">02</div>
+                <div class="section-title">
+                    <h2>抖音官旗账号人群画像</h2>
+                    <p>Douyin Semir Flagship Account Audience & Shopping Card Demographics</p>
+                </div>
+            </div>
+
+            <!-- Metric Cards -->
+            <div class="cards-row">
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>抖音渠道性别比</span>
+                        <span class="metric-icon">🚺</span>
+                    </div>
+                    <div class="metric-value">女 91.02%</div>
+                    <div class="metric-trend trend-up">
+                        <span class="trend-tgi">TGI 201.3</span>
+                        <span style="color: var(--text-secondary);">极显著女性特质</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>核心消费群体</span>
+                        <span class="metric-icon">🍼</span>
+                    </div>
+                    <div class="metric-value">精致妈妈 26.1%</div>
+                    <div class="metric-trend trend-up">
+                        <span class="trend-tgi">TGI 978.4</span>
+                        <span style="color: var(--text-secondary);">超高粘性爆发</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>高消费能力占比</span>
+                        <span class="metric-icon">⚡</span>
+                    </div>
+                    <div class="metric-value">44.32%</div>
+                    <div class="metric-trend trend-up">
+                        <span class="trend-tgi">TGI 382.2</span>
+                        <span style="color: var(--text-secondary);">粉丝消费力极强</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>核心人生阶段</span>
+                        <span class="metric-icon">🏠</span>
+                    </div>
+                    <div class="metric-value">家有儿女 71.12%</div>
+                    <div class="metric-trend trend-up">
+                        <span class="trend-tgi">TGI 219.9</span>
+                        <span style="color: var(--text-secondary);">家庭采购需求旺盛</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Row -->
+            <div class="charts-row">
+                <div class="card-chart">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <h3>渠道对比：年龄结构段</h3>
+                            <p>抖音官旗（橘） vs 全网大盘基准（紫）</p>
+                        </div>
+                        <span class="chart-legend-badge">Line Chart</span>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="chart-douyin-age-compare"></canvas>
+                    </div>
+                </div>
+                <div class="card-chart">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <h3>抖音手机持有偏好 (Top 5)</h3>
+                            <p>体现粉丝硬件水平与系统偏好</p>
+                        </div>
+                        <span class="chart-legend-badge">Doughnut</span>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="chart-douyin-phone"></canvas>
+                    </div>
+                </div>
+                <div class="card-chart">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <h3>城市等级销售额分布</h3>
+                            <p>抖音主力成交用户的地级城市层级</p>
+                        </div>
+                        <span class="chart-legend-badge">Bar Chart</span>
+                    </div>
+                    <div class="chart-body">
+                        <canvas id="chart-douyin-citytier"></canvas>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+        <!-- DIMENSION 3: TOP PRODUCT DEMOGRAPHICS -->
+        <section id="dim-top-product" class="dimension-section">
+            <div class="section-header">
+                <div class="section-num">03</div>
+                <div class="section-title">
+                    <h2>Top 头部爆款商品与品类画像</h2>
+                    <p>Hero Products & Categories Consumer Preferences Breakdown</p>
+                </div>
+            </div>
+
+            <!-- Level Selector & Product Dropdown -->
+            <div style="display: flex; justify-content: space-between; align-items: center; margin-bottom: 1.5rem; flex-wrap: wrap; gap: 10px;">
+                <div class="level-switch-container">
+                    <button id="switch-lvl-cat" class="level-switch-btn active" onclick="changeAnalysisLevel('category')">成交品类大盘</button>
+                    <button id="switch-lvl-prod" class="level-switch-btn" onclick="changeAnalysisLevel('product')">下钻具体单品</button>
+                </div>
+                <div>
+                    <select class="product-selector" id="product-select" onchange="onProductChange()">
+                        <!-- Options filled dynamically by JS -->
+                    </select>
+                </div>
+            </div>
+
+            <!-- Metric Cards -->
+            <div class="cards-row">
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span id="metric-lbl-name">成交偏好第一名</span>
+                        <span class="metric-icon">🏆</span>
+                    </div>
+                    <div class="metric-value" id="top-product-name">女装-裤子</div>
+                    <div class="metric-trend">
+                        <span id="metric-lbl-pct-txt">占比 49.04% | </span>
+                        <span class="trend-tgi" id="top-product-tgi">TGI 1202.1</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span id="metric-lbl-extra">基准对比</span>
+                        <span class="metric-icon">📊</span>
+                    </div>
+                    <div class="metric-value" id="top-product-baseline">大盘仅 4.08%</div>
+                    <div class="metric-trend">
+                        <span style="color: var(--text-secondary);" id="metric-lbl-extra-desc">反映官旗人群的成交集中度</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>首要成交客群</span>
+                        <span class="metric-icon">⚡</span>
+                    </div>
+                    <div class="metric-value" id="top-product-coregroup">精致妈妈</div>
+                    <div class="metric-trend">
+                        <span style="color: var(--text-secondary);" id="top-product-groupdesc">占比偏高，心智强烈</span>
+                    </div>
+                </div>
+                <div class="card-metric">
+                    <div class="metric-title">
+                        <span>成交价格带</span>
+                        <span class="metric-icon">💰</span>
+                    </div>
+                    <div class="metric-value" id="top-product-price">中高价位</div>
+                    <div class="metric-trend">
+                        <span style="color: var(--text-secondary);" id="top-product-pricedesc">符合高消费粉丝偏好</span>
+                    </div>
+                </div>
+            </div>
+
+            <!-- Chart Rows (Dynamic Switch) -->
+            <div class="charts-row">
+                <!-- Card 1: Tag Cloud (Shared) -->
+                <div class="card-chart">
+                    <div class="chart-header">
+                        <div class="chart-title">
+                            <h3 id="tags-card-title">成交品类心智特征</h3>
+                            <p>反映人群对本成交对象的关联标签</p>
+                        </div>
+                    </div>
+                    <div class="chart-body">
+                        <div class="tag-cloud" id="product-tags">
+                            <!-- Tags will be dynamically generated by JS -->
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Category Mode Container -->
+                <div class="chart-toggle-view" id="view-category-charts">
+                    <div class="card-chart" style="grid-column: span 2;">
+                        <div class="chart-header">
+                            <div class="chart-title">
+                                <h3>头部成交品类心智图谱 (占比 vs TGI)</h3>
+                                <p>柱状表示在抖音官旗成交占比 (左轴 %)，折线表示 TGI 指数偏好强度 (右轴，超 100 代表高于大盘)</p>
+                            </div>
+                            <span class="chart-legend-badge">Mixed Bar / Line</span>
+                        </div>
+                        <div class="chart-body" style="height: 250px;">
+                            <canvas id="chart-product-mix"></canvas>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Product Mode Container -->
+                <div class="chart-toggle-view hidden-view" id="view-product-charts">
+                    <div class="card-chart">
+                        <div class="chart-header">
+                            <div class="chart-title">
+                                <h3>核心消费客群分布</h3>
+                                <p>单品成交在八大客群占比 (橘) vs 官旗基准 (紫)</p>
+                            </div>
+                            <span class="chart-legend-badge">Bar Chart</span>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="chart-product-group-bar"></canvas>
+                        </div>
+                    </div>
+                    <div class="card-chart">
+                        <div class="chart-header">
+                            <div class="chart-title">
+                                <h3>单品受众性别年龄分布</h3>
+                                <p>气泡越大表示成交深度，横轴年龄，纵轴性别偏好</p>
+                            </div>
+                            <span class="chart-legend-badge">Bubble Chart</span>
+                        </div>
+                        <div class="chart-body">
+                            <canvas id="chart-product-gender-age-bubble"></canvas>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </section>
+
+    </div>
+
+    <!-- JavaScript logic -->
+    <script>
+        // Update Time
+        function updateTime() {
+            const now = new Date();
+            const timeStr = now.toTimeString().split(' ')[0];
+            const options = { year: 'numeric', month: 'long', day: 'numeric', weekday: 'long' };
+            const dateStr = now.toLocaleDateString('zh-CN', options);
+            
+            document.getElementById('live-time').innerText = timeStr;
+            document.getElementById('live-date').innerText = dateStr;
+        }
+        setInterval(updateTime, 1000);
+        updateTime();
+
+        // Chart.js Global Config overrides
+        Chart.defaults.color = '#9ca3af';
+        Chart.defaults.font.family = "'Inter', sans-serif";
+        Chart.defaults.plugins.tooltip.backgroundColor = '#121420';
+        Chart.defaults.plugins.tooltip.titleColor = '#ffffff';
+        Chart.defaults.plugins.tooltip.borderColor = 'rgba(255, 90, 0, 0.3)';
+        Chart.defaults.plugins.tooltip.borderWidth = 1;
+
+        // Colors used in charts
+        const SEMIR_ORANGE = '#FF5A00';
+        const SEMIR_ORANGE_ALPHA = 'rgba(255, 90, 0, 0.85)';
+        const TRENDY_PURPLE = '#8B5CF6';
+        const TRENDY_PURPLE_ALPHA = 'rgba(139, 92, 246, 0.85)';
+        const TRENDY_BLUE = '#3B82F6';
+        const TRENDY_BLUE_ALPHA = 'rgba(59, 130, 246, 0.8)';
+        const NEON_GREEN = '#10B981';
+        const NEON_GREEN_ALPHA = 'rgba(16, 185, 129, 0.85)';
+        const CHART_GREY = 'rgba(255, 255, 255, 0.05)';
+
+        // Switch Tab functionality
+        function switchDimension(dimension) {
+            const tabButtons = document.querySelectorAll('.tab-btn');
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            
+            const event = window.event;
+            if (event && event.currentTarget) {
+                event.currentTarget.classList.add('active');
+            }
+
+            const sections = {
+                'brand': document.getElementById('dim-brand'),
+                'douyin': document.getElementById('dim-douyin'),
+                'top-product': document.getElementById('dim-top-product')
+            };
+
+            if (dimension === 'all') {
+                Object.values(sections).forEach(sec => {
+                    sec.classList.remove('hidden-dimension');
+                });
+            } else {
+                Object.keys(sections).forEach(key => {
+                    if (key === dimension) {
+                        sections[key].classList.remove('hidden-dimension');
+                    } else {
+                        sections[key].classList.add('hidden-dimension');
+                    }
+                });
+            }
+        }
+
+        // ==========================================
+        // EXTRACTED REAL DATA (25年5月森马官旗)
+        // ==========================================
+        const RAW_DATA = {
+            gender: {
+                labels: ['女性', '男性'],
+                douyin: [91.02, 8.98],
+                baseline: [45.23, 48.91]
+            },
+            age: {
+                labels: ['18-19岁', '20-23岁', '24-30岁', '31-35岁', '36-40岁', '41-45岁', '46-50岁', '51-55岁', '56+岁'],
+                douyin: [0.67, 6.96, 30.6, 19.44, 27.59, 7.03, 5.01, 1.78, 0.92],
+                baseline: [2.79, 6.31, 13.22, 7.12, 16.34, 5.75, 8.86, 6.66, 23.47]
+            },
+            consumerGroup: {
+                labels: ['精致妈妈', '小镇青年', '新锐白领', '都市蓝领', 'Gen-Z', '资深中产', '小镇中老年', '都市银发'],
+                douyin: [26.1, 23.21, 20.02, 10.38, 7.82, 6.8, 4.04, 1.64],
+                baseline: [2.67, 14.22, 7.47, 14.34, 10.7, 3.79, 12.59, 16.0]
+            },
+            phoneBrand: {
+                labels: ['苹果', '华为', 'OPPO', 'vivo', '小米', '其他'],
+                douyin: [38.91, 27.37, 16.24, 13.99, 7.68, 1.5],
+            },
+            cityTier: {
+                labels: ['一线城市', '新一线城市', '二线城市', '三线城市', '四线城市', '五线城市'],
+                douyin: [9.69, 21.48, 18.19, 21.05, 18.53, 11.06]
+            },
+            topProducts: {
+                labels: ['女装-裤子', '女装-T恤', '女装-毛针织', '内衣裤-袜子', '内衣裤-睡衣', '女装-羽绒服', '女装-连衣裙', '男装-T恤', '男装-休闲裤', '男装-夹克'],
+                pct: [49.04, 42.42, 34.64, 33.14, 27.19, 26.0, 24.02, 14.08, 13.88, 9.23],
+                tgi: [1202.1, 1171.1, 1345.0, 823.2, 990.8, 1818.0, 1196.5, 477.8, 516.1, 579.5],
+                baseline: [4.08, 3.62, 2.58, 4.03, 2.74, 1.43, 2.01, 2.95, 2.69, 1.59]
+            }
+        };
+
+        // ==========================================
+        // DIMENSION 1 CHARTS (BRAND OVERVIEW - BASELINE)
+        // ==========================================
+
+        const brandGenderCtx = document.getElementById('chart-brand-gender').getContext('2d');
+        const brandGenderChart = new Chart(brandGenderCtx, {
+            type: 'doughnut',
+            data: {
+                labels: RAW_DATA.gender.labels,
+                datasets: [{
+                    data: RAW_DATA.gender.baseline,
+                    backgroundColor: [TRENDY_PURPLE_ALPHA, 'rgba(156, 163, 175, 0.6)'],
+                    borderColor: '#0f111a',
+                    borderWidth: 2,
+                    hoverOffset: 8
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 12, padding: 15 }
+                    }
+                },
+                cutout: '65%'
+            }
+        });
+
+        const brandAgeCtx = document.getElementById('chart-brand-age').getContext('2d');
+        const brandAgeChart = new Chart(brandAgeCtx, {
+            type: 'bar',
+            data: {
+                labels: RAW_DATA.age.labels,
+                datasets: [{
+                    label: '大盘常规人群占比 (%)',
+                    data: RAW_DATA.age.baseline,
+                    backgroundColor: TRENDY_PURPLE_ALPHA,
+                    hoverBackgroundColor: TRENDY_PURPLE,
+                    borderRadius: 6,
+                    borderWidth: 0
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#9ca3af' }
+                    },
+                    y: {
+                        grid: { color: CHART_GREY },
+                        ticks: { color: '#9ca3af' }
+                    }
+                }
+            }
+        });
+
+        const brandConsumerCtx = document.getElementById('chart-brand-consumer').getContext('2d');
+        const brandConsumerChart = new Chart(brandConsumerCtx, {
+            type: 'polarArea',
+            data: {
+                labels: RAW_DATA.consumerGroup.labels,
+                datasets: [{
+                    data: RAW_DATA.consumerGroup.baseline,
+                    backgroundColor: [
+                        'rgba(139, 92, 246, 0.7)',
+                        'rgba(59, 130, 246, 0.7)',
+                        'rgba(16, 185, 129, 0.7)',
+                        'rgba(245, 158, 11, 0.7)',
+                        'rgba(239, 68, 68, 0.7)',
+                        'rgba(236, 72, 153, 0.7)',
+                        'rgba(14, 165, 233, 0.7)',
+                        'rgba(168, 85, 247, 0.7)'
+                    ],
+                    borderColor: '#0f111a',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 10, padding: 8, font: { size: 9 } }
+                    }
+                },
+                scales: {
+                    r: {
+                        grid: { color: CHART_GREY },
+                        angleLines: { color: CHART_GREY },
+                        ticks: { display: false }
+                    }
+                }
+            }
+        });
+
+
+        // ==========================================
+        // DIMENSION 2 CHARTS (DOUYIN DEMOGRAPHICS)
+        // ==========================================
+
+        const douyinAgeCompareCtx = document.getElementById('chart-douyin-age-compare').getContext('2d');
+        const douyinAgeCompareChart = new Chart(douyinAgeCompareCtx, {
+            type: 'line',
+            data: {
+                labels: RAW_DATA.age.labels,
+                datasets: [
+                    {
+                        label: '抖音官旗人群占比',
+                        data: RAW_DATA.age.douyin,
+                        borderColor: SEMIR_ORANGE,
+                        backgroundColor: 'rgba(255, 90, 0, 0.15)',
+                        borderWidth: 3,
+                        tension: 0.35,
+                        fill: true,
+                        pointBackgroundColor: SEMIR_ORANGE
+                    },
+                    {
+                        label: '全网大盘基准占比',
+                        data: RAW_DATA.age.baseline,
+                        borderColor: TRENDY_PURPLE,
+                        backgroundColor: 'rgba(139, 92, 246, 0.05)',
+                        borderWidth: 2,
+                        borderDash: [5, 5],
+                        tension: 0.35,
+                        fill: true,
+                        pointBackgroundColor: TRENDY_PURPLE
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { boxWidth: 12 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#9ca3af' }
+                    },
+                    y: {
+                        grid: { color: CHART_GREY },
+                        ticks: { color: '#9ca3af' }
+                    }
+                }
+            }
+        });
+
+        const douyinPhoneCtx = document.getElementById('chart-douyin-phone').getContext('2d');
+        const douyinPhoneChart = new Chart(douyinPhoneCtx, {
+            type: 'doughnut',
+            data: {
+                labels: RAW_DATA.phoneBrand.labels,
+                datasets: [{
+                    data: RAW_DATA.phoneBrand.douyin,
+                    backgroundColor: [
+                        '#FF5A00',
+                        '#ff7b39',
+                        '#8B5CF6',
+                        '#3B82F6',
+                        '#10B981',
+                        'rgba(255, 255, 255, 0.15)'
+                    ],
+                    borderColor: '#0f111a',
+                    borderWidth: 2
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'bottom',
+                        labels: { boxWidth: 10, padding: 12, font: { size: 10 } }
+                    }
+                },
+                cutout: '60%'
+            }
+        });
+
+        const douyinCitytierCtx = document.getElementById('chart-douyin-citytier').getContext('2d');
+        const douyinCitytierChart = new Chart(douyinCitytierCtx, {
+            type: 'bar',
+            data: {
+                labels: RAW_DATA.cityTier.labels,
+                datasets: [{
+                    data: RAW_DATA.cityTier.douyin,
+                    backgroundColor: SEMIR_ORANGE_ALPHA,
+                    hoverBackgroundColor: SEMIR_ORANGE,
+                    borderRadius: 6
+                }]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: { display: false }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#9ca3af' }
+                    },
+                    y: {
+                        grid: { color: CHART_GREY },
+                        ticks: { color: '#9ca3af' }
+                    }
+                }
+            }
+        });
+
+        // ==========================================
+        // DIMENSION 3 DATABASE & SWITCH (品类 vs 单品)
+        // ==========================================
+        let analysisLevel = 'category'; // 'category' or 'product'
+
+        // Category Database
+        const categoryProfiles = {
+            'pants': {
+                name: '女装-裤子',
+                pct: '49.04%',
+                tgi: '1202.1',
+                baseline: '大盘仅 4.08%',
+                coreGroup: '精致妈妈 / 小镇青年',
+                groupDesc: '合计占比成交超大比重',
+                price: '中高档位',
+                priceDesc: '高消费群体为主支撑',
+                tags: [
+                    { text: '高频复购 🛒', class: 'tag-1' },
+                    { text: '精致妈妈最爱 🍼', class: 'tag-2' },
+                    { text: '高消费人群 💳', class: 'tag-3' },
+                    { text: '24-30岁主客群 ⚡', class: 'tag-1' },
+                    { text: '偏好高活跃度 📈', class: 'tag-4' },
+                    { text: '二线城市集中 🏢', class: 'tag-5' }
+                ]
+            },
+            'tshirt': {
+                name: '女装-T恤',
+                pct: '42.42%',
+                tgi: '1171.1',
+                baseline: '大盘仅 3.62%',
+                coreGroup: 'Gen-Z / 小镇青年',
+                groupDesc: '年轻学生与潮流心智强',
+                price: '平价走量',
+                priceDesc: '中消费水平粉丝主导',
+                tags: [
+                    { text: '大众爆款 🔥', class: 'tag-1' },
+                    { text: '学生/Gen-Z 🎓', class: 'tag-3' },
+                    { text: '夏季成交王 ☀️', class: 'tag-2' },
+                    { text: '小镇青年偏好 🌾', class: 'tag-5' },
+                    { text: '中消费水平 💰', class: 'tag-4' }
+                ]
+            },
+            'sweater': {
+                name: '女装-毛针织衫',
+                pct: '34.64%',
+                tgi: '1345.0',
+                baseline: '大盘仅 2.58%',
+                coreGroup: '新锐白领 / 精致妈妈',
+                groupDesc: '都市办公与保暖精致感',
+                price: '中高价位',
+                priceDesc: '高阶白领消费偏好',
+                tags: [
+                    { text: '秋冬主心智 🍂', class: 'tag-2' },
+                    { text: '新锐白领特质 👔', class: 'tag-1' },
+                    { text: '精致升级 💎', class: 'tag-3' },
+                    { text: '31-35岁高消费 💳', class: 'tag-1' },
+                    { text: '一线城市集中 🏙️', class: 'tag-4' }
+                ]
+            },
+            'downjacket': {
+                name: '女装-羽绒服',
+                pct: '26.00%',
+                tgi: '1818.0',
+                baseline: '大盘仅 1.43%',
+                coreGroup: '精致妈妈 / 资深中产',
+                groupDesc: '强冬季御寒高粘性客群',
+                price: '高价值段',
+                priceDesc: '反映极强的高阶消费贡献',
+                tags: [
+                    { text: '超强心智单品 ❄️', class: 'tag-1' },
+                    { text: 'TGI 18.18倍领先 📈', class: 'tag-2' },
+                    { text: '高净值妈妈 🤱', class: 'tag-3' },
+                    { text: '重度保暖防寒 🧥', class: 'tag-4' },
+                    { text: '高消费占绝对优势 💰', class: 'tag-1' }
+                ]
+            },
+            'socks': {
+                name: '内衣裤袜-袜子',
+                pct: '33.14%',
+                tgi: '823.2',
+                baseline: '大盘仅 4.03%',
+                coreGroup: '全年龄层 / 蓝领',
+                groupDesc: '极致性价比基础品类',
+                price: '平价走量',
+                priceDesc: '大盘低消与中消高频采购',
+                tags: [
+                    { text: '超高频加购 🧦', class: 'tag-4' },
+                    { text: '低门槛高活跃 ⚡', class: 'tag-3' },
+                    { text: '全年龄段渗透 👥', class: 'tag-5' },
+                    { text: '小镇青年高频 🌾', class: 'tag-2' }
+                ]
+            },
+            'pajamas': {
+                name: '内衣裤袜-睡衣',
+                pct: '27.19%',
+                tgi: '990.8',
+                baseline: '大盘仅 2.74%',
+                coreGroup: '精致妈妈 / 居家生活家',
+                groupDesc: '家庭高舒适度粘性偏好',
+                price: '中等价位',
+                priceDesc: '注重品质与性价比平衡',
+                tags: [
+                    { text: '居家舒适 🏠', class: 'tag-2' },
+                    { text: '女性绝对主导 🚺', class: 'tag-1' },
+                    { text: '精致生活家 ☕', class: 'tag-3' },
+                    { text: '家有儿女阶段 🍼', class: 'tag-4' }
+                ]
+            },
+            'dress': {
+                name: '女装-连衣裙',
+                pct: '24.02%',
+                tgi: '1196.5',
+                baseline: '大盘仅 2.01%',
+                coreGroup: '新锐白领 / 精致女性',
+                groupDesc: '极强视觉审美偏好',
+                price: '中高价位',
+                priceDesc: '高净值白领夏季刚需',
+                tags: [
+                    { text: '夏季绝对核心 👗', class: 'tag-1' },
+                    { text: '新锐白领首选 💼', class: 'tag-3' },
+                    { text: '视觉审美诉求 ✨', class: 'tag-2' },
+                    { text: '20-30岁青年客群 ⚡', class: 'tag-1' }
+                ]
+            }
+        };
+
+        // Product Database (Single Products)
+        const productProfiles = {
+            'cool-sunwear': {
+                name: '科技凉感防晒衣',
+                pct: '350k+ 件',
+                tgi: '1542.8',
+                baseline: '防晒品类大盘 914',
+                coreGroup: 'Gen-Z 学生 / 精致妈妈',
+                groupDesc: '高防晒高防暑需求客群',
+                price: '￥129.00',
+                priceDesc: '性价比爆款引流单品',
+                tags: [
+                    { text: '冷感科技 🧊', class: 'tag-1' },
+                    { text: '紫外线防护 UPF50+ ☀️', class: 'tag-2' },
+                    { text: '轻薄透气 💨', class: 'tag-4' },
+                    { text: '学生户外防晒 🎓', class: 'tag-1' },
+                    { text: '精致妈妈好评 🤱', class: 'tag-3' },
+                    { text: '夏日出行刚需 🚶‍♀️', class: 'tag-5' }
+                ],
+                consumerData: [28, 18, 14, 8, 24, 4, 3, 1], // 精致妈妈, 小镇青年, 新锐白领...
+                bubbleData: {
+                    female: [
+                        { x: 18, y: 8, r: 18 },
+                        { x: 21, y: 9, r: 25 },
+                        { x: 25, y: 7, r: 16 },
+                        { x: 29, y: 6, r: 12 },
+                        { x: 35, y: 5, r: 8 }
+                    ],
+                    male: [
+                        { x: 19, y: 2, r: 4 },
+                        { x: 22, y: 3, r: 6 },
+                        { x: 26, y: 2, r: 3 }
+                    ]
+                }
+            },
+            'dad-pants-single': {
+                name: '潮流高腰工装老爹裤',
+                pct: '180k+ 件',
+                tgi: '1288.4',
+                baseline: '裤子品类大盘 1202',
+                coreGroup: '小镇青年 / Gen-Z 学生',
+                groupDesc: '美式复古街头潮流死忠粉',
+                price: '￥199.00',
+                priceDesc: '四季百搭高粘性神裤',
+                tags: [
+                    { text: '遮肉显瘦 👖', class: 'tag-1' },
+                    { text: '复古美式街头 🇺🇸', class: 'tag-3' },
+                    { text: '重磅耐磨 🧵', class: 'tag-5' },
+                    { text: '穿搭高活跃粉丝 🛹', class: 'tag-1' },
+                    { text: '高复购率 🔄', class: 'tag-2' }
+                ],
+                consumerData: [12, 38, 15, 14, 16, 3, 1, 1],
+                bubbleData: {
+                    female: [
+                        { x: 18, y: 8, r: 20 },
+                        { x: 21, y: 9, r: 24 },
+                        { x: 25, y: 6, r: 14 },
+                        { x: 28, y: 4, r: 6 }
+                    ],
+                    male: [
+                        { x: 19, y: 4, r: 10 },
+                        { x: 22, y: 5, r: 12 },
+                        { x: 26, y: 3, r: 5 }
+                    ]
+                }
+            },
+            'smart-shirt-single': {
+                name: '机能抗皱免烫衬衫',
+                pct: '120k+ 件',
+                tgi: '1410.2',
+                baseline: '衬衫品类大盘 436',
+                coreGroup: '新锐白领 / 商务通勤群',
+                groupDesc: '职场与轻商务办公群体为主',
+                price: '￥179.00',
+                priceDesc: '中高端客单支撑单品',
+                tags: [
+                    { text: '免烫抗皱工艺 ✨', class: 'tag-1' },
+                    { text: '职场通勤 💼', class: 'tag-3' },
+                    { text: '新锐白领最爱 👔', class: 'tag-2' },
+                    { text: '微弹透气机能 🚴', class: 'tag-4' },
+                    { text: '高智感审美 🤓', class: 'tag-5' }
+                ],
+                consumerData: [8, 12, 52, 6, 8, 11, 2, 1],
+                bubbleData: {
+                    female: [
+                        { x: 24, y: 5, r: 8 },
+                        { x: 28, y: 6, r: 10 },
+                        { x: 32, y: 5, r: 8 }
+                    ],
+                    male: [
+                        { x: 23, y: 7, r: 14 },
+                        { x: 27, y: 9, r: 22 },
+                        { x: 31, y: 8, r: 18 },
+                        { x: 35, y: 6, r: 10 }
+                    ]
+                }
+            }
+        };
+
+        // UI Select Dropdown management
+        function populateSelector() {
+            const selector = document.getElementById('product-select');
+            selector.innerHTML = '';
+            
+            if (analysisLevel === 'category') {
+                const options = [
+                    { val: 'pants', text: '女装-裤子 (成交49.04%)' },
+                    { val: 'tshirt', text: '女装-T恤 (成交42.42%)' },
+                    { val: 'sweater', text: '女装-毛针织衫 (成交34.64%)' },
+                    { val: 'downjacket', text: '女装-羽绒服 (成交26.00%)' },
+                    { val: 'socks', text: '内衣裤袜-袜子 (成交33.14%)' },
+                    { val: 'pajamas', text: '内衣裤袜-睡衣 (成交27.19%)' },
+                    { val: 'dress', text: '女装-连衣裙 (成交24.02%)' }
+                ];
+                options.forEach(opt => {
+                    const el = document.createElement('option');
+                    el.value = opt.val;
+                    el.innerText = opt.text;
+                    selector.appendChild(el);
+                });
+            } else {
+                const options = [
+                    { val: 'cool-sunwear', text: '科技凉感防晒衣 (SM-COOL-01)' },
+                    { val: 'dad-pants-single', text: '潮流高腰工装老爹裤 (SM-DAD-99)' },
+                    { val: 'smart-shirt-single', text: '机能抗皱免烫衬衫 (SM-TECH-88)' }
+                ];
+                options.forEach(opt => {
+                    const el = document.createElement('option');
+                    el.value = opt.val;
+                    el.innerText = opt.text;
+                    selector.appendChild(el);
+                });
+            }
+        }
+
+        // Switch Analysis Level (Category vs Product)
+        function changeAnalysisLevel(level) {
+            analysisLevel = level;
+            
+            // UI Switch buttons state
+            document.getElementById('switch-lvl-cat').classList.remove('active');
+            document.getElementById('switch-lvl-prod').classList.remove('active');
+            if (level === 'category') {
+                document.getElementById('switch-lvl-cat').classList.add('active');
+                
+                // Labels update
+                document.getElementById('metric-lbl-name').innerText = "成交偏好品类";
+                document.getElementById('metric-lbl-pct-txt').innerText = "成交占比 | ";
+                document.getElementById('metric-lbl-extra').innerText = "大盘成交占比";
+                document.getElementById('metric-lbl-extra-desc').innerText = "反映全网受众的成交集中度";
+                document.getElementById('tags-card-title').innerText = "成交品类心智特征";
+                
+                // Toggle Chart views
+                document.getElementById('view-category-charts').classList.remove('hidden-view');
+                document.getElementById('view-product-charts').classList.add('hidden-view');
+            } else {
+                document.getElementById('switch-lvl-prod').classList.add('active');
+                
+                // Labels update
+                document.getElementById('metric-lbl-name').innerText = "单品累计销量";
+                document.getElementById('metric-lbl-pct-txt').innerText = "累计预估量 | ";
+                document.getElementById('metric-lbl-extra').innerText = "类目心智强度";
+                document.getElementById('metric-lbl-extra-desc').innerText = "该单品类目在此渠道的竞争力";
+                document.getElementById('tags-card-title').innerText = "爆款单品受众标签";
+                
+                // Toggle Chart views
+                document.getElementById('view-category-charts').classList.add('hidden-view');
+                document.getElementById('view-product-charts').classList.remove('hidden-view');
+            }
+
+            populateSelector();
+            onProductChange(); // Refresh profile values and charts
+        }
+
+        // Main Refresh Function on Selection Change
+        let productGroupChart = null;
+        let productBubbleChart = null;
+
+        function onProductChange() {
+            const val = document.getElementById('product-select').value;
+            
+            if (analysisLevel === 'category') {
+                const data = categoryProfiles[val];
+                if (!data) return;
+
+                // Update metrics
+                document.getElementById('top-product-name').innerText = data.name;
+                document.getElementById('top-product-tgi').innerText = `TGI ${data.tgi}`;
+                document.getElementById('top-product-baseline').innerText = data.baseline;
+                document.getElementById('top-product-coregroup').innerText = data.coreGroup;
+                document.getElementById('top-product-groupdesc').innerText = data.groupDesc;
+                document.getElementById('top-product-price').innerText = data.price;
+                document.getElementById('top-product-pricedesc').innerText = data.priceDesc;
+
+                // Render category tags
+                const tagsContainer = document.getElementById('product-tags');
+                tagsContainer.innerHTML = '';
+                data.tags.forEach(tag => {
+                    const span = document.createElement('span');
+                    span.className = `tag-item ${tag.class}`;
+                    span.innerText = tag.text;
+                    tagsContainer.appendChild(span);
+                });
+
+            } else {
+                const data = productProfiles[val];
+                if (!data) return;
+
+                // Update metrics
+                document.getElementById('top-product-name').innerText = data.pct;
+                document.getElementById('top-product-tgi').innerText = `TGI ${data.tgi}`;
+                document.getElementById('top-product-baseline').innerText = data.name;
+                document.getElementById('top-product-coregroup').innerText = data.coreGroup;
+                document.getElementById('top-product-groupdesc').innerText = data.groupDesc;
+                document.getElementById('top-product-price').innerText = data.price;
+                document.getElementById('top-product-pricedesc').innerText = data.priceDesc;
+
+                // Render product tags
+                const tagsContainer = document.getElementById('product-tags');
+                tagsContainer.innerHTML = '';
+                data.tags.forEach(tag => {
+                    const span = document.createElement('span');
+                    span.className = `tag-item ${tag.class}`;
+                    span.innerText = tag.text;
+                    tagsContainer.appendChild(span);
+                });
+
+                // ------------------------------------------
+                // REFRESH PRODUCT LEVEL CHARTS
+                // ------------------------------------------
+                
+                // 1. Group Bar Chart Refresh
+                const groupCtx = document.getElementById('chart-product-group-bar').getContext('2d');
+                if (productGroupChart) {
+                    productGroupChart.destroy();
+                }
+                productGroupChart = new Chart(groupCtx, {
+                    type: 'bar',
+                    data: {
+                        labels: RAW_DATA.consumerGroup.labels,
+                        datasets: [
+                            {
+                                label: '单品成交占比 (%)',
+                                data: data.consumerData,
+                                backgroundColor: SEMIR_ORANGE_ALPHA,
+                                borderColor: SEMIR_ORANGE,
+                                borderWidth: 1,
+                                borderRadius: 4
+                            },
+                            {
+                                label: '抖音官旗大盘基准 (%)',
+                                data: RAW_DATA.consumerGroup.douyin,
+                                backgroundColor: 'rgba(255, 255, 255, 0.08)',
+                                borderColor: 'rgba(255, 255, 255, 0.2)',
+                                borderWidth: 1,
+                                borderRadius: 4
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'top', labels: { boxWidth: 10, font: { size: 9 } } }
+                        },
+                        scales: {
+                            x: { grid: { display: false }, ticks: { font: { size: 8 } } },
+                            y: { grid: { color: CHART_GREY } }
+                        }
+                    }
+                });
+
+                // 2. Bubble Chart Refresh
+                const bubbleCtx = document.getElementById('chart-product-gender-age-bubble').getContext('2d');
+                if (productBubbleChart) {
+                    productBubbleChart.destroy();
+                }
+                productBubbleChart = new Chart(bubbleCtx, {
+                    type: 'bubble',
+                    data: {
+                        datasets: [
+                            {
+                                label: '女性购买客群',
+                                data: data.bubbleData.female,
+                                backgroundColor: 'rgba(255, 90, 0, 0.65)',
+                                borderColor: SEMIR_ORANGE,
+                                borderWidth: 1
+                            },
+                            {
+                                label: '男性购买客群',
+                                data: data.bubbleData.male,
+                                backgroundColor: 'rgba(139, 92, 246, 0.65)',
+                                borderColor: TRENDY_PURPLE,
+                                borderWidth: 1
+                            }
+                        ]
+                    },
+                    options: {
+                        responsive: true,
+                        maintainAspectRatio: false,
+                        plugins: {
+                            legend: { position: 'top', labels: { boxWidth: 10 } },
+                            tooltip: {
+                                callbacks: {
+                                    label: function(context) {
+                                        return ` 年龄: ${context.parsed.x}岁 | 性别倾斜: ${context.parsed.y} | 购买频度: ${context.raw.r}`;
+                                    }
+                                }
+                            }
+                        },
+                        scales: {
+                            x: {
+                                title: { display: true, text: '年龄 (Age)', color: '#9ca3af', font: { size: 10 } },
+                                grid: { color: CHART_GREY },
+                                min: 15,
+                                max: 40
+                            },
+                            y: {
+                                title: { display: true, text: '成交心智深度 (Depth)', color: '#9ca3af', font: { size: 10 } },
+                                grid: { color: CHART_GREY },
+                                min: 0,
+                                max: 10
+                            }
+                        }
+                    }
+                });
+
+            }
+        }
+
+        // Initialize Level selectors
+        changeAnalysisLevel('category');
+
+        // ==========================================
+        // MIXED PRODUCT BAR/LINE CHART (CATEGORY ONLY)
+        // ==========================================
+        const productMixCtx = document.getElementById('chart-product-mix').getContext('2d');
+        const productMixChart = new Chart(productMixCtx, {
+            type: 'bar',
+            data: {
+                labels: RAW_DATA.topProducts.labels,
+                datasets: [
+                    {
+                        label: '抖音官旗成交占比 (%)',
+                        data: RAW_DATA.topProducts.pct,
+                        backgroundColor: 'rgba(255, 90, 0, 0.75)',
+                        borderColor: SEMIR_ORANGE,
+                        borderWidth: 1,
+                        yAxisID: 'y-pct',
+                        order: 2
+                    },
+                    {
+                        label: 'TGI 心智强度指数',
+                        data: RAW_DATA.topProducts.tgi,
+                        borderColor: '#C084FC',
+                        backgroundColor: 'rgba(192, 132, 252, 0.1)',
+                        borderWidth: 3,
+                        pointBackgroundColor: '#C084FC',
+                        type: 'line',
+                        tension: 0.3,
+                        yAxisID: 'y-tgi',
+                        order: 1
+                    }
+                ]
+            },
+            options: {
+                responsive: true,
+                maintainAspectRatio: false,
+                plugins: {
+                    legend: {
+                        position: 'top',
+                        labels: { boxWidth: 12 }
+                    }
+                },
+                scales: {
+                    x: {
+                        grid: { display: false },
+                        ticks: { color: '#9ca3af', font: { size: 10 } }
+                    },
+                    'y-pct': {
+                        type: 'linear',
+                        position: 'left',
+                        grid: { color: CHART_GREY },
+                        ticks: { 
+                            color: '#9ca3af',
+                            callback: function(value) { return value + '%'; }
+                        },
+                        title: { display: true, text: '成交占比', color: '#9ca3af' }
+                    },
+                    'y-tgi': {
+                        type: 'linear',
+                        position: 'right',
+                        grid: { drawOnChartArea: false },
+                        ticks: { color: '#C084FC' },
+                        title: { display: true, text: 'TGI 指数', color: '#C084FC' }
+                    }
+                }
+            }
+        });
+
+    </script>
+</body>
+</html>
