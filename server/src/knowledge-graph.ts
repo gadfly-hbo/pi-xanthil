@@ -388,7 +388,7 @@ ${content}
         text: prompt,
         model,
         systemPrompt: "你是知识图谱构建助手，只输出严格 JSON，不包含 Markdown fence 和注释。",
-        timeoutMs: 60_000,
+        timeoutMs: 120_000,
       });
     } catch {
       continue;

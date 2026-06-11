@@ -215,6 +215,19 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "X", status: "todo", title: "decision 模块导航/渲染接线（接缝层注册）", brief:
+`decision 模块（产品第三种第一性能力，owner: 总控；详见 docs/decision-intelligence-plan.md）目前只有骨架文件 web/src/tabs/DecisionTabs.tsx（4 个占位 Shell：决策看板/工作台/助手/复盘）。前序快修已在接缝层补了类型字面量让 build 转绿（MainHeader Tab 加 "decision"；constants SubTab 加 decision_board/workbench/assistant/review），但导航与渲染尚未接线，该 tab 当前不可达。
+
+【待做 · 接缝层接线（最小，先让骨架可达）】
+1. MainHeader.tsx：在 TABS 数组加 { id: "decision", label: "决策", icon: <选一个 lucide 图标> }（Tab 类型已含 "decision"）。
+2. constants.ts：新增 DECISION_SUB_TABS = [决策看板/决策工作台/决策助手/复盘]（id 用已注册的 decision_board/decision_workbench/decision_assistant/decision_review）；getSubTabsForTab 加 if (tab === 'decision') return DECISION_SUB_TABS。
+3. App.tsx：import DecisionTabs 并在内容区面板列渲染 <DecisionTabs ctx={tabCtx} />；handleTabChange 里 decision 的默认子 tab 设为 decision_board。
+4. 自检：typecheck + build 绿；点开「决策」一级 tab 四个二级骨架可正常切换显示。
+
+【后续 · 功能落地（P2–P5，按 decision-intelligence-plan）】决策看板/工作台/助手/复盘的真实实现 + 后端（routes/decision.ts、db/decision.ts、sim/ 推演引擎，并在 routes/index.ts 注册、db init 接入）。
+
+收尾：不执行 git；改完列改动清单并回流总控终审。` },
+
   { dom: "D", status: "done", title: "P0-A 上传即用", brief:
 `✅ 已完成并通过总控终审（2026-06-08）。
 
@@ -334,6 +347,21 @@ const TASKS = [
 【验证】typecheck + build 全绿；运行时实跑：插旧 metric 标准→重启触发迁移(日志 moved 1，旧行删除、metric_definitions 接管)；standards-prompt count=2 两段(指标口径/参照标准文件)齐全；KG sync metric 节点 sourceKey=metric: 无 ghost；测试数据已清。
 【收口】onto-xanthil P1/P2/P3/P2b' 全期交付完毕。
 ⚠️ 前端 UI(指标记忆 metric 增删改/启用、注入预览)未浏览器实跑，建议 npm run dev 切「规则记忆→指标记忆」点一遍确认无回归。` },
+
+  { dom: "X", status: "done", title: "Xan数据库·行业/竞品模块（总控直接出 MVP）", brief:
+`✅ 总控完成并真实 pi 实跑通过（2026-06-11）。Xan 数据库 5 子页中「行业」「竞品」两个占位 → 可运行真数据 MVP。数据来源经用户拍板＝pi agent 联网检索生成结构化情报（与天气同属外部公开数据层，非用户明细）。
+
+【方向（用户拍板）】pi agent 联网检索生成 · 总控直接出可运行 MVP · 行业/竞品保持两个独立子页。
+
+【交付】
+1. 契约（types.ts 双侧）：IndustryIntel（市场规模/增速/集中度/趋势/五力 forces/基准/风险/机会）、CompetitorIntel（profiles 竞品档案/对标矩阵/替代风险/建议）。
+2. 后端（routes/data.ts）：POST .../industry/analyze 与 .../competitor/analyze —— 经 runPiPrompt 产结构化 JSON + 本地 extractJson(去 fenced) + 防御式 coerce(字段补全/score·share clamp 0-100)。只发行业名/品牌名，不读任何工作区数据。
+3. 前端 api（lib/api/data.ts）：analyzeIndustry / analyzeCompetitor。
+4. 前端 Pane（新 2 文件）：IndustryPane（五力雷达 + 指标卡 + 趋势/基准/风险/机会）、CompetitorPane（份额条形图 + 竞品档案卡 + 对标矩阵表 + 替代风险/建议）；DataTabs.tsx 两占位换真 Pane。
+
+【验证】server typecheck 绿（我的文件 web typecheck 零报错）；真实 pi 端到端：行业「服饰零售」200/约 59s（市场规模约 1.3 万亿、五力 5 项含具体说明）、竞品「森马」200/约 131s（自动识别 优衣库/ZARA/H&M/美邦/以纯 5 竞品，含份额/对标/替代风险/建议）。
+【红线】属外部公开数据层（同天气）：零工作区数据外发、不读 draw_data/clean_data。
+⚠️ web/src/tabs/DecisionTabs.tsx（他人 WIP，引用未定义 decision 类型）是 vite build 唯一拦路项，与本任务无关，未动。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──
@@ -343,6 +371,34 @@ const TASKS = [
    status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
    字段: { status, title, brief }（无 dom —— 不指定域）。 */
 const HOTFIX = [
+  { status: "done", title: "pi 调用超时根因修复（runPiPrompt 接口模式：--no-tools + 超时上调）", brief:
+`✅ 总控完成（2026-06-11），运行时复现取证。onto-xanthil 文档抽取报 500 "pi prompt timed out after 90000 ms"，多模块同类超时。
+
+【根因（实测非推断）】runPiPrompt 每次一次性调用都加载 pi 完整 agent 环境（工具 schema + MCP + 扩展）——极简"回复ok"就吃 28738 input tokens；叠加文档正文 + MiniMax-M3 是 thinking 模型（长推理）→ 真实抽取 >90s 超时。（注：历史那次的 --no-extensions 根因当前代码已不存在，现仅 --no-skills，这次是另一回事。）
+
+【修复（3 文件）】
+- server/pi-adapter.ts：runPiPrompt 加 --no-tools --no-context-files（保留 provider 扩展，不用会断 provider 的 --no-extensions）→ 实测 input 28738→2305 tokens（↓92%）；默认超时 120s→180s。惠及全部 runPiPrompt 调用方（黄金策/KG/报告/行业·竞品情报等；竞品分析曾实测 131s，已超旧 120s 默认）。
+- server/onto-extract.ts：抽取超时 90s→180s；parseExtractJson 先剥离思维链标签（防推理里的花括号污染 JSON 解析）。
+- server/knowledge-graph.ts：抽取超时 60s→120s。
+
+【验证】--no-tools 砍 token 92% 已实测；server typecheck 绿。端到端抽取单次实跑因 thinking 模型耗时波动大（故上调超时兜底）。
+
+【红线】仅改 pi 调用参数与超时，不碰数据安全域。` },
+
+  { status: "done", title: "左侧主栏改造（精选收藏下线 / 探索→任务 / 工作流移入工作流·工作视图左栏）", brief:
+`✅ 总控完成（2026-06-11）。
+
+【改动项】
+1. 精选收藏：删 UI 入口（侧栏区块 + 工作流行的收藏星标按钮）；后端 favorites 表/路由保留休眠（仅前端清理 state/handler/bootstrap）。
+2. 「探索」会话区 → 重命名「任务」（一个会话=一个任务）。
+3. 工作流列表：从左侧主栏移出 → 迁入「工作流 · 工作视图」内左侧竖栏（新增 components/FlowListColumn.tsx：选择/新建/重命名/删除，可收起；排除 AnaX 模板派生 flow）。"跑工作流也在任务栏建任务" 本次按人工约定，不做自动联动（用户定）。
+
+【改动文件（3）】components/Sidebar.tsx（删精选收藏+工作流两区、改标题、精简 props）· App.tsx（去 favorites state/handler/props + 接 FlowListColumn）· 新增 components/FlowListColumn.tsx。
+
+【自检】上述文件 typecheck 零错误。注意：web 整体 build 当前被他人未跟踪 WIP web/src/tabs/DecisionTabs.tsx（decision 模块引用未注册的 Tab/SubTab）阻断 → 留该功能 owner 补全，本次未碰。
+
+【红线】非数据安全域。` },
+
   { status: "done", title: "随手记功能落地（仿 wiki 随手记，由占位 → 真实可用）", brief:
 `✅ 总控完成并自检通过（2026-06-10）。承接上一批"随手记占位"，按用户要求做成 wiki.html 随手记的等价功能。
 

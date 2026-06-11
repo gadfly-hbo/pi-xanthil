@@ -1341,3 +1341,54 @@ export interface OntologyGraph {
   nodes: GraphNode[];
   edges: GraphEdge[];
 }
+
+// ── Xan 数据库 · 行业/竞品情报 (pi agent 联网检索生成的结构化外部公开情报) ──
+
+export interface IndustryForce {
+  label: string; // 五力维度名 (现有竞争/供应商议价/买方议价/替代品/新进入者)
+  score: number; // 0-100 压力强度
+  note: string;
+}
+
+export interface IndustryBenchmark {
+  name: string;
+  value: string;
+}
+
+export interface IndustryIntel {
+  industry: string;
+  summary: string;
+  marketSize: string;
+  marketGrowth: string;
+  concentration: string;
+  trends: string[];
+  forces: IndustryForce[];
+  benchmarks: IndustryBenchmark[];
+  risks: string[];
+  opportunities: string[];
+}
+
+export interface CompetitorProfile {
+  name: string;
+  positioning: string;
+  marketSharePct: number; // 0-100 估计份额
+  priceLevel: string;
+  strengths: string[];
+  weaknesses: string[];
+  recentMoves: string[];
+}
+
+export interface CompetitorCompareRow {
+  dimension: string;
+  self: string;
+  rivals: string;
+}
+
+export interface CompetitorIntel {
+  brand: string;
+  summary: string;
+  profiles: CompetitorProfile[];
+  comparison: CompetitorCompareRow[];
+  substitutionRisk: string;
+  recommendations: string[];
+}

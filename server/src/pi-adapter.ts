@@ -162,7 +162,12 @@ export function compactPiSession(workspaceRoot: string, piSessionId: string): Pr
  */
 export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
   const piSessionDir = sessionDir(opts.workspaceRoot);
-  const args = ["-p", "--mode", "json", "--no-skills", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
+  // One-shot, tool-free text completion. Pass the content inline; the model never needs to call
+  // tools or read project files here. We disable tools + context-file discovery so we don't pay
+  // pi's full agent context (~28k tokens of tool schemas / extension prompts) on every call — that
+  // overhead, combined with thinking models, is the dominant cause of "pi prompt timed out".
+  // NOTE: keep extensions enabled — `--no-extensions` would also disable the model provider extension.
+  const args = ["-p", "--mode", "json", "--no-skills", "--no-tools", "--no-context-files", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
   if (opts.model) args.push("--model", opts.model);
   args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt));
   args.push(opts.text);
@@ -180,10 +185,11 @@ export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
       cwd: opts.workspaceRoot,
       label: "pi-prompt",
     });
+    const timeoutMs = opts.timeoutMs ?? 180_000;
     const timer = setTimeout(() => {
       child.kill("SIGTERM");
-      reject(new Error(`pi prompt timed out after ${opts.timeoutMs ?? 120_000} ms`));
-    }, opts.timeoutMs ?? 120_000);
+      reject(new Error(`pi prompt timed out after ${timeoutMs} ms`));
+    }, timeoutMs);
     let stderr = "";
     let output = "";
     const allEvents: string[] = [];

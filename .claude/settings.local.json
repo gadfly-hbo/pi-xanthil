@@ -147,7 +147,29 @@
       "Bash(sed -n '2445,2535p' db.ts)",
       "Bash(sed -n '1308,1348p' index.ts)",
       "Bash(sed -n '60,110p' memory-injection.ts)",
-      "Bash(sed -n '85,100p' knowledge-graph.ts)"
+      "Bash(sed -n '85,100p' knowledge-graph.ts)",
+      "Bash(echo \"SERVER_EXIT=$?\")",
+      "Read(//tmp/**)",
+      "Bash(command -v pi)",
+      "Read(//opt/homebrew/bin/**)",
+      "Bash(pi models *)",
+      "Bash(echo \"EXIT=$?\")",
+      "Bash(lsof -ti:8787)",
+      "Bash(XANTHIL_PI_BIN=/Users/huangbo/Dev/Env/npm-global/bin/pi nohup npm run start)",
+      "Bash(echo \"started pid $!\")",
+      "Bash(lsof -nP -i:8787)",
+      "Bash(curl -s -m 8 -X POST http://localhost:8787/api/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/industry/analyze -H \"Content-Type: application/json\" -d '{}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(curl -s -m 8 -X POST http://localhost:8787/api/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/competitor/analyze -H \"Content-Type: application/json\" -d '{}' -w \"\\\\nHTTP %{http_code}\\\\n\")",
+      "Bash(time curl -s -m 220 -X POST http://localhost:8787/api/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/industry/analyze -H 'Content-Type: application/json' -d '{\"industry\":\"服饰零售\"}' -w '\\\\nHTTP %{http_code}\\\\n' -o /tmp/industry.json)",
+      "Bash(time curl -s -m 220 -X POST http://localhost:8787/api/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/competitor/analyze -H 'Content-Type: application/json' -d '{\"brand\":\"森马\"}' -w '\\\\nHTTP %{http_code}\\\\n' -o /tmp/competitor.json)",
+      "Bash(echo \"SERVER_TYPECHECK=$?\")",
+      "Bash(echo \"WEB_BUILD=$?\")",
+      "Bash(grep -rE \"\\(generate|chat|extract|clarify|sink|distill\\).*api\\\\.\" web/src/components/DataExplorationPane.tsx web/src/components/data-exploration/ web/src/lib/insights.ts web/src/lib/joins.ts web/src/lib/profiling.ts)",
+      "Bash(echo \"GREP_EXIT=$? \\(1=无匹配=安全\\)\")",
+      "Bash(awk '/^const HOTFIX = \\\\[/,/^\\\\];/' wiki.html)",
+      "Bash(grep -o '`')",
+      "Bash(echo \"[exit=$? → 1=无匹配,合规]\")",
+      "Bash(awk '/^const TASKS = \\\\[/,/^\\\\];/' wiki.html)"
     ]
   }
 }

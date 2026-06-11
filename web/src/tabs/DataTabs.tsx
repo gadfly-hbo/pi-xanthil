@@ -10,6 +10,8 @@ import { BusinessContextPane } from "@/components/BusinessContextPane";
 import { IndicatorsPane } from "@/components/IndicatorsPane";
 import { CasesPane } from "@/components/CasesPane";
 import { WeatherPane } from "@/components/WeatherPane";
+import { IndustryPane } from "@/components/IndustryPane";
+import { CompetitorPane } from "@/components/CompetitorPane";
 import type { TabContext } from "./types";
 
 /**
@@ -71,14 +73,14 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <Placeholder icon={Database} title="the-crowd" hint="人群数据库管理，即将推出" />
       )}
       {activeTab === "xan_db" && activeSubTab === "industry" && (
-        <Placeholder icon={Database} title="行业" hint="行业数据管理，即将推出" />
+        <IndustryPane workspaceId={ctx.activeWorkspaceId ?? ""} model={ctx.model} />
       )}
       {activeTab === "xan_db" && activeSubTab === "weather" && <WeatherPane />}
       {activeTab === "xan_db" && activeSubTab === "business_district" && (
         <Placeholder icon={Store} title="商圈" hint="商圈数据管理，即将推出" />
       )}
       {activeTab === "xan_db" && activeSubTab === "competitor" && (
-        <Placeholder icon={Database} title="竞品" hint="竞品数据管理，即将推出" />
+        <CompetitorPane workspaceId={ctx.activeWorkspaceId ?? ""} model={ctx.model} />
       )}
     </>
   );

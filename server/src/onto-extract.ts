@@ -42,8 +42,10 @@ interface RawAction { nameCn: string; nameEn?: string; description?: string; exe
 interface ParsedExtract { entities: unknown[]; relations: unknown[]; logicRules: unknown[]; actions: unknown[] }
 function parseExtractJson(text: string): ParsedExtract | null {
   try {
-    const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
-    const raw = fenced?.[1] ?? text;
+    // Strip thinking-model reasoning traces first — their braces would corrupt the brace-scan below.
+    const stripped = text.replace(/<think>[\s\S]*?<\/think>/gi, "");
+    const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(stripped);
+    const raw = fenced?.[1] ?? stripped;
     const start = raw.indexOf("{");
     const end = raw.lastIndexOf("}");
     if (start < 0 || end <= start) return null;
@@ -196,7 +198,7 @@ export async function extractOntologyFromText(
     text: buildPrompt(text, promptTemplate),
     model,
     systemPrompt: "你是本体抽取助手，只输出严格 JSON，不包含 Markdown fence 和注释。",
-    timeoutMs: 90_000,
+    timeoutMs: 180_000,
   });
   return processExtractionOutput(ontologyId, output);
 }

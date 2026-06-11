@@ -8,16 +8,18 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-09 · P0-D 看板聚合数据源 API 完成
-- 进度：P0-D「看板聚合数据源 API」✅ — clean_data 已登记聚合文件暴露为看板可消费的结构化 GET
-  - `GET /api/bi/aggregations?workspaceId=` → `BiAggregationDataset[]`：列出 workspace 下 folder=clean_data & kind=file 的路径，用 parseAggregationBuffer 解析表头得 columns + rowCount
-  - `GET /api/bi/aggregations/:pathId/data?limit=5000` → `BiAggregationData`：按 pathId 读文件 buffer → parseAggregationBuffer → {columns, rows}
-  - 安全铁律：仅 clean_data；draw_data 返回 403；零 LLM（禁 import 任何 chat/generate/extract api）
-  - 前端方法：`dataApi.getBiAggregations(workspaceId)` / `dataApi.getBiAggregationData(pathId, limit)`
-- 下一步：V 域消费此 API 实现看板画布数据源驱动（选聚合集→配维度/指标→荐图）
-- 阻塞 / 待总控：无
+- 最近更新：2026-06-11 · Xan数据库「行业」「竞品」两子页 MVP 完成（总控直接出，真实 pi 实跑通过）
+- 进度：Xan 数据库 5 子页 — 天气✅、行业✅(新)、竞品✅(新)；the-crowd / 商圈 仍占位
+  - **方向（用户拍板）**：数据源＝pi agent 联网检索生成结构化情报（与天气同属"外部公开数据"层，非用户明细）；总控直接出可运行 MVP；行业/竞品保持两个独立子页。
+  - **后端**（`routes/data.ts`，新增）：`POST /api/workspaces/:id/industry/analyze` { industry, model? }、`POST .../competitor/analyze` { brand, competitors?, model? } → `runPiPrompt`(pi-adapter) 产结构化 JSON → 本地 `extractJson`(去 ```fenced```) → 防御式 coerce(字段补全 / score·share clamp 0-100)。**只发行业名/品牌名，不读任何工作区数据**。
+  - **契约**（types.ts 双侧）：`IndustryIntel`(marketSize/marketGrowth/concentration/trends/forces 五力/benchmarks/risks/opportunities)、`CompetitorIntel`(profiles 竞品档案/comparison 对标矩阵/substitutionRisk/recommendations)。
+  - **前端**：`lib/api/data.ts` 加 `analyzeIndustry`/`analyzeCompetitor`；新 `IndustryPane.tsx`(五力雷达+指标卡+趋势/基准/风险/机会)、`CompetitorPane.tsx`(份额条形图+竞品档案卡+对标矩阵表+替代风险/建议)；`tabs/DataTabs.tsx` 两占位换真 Pane。
+  - **实跑验证**：行业「服饰零售」HTTP 200/约 59s（市场规模约 1.3 万亿、五力 5 项含具体说明）；竞品「森马」200/约 131s（自动识别 优衣库/ZARA/H&M/美邦/以纯，含份额/对标/替代风险/建议）。pi `better-sqlite3` 扩展报错仅 stderr，被 NDJSON 解析忽略，不影响结果。
+- 下一步：① the-crowd / 商圈 两占位可按同范式(pi 联网检索 or 外部 API)补齐；② 行业/竞品情报可考虑缓存(db/data.ts 当前仍是空 stub)避免每次重跑 1-2 分钟；③ 与黄金策 Porter 五力 / 定价模型 competitor_price / model-lab competitor_substitution_risk 做语义联动。
+- 阻塞 / 待总控：无。（原 `vite build` 拦路项 `DecisionTabs.tsx` 经用户拍板，已在接缝层补 `decision` Tab(`MainHeader.tsx`) + 4 个 `decision_*` SubTab(`constants.ts`) 字面量 → server typecheck + web build 全绿。注：仅补类型字面量，decision 模块导航/渲染未接线，待其 owner 续做。）
 - 开放问题：
-  - V 域 `BiDashboardPane.tsx:37` 直接 fetch 时 URL 漏 `/data` 后缀（写的是 `/api/bi/aggregations/${pathId}`，正确应为 `/api/bi/aggregations/${pathId}/data`），建议 V 域改用 `api.getBiAggregationData()` 或修正 URL。D 域不碰他域文件，已告知用户。
+  - V 域 `BiDashboardPane.tsx:37` 直接 fetch 漏 `/data` 后缀（历史项，未核实是否已修），建议改用 `api.getBiAggregationData()`。
+  - 「行业/竞品」属外部公开情报，pi 实际"联网"能力取决于 pi cli 自身工具；当前 prompt 指示"有联网优先检索，否则基于知识估算并标注"，未强约束真实检索。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -32,7 +34,7 @@
 | 计算工具·SQL | `SqlConnectPane.tsx` | `sql-connections.ts` |
 | 数据探索 | `DataExplorationPane.tsx` + `data-exploration/*` · `lib/{duckdb,profiling,insights,joins}.ts` | 仅二进制文件流，**零 LLM** |
 | 指标/业务环境/rules/案例 | `IndicatorsPane` `BusinessContextPane` `RulesPane` `CasesPane` | `db/data.ts`(新) · `memory-injection.ts` |
-| Xan数据库 | `WeatherPane` + 待建[商圈/行业/竞品/the-crowd] | 外部 API（前端直连） |
+| Xan数据库 | `WeatherPane`(前端直连) · `IndustryPane`/`CompetitorPane`(经后端 pi) + 待建[商圈/the-crowd] | 天气=外部 API 前端直连；行业/竞品=`routes/data.ts` 的 `*/analyze` 经 `runPiPrompt` |
 
 db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端方法进 `lib/api/data.ts`。
 
@@ -80,6 +82,9 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 
 **Xan数据库**
 - 天气直连 Open-Meteo 公开 API（CORS 开放，无需后端代理/Key）；`echarts-for-react` 出图；预置城市 + Geocoding 双模式选城。
+- **行业/竞品 走后端而非前端直连**（区别于天气）：因 pi 进程 spawn 在 server 端（`runPiPrompt`），故必须经 `routes/data.ts` 的 `*/analyze` 端点。LLM 产出走「文本输入→结构化 JSON→`extractJson` 去 fenced→防御式 coerce」范式（同 index.ts TOC/KG 套路，但 coerce 在 data 域本地实现，不 import index.ts 私有函数）。
+- **数据安全**：行业/竞品属"外部公开情报"层，请求只发用户输入的行业名/品牌名，**不读任何 workspace 原始/聚合数据**——故不违反数据安全铁律，与天气同级（外部数据）。
+- pi 默认 model 现可用（memory 旧记的 `deepseek-v4-flash` 报 developer-role 400 已不复现）；server spawn 需要 pi 绝对路径时用 `XANTHIL_PI_BIN` 覆盖（`pi` 是 shell function，`which pi` 解析不到，真实路径 `~/Dev/Env/npm-global/bin/pi`）。
 
 ---
 

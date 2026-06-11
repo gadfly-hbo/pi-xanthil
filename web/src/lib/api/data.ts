@@ -10,7 +10,7 @@
 //   };
 
 import { json } from "./_http";
-import type { BiAggregationDataset, BiAggregationData } from "@/types";
+import type { BiAggregationDataset, BiAggregationData, IndustryIntel, CompetitorIntel } from "@/types";
 
 export const dataApi = {
   getBiAggregations: (workspaceId: string) =>
@@ -22,4 +22,19 @@ export const dataApi = {
     const qs = params.toString();
     return fetch(`/api/bi/aggregations/${encodeURIComponent(pathId)}/data${qs ? `?${qs}` : ""}`).then(json<BiAggregationData>);
   },
+
+  // Xan 数据库 · 行业/竞品情报 (pi agent 联网检索生成)
+  analyzeIndustry: (workspaceId: string, industry: string, model?: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/industry/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ industry, model }),
+    }).then(json<IndustryIntel>),
+
+  analyzeCompetitor: (workspaceId: string, brand: string, competitors: string[], model?: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/competitor/analyze`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ brand, competitors, model }),
+    }).then(json<CompetitorIntel>),
 };

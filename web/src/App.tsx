@@ -5,6 +5,7 @@ import { Sidebar } from "@/components/Sidebar";
 import { type UiMessage } from "@/components/MessageRow";
 import { PreviewPane } from "@/components/PreviewPane";
 import { CleanDataDocsColumn } from "@/components/CleanDataDocsColumn";
+import { FlowListColumn } from "@/components/FlowListColumn";
 import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useTabVisibility } from "@/lib/useTabVisibility";
@@ -16,7 +17,7 @@ import type { TabContext } from "@/tabs/types";
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
-import { asBlocks, textOf, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type WorkflowFavorite, type Workspace, type WorkspacePath } from "@/types";
+import { asBlocks, textOf, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
 
 let uid = 0;
 const nextId = () => `m${++uid}`;
@@ -37,7 +38,6 @@ export default function App() {
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
   const [flows, setFlows] = useState<Flow[]>([]);
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
-  const [workflowFavorites, setWorkflowFavorites] = useState<WorkflowFavorite[]>([]);
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [report, setReport] = useState("");
@@ -149,7 +149,6 @@ export default function App() {
         ?? list[0];
       if (defaultModel) setModel((cur) => cur || defaultModel.id);
     });
-    api.listWorkflowFavorites().then(setWorkflowFavorites);
   }, []);
 
   useEffect(() => {
@@ -352,25 +351,6 @@ export default function App() {
     },
     [activeFlowId],
   );
-
-  const favoriteFlow = useCallback(async (id: string) => {
-    const favorite = await api.favoriteFlow(id);
-    setWorkflowFavorites((cur) => [favorite, ...cur.filter((item) => item.id !== favorite.id)]);
-  }, []);
-
-  const removeWorkflowFavorite = useCallback(async (id: string) => {
-    await api.removeWorkflowFavorite(id);
-    setWorkflowFavorites((cur) => cur.filter((item) => item.id !== id));
-  }, []);
-
-  const reuseWorkflowFavorite = useCallback(async (id: string) => {
-    if (!activeWorkspaceId) return;
-    const flow = await api.reuseWorkflowFavorite(id, activeWorkspaceId);
-    setFlows((cur) => [flow, ...cur]);
-    setActiveFlowId(flow.id);
-    setActiveTab("multi");
-    setActiveSubTab("view");
-  }, [activeWorkspaceId]);
 
   const onSelectFlow = useCallback((id: string) => {
     setActiveFlowId(id);
@@ -595,24 +575,14 @@ export default function App() {
               activeWorkspaceId={activeWorkspaceId}
               sessions={sessions}
               activeSessionId={activeSessionId}
-              flows={flows}
-              activeFlowId={activeFlowId}
-              workflowFavorites={workflowFavorites}
               onSelectWorkspace={setActiveWorkspaceId}
               onSelectSession={handleSelectSession}
-              onSelectFlow={onSelectFlow}
               onNewWorkspace={newWorkspace}
               onNewSession={newSession}
-              onNewFlow={newFlow}
               onRenameWorkspace={renameWorkspace}
               onDeleteWorkspace={deleteWorkspace}
               onRenameSession={renameSession}
               onDeleteSession={deleteSession}
-              onRenameFlow={renameFlow}
-              onDeleteFlow={deleteFlow}
-              onFavoriteFlow={favoriteFlow}
-              onRemoveWorkflowFavorite={removeWorkflowFavorite}
-              onReuseWorkflowFavorite={reuseWorkflowFavorite}
               onCollapse={() => setSidebarOpen(false)}
               onOpenSettings={() => setSettingsOpen(true)}
             />
@@ -631,24 +601,14 @@ export default function App() {
               activeWorkspaceId={activeWorkspaceId}
               sessions={sessions}
               activeSessionId={activeSessionId}
-              flows={flows}
-              activeFlowId={activeFlowId}
-              workflowFavorites={workflowFavorites}
               onSelectWorkspace={setActiveWorkspaceId}
               onSelectSession={handleSelectSession}
-              onSelectFlow={onSelectFlow}
               onNewWorkspace={newWorkspace}
               onNewSession={newSession}
-              onNewFlow={newFlow}
               onRenameWorkspace={renameWorkspace}
               onDeleteWorkspace={deleteWorkspace}
               onRenameSession={renameSession}
               onDeleteSession={deleteSession}
-              onRenameFlow={renameFlow}
-              onDeleteFlow={deleteFlow}
-              onFavoriteFlow={favoriteFlow}
-              onRemoveWorkflowFavorite={removeWorkflowFavorite}
-              onReuseWorkflowFavorite={reuseWorkflowFavorite}
               onCollapse={() => setSidebarOpen(false)}
               onOpenSettings={() => setSettingsOpen(true)}
             />
@@ -767,6 +727,17 @@ export default function App() {
           {/* 探索·工作视图：左侧「聚合数据」只读文档竖栏（红线域，纯读取+复制） */}
           {activeTab === "explore" && activeSubTab === "view" && (
             <CleanDataDocsColumn scope={folderScope} />
+          )}
+          {/* 工作流·工作视图：左侧工作流列表竖栏（由原侧边栏迁入） */}
+          {activeTab === "multi" && activeSubTab === "view" && (
+            <FlowListColumn
+              flows={flows}
+              activeFlowId={activeFlowId}
+              onSelectFlow={onSelectFlow}
+              onNewFlow={newFlow}
+              onRenameFlow={renameFlow}
+              onDeleteFlow={deleteFlow}
+            />
           )}
           <div className="flex min-h-0 min-w-0 flex-1 flex-col">
             <DataTabs ctx={tabCtx} />
