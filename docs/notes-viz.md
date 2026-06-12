@@ -7,19 +7,25 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-12 · 新增「业务行动」（Actions）提取、执行、反馈三段闭环功能。
+- 最近更新：2026-06-12 · onto-xanthil 大文档分批抽取 **功能已全量落地**
 - 进度：
-  - **ActionsPane**：完成探索及工作流域的“提取行动 → 任务分配执行 → 结果反馈”三段式闭环 UI（继承 neutral/emerald/amber 视觉规范）。支持通过报告源读取策略内容。
-  - **提取机制**：通过 `POST /api/actions/extract` 利用大模型能力解析报告文本为 `ActionItems` JSON，隔离 `--no-skills` 执行，无缝读取生成产物且防数据越界。
-  - **API/DB 层**：添加了 `action_items`、`action_tasks`、`action_feedback` 3 张 SQLite 表并开放 REST Endpoint。
-- 校验：`npm run typecheck` ✅；`npm run build` ✅ built。
+  - **分批抽取全链路已落地**：`chunkDocument`（纯函数，CSV 重带表头 / md-txt 字符窗口 ~8000 + overlap ~400）→ `runChunkedExtraction`（异步 runner，逐批调 `extractOntologyFromText`，每批检查 abort，累加计数写 DB）→ 3 个 REST 端点（`POST extract-chunked` fire-and-forget / `GET extract-jobs/:jobId` / `POST abort`）→ 前端 `ImportSection` polling UI（进度条 i/N + 累计计数 + 中止 + sessionStorage 切 tab 不丢 + 终态自动停止轮询）。
+  - **`extract_jobs` 表 + CRUD 已落地**：`db/viz.ts:initOntoTables` 新增 `extract_jobs` 表 DDL + `createExtractJob` / `getExtractJob` / `updateExtractJob` 三个 CRUD；`ValidationIssue` 直接从 `onto-validator.ts` import（types.ts 仅 `import type` 未 export）。
+  - **前端从同步 `useResumableTask` 切换到异步 job 轮询**：`OntologyPane.tsx` 移除了 `useResumableTask` / `OntoExtractResult` 依赖，改为 jobId state + `setInterval` 2s 轮询 + sessionStorage 持久化。
+  - **保留旧同步入口**：`POST /api/ontologies/:oid/extract` 与 `extractOntologyFromText` 单批入口保留不动，向后兼容。
+  - **未碰红线**：未读取/处理 `draw_data`，未改 `types.ts`、`index.ts`、`db.ts`、`App.tsx`、`api.ts`、`constants.ts`、`pi-adapter.ts`，未执行 git 操作。
+- 校验：
+  - `npm run typecheck`：✅ server + web 全绿。
+  - `npm run build`：✅ 全绿；仅 Vite 既有 chunk size 警告。
 - 下一步：
-  - 后续基于 `action_tasks` 可以实现更加完整的项目管理视图或与业务需求（Business Contexts）对接。
-  - 等待总控针对行动项到本体 `onto_actions` 之间的联动进行设计审批。
+  - ① **端到端验收**：上传 197 行 metrics.csv → 确认分批 ≥2 chunks、实体总数突破 40、跨批关系正确连边、进度条走完、切 tab 不丢进度、可中止。
+  - ② **质检 issues 汇总**：分批模式下同一 issue 可能重复累计，可考虑后端 dedup 或前端按 code+message 归并。
+  - ③ **abort 后清理**：当前 abort 保留已落库的前序 chunk 结果（不可逆），如需回滚需总控明确产品口径。
 - 阻塞 / 待总控：
-  - 无。
+  - 无代码阻塞。
 - 开放问题：
-  - 在 `POST /api/actions/extract` 提取时仅使用纯正则容错 JSON 解析，如果后续选用其他对齐度偏低的开源模型可能解析率欠佳，是否需要加入二次 retry 机制？
+  - abort job 后已落库的前序 chunk 抽取结果保留还是回滚？当前实现=保留（跨批顺序落库不可逆），需总控明确。
+  - 分批模式下质检 issues 可能跨批重复（如同名实体 warning），是否需要 dedup？
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -45,6 +51,7 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - **高质量 HTML 报告**用 `runPiPrompt` 排版，要求模型产出单文件自包含 HTML、**完全隔离外链防数据泄漏**。
 - 报告审核**涉及 LLM 是预期行为**（审核/修改本就需要 LLM），不受数据探索零-LLM 约束。
 - `NewMemberRetentionPane.tsx` / `OldMemberRecallPane.tsx` 是**一次性授权**改过的文件，AGENTS.md 未更新 → 仍按"他人成果"对待，改前确认。
+- **onto 大文档抽取必须异步 job 化**：单批抽取同时受 prompt 数量上限、`CONTENT_LIMIT` 截断、300s 超时三重限制；V 后续实现必须用 `ExtractJob` + `extract_jobs` 表 + REST 轮询，不要再把大文档抽取做成单次同步 API。
 
 ---
 
@@ -71,6 +78,9 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 
 **知识图谱 / trace**（可视化部分）
 - 知识图谱挂「规则记忆」二级 tab（非顶栏独立）；Phase A 结构化图谱优先（无 LightRAG 依赖）；摄入 = 手动触发 + 变更累积；注入折叠进 `injectRulesPrompt` 开关；节点**隐藏而非物理删除**。
+- onto-xanthil 文档抽取分批方案：CSV 按行切分、普通文本按字符窗口切分；每批顺序调用既有 `processExtractionOutput`。**不要重造跨批合并逻辑**，因为 `processExtractionOutput` 每批都会重读库 `listObjectTypes`，并通过 `resolveId` 模糊解析让后批看见前批实体、正确连边。
+- `extract_jobs` 表属于 V 域 schema，放 `db/viz.ts:initVizTables`，字段口径以 `ExtractJob` 为准；与 `onto_*` / `action_*` 同模式走 `CREATE TABLE IF NOT EXISTS`，不 ALTER 他域表、不加 FK。
+- 大文档抽取前端进度应复用长任务续跑范式：后台 REST 起 job，DB 持久化进度，前端轮询 `ExtractJob`；切 tab / unmount 后重新 mount 仍可恢复进度。
 
 **规则记忆 4 Pane · 全局池化 UI 范式**
 - 列表数据源 = 全局池（`api.listRules/Standards/Cases/BusinessContexts/Metrics` 返回所有 ws 的条目，`workspaceId` 字段表示 origin）；启用态 = `sharedApi.listMemoryEnablements(ws, kind)` 索引 Map。两路独立拉取、独立更新。
@@ -95,6 +105,8 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - **全局池创建后启用态显示停用**：总控约定创建时自动 `enableForOrigin`，但前端如果只 `setItems(...prev, created)` 而不重拉 enablements，新建条目因 enablements Map 里没记录，`get(id) ?? false` 显示"停用"。规避：所有 create/update/delete 一律 `await refresh()` 全量重拉，别想省那一次 round-trip。
 - **调用 LLM 提取陷阱（pi-adapter.ts）**：使用 `runPiPrompt` 提取策略报告时，注意该接口源码已内建 `--no-skills`, `--no-tools`, `--no-context-files` 参数（针对独立分析/重排任务优化），调用方切勿通过 `extraArgs` 或 `prompt` 中再多此一举传入；同时其返回的纯文本应基于 `try/catch + RegExp` 处理 Markdown Json block，以防部分模型输出絮叨开头（如 `Here is the JSON...`）导致解析阻断。
 - **跨域私有工具方法导出**：若在路由层（如 `routes/viz.ts`）尝试复用其它域的 `validateArtifactPath`（挂载于 `index.ts` 私有域），TypeScript 跨文件 import 将报 2305 错。应对方式：若不想扰乱原文件的导出契约，可以在自身域就近实现无害等价物或走正当重构（抽取 `flow-fs.ts` 或 `output-paths.ts`）。
+- **TS Re-export Type 陷阱**：`ValidationIssue` 在 `server/src/types.ts` 中仅作为 `import type` 引入供接口定义使用，并未 `export`。如果在其它文件（如 `db/viz.ts`）中尝试从 `types.ts` 导入它，会报 TS2459 错误。正确做法是直接从源头 `onto-validator.ts` 导入。
+- **轮询定时器泄漏**：使用 `setInterval` 轮询 job 进度时，必须在 job 达到终态（`success` / `failed` / `aborted`）时在轮询回调内显式调用 `clearInterval`，否则即便组件未卸载，前端仍会持续发起无效的 fetch。
 
 ---
 

@@ -210,11 +210,128 @@ const DOMAINS = {
 };
 
 /* 任务生命周期 status: "todo"(待派发) | "doing"(进行中) | "done"(已完成)
+   字段 delegate?: "E"|"D"|"V" —— 仅 dom:"X" 总控卡用：本卡口径已审定，委派该 agent 代笔落地接缝层、回流总控终审(加重)。
+     dom 表归属(仍总控持有)、delegate 表代笔执行方；机制见 Orchestration.md §六「总控卡委派」。卡面渲染「⇄ 委派 … 代笔→终审」。
    ── 归档规则 ──
    · 总控在回流终审确认完成 → 把该任务 status 改 "done"（自动折叠进下方「已完成」区）
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "X", status: "done", delegate: "E", title: "onto 文档分批抽取 —— 契约 + schema 审定（types.ts ExtractJob / extract_jobs 表，总控持有）", brief:
+`✅ E 代笔交付、总控加重终审通过（2026-06-12）。逐行核：① ExtractJob/ExtractJobStatus 双侧字段完全一致 ✓ ② issues 复用既有 ValidationIssue（server 经 import type from onto-validator.ts、web 本地已有），无本地重声明 ✓ ③ types.ts→onto-validator.ts 单向 type-only import，无循环依赖 ✓ ④ 插位贴 onto 类型区（ObjectKind 前）✓ ⑤ 仅双侧 types.ts 改动、未扩散其他接缝层契约/他域 slot ✓ ⑥ server typecheck + web build 全绿 ✓。extract_jobs 表口径(§2)交 V 在 db/viz.ts 落地、本卡不含建表代码(职责正确)。**首个「总控卡委派」试点跑通**。待 V 卡实装 + 用户提交。
+
+【⇄ 委派 E 代笔 · 口径已审定】本卡字段/类型/表结构/插位已由总控完全审定（见下 §1/§2），委派 E(codex) 按图落地接缝层 → 回流总控终审(加重)。机制见 Orchestration.md §六「总控卡委派」。代笔者只改本 brief 指定的接缝层片段，不顺手改其他契约、不扩散他域，按 /px-resume·/px-wrapup 走、全程不碰 git。
+
+新需求：onto-xanthil「文档 → pi 抽取」支持**大文档分批抽取**，根治单批 ≤40 实体上限漏抽 + CONTENT_LIMIT 截断 + 大输出 300s 超时三连问题。本卡 = 总控接缝/契约，**必须先于 V 卡**。
+
+【背景 / 根因】单批抽取三限制：① prompt 硬性 实体≤40/关系≤60/规则≤20/动作≤20 → 197 行指标字典只覆盖 ~1/5；② CONTENT_LIMIT=24000 截断更大文档后半段；③ 单次大输出撞 300s 超时（刚快修过的点）。解法 = 切分多批顺序抽取。**关键：跨批合并已天然具备** —— processExtractionOutput 每批都重读库(listObjectTypes) + resolveId 模糊解析，顺序多批落库时后批能看见前批实体并正确连边（V 勿重造合并逻辑）。多批 ×(最多 300s) 须异步 job + 轮询（复用刚交付的「委派子 agent」REST 起后台 + DB 轮询 + useResumableTask 范式）。切分策略已定：**CSV 按行 + 文本按字符窗口（混合）**。
+
+【1 · types.ts 契约（双侧 server/src/types.ts + web/src/types.ts 同步定义）】
+- ExtractJobStatus = 'running'|'success'|'failed'|'aborted'。
+- ExtractJob { id; ontologyId; status:ExtractJobStatus; totalChunks; doneChunks; createdObjects; createdLinks; createdLogicRules; createdActions; skippedObjects; skippedLinks; hasFatal; issues:ValidationIssue[](累计质检); error?; createdAt; updatedAt }。issues 复用既有 ValidationIssue（onto-validator/types 已有）。
+- 插位：server 端在 OntoExtractResult 附近；web 端在 onto 相关类型区。onto 既有类型(Ontology/ObjectType/LinkType…)均在 types.ts，本类型同源归总控（§五.2）。
+
+【2 · extract_jobs 表 schema 审定（总控已审定口径，V 在 db/viz.ts:initVizTables 落 CREATE TABLE IF NOT EXISTS）】
+- extract_jobs(id, ontology_id, status, total_chunks, done_chunks, created_objects, created_links, created_logic_rules, created_actions, skipped_objects, skipped_links, has_fatal(0/1), issues_json, error, created_at, updated_at) + idx(ontology_id)。
+- 与 onto_* / action_* 同模式：base schema 后调用、无需 MIGRATIONS 版本。总控确认不撞 schema、不 ALTER 他域表、FK 无需（job 自洽）。
+
+【验收】server + web typecheck + build 绿；ExtractJob 双侧一致、V 可 import。
+【约束】types.ts 仅总控写；不碰红线；全程不碰 git。` },
+  { dom: "V", status: "done", title: "onto 文档分批抽取 —— 切分 + 异步 job + 进度轮询 + 跨批合并（onto-extract/routes/db/api/OntologyPane）", brief:
+`✅ 总控终审通过（2026-06-12，域卡常规终审 + 红线核）。门禁 server typecheck ✅ + web build ✅ + 数据探索隔离 grep 空 ✅。逐项核：① 单一真源——ExtractJob 双侧均从 types import（db/viz 的 ExtractJobRow 是行映射不算契约）、无本地重声明 ✓ ② chunkDocument 纯函数（CSV 表头+N行/budget 8000、md/txt 字符窗口+overlap 400、≤CONTENT_LIMIT 兜底）✓ ③ runChunkedExtraction fire-and-forget：每批前查 abort→aborted 不覆盖、单批 try/catch 记 CHUNK_FAILED 续跑、全失败才 failed、复用 processExtractionOutput 跨批合并（未重造）✓ ④ extract_jobs 表对齐审定口径 + idx + base schema 后 ✓ ⑤ 三端点（extract-chunked void 不 await / get / abort 仅 running）✓ ⑥ 前端 4 态 UI 全（running 进度条 批 i/N+累计+中止 / success 汇总+质检 issues / failed / aborted）、jobId 存 sessionStorage 切 tab 重挂载 resume 轮询 ✓ ⑦ 红线净（读文档文本→pi 合规、无 draw_data 读、未引入 --no-extensions）✓ ⑧ 未碰接缝层（types/api.ts/constants/App/pi-adapter）✓。
+【2 处 benign 偏差，优于/等价口径，免收敛】① 进度用 sessionStorage+setInterval 替 useResumableTask——功能等价（切 tab 不丢）② extract_jobs.ontology_id 加 ON DELETE CASCADE FK——超口径（曾写"FK 无需"）但更稳、不撞 schema，接受。
+**onto 大文档分批抽取功能闭环交付。** 待用户提交 + 浏览器实跑点检（真实 197 行 metrics.csv 多批跑通、实体突破 40、跨批连边、进度条走完、可中止）。
+
+— 原始需求 —
+新需求：onto-xanthil「文档 → pi 抽取」支持大文档**分批抽取**，功能一步到位。依赖总控「契约 + schema 审定」卡（ExtractJob 类型 + extract_jobs 表），**顺序在其后**。
+核心：大文档切分 → 多批顺序抽取 → 跨批合并(已具备) → 异步 job + 进度轮询。**每批仍 ≤40 实体（prompt 上限不动），多批累加突破总量限制**；跨批 resolveId/重读库已支持连边与去重。
+
+【文件边界(V slot)】onto-extract.ts(切分 + chunked runner) · routes/viz.ts(job 端点) · db/viz.ts(extract_jobs 表 + CRUD，总控已审) · lib/api/viz.ts(client) · OntologyPane.tsx(进度 UI)。**不碰 types.ts/接缝层**（ExtractJob 总控已定，import 之，勿本地重声明 —— 参 actions 收敛教训：本地重声明跨侧类型 = 单一真源违规）。
+
+【1 · onto-extract.ts 切分（混合策略，用户已定）】
+- chunkDocument(text, fileName?):string[] —— CSV(检测首行为表头 / .csv 扩展名)：按行切，每批 = 表头行 + N 数据行（累计字符预算 ~8000 换批，**每批重带表头**保语义完整）；md/txt：字符窗口 ~8000 + overlap ~400，在换行/段落边界回退避免断句。单 chunk 受 CONTENT_LIMIT 兜底。
+- 抽成可独立测试的纯函数（脱离 pi）。
+
+【2 · onto-extract.ts chunked runner（异步）】
+- runChunkedExtraction(jobId, ontologyId, text, model?, promptTemplate?):Promise<void> —— **不被 await**：① chunks=chunkDocument ② updateJob(total_chunks, running) ③ 逐批调现有 extractOntologyFromText（单批复用，跨批靠 processExtractionOutput 重读库自动合并/去重/连边）④ 每批累加计数 + done_chunks++ ⑤ 单批 parse 失败 → 记 issue 跳过继续(不致命)，全部失败才 failed ⑥ 末 status=success ⑦ 异常 → failed + error ⑧ 每批前检查 abort 标志 → aborted。
+- 保留现有 extractOntologyFromText 单批同步入口（小文档/兼容）。
+
+【3 · routes/viz.ts（均带 /api 前缀）】
+- POST /api/ontologies/:oid/extract-chunked {text, model?, promptTemplate?} → 建 extract_jobs 行，**fire-and-forget** 启 runChunkedExtraction(不 await)，立即返回 {jobId}。
+- GET /api/extract-jobs/:jobId → 返回 ExtractJob 进度/结果。
+- POST /api/extract-jobs/:jobId/abort → 置 aborted(runner 每批检查)。
+- 保留现有 POST /api/ontologies/:oid/extract(小文档同步)。runPiPrompt 用 --no-skills（勿用 --no-extensions，见 AGENTS.md §四 pi 陷阱）。
+
+【4 · lib/api/viz.ts】startChunkedExtract(oid,{text,model,promptTemplate}) / getExtractJob(jobId) / abortExtractJob(jobId)。ExtractJob 从 @/types import（总控已定，勿本地重声明）。
+
+【5 · OntologyPane.tsx（导入 section）】
+- 「开始抽取」统一走 chunked(异步)；进度走 useResumableTask(key=jobId，切 tab 不丢，参 wiki「断点续传」范式)轮询 getExtractJob。
+- 进度态：批 i/N 进度条 + 累计 created objects/links/rules/actions + 可中止；完成出汇总(总计数 + 质检 issues)；失败/中止有空态引导。
+
+【验收】server + web typecheck + build 绿；上传 197 行 metrics.csv 分批抽取，**实体数突破 40**(覆盖全量核心指标)、跨批关系正确连边、进度条 i/N 走完、切 tab 不丢、可中止；质检 issues 汇总。
+【约束】不碰接缝层(types/api.ts/constants/App)/pi-adapter；不碰数据探索红线子树与 draw_data(本流程读文档文本 → LLM 合规，onto 抽取本就经 pi)；db 建表须总控审过(已审)再落；全程不碰 git，回流总控终审；新踩坑/约束在回报中列出交总控补 notes-viz。` },
+  { dom: "X", status: "done", title: "数据分析 fork/委派子agent —— 后端编排 + 契约（接缝层/infra，总控持有）", brief:
+`✅ 总控自做+自检通过（2026-06-12，server typecheck + web build 绿）。**实际实现比原 brief 大幅简化、零 WS union 改动、App.tsx 零改 —— E 按下方"已交付契约"对接，勿照原 brief 的 WS 方案。**
+
+【已交付 · E 对接契约】
+- types.ts 双侧：ForkBranch{ id;parentSessionId;branchSessionId;title;seeded;status;createdAt } · SubAgentTask{ id;parentSessionId;brief;dataFiles[];model?;status('running'|'success'|'failed'|'aborted');summary?;reportPath?;error?;createdAt;endedAt? } · SubAgentTaskInput。
+- **Fork = 一个真实 session**：POST /api/sessions/:id/fork → 建分支 session + fork_branches 行，返回 ForkBranch（branchSessionId 是真 session）。E 的分支 mini-chat **直接复用现有 send/messages/abort 机制**（对 branchSessionId 收发），后端 handleSend 检测"未播种分支"→首轮 runPiTurn 加 --fork 从父 session 播种历史（pi-adapter 已支持 forkFrom），之后正常多轮。GET /api/sessions/:id/fork-branches 列表。
+- **委派 = REST 起后台 + DB 轮询**（非 WS）：POST /api/sessions/:id/delegate {brief,dataFiles,model?} → 建 subagent_tasks 行 + 后台跑全新聚焦子 session（systemPrompt 硬约束：只读指定 020_clean 数据、报告写 060_reports、末条给结论摘要）→ 返回 task。GET /api/sessions/:id/subagent-tasks（列表轮询）· GET /api/subagent-tasks/:id · POST /api/subagent-tasks/:id/abort。子 agent 末条 assistant 文本存 summary、060_reports 新产报告名存 reportPath。
+- **回流 = 无后端**：E 把"可编辑摘要 + 060_reports 报告链接"作为一条**普通消息发给主 session**（现有 gateway send / onSend）即可，主 session 当 user turn 整合 → 主上下文只吃精炼结论。
+- db/shared.ts：fork_branches / subagent_tasks 两表 + CRUD（总控持有）。pi-adapter.ts：RunPiOptions 加 forkFrom。index.ts：handleSend 分叉 + 上述 REST + 后台 runDelegatedSubAgent + subagentRuns 中止 map。
+- **App.tsx 零改**：fork 分支/委派/回流均复用现有 session send 或走 REST，无需 App 新 state/handler。E 在 ChatPane(E slot) 内自管 fork 面板/委派卡/轮询。
+
+— 原始需求（设计背景，WS 方案已被上面简化取代）—
+新需求：数据分析 tab（探索·「数据分析」= pi session 对话，ChatPane）增两种能力，解决多轮交互上下文撑爆——核心心智：**开子 pi session 干重活，只把结论回流主 session，主上下文不被撑大**。
+① **Fork 分支**（交互式）：pi 原生 \`--fork <主sessionId>\` 生成带主历史的分支 session，用户在分支里多轮深挖（隔离不进主线），满意后回流。
+② **委派子 agent**（后台异步）：起一个全新聚焦 session（无主历史）+ 指定数据 + 任务 brief，自主跑完产报告，回流摘要。
+③ **回流**：可编辑摘要 + 060_reports 报告链接，作为一条 user turn 注入主 session（主只吃精炼结论）。
+本卡=接缝层/infra/契约/App 接线（index.ts WS + pi-adapter + types + db 均总控持有），**必须先于 E 前端**。
+
+【1 · types.ts 契约（双侧）】
+- ForkBranch { id; parentSessionId; branchSessionId; title; status:'idle'|'running'|'done'|'error'; createdAt }。
+- SubAgentTask { id; parentSessionId; brief; dataFiles:string[]; model?; status:'running'|'success'|'failed'|'aborted'; summary?; reportPath?; error?; createdAt; endedAt? }。
+- ClientMessage union(types.ts:1089) 加：{type:'send_fork',parentSessionId,branchSessionId?,text,model?}、{type:'abort_fork',branchSessionId}、{type:'delegate',parentSessionId,brief,dataFiles,model?}、{type:'abort_subagent',taskId}、{type:'reflux',parentSessionId,text,reportPath?}。
+- ServerMessage union(types.ts:1101) 加 fork 流式事件(复用现有 run 事件但带 branchSessionId 维度)、{type:'subagent_progress',taskId,...}、{type:'subagent_end',taskId,status,summary?,reportPath?}。
+
+【2 · pi-adapter.ts（总控 infra）】
+- runPiFork(opts)：runPiTurn 变体，首轮 args 加 \`--fork <parentSessionId>\` 并用新 branchSessionId 落分支；分支后续轮次走普通 runPiTurn(branchSessionId)。
+- runPiSubAgent(opts)：全新 session-id + 聚焦 systemPrompt（**含硬约束：读数据仅用 @dataFiles、报告写入任务 060_reports**，仿 workflow prompt 硬化）+ \`@<dataFiles>\` 附数据 + 自主跑；用 --no-skills（勿 --no-extensions，见 AGENTS.md §四）。可借鉴 autonomous-runner.ts 范式但落总控 slot（勿改 E 的 autonomous-runner）。
+
+【3 · index.ts WS gateway（接缝层，总控）】仿 handleSend(5304/927) 加：
+- handleSendFork：建/续 branch session(runPiFork 首轮/runPiTurn 续轮)，流式带 branchSessionId；branch 报告落 standardDirIn(sessionDir(rootPath, mainSessionId),"report")=任务 060_reports（fork 与主同属一个任务）。
+- handleDelegate：后台 runPiSubAgent，落 subagent_tasks 表(status 流转)，流式 subagent_progress/subagent_end；报告落同任务 060_reports；数据从 020_clean 取(dataFiles 路径校验在标准目录内)。
+- handleReflux：把 {text(可编辑摘要)+reportPath 引用} 作为一条 user turn 注入**主 session** → 调 runPiTurn(mainSessionId, text=摘要+「报告见 <reportPath>」)。这步是"主只吃结论不吃过程"的关键。
+- 输出目录统一 standardDirIn(sessionDir(rootPath, session.id),"report")；读 020_clean 经 standardDirIn(...,"clean")。
+
+【4 · db（总控审+落，建议 db/shared.ts 或新 slot）】fork_branches、subagent_tasks 两表(后台需持久化供轮询/恢复) + CRUD + GET 列表路由(供 E 轮询)。CREATE TABLE IF NOT EXISTS、base schema 后。
+
+【5 · App.tsx（总控 seam）】fork/delegate/reflux 的 state + gateway.send；把回调(onFork/onDelegate/onReflux/onAbortBranch...)与数据(当前任务 020_clean 文件列表、活跃 fork 分支消息、子任务进度)作为 props 传 ChatPane(E 渲染)；接 fork/subagent WS 事件更新分支消息与子任务卡。**ChatPane 渲染归 E，本卡只定 props 契约 + App 装配 + 后端**。
+
+【验收】server typecheck + web build 绿；后端 fork(带主历史)/delegate(后台产报告落 060_reports)/reflux(主 session 增一条精炼 turn) 三链路可被 WS 驱动；标准目录读写正确。
+【约束】index.ts/pi-adapter/types/db/App 接缝层仅总控写；不碰红线(数据分析对话本就是 pi session，可读 LLM；但 draw_data/010_raw 永不喂)；全程不碰 git。` },
+  { dom: "E", status: "done", title: "数据分析 fork/委派子agent —— ChatPane 前端 UI（fork 分支面板 + 委派卡 + 回流）", brief:
+`✅ 总控回流终审一次通过（2026-06-12，无需收敛）。E 交付：ChatPane 输入区上方加「Fork 分支/委派子 agent」两按钮(activeAssistPanel 切换) + 新建 ForkBranchPanel.tsx / DelegateSubAgentCard.tsx + lib/api/engine.ts(6 方法)。门禁 server typecheck ✅ + web build ✅。
+【终审核验】① 类型从 @/types import(ForkBranch/SubAgentTask/SubAgentTaskInput)，无本地重声明(吸取 actions 教训)✓ ② 6 端点对接正确 ✓ ③ Fork=ForkBranchPanel 直接用 gateway 单例对 branchSessionId send + 订阅 pi_event + 复用 listMessages/runStatus/artifactTree(真实 session)，首轮后端自动 --fork 播种 ✓ ④ 回流=onBackflow→p.onSend(主 session)，可编辑 textarea 预填 summary+报告链接 ✓ ⑤ 委派=REST + setInterval 轮询(非 WS)，数据源 listWorkspacePaths(clean_data) 仅 020_clean(红线:非 draw_data)、结果卡 summary+reportPath 可预览、abort 可中止 ✓ ⑥ App.tsx 零改(ChatPane 由 EngineTabs 渲染、workspaceId 走既有 ctx.activeWorkspaceId)、未碰接缝层 ✓ ⑦ 数据探索隔离 grep 空、无 draw_data 引用 ✓。**待用户提交 + 浏览器实跑点检**(见下 ⚠)。
+⚠ X+E 联调实跑待验(typecheck/build≠功能可用)：pi \`--fork <父> --session-id <分支>\` 组合是否把父历史播种进指定分支 id；子 agent \`-p\` 单轮是否用工具读 020_clean 数据/写报告到 060_reports、末条摘要捕获命中；分支 messages/runtime/pi_event 订阅顺滑度。
+
+— 原始需求 —
+新需求(同 X 卡)：数据分析对话(ChatPane)前端呈现 fork 分支 + 委派子 agent 两能力并可直接用。**X 后端已交付（见上方 X 卡"已交付契约"，务必照那个对接，不是原 WS 方案）**，顺序在其后。
+
+【文件边界(E slot)】ChatPane.tsx + 新建 ForkBranchPanel.tsx / DelegateSubAgentCard.tsx(或同文件子组件) + lib/api/engine.ts(客户端方法)。**App.tsx 零改**(X 已确认无需 App 接线)——fork 分支复用现有 session send/messages、委派走 REST、回流走现有 send。不碰 index.ts/types/pi-adapter/db(总控持有)。
+
+【1 · 入口】ChatPane 输入区上方加两按钮「Fork 分支」「委派子 agent」(lucide，禁用态=无活跃 session)。
+
+【2 · Fork 交互分支(ForkBranchPanel)】① POST /api/sessions/:id/fork 建分支(返回 ForkBranch.branchSessionId) ② 打开抽屉/侧栏 mini-chat，**对 branchSessionId 复用现有 gateway send + GET /api/sessions/:branchSessionId/messages + pi_event 订阅**(首轮后端自动 --fork 带主历史)，分支多轮深挖**隔离不进主线 transcript** ③「回流结果」→ 弹可编辑摘要框(用户填/可预填分支末条) + 可选 060_reports 报告链接 → **作为一条普通消息发给主 sessionId**(现有 onSend/gateway send) → 注入主对话。GET /api/sessions/:id/fork-branches 恢复分支列表。
+
+【3 · 委派卡(DelegateSubAgentCard)】① brief 文本 ② 勾选当前任务 020_clean 数据文件(ChatPane 已有/可拉 listWorkspacePaths(folder=clean_data) 取文件名) ③ 选模型 → POST /api/sessions/:id/delegate {brief,dataFiles,model} 后台起跑，返回 SubAgentTask。
+
+【4 · 子任务进度/结果卡(轮询，非 WS)】GET /api/sessions/:id/subagent-tasks 每数秒轮询(running 时；参 resumableTask 范式，切 tab 不丢)；status=running 显进度态，success 出结果卡：summary + reportPath(点开预览 GET /api/sessions/:id/artifacts/file?path=reportPath) +「回流」按钮(同款可编辑摘要框，预填 summary + 报告链接)→ 普通 send 进主对话。可 POST /api/subagent-tasks/:id/abort 中止。多任务并存列表。
+
+【5 · engine api 客户端(lib/api/engine.ts)】forkSession(id) / listForkBranches(id) / delegateSubAgent(id,input) / listSubAgentTasks(id) / getSubAgentTask(id) / abortSubAgent(id)。类型 ForkBranch/SubAgentTask/SubAgentTaskInput 从 @/types import(总控已定，勿本地重声明——参 actions 收敛教训)。
+
+【验收】web build 绿；可发起 fork 多轮深挖(不污染主线)、委派子 agent 后台跑+轮询进度、完成回流(可编辑摘要+报告链接)进主对话；切 tab 子任务进度不丢。
+【约束】不碰接缝层/pi-adapter/types/db；数据文件仅传路径(020_clean，不把内容送红线)；不碰数据探索红线子树；全程不碰 git，回流总控终审。` },
   { dom: "X", status: "done", title: "actions（行动）接缝层 + 契约（types.ts / constants / App 接线 / schema 审批）", brief:
 `✅ 总控自做并自检通过（2026-06-12）：契约已就位，V 可开工。交付：① types.ts 双侧定义 ActionScene/ActionLifecycle/ActionPriority/ActionEffort/ActionItemStatus/ActionTaskStatus + ActionItemDraft/ActionItem/ActionItemInput/ActionTask/ActionTaskInput/ActionFeedback/ActionFeedbackInput（server 插在 OntoActionInput 后、web 插在 GoldenStrategyBatchResult 后）；② constants.ts SubTab union 加 'actions'、SUB_TABS 在 golden_strategy 后加 { id:'actions', label:'行动' }（explore/multi 经 getSubTabsForTab fallthrough 自动含）；③ App.tsx 零改（subtab 数据驱动，VizTabs ctx 已传 scope/models/bump）；④ schema 口径已审定（见下方 V 卡【1】三表+外键），V 在 db/viz.ts:initVizTables 落 CREATE TABLE IF NOT EXISTS、无需 MIGRATIONS 版本。server typecheck ✅ + web build ✅。actions subtab 已可达（VizTabs 暂无分支故内容空，待 V 补 Pane+分支）。**待 V 完成后整体提交**。
 
@@ -640,7 +757,9 @@ function buildCard(t, i) {
     '<div class="card-body">' +
       '<div class="dom"><span class="chip" style="background:' + d.color + '">' + t.dom + '</span>' +
         '<b>' + d.name + '</b><span class="agent">· ' + d.agent + '</span>' +
-        '<span class="st ' + st.cls + '">' + st.label + '</span></div>' +
+        '<span class="st ' + st.cls + '">' + st.label + '</span>' +
+        (t.delegate && DOMAINS[t.delegate] ? '<span class="st" style="background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe">⇄ 委派 ' + DOMAINS[t.delegate].agent + ' 代笔→终审</span>' : '') +
+        '</div>' +
       '<div class="task-title">' + t.title + '</div>' +
       '<pre class="brief"></pre>' +
       '<button class="copy" data-i="' + i + '">📋 复制任务</button>' +

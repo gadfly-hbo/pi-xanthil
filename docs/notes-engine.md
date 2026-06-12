@@ -7,20 +7,27 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-11 · P0-C E2E 验证补课收尾（AnaX + skill）
+- 最近更新：2026-06-12 · ChatPane fork 分支 + 委派子 agent 前端接入收尾
 - 进度：
-  - **P0-C · AnaX 真跑完成**：使用已登记 `clean_data` `/Users/huangbo/Dev/Data/anax-mock/森马会员留存聚合数据_2025H1.csv` 真跑 business/plan/data/data_gate/insight/recommend/review_gate/verify/archive。修复后 `data_gate` 不再因综合评分 8/10 卡住；`insight` fan-out 真实触发 concurrency=3；补齐 12 假设后 `review_gate` pass，`verify` / `archive` code=0；隔离假设库已从归档报告 upsert 12 条验证假设。
-  - **P0-C · skill 蒸馏 smoke 完成**：真实 LLM 蒸馏输出曾在 `<think>` 中混入自查清单和 frontmatter 示例，导致 preview/save 后 `listSkills()` 标为 unavailable；已修 `extractSkillMarkdown()`，现在优先提取最后一个 `--- + name:` frontmatter。回放保存后 `listSkills()` 识别为 `source: "project"` 且 `available: true`，SkillSelector 数据源可消费。
-  - **当前其他 engine 状态保留**：onto-extract 长文档上限 hotfix、任务栏↔工作流解耦均已由总控/他域前序完成并通过终审复跑，本次不改其实现。
-- 校验：`node --experimental-strip-types --test server/src/anax-gate.test.ts server/src/multi-agent-runner.test.ts`：✅ 33 tests；`npm run typecheck`：✅ 全绿；`npm run build`：✅ 全绿（仅 Vite chunk size / echarts 动静混合 import 警告）。
+  - **ChatPane 双能力入口已接入**：输入区上方新增「Fork 分支」「委派子 agent」按钮，禁用态绑定活跃 session；通过 `folderScope.type === "session"` 获取 `sessionId`，未改 `App.tsx`。
+  - **fork 分支前端可用**：新增 `ForkBranchPanel`，支持 `POST /api/sessions/:id/fork` 创建分支、`GET /api/sessions/:id/fork-branches` 恢复列表、分支 mini-chat 复用现有 gateway `send` + `GET /api/sessions/:branchSessionId/messages` + `pi_event/run_start/run_end/error` 订阅；分支对话只维护本地 message state，不注入主线 transcript。
+  - **fork 回流已接入**：回流弹可编辑摘要框，默认预填分支末条 assistant 文本；可从分支 artifact tree 选择报告路径，只把路径作为文本链接附加；提交后调用主线 `onSend`，作为普通消息进入主 session。
+  - **委派子 agent 前端可用**：新增 `DelegateSubAgentCard`，支持 brief、`020_clean` 文件路径勾选、模型选择、`POST /api/sessions/:id/delegate` 后台起跑、`GET /api/sessions/:id/subagent-tasks` 每 3 秒轮询 running 任务、多任务列表、`POST /api/subagent-tasks/:id/abort` 中止、成功结果卡展示 summary/reportPath。
+  - **委派结果回流/预览已接入**：reportPath 使用 `GET /api/sessions/:id/artifacts/file?path=...` 文本预览；回流弹预填 summary + 报告路径，提交仍走主线普通 `onSend`。
+  - **client API 已补齐**：`web/src/lib/api/engine.ts` 新增 fork/delegate/task 方法，类型只从 `@/types` import，未本地重声明。
+- 校验：
+  - `npm run typecheck`：✅ 全绿。
+  - `npm run build`：✅ 全绿；仅 Vite 既有 chunk size / echarts 动静混合 import 警告。
+  - 本次目标域为 engine，未改 data 域；额外执行数据探索 LLM 隔离 grep：✅ 无匹配。
 - 下一步：
-  - ① SQL 真实库链路仍需补齐：本机当前 SQL 配置只有 SQLite `xanthil`，没有 PostgreSQL/MySQL 连接参数；拿到真实 PostgreSQL/MySQL 凭据后再跑「连接→查询→导出→注册路径」。
-  - ② AnaX archive flywheel 需在 UI/WS 正常入口再实跑一次，确认新 prompt 让 `anax-hypotheses` 出现在本轮回复而非只写入报告文件；本次已验证报告内结构块可 upsert 12 条。
-  - ③ AnaX 真跑耗时很高，建议后续固化轻量 E2E harness 或 runner 缓存/裁剪上下文，避免 P0 回归只能靠长时间人工真跑。
-- 阻塞 / 待总控：PostgreSQL/MySQL 真实库验证缺外部连接凭据；是否由总控提供测试库或允许使用本地临时容器，需要拍板。
+  - ① 需要在总控/真实后端环境做一次 UI 冒烟：创建 fork → 分支首轮自动 `--fork` 播种 → 分支多轮 → 回流主线，确认主线 transcript 未出现分支中间轮次。
+  - ② 需要真实跑一次委派：选择 `020_clean` 路径 → delegate → running 轮询 → success summary/reportPath → 预览报告 → 回流主线；同时确认切 tab / panel 收起后再次打开仍能从 REST 恢复任务列表。
+  - ③ 若真实 fork 分支会产出大量 artifacts，后续可考虑在报告选择器里过滤文本/报告扩展名；当前实现读取 artifact tree 全部 file path，只附加路径文本，不读内容。
+  - ④ 若需要更强的 UX，可补 mini-chat 运行中 stop 按钮；当前分支发送按钮运行中只显示停止图标但未绑定 abort，避免未经需求扩大行为。
+- 阻塞 / 待总控：无代码阻塞；真实 LLM/后端冒烟是否由总控统一执行、是否需要把 fork/delegate 纳入自动化 smoke，需要总控拍板。
 - 开放问题：
-  - AnaX gate 是否应继续把所有 review stage 的 confidence/evidence 作为硬阈值，还是只对关键阶段硬卡、分项风险统一透传为约束？本次采用保守折中：data_gate 只硬卡整体数据质量 stage，review_gate 仍硬卡关键阶段。
-  - archive flywheel 是否应由 runner 从 `specs/09-archive-summary.md` 兜底读取结构块，而不只依赖 assistant 本轮回复？这需要评估是否属于运行层职责扩张。
+  - fork 回流的“报告链接”是否要求只允许 `060_reports` / `report` 标准目录下的文件，还是 artifact tree 内全部文件都可选？当前保守实现为“只附加路径文本，不读取内容”，但未做扩展名/目录过滤。
+  - 委派任务列表轮询目前只在 `DelegateSubAgentCard` 挂载且存在 running 任务时运行；若要求切到其他 tab 时仍后台刷新 UI 状态，需要总控确认是否把轮询提升到更高层状态管理。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -51,6 +58,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **强制停止双层**：active handle 优先 + `pgrep`/`lsof` 兜底杀孤儿进程。
 - **AnaX 数据安全适配**：data-curator 不读原始数据，改为基于已登记 `clean_data` 聚合数据做 6 维评分（与 `BLOCK_SAFETY` 一致）。
 - **skill 落盘项目级** `<workspace>/.pi/skills/<slug>/SKILL.md`（被 `listSkills` 识别为 project skill），不落全局。
+- **ChatPane fork/delegate 前端边界**：ChatPane 不能为此改 `App.tsx` 接线；从 `folderScope.type === "session"` 取活跃 session。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
+- **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
 
 ---
 
@@ -81,6 +90,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 **探索·对话/skill/业务需求**
 - skill 提炼**压成单次 LLM 调用**（A 解构→B 提炼→C 写 SKILL.md 内嵌进一个 prompt），不做链式三次往返；**先预览可编辑再保存**（两个 API）。
 - 业务需求来源引用 = 字段级 `sourceRefs` + quote 最小闭环，**不做字符 offset 定位**；业务需求上下文抽成前端共享 hook（Chat/报告版本/Golden Strategy 复用）。
+- fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
+- fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
 
 ---
 

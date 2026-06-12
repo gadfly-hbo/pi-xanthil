@@ -48,10 +48,13 @@ import {
   updateActionTask,
   createActionFeedback,
   getActionFeedback,
+  createExtractJob,
+  getExtractJob,
+  updateExtractJob,
 } from "../db/viz.ts";
 import { getWorkspacePath, getSession, getWorkspace, getFlow, getFlowRun } from "../db.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
-import { extractOntologyFromText } from "../onto-extract.ts";
+import { extractOntologyFromText, runChunkedExtraction } from "../onto-extract.ts";
 import { exportOntology, type ExportFormat } from "../onto-export.ts";
 import { readFlowFile } from "../flow-fs.ts";
 import { resolveOutputTarget } from "../output-paths.ts";
@@ -348,6 +351,40 @@ vizRouter.post("/api/ontologies/:oid/extract", async (req, res) => {
   try {
     const result = await extractOntologyFromText(req.params.oid, text, model || undefined, typeof promptTemplate === "string" ? promptTemplate : undefined);
     res.json(result);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ---- 分批抽取（fire-and-forget，进度存 extract_jobs）----
+vizRouter.post("/api/ontologies/:oid/extract-chunked", (req, res) => {
+  const { text, model, promptTemplate, fileName } = req.body ?? {};
+  if (!text || typeof text !== "string" || !text.trim()) {
+    res.status(400).json({ error: "text required" }); return;
+  }
+  if (!getOntology(req.params.oid)) { res.status(404).json({ error: "ontology not found" }); return; }
+  try {
+    const job = createExtractJob(req.params.oid);
+    // Fire-and-forget: don't await
+    void runChunkedExtraction(job.id, req.params.oid, text, model || undefined, typeof promptTemplate === "string" ? promptTemplate : undefined, typeof fileName === "string" ? fileName : undefined);
+    res.json({ jobId: job.id });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.get("/api/extract-jobs/:jobId", (req, res) => {
+  try {
+    const job = getExtractJob(req.params.jobId);
+    if (!job) { res.status(404).json({ error: "job not found" }); return; }
+    res.json(job);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.post("/api/extract-jobs/:jobId/abort", (req, res) => {
+  try {
+    const job = getExtractJob(req.params.jobId);
+    if (!job) { res.status(404).json({ error: "job not found" }); return; }
+    if (job.status === "running") {
+      updateExtractJob(req.params.jobId, { status: "aborted" });
+    }
+    res.json({ success: true });
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });
 

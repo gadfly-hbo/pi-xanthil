@@ -1,5 +1,6 @@
+import { randomUUID } from "node:crypto";
 import { db } from "../db.ts";
-import type { MemoryItemKind, WorkspaceMemoryEnablement } from "../types.ts";
+import type { MemoryItemKind, WorkspaceMemoryEnablement, ForkBranch, SubAgentTask, SubAgentTaskStatus } from "../types.ts";
 
 /**
  * 【总控 · 共享域】db 表 slot —— owner: Claude(总控)
@@ -21,16 +22,127 @@ export function initSharedTables(): void {
   `);
   db.exec("CREATE INDEX IF NOT EXISTS idx_wme_ws_kind ON workspace_memory_enablements(workspace_id, item_kind)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_wme_item ON workspace_memory_enablements(item_kind, item_id)");
+
+  // Fork 分支 & 委派子 agent（数据分析对话防上下文撑爆）。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS fork_branches (
+      id                TEXT PRIMARY KEY,
+      parent_session_id TEXT NOT NULL,
+      branch_session_id TEXT NOT NULL,
+      title             TEXT NOT NULL DEFAULT '',
+      seeded            INTEGER NOT NULL DEFAULT 0,
+      status            TEXT NOT NULL DEFAULT 'idle',
+      created_at        INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS subagent_tasks (
+      id                TEXT PRIMARY KEY,
+      parent_session_id TEXT NOT NULL,
+      brief             TEXT NOT NULL,
+      data_files        TEXT NOT NULL DEFAULT '[]',
+      model             TEXT,
+      status            TEXT NOT NULL DEFAULT 'running',
+      summary           TEXT,
+      report_path       TEXT,
+      error             TEXT,
+      created_at        INTEGER NOT NULL,
+      ended_at          INTEGER
+    );
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_fork_branches_parent ON fork_branches(parent_session_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_fork_branches_branch ON fork_branches(branch_session_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent ON subagent_tasks(parent_session_id)");
 }
 
-// 现有定义 → 启用记录的回填来源（均有 id/workspace_id/enabled 三列）。
-const BACKFILL_SOURCES: Array<{ kind: MemoryItemKind; table: string }> = [
-  { kind: "rule", table: "rule_memories" },
-  { kind: "standard", table: "analysis_standards" },
-  { kind: "business_context", table: "business_contexts" },
-  { kind: "case", table: "analysis_cases" },
-  { kind: "metric", table: "metric_definitions" },
-];
+// ---- Fork 分支 CRUD ----
+
+interface ForkBranchRow {
+  id: string; parent_session_id: string; branch_session_id: string;
+  title: string; seeded: number; status: string; created_at: number;
+}
+
+function parseForkBranch(r: ForkBranchRow): ForkBranch {
+  return {
+    id: r.id, parentSessionId: r.parent_session_id, branchSessionId: r.branch_session_id,
+    title: r.title, seeded: !!r.seeded, status: r.status as ForkBranch["status"], createdAt: r.created_at,
+  };
+}
+
+export function createForkBranch(parentSessionId: string, branchSessionId: string, title: string): ForkBranch {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO fork_branches (id, parent_session_id, branch_session_id, title, seeded, status, created_at) VALUES (?, ?, ?, ?, 0, 'idle', ?)",
+  ).run(id, parentSessionId, branchSessionId, title, now);
+  return { id, parentSessionId, branchSessionId, title, seeded: false, status: "idle", createdAt: now };
+}
+
+export function listForkBranches(parentSessionId: string): ForkBranch[] {
+  return (db.prepare("SELECT * FROM fork_branches WHERE parent_session_id = ? ORDER BY created_at DESC").all(parentSessionId) as unknown as ForkBranchRow[]).map(parseForkBranch);
+}
+
+/** 所有分支 session id —— 供主任务列表排除分支（分支不作为独立任务呈现）。 */
+export function listBranchSessionIds(): string[] {
+  return (db.prepare("SELECT branch_session_id FROM fork_branches").all() as Array<{ branch_session_id: string }>).map((r) => r.branch_session_id);
+}
+
+export function getForkBranchByBranchSession(branchSessionId: string): ForkBranch | undefined {
+  const r = db.prepare("SELECT * FROM fork_branches WHERE branch_session_id = ?").get(branchSessionId) as unknown as ForkBranchRow | undefined;
+  return r ? parseForkBranch(r) : undefined;
+}
+
+export function markForkBranchSeeded(branchSessionId: string): void {
+  db.prepare("UPDATE fork_branches SET seeded = 1 WHERE branch_session_id = ?").run(branchSessionId);
+}
+
+export function setForkBranchStatus(branchSessionId: string, status: ForkBranch["status"]): void {
+  db.prepare("UPDATE fork_branches SET status = ? WHERE branch_session_id = ?").run(status, branchSessionId);
+}
+
+// ---- 委派子 agent CRUD ----
+
+interface SubAgentTaskRow {
+  id: string; parent_session_id: string; brief: string; data_files: string; model: string | null;
+  status: string; summary: string | null; report_path: string | null; error: string | null;
+  created_at: number; ended_at: number | null;
+}
+
+function parseSubAgentTask(r: SubAgentTaskRow): SubAgentTask {
+  let dataFiles: string[] = [];
+  try { dataFiles = JSON.parse(r.data_files) as string[]; } catch { dataFiles = []; }
+  return {
+    id: r.id, parentSessionId: r.parent_session_id, brief: r.brief, dataFiles,
+    model: r.model ?? undefined, status: r.status as SubAgentTaskStatus,
+    summary: r.summary ?? undefined, reportPath: r.report_path ?? undefined, error: r.error ?? undefined,
+    createdAt: r.created_at, endedAt: r.ended_at ?? undefined,
+  };
+}
+
+export function createSubAgentTask(parentSessionId: string, brief: string, dataFiles: string[], model?: string): SubAgentTask {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO subagent_tasks (id, parent_session_id, brief, data_files, model, status, created_at) VALUES (?, ?, ?, ?, ?, 'running', ?)",
+  ).run(id, parentSessionId, brief, JSON.stringify(dataFiles), model ?? null, now);
+  return { id, parentSessionId, brief, dataFiles, model, status: "running", createdAt: now };
+}
+
+export function listSubAgentTasks(parentSessionId: string): SubAgentTask[] {
+  return (db.prepare("SELECT * FROM subagent_tasks WHERE parent_session_id = ? ORDER BY created_at DESC").all(parentSessionId) as unknown as SubAgentTaskRow[]).map(parseSubAgentTask);
+}
+
+export function getSubAgentTask(id: string): SubAgentTask | undefined {
+  const r = db.prepare("SELECT * FROM subagent_tasks WHERE id = ?").get(id) as unknown as SubAgentTaskRow | undefined;
+  return r ? parseSubAgentTask(r) : undefined;
+}
+
+export function finishSubAgentTask(
+  id: string,
+  patch: { status: SubAgentTaskStatus; summary?: string; reportPath?: string; error?: string },
+): void {
+  db.prepare(
+    "UPDATE subagent_tasks SET status = ?, summary = ?, report_path = ?, error = ?, ended_at = ? WHERE id = ?",
+  ).run(patch.status, patch.summary ?? null, patch.reportPath ?? null, patch.error ?? null, Date.now(), id);
+}
 
 /**
  * 一次性·幂等 backfill：现有定义按 origin workspace 建启用记录（仅原工作区启用，
@@ -39,6 +151,14 @@ const BACKFILL_SOURCES: Array<{ kind: MemoryItemKind; table: string }> = [
  */
 export function backfillMemoryEnablements(): void {
   const now = Date.now();
+  // 局部声明（非模块级 const）：避免循环 import 下 db.ts boot 期调用早于本模块 const 初始化触发 TDZ。
+  const BACKFILL_SOURCES: Array<{ kind: MemoryItemKind; table: string }> = [
+    { kind: "rule", table: "rule_memories" },
+    { kind: "standard", table: "analysis_standards" },
+    { kind: "business_context", table: "business_contexts" },
+    { kind: "case", table: "analysis_cases" },
+    { kind: "metric", table: "metric_definitions" },
+  ];
   for (const { kind, table } of BACKFILL_SOURCES) {
     try {
       db.prepare(

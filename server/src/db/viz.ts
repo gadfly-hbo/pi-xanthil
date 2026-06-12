@@ -26,7 +26,10 @@ import type {
   ActionEffort,
   ActionItemStatus,
   ActionTaskStatus,
+  ExtractJob,
+  ExtractJobStatus,
 } from "../types.ts";
+import type { ValidationIssue } from "../onto-validator.ts";
 
 export interface DbDashboard {
   id: string;
@@ -213,6 +216,26 @@ function initOntoTables(): void {
       updated_at   INTEGER NOT NULL
     );
   `);
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS extract_jobs (
+      id             TEXT PRIMARY KEY,
+      ontology_id    TEXT NOT NULL REFERENCES ontologies(id) ON DELETE CASCADE,
+      status         TEXT NOT NULL DEFAULT 'running',
+      total_chunks   INTEGER NOT NULL DEFAULT 0,
+      done_chunks    INTEGER NOT NULL DEFAULT 0,
+      created_objects INTEGER NOT NULL DEFAULT 0,
+      created_links  INTEGER NOT NULL DEFAULT 0,
+      created_logic_rules INTEGER NOT NULL DEFAULT 0,
+      created_actions INTEGER NOT NULL DEFAULT 0,
+      skipped_objects INTEGER NOT NULL DEFAULT 0,
+      skipped_links  INTEGER NOT NULL DEFAULT 0,
+      has_fatal      INTEGER NOT NULL DEFAULT 0,
+      issues_json    TEXT NOT NULL DEFAULT '[]',
+      error          TEXT,
+      created_at     INTEGER NOT NULL,
+      updated_at     INTEGER NOT NULL
+    );
+  `);
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_ontologies_ws ON ontologies(workspace_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_object_types_onto ON object_types(ontology_id);`);
@@ -222,6 +245,7 @@ function initOntoTables(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_logic_rules_onto ON logic_rules(ontology_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_onto_actions_onto ON onto_actions(ontology_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_onto_prompts_ws ON onto_prompts(workspace_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_jobs_onto ON extract_jobs(ontology_id);`);
   } catch {
     // ignore
   }
@@ -886,4 +910,58 @@ export function createActionFeedback(input: Omit<ActionFeedback, "id" | "created
 export function getActionFeedback(taskId: string): ActionFeedback | undefined {
   const r = db.prepare("SELECT * FROM action_feedback WHERE task_id = ?").get(taskId) as unknown as ActionFeedbackRow | undefined;
   return r ? parseActionFeedback(r) : undefined;
+}
+
+// ---- ExtractJob（分批抽取进度，总控已审）----
+interface ExtractJobRow {
+  id: string; ontology_id: string; status: string;
+  total_chunks: number; done_chunks: number;
+  created_objects: number; created_links: number;
+  created_logic_rules: number; created_actions: number;
+  skipped_objects: number; skipped_links: number;
+  has_fatal: number; issues_json: string; error: string | null;
+  created_at: number; updated_at: number;
+}
+
+function parseExtractJob(r: ExtractJobRow): ExtractJob {
+  let issues: ValidationIssue[] = [];
+  try { issues = JSON.parse(r.issues_json); } catch { /* empty */ }
+  return {
+    id: r.id, ontologyId: r.ontology_id, status: r.status as ExtractJobStatus,
+    totalChunks: r.total_chunks, doneChunks: r.done_chunks,
+    createdObjects: r.created_objects, createdLinks: r.created_links,
+    createdLogicRules: r.created_logic_rules, createdActions: r.created_actions,
+    skippedObjects: r.skipped_objects, skippedLinks: r.skipped_links,
+    hasFatal: r.has_fatal === 1, issues, error: r.error ?? undefined,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function createExtractJob(ontologyId: string): ExtractJob {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO extract_jobs (id, ontology_id, status, total_chunks, done_chunks, created_objects, created_links, created_logic_rules, created_actions, skipped_objects, skipped_links, has_fatal, issues_json, error, created_at, updated_at) VALUES (?, ?, 'running', 0, 0, 0, 0, 0, 0, 0, 0, 0, '[]', NULL, ?, ?)"
+  ).run(id, ontologyId, now, now);
+  return {
+    id, ontologyId, status: "running", totalChunks: 0, doneChunks: 0,
+    createdObjects: 0, createdLinks: 0, createdLogicRules: 0, createdActions: 0,
+    skippedObjects: 0, skippedLinks: 0, hasFatal: false, issues: [],
+    createdAt: now, updatedAt: now,
+  };
+}
+
+export function getExtractJob(id: string): ExtractJob | undefined {
+  const r = db.prepare("SELECT * FROM extract_jobs WHERE id = ?").get(id) as unknown as ExtractJobRow | undefined;
+  return r ? parseExtractJob(r) : undefined;
+}
+
+export function updateExtractJob(id: string, patch: Partial<Omit<ExtractJob, "id" | "ontologyId" | "createdAt">>): ExtractJob | undefined {
+  const existing = getExtractJob(id);
+  if (!existing) return undefined;
+  const next: ExtractJob = { ...existing, ...patch, updatedAt: Date.now() };
+  db.prepare(
+    "UPDATE extract_jobs SET status = ?, total_chunks = ?, done_chunks = ?, created_objects = ?, created_links = ?, created_logic_rules = ?, created_actions = ?, skipped_objects = ?, skipped_links = ?, has_fatal = ?, issues_json = ?, error = ?, updated_at = ? WHERE id = ?"
+  ).run(next.status, next.totalChunks, next.doneChunks, next.createdObjects, next.createdLinks, next.createdLogicRules, next.createdActions, next.skippedObjects, next.skippedLinks, next.hasFatal ? 1 : 0, JSON.stringify(next.issues), next.error ?? null, next.updatedAt, id);
+  return next;
 }

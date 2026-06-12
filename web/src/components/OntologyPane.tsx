@@ -1,10 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Database, GitBranch, Calculator, Plus, Trash2, Network, RefreshCw, Download, Upload } from "lucide-react";
 import { api } from "@/lib/api";
-import { useResumableTask } from "@/lib/resumableTask";
 import { GraphCanvas, type GraphCanvasNode, type GraphCanvasEdge } from "@/components/GraphCanvas";
-import type { OntoExtractResult } from "@/lib/api/viz";
-import type { OntoPrompt } from "@/types";
+import type { OntoPrompt, ExtractJob } from "@/types";
 import type {
   Ontology,
   ObjectType,
@@ -727,19 +725,43 @@ const PROMPT_STARTER = `请从以下文档中抽取领域本体的「实体」�
 
 function ImportSection({ workspaceId, oid, onError }: { workspaceId: string; oid: string; onError: (s: string) => void }) {
   const [text, setText] = useState("");
-  const extractTask = useResumableTask<OntoExtractResult>("onto-extract:" + oid);
-  const busy = extractTask.status === "running";
-  const result = extractTask.data ?? null;
-  // Prompt 管理（P8）
+  const [fileName, setFileName] = useState<string | undefined>();
+  // Chunked extraction job state
+  const [jobId, setJobId] = useState<string | null>(() => {
+    try { return sessionStorage.getItem(`onto-chunk-job:${oid}`) || null; } catch { return null; }
+  });
+  const [job, setJob] = useState<ExtractJob | null>(null);
+  const busy = job?.status === "running" || (jobId !== null && job === null);
+  // Prompt management (P8)
   const [prompts, setPrompts] = useState<OntoPrompt[]>([]);
   const [showPrompt, setShowPrompt] = useState(false);
   const [activePromptId, setActivePromptId] = useState("");
   const [promptName, setPromptName] = useState("");
   const [promptContent, setPromptContent] = useState("");
 
+  // Poll job progress
   useEffect(() => {
-    if (extractTask.status === "error" && extractTask.error) onError(extractTask.error);
-  }, [extractTask.status, extractTask.error, onError]);
+    if (!jobId) return;
+    let cancelled = false;
+    let timer: ReturnType<typeof setInterval> | undefined;
+    const poll = async () => {
+      try {
+        const j = await api.getExtractJob(jobId);
+        if (!cancelled) {
+          setJob(j);
+          if (j.status !== "running") {
+            try { sessionStorage.removeItem(`onto-chunk-job:${oid}`); } catch { /* noop */ }
+            if (timer) { clearInterval(timer); timer = undefined; }
+          }
+        }
+      } catch (e) {
+        if (!cancelled) onError(String(e));
+      }
+    };
+    void poll();
+    timer = setInterval(() => { void poll(); }, 2000);
+    return () => { cancelled = true; if (timer) clearInterval(timer); };
+  }, [jobId, oid, onError]);
 
   const loadPrompts = useCallback(async () => {
     try { setPrompts(await api.listOntoPrompts(workspaceId)); } catch (e) { onError(String(e)); }
@@ -750,8 +772,13 @@ function ImportSection({ workspaceId, oid, onError }: { workspaceId: string; oid
     if (!files) return;
     try {
       const parts: string[] = [];
-      for (const f of Array.from(files)) parts.push(`# ${f.name}\n${await f.text()}`);
+      let lastFileName: string | undefined;
+      for (const f of Array.from(files)) {
+        parts.push(`# ${f.name}\n${await f.text()}`);
+        lastFileName = f.name;
+      }
       setText((cur) => (cur ? cur + "\n\n" : "") + parts.join("\n\n"));
+      if (lastFileName) setFileName(lastFileName);
     } catch (e) { onError(String(e)); }
   }, [onError]);
 
@@ -778,10 +805,25 @@ function ImportSection({ workspaceId, oid, onError }: { workspaceId: string; oid
 
   const run = useCallback(async () => {
     if (!text.trim() || busy) return;
-    // 仅当自定义 prompt 含 {{content}} 占位时才覆盖默认模板
     const promptTemplate = activePromptId && promptContent.includes("{{content}}") ? promptContent : undefined;
-    await extractTask.start(() => api.extractOntology(oid, { text, promptTemplate }));
-  }, [text, busy, oid, activePromptId, promptContent, extractTask]);
+    try {
+      const { jobId: newJobId } = await api.startChunkedExtract(oid, { text, promptTemplate, fileName });
+      setJobId(newJobId);
+      setJob(null);
+      try { sessionStorage.setItem(`onto-chunk-job:${oid}`, newJobId); } catch { /* noop */ }
+    } catch (e) { onError(String(e)); }
+  }, [text, busy, oid, activePromptId, promptContent, fileName, onError]);
+
+  const abort = useCallback(async () => {
+    if (!jobId) return;
+    try { await api.abortExtractJob(jobId); } catch (e) { onError(String(e)); }
+  }, [jobId, onError]);
+
+  const dismiss = useCallback(() => {
+    setJobId(null);
+    setJob(null);
+    try { sessionStorage.removeItem(`onto-chunk-job:${oid}`); } catch { /* noop */ }
+  }, [oid]);
 
   return (
     <div className="space-y-3">
@@ -801,7 +843,7 @@ function ImportSection({ workspaceId, oid, onError }: { workspaceId: string; oid
         />
         <div className="flex items-center justify-between">
           <button onClick={() => setShowPrompt((s) => !s)} className="text-[11px] text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200">{showPrompt ? "▾" : "▸"} 自定义抽取 Prompt{activePromptId ? `（已选：${promptName}）` : ""}</button>
-          <button onClick={() => void run()} disabled={!text.trim() || busy} className={btnPrimary}>{busy ? "抽取中…（最长 90s）" : "开始抽取"}</button>
+          <button onClick={() => void run()} disabled={!text.trim() || busy} className={btnPrimary}>{busy ? "抽取中…" : "开始抽取"}</button>
         </div>
 
         {showPrompt && (
@@ -828,23 +870,78 @@ function ImportSection({ workspaceId, oid, onError }: { workspaceId: string; oid
         )}
       </div>
 
-      {result && (
+      {/* Progress / Result */}
+      {job && job.status === "running" && (
         <div className={`${cardCls} space-y-2`}>
-          {result.report.hasFatal ? (
-            <p className="text-[12.5px] font-medium text-red-600 dark:text-red-400">质检未通过，未落库</p>
+          <div className="flex items-center justify-between">
+            <span className="text-[12.5px] font-medium text-neutral-700 dark:text-neutral-200">
+              抽取中 — 批 {job.doneChunks}/{job.totalChunks || "?"}
+            </span>
+            <button onClick={() => void abort()} className="rounded-md border border-red-200 px-2.5 py-1 text-[11px] text-red-600 hover:bg-red-50 dark:border-red-800 dark:text-red-400 dark:hover:bg-red-950">
+              中止
+            </button>
+          </div>
+          {job.totalChunks > 0 && (
+            <div className="h-2 w-full overflow-hidden rounded-full bg-neutral-100 dark:bg-neutral-800">
+              <div
+                className="h-full rounded-full bg-emerald-500 transition-all duration-500"
+                style={{ width: `${Math.round((job.doneChunks / job.totalChunks) * 100)}%` }}
+              />
+            </div>
+          )}
+          <p className="text-[11.5px] text-neutral-500">
+            累计：{job.createdObjects} 对象 · {job.createdLinks} 关系 · {job.createdLogicRules} 规则 · {job.createdActions} 动作
+          </p>
+        </div>
+      )}
+
+      {job && job.status === "success" && (
+        <div className={`${cardCls} space-y-2`}>
+          {job.hasFatal ? (
+            <p className="text-[12.5px] font-medium text-red-600 dark:text-red-400">质检未通过（部分批次含致命问题）</p>
           ) : (
             <p className="text-[12.5px] font-medium text-emerald-600 dark:text-emerald-400">
-              ✓ 新增 {result.createdObjects} 对象 · {result.createdLinks} 关系 · {result.createdLogicRules} 逻辑规则 · {result.createdActions} 动作（跳过 {result.skippedObjects} 重复对象 / {result.skippedLinks} 无效关系）
+              ✓ 共 {job.totalChunks} 批完成 — 新增 {job.createdObjects} 对象 · {job.createdLinks} 关系 · {job.createdLogicRules} 逻辑规则 · {job.createdActions} 动作（跳过 {job.skippedObjects} 重复对象 / {job.skippedLinks} 无效关系）
             </p>
           )}
-          {result.report.issues.length > 0 && (
+          {job.issues.length > 0 && (
             <div className="space-y-1 border-t border-neutral-100 pt-2 dark:border-neutral-800">
-              {result.report.issues.map((it, i) => (
+              <p className="text-[11px] font-medium text-neutral-500">质检问题 ({job.issues.length})</p>
+              {job.issues.slice(0, 20).map((it, i) => (
+                <p key={i} className={`text-[11.5px] ${SEV_STYLE[it.severity] ?? "text-neutral-500"}`}>[{it.severity}] {it.message}</p>
+              ))}
+              {job.issues.length > 20 && <p className="text-[11px] text-neutral-400">…还有 {job.issues.length - 20} 条</p>}
+            </div>
+          )}
+          <div className="flex items-center justify-between">
+            {!job.hasFatal && <p className="text-[11px] text-neutral-400">到「对象 / 图谱」页查看抽取结果。</p>}
+            <button onClick={dismiss} className={btnGhost}>关闭</button>
+          </div>
+        </div>
+      )}
+
+      {job && job.status === "failed" && (
+        <div className={`${cardCls} space-y-2`}>
+          <p className="text-[12.5px] font-medium text-red-600 dark:text-red-400">抽取失败</p>
+          {job.error && <p className="text-[11.5px] text-neutral-500 break-all">{job.error}</p>}
+          {job.issues.length > 0 && (
+            <div className="space-y-1 border-t border-neutral-100 pt-2 dark:border-neutral-800">
+              {job.issues.slice(0, 10).map((it, i) => (
                 <p key={i} className={`text-[11.5px] ${SEV_STYLE[it.severity] ?? "text-neutral-500"}`}>[{it.severity}] {it.message}</p>
               ))}
             </div>
           )}
-          {!result.report.hasFatal && <p className="text-[11px] text-neutral-400">到「对象 / 图谱」页查看抽取结果。</p>}
+          <button onClick={dismiss} className={btnGhost}>关闭</button>
+        </div>
+      )}
+
+      {job && job.status === "aborted" && (
+        <div className={`${cardCls} space-y-2`}>
+          <p className="text-[12.5px] font-medium text-amber-600 dark:text-amber-400">已中止（已完成 {job.doneChunks}/{job.totalChunks} 批）</p>
+          <p className="text-[11.5px] text-neutral-500">
+            截至中止：{job.createdObjects} 对象 · {job.createdLinks} 关系 · {job.createdLogicRules} 规则 · {job.createdActions} 动作
+          </p>
+          <button onClick={dismiss} className={btnGhost}>关闭</button>
         </div>
       )}
     </div>

@@ -4,6 +4,18 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { sessionDir, standardDirIn } from "./workspace-dirs.ts";
+import {
+  createForkBranch,
+  listForkBranches,
+  listBranchSessionIds,
+  getForkBranchByBranchSession,
+  markForkBranchSeeded,
+  setForkBranchStatus,
+  createSubAgentTask,
+  listSubAgentTasks,
+  getSubAgentTask,
+  finishSubAgentTask,
+} from "./db/shared.ts";
 import { moveManagedDirToTrash } from "./trash.ts";
 import { registerDomainRoutes } from "./routes/index.ts";
 import { parseAggregationBuffer } from "./bi-dataset-parser.ts";
@@ -1094,7 +1106,9 @@ app.delete("/api/workspaces/:id", (req, res) => {
 // ---- REST: sessions ----
 app.get("/api/workspaces/:id/sessions", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  res.json(listSessions(req.params.id));
+  // 排除 fork 分支 session（分支是主任务的子产物，不作为独立任务呈现）。
+  const branchIds = new Set(listBranchSessionIds());
+  res.json(listSessions(req.params.id).filter((s) => !branchIds.has(s.id)));
 });
 app.post("/api/workspaces/:id/sessions", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
@@ -1749,6 +1763,123 @@ app.get("/api/sessions/:id/artifacts/file", (req, res) => {
     res.status(400).json({ error: String(err) });
   }
 });
+
+// ---- Fork 分支 & 委派子 agent（数据分析对话防上下文撑爆）----
+// 心智：开子 pi session 干重活，只把结论回流主 session。回流由前端编排（给主 session 发普通消息）。
+
+const subagentRuns = new Map<string, PiRun>();
+
+// Fork：分支是一个真实 session（复用 messages/runtime/send），首轮 handleSend 检测到未播种→用 --fork 播种。
+app.post("/api/sessions/:id/fork", (req, res) => {
+  const session = getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  const title = String(req.body?.title ?? "").trim() || `分支：${session.title}`;
+  const branch = createSession(session.workspaceId, title, session.workflowId ?? null);
+  res.json(createForkBranch(session.id, branch.id, title));
+});
+
+app.get("/api/sessions/:id/fork-branches", (req, res) => {
+  res.json(listForkBranches(req.params.id));
+});
+
+app.get("/api/sessions/:id/subagent-tasks", (req, res) => {
+  res.json(listSubAgentTasks(req.params.id));
+});
+
+app.get("/api/subagent-tasks/:id", (req, res) => {
+  const task = getSubAgentTask(req.params.id);
+  if (!task) return res.status(404).json({ error: "task not found" });
+  res.json(task);
+});
+
+app.post("/api/subagent-tasks/:id/abort", (req, res) => {
+  const run = subagentRuns.get(req.params.id);
+  if (run) run.kill();
+  const task = getSubAgentTask(req.params.id);
+  if (task && task.status === "running") finishSubAgentTask(task.id, { status: "aborted" });
+  res.json({ ok: true });
+});
+
+app.post("/api/sessions/:id/delegate", (req, res) => {
+  const session = getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  const workspace = getWorkspace(session.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const brief = String(req.body?.brief ?? "").trim();
+  if (!brief) return res.status(400).json({ error: "brief required" });
+  const dataFiles = Array.isArray(req.body?.dataFiles) ? (req.body.dataFiles as unknown[]).map(String) : [];
+  const model = req.body?.model ? String(req.body.model) : undefined;
+  const task = createSubAgentTask(session.id, brief, dataFiles, model);
+  void runDelegatedSubAgent(task.id, session.id, workspace.rootPath, brief, dataFiles, model);
+  res.json(task);
+});
+
+// 后台跑子 agent：全新聚焦 session（无主历史），读 020_clean 指定数据、写 060_reports，末条结论作摘要。
+async function runDelegatedSubAgent(
+  taskId: string,
+  parentSessionId: string,
+  workspaceRoot: string,
+  brief: string,
+  dataFiles: string[],
+  model?: string,
+): Promise<void> {
+  const reportDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "report");
+  const cleanDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "clean_data");
+  mkdirSync(reportDir, { recursive: true });
+  const startedAt = Date.now();
+  // 仅放行落在 020_clean 内的数据文件（防越界 / 防读原始明细）。
+  const allowed = dataFiles
+    .map((f) => { try { return safeResolve(cleanDir, basename(f)); } catch { return ""; } })
+    .filter((abs) => abs !== "" && (() => { try { return statSync(abs).isFile(); } catch { return false; } })());
+  const fileList = allowed.length > 0 ? allowed.map((p) => `- ${p}`).join("\n") : "（未指定数据文件，请在报告中说明缺数据）";
+  const systemPrompt = `你是数据分析子 agent，独立完成一项被委派的分析子任务，不依赖主对话历史。
+[硬性约束]
+1. 只允许用 read 工具读取下列指定数据文件，禁止读取其他任何数据或原始明细：
+${fileList}
+2. 必须把分析报告用 write 工具写入目录：${reportDir}（文件名自拟，建议 .md）。不得写到其他位置。
+3. 完成后，最后一条消息用 2-4 句话给出结论摘要（供回流主对话），不要复述报告全文。
+4. 不要提问，自主完成。`;
+  let summaryText = "";
+  try {
+    const run = runPiTurn({
+      workspaceRoot,
+      piSessionId: `subagent-${taskId}`,
+      text: brief,
+      model,
+      systemPrompt,
+      onEvent: (event: PiEvent) => {
+        if (event.type !== "message_end") return;
+        const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
+        if (m.role === "assistant") {
+          const t = flowMessageText(m.content).trim();
+          if (t) summaryText = t;
+        }
+      },
+    });
+    subagentRuns.set(taskId, run);
+    const code = await run.done;
+    if (getSubAgentTask(taskId)?.status === "aborted") return;
+    // 取本次新产出报告（mtime ≥ 开始时间，最新者）。
+    let reportPath: string | undefined;
+    try {
+      const newest = readdirSync(reportDir)
+        .map((name) => ({ name, mt: statSync(join(reportDir, name)).mtimeMs }))
+        .filter((f) => f.mt >= startedAt - 1000)
+        .sort((a, b) => b.mt - a.mt)[0];
+      if (newest) reportPath = newest.name;
+    } catch { /* 目录读不到则无报告 */ }
+    finishSubAgentTask(taskId, {
+      status: code === 0 ? "success" : "failed",
+      summary: summaryText || undefined,
+      reportPath,
+      error: code === 0 ? undefined : `pi exited with code ${String(code)}`,
+    });
+  } catch (err) {
+    finishSubAgentTask(taskId, { status: "failed", error: String(err) });
+  } finally {
+    subagentRuns.delete(taskId);
+  }
+}
 
 function readArtifactTree(rootPath: string): ReturnType<typeof readTree> {
   // The report fallback now points at the standard 060_reports dir, which may
@@ -5397,6 +5528,11 @@ async function handleSend(
     ? withRulesPrompt(session.workspaceId, "chat", session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined)
     : session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined;
 
+  // Fork 分支：若本 session 是未播种的分支，首轮用 --fork 从父 session 播种历史。
+  const forkBranch = getForkBranchByBranchSession(session.id);
+  const forkFrom = forkBranch && !forkBranch.seeded ? forkBranch.parentSessionId : undefined;
+  if (forkBranch) setForkBranchStatus(session.id, "running");
+
   const run = runPiTurn({
     workspaceRoot: ws_.rootPath,
     piSessionId: session.id,
@@ -5404,6 +5540,7 @@ async function handleSend(
     model: msg.model,
     systemPrompt,
     skillPaths,
+    forkFrom,
     onEvent: (event: PiEvent) => {
       observeSessionEvent(session, event);
       send(ws, { type: "pi_event", sessionId: session.id, event });
@@ -5431,6 +5568,8 @@ async function handleSend(
     });
     traceSessionEvent(session.id, "run_end", active.aborted ? "aborted" : code === 0 ? "success" : "failed", code === 0 ? null : `pi exited with code ${String(code)}`, { code, aborted: active.aborted });
     send(ws, { type: "run_end", sessionId: session.id, code, aborted: active.aborted });
+    if (forkFrom) markForkBranchSeeded(session.id);
+    if (forkBranch) setForkBranchStatus(session.id, code === 0 || active.aborted ? "done" : "error");
   } finally {
     if (activeSessionRuns.get(session.id) === active) activeSessionRuns.delete(session.id);
   }

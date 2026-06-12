@@ -1,5 +1,7 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, ChevronDown, ChevronRight, Cpu, FileText, Gauge, Loader2, RefreshCw, Sparkles, Square, Workflow } from "lucide-react";
+import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Sparkles, Square, Workflow } from "lucide-react";
+import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
+import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
@@ -62,6 +64,7 @@ function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: st
 export function ChatPane(p: Props) {
   const [input, setInput] = useState("");
   const [selectedSkillPaths, setSelectedSkillPaths] = useState<string[]>([]);
+  const [activeAssistPanel, setActiveAssistPanel] = useState<"fork" | "delegate" | null>(null);
   const {
     contexts: businessRequirementContexts,
     selectedId: selectedBusinessRequirementId,
@@ -71,10 +74,16 @@ export function ChatPane(p: Props) {
   const [showTrace, setShowTrace] = useState(false);
   const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const activeSessionId = p.folderScope?.type === "session" ? p.folderScope.sessionId : "";
+  const canUseSessionTools = Boolean(activeSessionId) && !p.disabled;
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [p.messages, p.running]);
+
+  useEffect(() => {
+    if (!canUseSessionTools) setActiveAssistPanel(null);
+  }, [canUseSessionTools]);
 
   function autosize() {
     const ta = taRef.current;
@@ -209,6 +218,58 @@ export function ChatPane(p: Props) {
       {/* composer */}
       <div className="shrink-0 px-6 pb-5">
         <div className="mx-auto max-w-[760px]">
+          <div className="mb-2 flex flex-wrap items-center gap-2">
+            <button
+              onClick={() => setActiveAssistPanel((current) => current === "fork" ? null : "fork")}
+              disabled={!canUseSessionTools}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                activeAssistPanel === "fork"
+                  ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                  : "border-neutral-200 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800",
+              )}
+              title={canUseSessionTools ? "创建或打开隔离分支对话" : "先选择或新建一个会话"}
+            >
+              <GitBranch className="h-3.5 w-3.5" strokeWidth={1.75} />
+              Fork 分支
+            </button>
+            <button
+              onClick={() => setActiveAssistPanel((current) => current === "delegate" ? null : "delegate")}
+              disabled={!canUseSessionTools}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                activeAssistPanel === "delegate"
+                  ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                  : "border-neutral-200 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800",
+              )}
+              title={canUseSessionTools ? "委派一个后台子 agent" : "先选择或新建一个会话"}
+            >
+              <Bot className="h-3.5 w-3.5" strokeWidth={1.75} />
+              委派子 agent
+            </button>
+          </div>
+
+          {activeSessionId && activeAssistPanel === "fork" && (
+            <div className="mb-3">
+              <ForkBranchPanel
+                parentSessionId={activeSessionId}
+                model={p.model}
+                onBackflow={(text) => p.onSend(text)}
+              />
+            </div>
+          )}
+          {activeSessionId && activeAssistPanel === "delegate" && (
+            <div className="mb-3">
+              <DelegateSubAgentCard
+                sessionId={activeSessionId}
+                workspaceId={p.workspaceId}
+                model={p.model}
+                models={p.models}
+                onBackflow={(text) => p.onSend(text)}
+              />
+            </div>
+          )}
+
           <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
             <textarea
               ref={taRef}

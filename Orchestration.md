@@ -169,6 +169,22 @@ web/src/
 
 执行 SOP：`docs/prompts/px-hotfix.prompt.md`（命令 `/px-hotfix`）。发布载体：`docs/wiki.html` →「🔧 快修任务」tab（数据数组 `HOTFIX`，总控维护）。
 
+### 总控卡委派（接缝层代笔 · 仅"已审定口径"）
+
+总控持有的接缝层卡（`types.ts` 契约 / db 新表 / `constants` enum 等），若**架构口径已由总控在 brief 内完全审定写死**（字段 / 类型 / 表结构 / 插位 / 枚举值齐全，被委派方零架构自由度），可委派给指定 agent（默认 **E · codex**，gate/契约严谨）**代笔落地**，再回流总控终审。与快修通道同源：机制 A 单目录顺序开发，文件级独占只防并行撞车，对"顺序代笔 + 总控终审"不构成硬约束。
+
+```
+总控审定契约口径(写死 brief) ──委派──▶ E 按图落地接缝层 ──回流──▶ 总控终审(加重) ──▶ 用户提交
+```
+
+三条铁律：
+
+1. **架构决策不可委派**：仅"按图施工"的契约落地可派；需架构决策的（接缝层重构 / db migration 策略 / 跨域依赖设计 / WS union 权衡）总控**自留自做**。派发前口径必须写死，否则不得委派。
+2. **终审加重不豁免**：接缝层经代笔后动的是**跨域单一真源**，总控终审须**逐行核**——`types.ts` 双侧对齐、无本地重声明（参 actions 收敛教训）、schema 不撞他域、无跨域副作用、`typecheck`/`build` 全绿。比域卡终审更严。
+3. **代笔者守边界**：被委派方只改 brief 指定的接缝层片段，不顺手改其他接缝层契约 / 不扩散到他域 slot；按 `/px-resume`·`/px-wrapup` SOP 走 session，全程不碰 git。
+
+载体：`docs/wiki.html` 的 `TASKS` 卡加 `delegate: "<agent>"` 字段（`dom` 仍为 `"X"` 表归属总控、`delegate` 表本卡代笔执行方），卡面渲染「⇄ 委派 → <agent> 代笔」标记。
+
 ---
 
 ## 七、启动顺序（关键路径）
@@ -206,6 +222,8 @@ web/src/
 - [x] **onto-xanthil 对照 nano-ontoprompt 差距对齐 P4~P8（总控独立开发，done 2026-06-10）** — 通读参考产品全量后端核查后逐项补齐「本体完整性」5 项差距，均 typecheck/build 绿 + 运行时实跑（共 63 项）：**P4** 质检 validator 2→7 检查(`onto-validator.ts`) · **P5** 导出 JSON/YAML/CSV/HTML/Turtle 五格式纯字符串零依赖(`onto-export.ts`) · **P6** Logic Rule + Action 层(双侧契约+`logic_rules`/`onto_actions` 两表+8 路由+前端两 Section+2 子tab) · **P7** 抽取覆盖四类(logic/action)+四类校准+validator ⑥⑦ · **P8** 文档上传(.md/.txt/.csv)+`onto_prompts` 表 prompt 管理(模板版本化)。详见 `docs/onto-xanthil-design.md §9`
 - [ ] **全局池 + 按工作区启用（onto-xanthil + 规则记忆 9 模块，trace 除外）—— 拆解已派发（2026-06-11）** — 用户决策：共享单实例 / 全部迁入+仅原工作区启用 / trace 不进池 / KG 不设独立启用(跟随投影) / 失败·字段·流程记忆占位本轮不实装。**契约期已交付(总控)**：`workspace_memory_enablements` 表 + 双侧 `MemoryItemKind`/`WorkspaceMemoryEnablement` + `GET/PUT /api/workspaces/:id/memory-enablements`(sharedRouter) + `sharedApi` 双方法 + db/shared.ts CRUD(`listEnabledItemIds`/`setMemoryEnablement`/`enableForOrigin`/`listWorkspaceEnablements`) + 启动幂等 backfill(5 类按 origin)；typecheck+build 绿。**X 后端已完成(总控自做+自检，2026-06-11)**：list* 改返回全局池、buildEnabled*/KG 投影改按 enablement 过滤、createX/createOntology/createMetric 落库即 enableForOrigin；连带 memory-injection.ts/knowledge-graph.ts；typecheck+build 绿、96 测试 95 过(唯一红 injection:158=P2b' 既有 baseline，与本改无关)。**全特性闭环(契约期+X 后端+D 前端+V 前端 均总控终审通过，2026-06-11)**：契约=workspace_memory_enablements 表/双侧类型/shared API/幂等 backfill；X=list* 改池+buildEnabled*/KG 投影按 enablement 过滤+createX/Ontology/Metric 落库即 enableForOrigin；D=规则记忆 4 Pane 启用勾选；V=OntologyPane 本体级启用 checkbox。三 agent 均未碰接缝层。整体 typecheck+build 绿、**96 测试全过**。收尾清理：修复 injection:158(P2b' 测试债,改 reference_file) + 删除行级启用死代码(api.ts 6 方法/index.ts 6 路由及分支/db.ts 6 函数)。**待用户提交**
 - [x] **actions 行动闭环模块（机制 A：X 契约 + V 实装 + 总控终审收敛，done 2026-06-12）** — 探索 tab「黄金策」后新增「行动」二级 tab，落地 onto-xanthil「分析→行动→执行」理念：报告 →①LLM 提取行动项 →②采纳建任务 →③执行反馈，三段全闭环。**X 契约(总控)**：`types.ts` 双侧 7 类型(ActionScene/ActionLifecycle/Priority/Effort/ItemStatus/TaskStatus + ActionItemDraft/ActionItem/ActionTask/ActionFeedback 及 Input) + `constants.ts` SubTab 加 `actions`。**V 实装**：`ActionsPane`(三段式) + `routes/viz.ts`(extract LLM + 行动项/任务/反馈 CRUD) + `db/viz.ts`(action_items/action_tasks/action_feedback 三表+FK CASCADE) + `lib/api/viz.ts` + VizTabs 两分支 + 黄金策侧栏「去行动」跳转。**回流终审通过 + 收敛 2 偏差(用户决策「收敛到 enum」)**：① 单一真源(§五.2)——db/viz+api/viz 曾各自本地重声明 → 删本地改 import `types.ts`(api/viz re-export)；② scene/lifecycle 曾自由文本 → enum 定为中文规范标签(开业/日常/假日/大促；A获取→R裂变)、extract prompt 约束+后端归一化、NOT NULL 列空值存 `""`/parse 回 `undefined`。红线核验过(读衍生物报告/validateArtifactPath/不碰 draw_data/runPiPrompt 无陷阱)、未碰接缝层、typecheck+build 全绿。详见 `docs/notes-infra.md §二`。**待用户提交**。另含探索 subtab 快修(工作视图→数据分析+重排，仅 explore 用 `EXPLORE_SUB_TABS`，multi 不变)
+- [x] **数据分析对话 fork 分支 + 委派子 agent（机制 A：X 后端 + E 前端均交付，回流终审通过 2026-06-12）** — 解决数据分析 pi session 多轮上下文撑爆，心智「开子 pi session 干重活，只把结论回流主 session」。**X 后端(总控)**：契约 ForkBranch/SubAgentTask 双侧 + fork_branches/subagent_tasks 两表(db/shared) + pi-adapter forkFrom(--fork) + index.ts(handleSend 分叉播种/REST fork·delegate·abort·列表/后台 runDelegatedSubAgent/任务列表排除分支)。三简化：回流=给主 session 发普通消息(无后端)、fork=真实 session 复用 send/messages、委派=REST+DB 轮询(非 WS)；App.tsx 零改、WS union 零改。**E 前端(终审一次通过,无需收敛)**：ChatPane 两按钮 + ForkBranchPanel(gateway 对 branchSessionId 收发) + DelegateSubAgentCard(REST+轮询+clean_data 数据源) + 可编辑摘要回流(onBackflow→onSend 主 session) + engine.ts 6 方法(类型 import @/types)。typecheck+build 绿、红线净、接缝层未碰。详见 \`docs/notes-infra.md §二\`。**待用户提交 + 浏览器实跑点检**：pi --fork 组合行为 + 子 agent 写 060_reports/摘要捕获 + 分支订阅顺滑度
+- [x] **onto 文档大文档分批抽取（机制 A + 首个「总控卡委派」试点：X 契约委派 E 代笔 + V 实装，均终审通过 2026-06-12）** — 根治单批 实体≤40 漏抽 + CONTENT_LIMIT 截断 + 大输出 300s 超时。**X 契约(总控审定口径→委派 E 代笔→总控加重终审)**：`types.ts` 双侧 `ExtractJob`/`ExtractJobStatus`（issues 复用既有 `ValidationIssue`，type-only import 无循环）—— E 零偏差一次过，验证「总控卡委派」机制(见 §六)。**V 实装**：`onto-extract.ts`(chunkDocument 混合切分 CSV按行/文本按窗 + runChunkedExtraction 异步 runner) + `routes/viz.ts`(extract-chunked fire-and-forget / get / abort 三端点) + `db/viz.ts`(extract_jobs 表+CRUD) + `lib/api/viz.ts` + `OntologyPane`(4 态进度 UI + sessionStorage 切 tab resume)。跨批合并复用 `processExtractionOutput`(每批重读库+resolveId，未重造)；每批仍 ≤40、多批累加突破总量。2 处 benign 偏差免收敛(sessionStorage 替 useResumableTask、FK CASCADE 超口径)。红线净、未碰接缝层、typecheck+build 全绿。**待用户提交 + 浏览器实跑点检**(197 行 metrics.csv 多批跑通、实体突破 40、跨批连边、进度走完、可中止)
 - [ ] **(优化批，可选)** App.tsx 域模块改 React.lazy 代码分割（named→default 包装）；echarts 动静混合 import 统一
 - [ ] 三个 agent 接入开发环境 + 阅读本章程 + `AGENTS.md`
 - 参考：审计结论见会话「总纲领-传统BI-AI数据分析工作台」；模块边界速查见 `AGENTS.md §三`

@@ -2,6 +2,7 @@
 // (Duplicated in web/src/types.ts to keep the two packages decoupled.)
 
 import type { GateVerdict } from "./anax-gate.ts";
+import type { ValidationIssue } from "./onto-validator.ts";
 
 export interface Workspace {
   id: string;
@@ -1115,6 +1116,41 @@ export type ServerMessage =
   | { type: "anax_precheck_done"; precheckId: string; score: number | null; pass: boolean; summary: string }
   | { type: "anax_precheck_error"; precheckId: string; message: string };
 
+// ---- Fork 分支 & 委派子 agent（数据分析对话防上下文撑爆）----
+// 心智：开子 pi session 干重活，只把结论回流主 session。回流 = 给主 session 发普通消息（前端编排）。
+
+export interface ForkBranch {
+  id: string;
+  parentSessionId: string;
+  branchSessionId: string; // 分支是一个真实 session（复用 messages/runtime/send 机制）
+  title: string;
+  seeded: boolean; // 首轮是否已用 --fork 从父 session 播种
+  status: "idle" | "running" | "done" | "error";
+  createdAt: number;
+}
+
+export type SubAgentTaskStatus = "running" | "success" | "failed" | "aborted";
+
+export interface SubAgentTask {
+  id: string;
+  parentSessionId: string;
+  brief: string;
+  dataFiles: string[]; // 020_clean 标准目录内的相对/绝对路径
+  model?: string;
+  status: SubAgentTaskStatus;
+  summary?: string; // 子 agent 末条结论（供回流预填）
+  reportPath?: string; // 060_reports 内产报告（供回流引用）
+  error?: string;
+  createdAt: number;
+  endedAt?: number;
+}
+
+export interface SubAgentTaskInput {
+  brief: string;
+  dataFiles: string[];
+  model?: string;
+}
+
 // ---- Knowledge Graph ----
 
 export type KgNodeType = "rule" | "metric" | "ref_file" | "biz_ctx" | "report" | "concept";
@@ -1203,6 +1239,27 @@ export interface Ontology {
   domain: string;
   version: string;
   status: "draft" | "active" | "archived";
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type ExtractJobStatus = "running" | "success" | "failed" | "aborted";
+
+export interface ExtractJob {
+  id: string;
+  ontologyId: string;
+  status: ExtractJobStatus;
+  totalChunks: number;
+  doneChunks: number;
+  createdObjects: number;
+  createdLinks: number;
+  createdLogicRules: number;
+  createdActions: number;
+  skippedObjects: number;
+  skippedLinks: number;
+  hasFatal: boolean;
+  issues: ValidationIssue[];
+  error?: string;
   createdAt: number;
   updatedAt: number;
 }

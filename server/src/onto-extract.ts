@@ -3,6 +3,7 @@ import { DIRECT_LLM_ROOT } from "./config.ts";
 import {
   createObjectType, createLink, listObjectTypes,
   createLogicRule, createOntoAction, listLogicRules,
+  getExtractJob, updateExtractJob,
 } from "./db/viz.ts";
 import type { LinkKind } from "./types.ts";
 import { validateExtraction, type ValidatableData } from "./onto-validator.ts";
@@ -14,10 +15,82 @@ import { validateExtraction, type ValidatableData } from "./onto-validator.ts";
 
 const DEFAULT_MODEL = "minimax-cn/MiniMax-M3";
 // 单次抽取允许送入 LLM 的最大字符数。原 6000 实测会硬截掉中长文档后半段。
-// thinking 模型 180s 超时下，24000 字符（≈ 中文 1.2 万–1.6 万 token）仍可稳定返回。
+// thinking 模型 300s 超时下，24000 字符（≈ 中文 1.2 万–1.6 万 token）可稳定返回（密集指标文档曾在 180s 下超时）。
 // 超长文档建议分块（见 processExtractionOutput 同名去重 / resolveId 跨批合并已支持），后续 enhancement。
 const CONTENT_LIMIT = 24000;
+const CHUNK_BUDGET = 8000;
+const CHUNK_OVERLAP = 400;
 const DOC_LINK_KINDS: LinkKind[] = ["is-a", "part-of", "related"]; // 文档抽取仅产语义关系，不产 join/fk
+
+/**
+ * Split a large document into chunks for multi-batch extraction.
+ * CSV: header row + N data rows per chunk; md/txt: character window with overlap.
+ * Pure function, no side effects.
+ */
+export function chunkDocument(text: string, fileName?: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (trimmed.length <= CONTENT_LIMIT) return [trimmed];
+
+  const isCsv = fileName?.toLowerCase().endsWith(".csv") || looksLikeCsv(trimmed);
+  return isCsv ? chunkCsv(trimmed) : chunkText(trimmed);
+}
+
+function looksLikeCsv(text: string): boolean {
+  const firstLine = text.slice(0, text.indexOf("\n")).trim();
+  if (!firstLine) return false;
+  const commas = (firstLine.match(/,/g) ?? []).length;
+  return commas >= 2;
+}
+
+function chunkCsv(text: string): string[] {
+  const lines = text.split("\n");
+  const header = lines[0] ?? "";
+  const dataLines = lines.slice(1).filter((l) => l.trim());
+  if (dataLines.length === 0) return [text];
+
+  const chunks: string[] = [];
+  let batch: string[] = [];
+  let batchLen = header.length;
+
+  for (const line of dataLines) {
+    if (batchLen + line.length + 1 > CHUNK_BUDGET && batch.length > 0) {
+      chunks.push(header + "\n" + batch.join("\n"));
+      batch = [];
+      batchLen = header.length;
+    }
+    batch.push(line);
+    batchLen += line.length + 1;
+  }
+  if (batch.length > 0) chunks.push(header + "\n" + batch.join("\n"));
+  return chunks;
+}
+
+function chunkText(text: string): string[] {
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < text.length) {
+    let end = Math.min(start + CHUNK_BUDGET, text.length);
+    if (end < text.length) {
+      const paraBreak = text.lastIndexOf("\n\n", end);
+      if (paraBreak > start + CHUNK_BUDGET * 0.5) {
+        end = paraBreak + 2;
+      } else {
+        const lineBreak = text.lastIndexOf("\n", end);
+        if (lineBreak > start + CHUNK_BUDGET * 0.5) {
+          end = lineBreak + 1;
+        }
+      }
+    }
+    chunks.push(text.slice(start, end));
+    start = end > start ? Math.max(start + 1, end - CHUNK_OVERLAP) : end;
+    if (text.length - start < CHUNK_OVERLAP && chunks.length > 0) {
+      chunks[chunks.length - 1] += text.slice(start);
+      break;
+    }
+  }
+  return chunks;
+}
 
 // 质检类型统一由 onto-validator 持有（P4）；此处 re-export 保持既有 import 路径兼容
 export type { Severity, ValidationIssue } from "./onto-validator.ts";
@@ -201,7 +274,8 @@ export async function extractOntologyFromText(
     text: buildPrompt(text, promptTemplate),
     model,
     systemPrompt: "你是本体抽取助手，只输出严格 JSON，不包含 Markdown fence 和注释。",
-    timeoutMs: 180_000,
+    // 密集指标文档（中文 token 密度高）+ thinking 模型实测会超过 180s，提到 300s 留余量（与 index.ts 其他重抽取调用一致）。
+    timeoutMs: 300_000,
   });
   return processExtractionOutput(ontologyId, output);
 }
@@ -286,4 +360,78 @@ export function processExtractionOutput(ontologyId: string, output: string): Ont
   }
 
   return { createdObjects, createdLinks, createdLogicRules, createdActions, skippedObjects, skippedLinks, report };
+}
+
+/**
+ * Async chunked extraction runner. Fire-and-forget: writes progress to extract_jobs table.
+ * Each chunk calls extractOntologyFromText; processExtractionOutput handles cross-batch
+ * merge/dedup/linking via resolveId + same-name dedup.
+ */
+export async function runChunkedExtraction(
+  jobId: string,
+  ontologyId: string,
+  text: string,
+  model?: string,
+  promptTemplate?: string,
+  fileName?: string,
+): Promise<void> {
+  try {
+    const chunks = chunkDocument(text, fileName);
+    updateExtractJob(jobId, { totalChunks: chunks.length });
+
+    let totalCreatedObjects = 0, totalCreatedLinks = 0;
+    let totalCreatedLogicRules = 0, totalCreatedActions = 0;
+    let totalSkippedObjects = 0, totalSkippedLinks = 0;
+    let allIssues: ValidationIssue[] = [];
+    let hasFatal = false;
+    let doneChunks = 0;
+    let failedChunks = 0;
+
+    for (const chunk of chunks) {
+      // Check abort before each batch
+      const current = getExtractJob(jobId);
+      if (!current || current.status === "aborted") {
+        return;
+      }
+
+      try {
+        const result = await extractOntologyFromText(ontologyId, chunk, model, promptTemplate);
+        totalCreatedObjects += result.createdObjects;
+        totalCreatedLinks += result.createdLinks;
+        totalCreatedLogicRules += result.createdLogicRules;
+        totalCreatedActions += result.createdActions;
+        totalSkippedObjects += result.skippedObjects;
+        totalSkippedLinks += result.skippedLinks;
+        if (result.report.hasFatal) hasFatal = true;
+        allIssues = allIssues.concat(result.report.issues);
+      } catch (e) {
+        failedChunks++;
+        allIssues.push({ severity: "error", code: "CHUNK_FAILED", message: `Chunk ${doneChunks + 1}/${chunks.length} failed: ${e instanceof Error ? e.message : String(e)}` });
+      }
+
+      doneChunks++;
+      updateExtractJob(jobId, {
+        doneChunks,
+        createdObjects: totalCreatedObjects,
+        createdLinks: totalCreatedLinks,
+        createdLogicRules: totalCreatedLogicRules,
+        createdActions: totalCreatedActions,
+        skippedObjects: totalSkippedObjects,
+        skippedLinks: totalSkippedLinks,
+        hasFatal,
+        issues: allIssues,
+      });
+    }
+
+    const finalStatus = failedChunks === chunks.length ? "failed" : "success";
+    updateExtractJob(jobId, {
+      status: finalStatus,
+      ...(failedChunks === chunks.length ? { error: `All ${chunks.length} chunks failed` } : {}),
+    });
+  } catch (e) {
+    updateExtractJob(jobId, {
+      status: "failed",
+      error: e instanceof Error ? e.message : String(e),
+    });
+  }
 }

@@ -19,6 +19,7 @@ import type {
   ActionItem,
   ActionTask,
   ActionFeedback,
+  ExtractJob,
 } from "@/types";
 
 // 单一真源：Action 契约由 @/types 持有（总控），此处仅 re-export 供本域消费者引用。
@@ -104,6 +105,12 @@ export const vizApi = {
     fetch(`/api/ontologies/${encodeURIComponent(oid)}/graph`).then(json<OntologyGraph>),
   extractOntology: (oid: string, data: { text: string; model?: string; promptTemplate?: string }) =>
     fetch(`/api/ontologies/${encodeURIComponent(oid)}/extract`, jsonBody("POST", data)).then(json<OntoExtractResult>),
+  startChunkedExtract: (oid: string, data: { text: string; model?: string; promptTemplate?: string; fileName?: string }) =>
+    fetch(`/api/ontologies/${encodeURIComponent(oid)}/extract-chunked`, jsonBody("POST", data)).then(json<{ jobId: string }>),
+  getExtractJob: (jobId: string) =>
+    fetch(`/api/extract-jobs/${encodeURIComponent(jobId)}`).then(json<ExtractJob>),
+  abortExtractJob: (jobId: string) =>
+    fetch(`/api/extract-jobs/${encodeURIComponent(jobId)}/abort`, jsonBody("POST")).then(json<{ success: boolean }>),
 
   listMetrics: (workspaceId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/metrics`).then(json<MetricDefinition[]>),

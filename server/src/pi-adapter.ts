@@ -14,6 +14,7 @@ export interface RunPiOptions {
   model?: string;
   systemPrompt?: string;
   skillPaths?: string[];
+  forkFrom?: string; // 若设，则首轮用 `--fork <id>` 把该 session 历史播种进 piSessionId（Fork 分支用）
   onEvent: (event: PiEvent) => void;
   onChildProcess?: ChildProcessListener;
 }
@@ -266,6 +267,8 @@ export function runPiTurn(opts: RunPiOptions): PiRun {
     "--session-dir",
     piSessionDir,
   ];
+  // Fork 分支首轮：从父 session 历史播种进新分支 session。
+  if (opts.forkFrom) args.push("--fork", opts.forkFrom);
   if (opts.model) args.push("--model", opts.model);
   args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt));
   if (opts.skillPaths) {
