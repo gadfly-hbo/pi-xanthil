@@ -201,6 +201,7 @@ import { buildMemoryInjectionSnapshot, buildMemoryPrompt } from "./memory-inject
 import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
+import { ensureWorkspaceMcpConfig, registerAllWorkspaceMcp } from "./mcp/register.ts";
 import { registerChildProcess } from "./child-processes.ts";
 import { buildSanitizedEnv } from "./process-env.ts";
 
@@ -1082,7 +1083,10 @@ app.get("/api/workspaces", (_req, res) => res.json(listWorkspaces()));
 app.post("/api/workspaces", (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   if (!name) return res.status(400).json({ error: "name required" });
-  res.json(createWorkspace(name));
+  const ws = createWorkspace(name);
+  // 数据分析 tool-use：把 ExtractionTool MCP server 注册进新工作区 .mcp.json（pi-mcp-adapter 读 cwd）
+  try { ensureWorkspaceMcpConfig(ws.rootPath, ws.id); } catch { /* best-effort */ }
+  res.json(ws);
 });
 
 app.patch("/api/workspaces/:id", (req, res) => {
@@ -5023,6 +5027,18 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
   const inputPath = resolve(String(req.body?.inputPath ?? ""));
   const outputPath = resolve(String(req.body?.outputPath ?? ""));
   const workspaceId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined;
+  // 🔴 数据安全铁律（AGENTS.md §一）：AI 调用模式（source=ai，来自数据分析 pi 对话经 MCP 桥）下，
+  // 输入必须是该工作区已登记的 clean_data 聚合数据；draw_data/原始数据永久禁止——工具结果会回喂 LLM，
+  // 原始数据经工具洗一道再进 LLM 仍是泄漏。手动模式（UI）走前端限制，AI 模式后端硬卡。
+  const source = req.body?.source === "ai" ? "ai" : "manual";
+  if (source === "ai") {
+    const okClean = workspaceId
+      ? listWorkspacePaths(workspaceId, "clean_data").some((p) => resolve(p.path) === inputPath)
+      : false;
+    if (!okClean) {
+      return res.status(403).json({ error: "AI 调用仅允许该工作区已登记的 clean_data 输入（draw_data 永久禁止）" });
+    }
+  }
   try {
     if (!String(req.body?.inputPath ?? "").trim()) throw new Error("inputPath required");
     if (!String(req.body?.outputPath ?? "").trim()) throw new Error("outputPath required");
@@ -5215,6 +5231,8 @@ const server = app.listen(PORT, () => {
   console.log(`[xanthil] gateway listening on http://localhost:${PORT}`);
   const pruned = pruneAllTraceEvents(90);
   if (pruned > 0) console.log(`[xanthil] pruned ${pruned} trace events older than 90 days`);
+  // 数据分析 tool-use：回填所有既有工作区的 .mcp.json（ExtractionTool MCP server 注册）
+  registerAllWorkspaceMcp();
 });
 
 // ---- WebSocket gateway ----

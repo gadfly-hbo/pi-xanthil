@@ -1,6 +1,7 @@
-import { existsSync, readFileSync, readdirSync, realpathSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, readFileSync, readdirSync, realpathSync, statSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
+import { listExtractionTools } from "../tools/registry.ts";
 
 export type SkillSource = "global" | "project";
 
@@ -18,6 +19,9 @@ interface SkillRoot {
   source: SkillSource;
 }
 
+const EXTRACTION_TOOL_SKILL_DIR = "xanthil-extraction-tools";
+const GENERATED_MARKER = "<!-- xanthil-generated-extraction-tool-skill -->";
+
 export type SkillValidationMode = "strict" | "lenient";
 
 export interface ValidateSkillPathOptions {
@@ -25,6 +29,7 @@ export interface ValidateSkillPathOptions {
 }
 
 export function listSkills(workspaceRoot: string): PiSkill[] {
+  ensureExtractionToolSkill(workspaceRoot);
   const roots: SkillRoot[] = [
     { path: join(homedir(), ".pi", "agent", "skills"), source: "global" },
     { path: join(homedir(), ".agents", "skills"), source: "global" },
@@ -35,6 +40,64 @@ export function listSkills(workspaceRoot: string): PiSkill[] {
   const skills: PiSkill[] = [];
   for (const root of roots) scanSkillRoot(root, skills, seen, visitedDirs);
   return skills.sort((a, b) => a.name.localeCompare(b.name, "zh"));
+}
+
+export function extractionToolSkillPath(workspaceRoot: string): string {
+  return join(resolve(workspaceRoot), ".pi", "skills", EXTRACTION_TOOL_SKILL_DIR, "SKILL.md");
+}
+
+function ensureExtractionToolSkill(workspaceRoot: string): void {
+  try {
+    const skillFile = extractionToolSkillPath(workspaceRoot);
+    const skillDir = dirname(skillFile);
+    const next = buildExtractionToolSkill();
+    if (existsSync(skillFile)) {
+      const current = readFileSync(skillFile, "utf8");
+      if (!current.includes(GENERATED_MARKER) || current === next) return;
+    }
+    mkdirSync(skillDir, { recursive: true });
+    writeFileSync(skillFile, next, "utf8");
+  } catch {
+    // Skill discovery must keep working even if the generated bridge cannot be written.
+  }
+}
+
+function buildExtractionToolSkill(): string {
+  const tools = listExtractionTools();
+  const toolLines = tools.length > 0
+    ? tools.map((tool) => {
+      const params = (tool.parameters ?? [])
+        .map((param) => `${param.name}${param.required ? " required" : ""}: ${param.description || param.label || param.type}`)
+        .join("; ");
+      return `- ${tool.id}: ${tool.name}. ${tool.description}${params ? ` Parameters: ${params}.` : ""}`;
+    }).join("\n")
+    : "- No ExtractionTool is currently registered.";
+
+  return `---
+name: xanthil-extraction-tools
+description: Use local Xanthil ExtractionTool tools for data-analysis chat. Only registered clean_data paths may be used.
+---
+${GENERATED_MARKER}
+
+# Xanthil ExtractionTool Bridge
+
+Use this skill when the user asks pi to run a local data-analysis ExtractionTool during ChatPane data analysis.
+
+## Contract
+
+- Tools are exposed through the workspace MCP server as tool names matching the ExtractionTool id.
+- The required input key is \`cleanDataPath\`.
+- \`cleanDataPath\` must be an absolute path from the workspace registered \`clean_data\` list.
+- Never use \`draw_data\`, raw detail files, copied raw content, column samples, or unregistered paths.
+- Pass only paths and scalar parameters to tools. Do not paste data contents into the prompt.
+- Tool results may include \`runId\`, \`success\`, \`failed\`, \`results[].outputs\`, \`stdout\`, and \`stderr\`.
+- Summarize the tool result for the user and cite output file paths when the tool created artifacts.
+- If a tool rejects the input as non-\`clean_data\`, stop and ask the user to register an allowed aggregate file.
+
+## Registered Tools
+
+${toolLines}
+`;
 }
 
 export function validateSkillPaths(

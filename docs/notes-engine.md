@@ -7,27 +7,27 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-12 · ChatPane fork 分支 + 委派子 agent 前端接入收尾
+- 最近更新：2026-06-12 · Phase 2b 数据分析对话展示 ExtractionTool 调用过程与结果
 - 进度：
-  - **ChatPane 双能力入口已接入**：输入区上方新增「Fork 分支」「委派子 agent」按钮，禁用态绑定活跃 session；通过 `folderScope.type === "session"` 获取 `sessionId`，未改 `App.tsx`。
-  - **fork 分支前端可用**：新增 `ForkBranchPanel`，支持 `POST /api/sessions/:id/fork` 创建分支、`GET /api/sessions/:id/fork-branches` 恢复列表、分支 mini-chat 复用现有 gateway `send` + `GET /api/sessions/:branchSessionId/messages` + `pi_event/run_start/run_end/error` 订阅；分支对话只维护本地 message state，不注入主线 transcript。
-  - **fork 回流已接入**：回流弹可编辑摘要框，默认预填分支末条 assistant 文本；可从分支 artifact tree 选择报告路径，只把路径作为文本链接附加；提交后调用主线 `onSend`，作为普通消息进入主 session。
-  - **委派子 agent 前端可用**：新增 `DelegateSubAgentCard`，支持 brief、`020_clean` 文件路径勾选、模型选择、`POST /api/sessions/:id/delegate` 后台起跑、`GET /api/sessions/:id/subagent-tasks` 每 3 秒轮询 running 任务、多任务列表、`POST /api/subagent-tasks/:id/abort` 中止、成功结果卡展示 summary/reportPath。
-  - **委派结果回流/预览已接入**：reportPath 使用 `GET /api/sessions/:id/artifacts/file?path=...` 文本预览；回流弹预填 summary + 报告路径，提交仍走主线普通 `onSend`。
-  - **client API 已补齐**：`web/src/lib/api/engine.ts` 新增 fork/delegate/task 方法，类型只从 `@/types` import，未本地重声明。
+  - **ChatPane 工具调用实时展示已接入**：前端订阅 X 透传的 `pi_event.tool_call` / `pi_event.tool_result`，把调用映射为 `tool_use` running 卡，结果回来后回填 completed/error 状态；最终 `message_end` 若再带同一 tool block，会按 tool id 去重，避免重复卡片。
+  - **工具结果卡已升级**：`ProcessTrace` 可展示工具名、输入参数、`runId`、成功/失败数、错误信息、`results[].outputs` 产物列表；产物复用现有 `/api/extraction-tools/preview` 做文本预览，不新增预览端点。
+  - **ChatPane 主流可见**：工具调用/结果默认显示在数据分析对话主消息流，`thinking` 仍保留在「执行详情」里；这保证业务用户能看到 pi 调工具的过程，同时不把内部思考混入主回答。
+  - **ExtractionTool skill 桥已生成**：`listSkills(workspaceRoot)` 会确保 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md` 存在，内容由 ExtractionTool 注册表生成，描述工具 id、参数和调用契约；若该文件被用户手写且无生成标记，不覆盖。
+  - **数据安全边界保持后端红线**：skill 明确要求只传已登记 `clean_data` 绝对路径与标量参数，不粘贴数据内容；AI 模式实际强制仍由 `/api/extraction-tools/:id/run` 的 `source=ai + workspaceId + clean_data` 守卫承担。
 - 校验：
   - `npm run typecheck`：✅ 全绿。
   - `npm run build`：✅ 全绿；仅 Vite 既有 chunk size / echarts 动静混合 import 警告。
-  - 本次目标域为 engine，未改 data 域；额外执行数据探索 LLM 隔离 grep：✅ 无匹配。
+  - 本次目标域为 engine，未改 data exploration 子树；按 SOP 未执行 data 域 LLM 隔离 grep。
 - 下一步：
-  - ① 需要在总控/真实后端环境做一次 UI 冒烟：创建 fork → 分支首轮自动 `--fork` 播种 → 分支多轮 → 回流主线，确认主线 transcript 未出现分支中间轮次。
-  - ② 需要真实跑一次委派：选择 `020_clean` 路径 → delegate → running 轮询 → success summary/reportPath → 预览报告 → 回流主线；同时确认切 tab / panel 收起后再次打开仍能从 REST 恢复任务列表。
-  - ③ 若真实 fork 分支会产出大量 artifacts，后续可考虑在报告选择器里过滤文本/报告扩展名；当前实现读取 artifact tree 全部 file path，只附加路径文本，不读内容。
-  - ④ 若需要更强的 UX，可补 mini-chat 运行中 stop 按钮；当前分支发送按钮运行中只显示停止图标但未绑定 abort，避免未经需求扩大行为。
-- 阻塞 / 待总控：无代码阻塞；真实 LLM/后端冒烟是否由总控统一执行、是否需要把 fork/delegate 纳入自动化 smoke，需要总控拍板。
+  - ① 等总控 X 的最终 tool event 契约落地后做一次真实 E2E：ChatPane 提问 → pi 通过 skill/MCP 调 ExtractionTool → 前端显示 running → completed/error → 产物可预览 → assistant 总结结果。
+  - ② 总控需要确认 `runPiTurn skillPaths` 是否自动注入 `xanthil-extraction-tools`，还是由 ChatPane/SkillSelector 显式勾选；当前 E 侧只保证 skill 可发现、可校验。
+  - ③ ToolLab 联动仍未实现：当前结果卡只展示/预览产物；若要「从结果跳 ToolLab 看该工具评测」，需要总控确认 EngineTabs/路由状态如何从 ChatPane 指定 toolId 切到 ToolLab。
+  - ④ 若 X 最终事件字段不是 `tool_call/tool_result` 或 tool id 字段不是 `id/tool_use_id`，需在 `App.tsx` 的容错映射层做一次小调整。
+- 阻塞 / 待总控：无代码阻塞；真实 pi 工具调用链依赖总控 X 的「pi 工具桥 + 红线 + 契约」最终落地与真实环境冒烟。
 - 开放问题：
-  - fork 回流的“报告链接”是否要求只允许 `060_reports` / `report` 标准目录下的文件，还是 artifact tree 内全部文件都可选？当前保守实现为“只附加路径文本，不读取内容”，但未做扩展名/目录过滤。
-  - 委派任务列表轮询目前只在 `DelegateSubAgentCard` 挂载且存在 running 任务时运行；若要求切到其他 tab 时仍后台刷新 UI 状态，需要总控确认是否把轮询提升到更高层状态管理。
+  - 总控需拍板：ExtractionTool skill 是默认自动注入所有数据分析对话，还是仅当用户选择/触发工具模式时注入？
+  - 总控需拍板：ToolLab 联动的入口形态，是直接切到 `research_lab/tool` 并预选 toolId，还是只在结果卡展示一个「查看评测」链接等待后续路由能力？
+  - 总控需确认：X 透传的 `tool_result.content` 是否稳定为 MCP content array / JSON string / object；当前前端三者都兼容，但产物识别优先依赖 `results[].outputs`。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -60,6 +60,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **skill 落盘项目级** `<workspace>/.pi/skills/<slug>/SKILL.md`（被 `listSkills` 识别为 project skill），不落全局。
 - **ChatPane fork/delegate 前端边界**：ChatPane 不能为此改 `App.tsx` 接线；从 `folderScope.type === "session"` 取活跃 session。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
+- **ChatPane ExtractionTool 展示边界**：前端只展示 X 透传的 tool event / pi content block，不直接触发工具执行；`tool_call` 映射为 running `tool_use`，`tool_result` 回填同 id 卡片，最终 `message_end` 再带同一 tool block 时按 `id/tool_use_id` 去重。真实红线仍在后端 `source=ai` 守卫，前端不得把 `draw_data` 内容或样本送入 LLM。
+- **ExtractionTool skill 桥落盘策略**：生成到 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md`，带 `xanthil-generated-extraction-tool-skill` 标记；只更新带生成标记的文件，遇到用户手写同路径 skill 不覆盖。skill 只描述 MCP 工具契约与 clean_data 限制，不承担安全校验。
 
 ---
 
@@ -92,6 +94,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 业务需求来源引用 = 字段级 `sourceRefs` + quote 最小闭环，**不做字符 offset 定位**；业务需求上下文抽成前端共享 hook（Chat/报告版本/Golden Strategy 复用）。
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
+- Phase 2b 数据分析工具展示采用**事件容错层而非深绑 pi-adapter 类型**：E 侧只认 `tool_call`/`tool_result` 事件和 pi `tool_use`/`tool_result` content block，不改 `pi-adapter/index.ts/types`。这样 X 可继续收敛总控契约，前端只在 `App.tsx` 映射层适配字段差异。
+- ExtractionTool 结果产物预览**复用现有工具预览端点** `/api/extraction-tools/preview`，不新增 ChatPane 专属 artifact API。结果卡从 `results[].outputs` 提取产物路径；若工具 summary 不含该字段，只展示原始 JSON。
 
 ---
 
@@ -103,6 +107,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **AnaX fan-out 上限必须和 plan 假设数量一致**：plan 真跑可能生成 12 个假设；若 `maxItems` 仍是 8，H9-H12 永远不验证，review_gate 会因 evidence=0 / confidence=low 必然阻断。
 - **AnaX archive flywheel 只读本轮回复会漏写**：真实 archive 可能把完整 `anax-hypotheses` 写进 `09-archive-summary.md`，但本轮回复只输出摘要，导致 `onBlackboardUpdate("archive")` backfill=0。prompt 已要求本轮回复末尾原样输出结构块；若仍不稳，下一步考虑 runner 从 `specs/09-archive-summary.md` 兜底读取。
 - **skill distillation frontmatter 提取不能取第一个 `---`**：真实 LLM 可能在 `<think>` 中输出自查清单、fenced YAML 示例和最终 SKILL.md。`extractSkillMarkdown()` 应优先找最后一个 `--- + name:` frontmatter；否则保存后 `listSkills()` 会识别为 project source 但 `available:false`（缺 description）。
+- **工具事件重复显示风险**：pi 可能先流式透传 `tool_call/tool_result`，最终 `message_end` 又带完整 `tool_use/tool_result` content。ChatPane 必须按 `id/tool_use_id` 去重，否则用户会看到两套工具卡。
+- **ExtractionTool skill 不是红线本体**：skill 文字只能引导模型选择 clean_data；真正防泄漏必须依赖后端 `POST /api/extraction-tools/:id/run` 的 `source=ai`、`workspaceId` 和已登记 `clean_data` 校验。不要在前端或 skill 文案里把软约束误认为安全边界。
 - `scope` 对象字面量每次渲染新引用 → `useCallback([scope])` 重建 → effect 清空画布。根治：Pane 内提取稳定原始值（scopeType/scopeSessionId/scopeFlowId）作 deps，不改 App.tsx 内联写法（项目惯例）。
 - 流式响应中断（`Stream ended without finish_reason`）：建议切 MiniMax-M3 重试，长报告分块写文件。
 - **onto-extract 文档抽取的两层硬上限**（2026-06-11 hotfix 已调）：①`CONTENT_LIMIT`（字符截断，原 6000 → 现 24000）是真正决定"能不能看到文档后半段"的开关；②prompt 配额（实体/关系/逻辑/动作 ≤N）是次级限制，长文档若超配额会被模型自行裁掉。**所有抽取调优必须双层一起看**，只调一层都不够。

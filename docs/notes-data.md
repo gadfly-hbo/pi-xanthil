@@ -8,23 +8,25 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-11 · Xan数据库 3 个 hotfix（行业/竞品续跑 + 竞品占位符 500 容错）
+- 最近更新：2026-06-12 · 计算工具 tool-use 子页落地（Phase 1）
 - 进度：
-  - **hotfix-1 · 行业/竞品 tab 切回进度不丢**：新建 `web/src/lib/resumableTask.ts`（module-level store + `useSyncExternalStore` hook）；`IndustryPane.tsx` / `CompetitorPane.tsx` 删本地 loading/error/data 三 useState，换 `useResumableTask`。key = `industry:` + workspaceId / `competitor:` + workspaceId。**Weather 未改**（open-meteo 秒级返回 + useEffect 自动重拉，体感无丢失，按总控授权取舍）。
-  - **hotfix-2 · 竞品 `marketSharePct: X` 致命 500**：`routes/data.ts` 的 `extractJson` 失败时跑 `sanitizeBarePlaceholders`（字符串感知扫描器，仅替换值位置裸非法 token → `0`），重试 parse；行业 + 竞品 prompt 末尾补 "数值字段必须阿拉伯数字，无法估算填 0；严禁 X/N/A/待定/未知"。7 个 mock 用例（含 X / N/A / 中文占位符 / 嵌套 / 数组 / 字符串内 X / 合法 JSON）全过。
+  - **tool-use 子页落地**：`DataTabs.tsx:46` 的 Placeholder 替换为 `ToolUsePane`（477 行）。功能：① 左侧卡片列已注册工具（id/name/version/runtime/accept）② 输入数据仅从 clean_data 已登记路径选择（draw_data 不可选，红线）③ 按 `tool.parameters` 动态渲染参数表单（boolean/select/string/number，required/default 生效）④ 输出目录按 `scope+toolId` localStorage 记忆 ⑤ POST `/api/extraction-tools/:id/run` → 展示 summary.json（success/failed/results/产物路径/日志）⑥ 测试用例只读查看（GET `/:id/test-cases`）⑦ 长任务用 `useResumableTask`，key=`tool-use:{toolId}:{inputPath}`，切 tab 不丢。
+  - **D 域 client 补全**：`lib/api/data.ts` 新增 `listExtractionTools` / `runExtractionTool` / `getToolTestCases`，全部走既有 `/api/extraction-tools*`，不碰接缝层 `api.ts`。`dataApi` 与 `legacyApi` 同名方法在合并时覆盖（等价签名，无副作用）。
+  - **审核修复**：① `scope` 对象引用不稳定 → 引入 `scopeKeyStr = useMemo(() => scopeKey(scope), [scope])` 替代所有 `scope` 依赖，避免 `useCallback` 无限循环 ② emoji 违规（`📁` `📄`）→ 改为 `[dir]` / `[file]` 文本前缀。
 - 校验：
+  - `cd web && npm run typecheck`：✅ 全绿
+  - `cd web && npm run build`：✅ 全绿
   - `cd server && npm run typecheck`：✅ 全绿
-  - `cd web && npm run build`：✅ 全绿（2026-06-11 总控终审复跑；此前 `BusinessRequirementPane.tsx` 的 3 个 ts2552 已被 V 域「续传推广」改造一并修复，build 阻塞解除）。
   - 数据探索 LLM 隔离 grep：✅ 空匹配
 - 下一步：
-  - ① 行业/竞品 真机回归（tab 切走→1 分钟后切回是否仍在转圈/出结果）由用户实测。
-  - ② `extractJson` 同源风险：黄金策、未来其他结构化 JSON 路由若复用该模式，建议把 `sanitizeBarePlaceholders` 提到 `server/src/json-utils.ts` 复用 + 同步加 prompt "禁占位符" 文案。
-  - ③ `resumableTask` store 永不 GC，当前 key 量级（workspace 数）可忽略；未来若挂到探索/聚合等高频 key，需评估 LRU。
-- 阻塞 / 待总控：无（hotfix 链路 typecheck 全绿、mock 验证全过）。
+  - ① tool-use 真机回归：选工具 → 选 clean_data 路径 → 配参数 → 跑出 summary → 切 tab 后回来看结果是否仍在（useResumableTask 续传验证）。
+  - ② Phase 2「数据分析对话接 tool-use」需总控定义接缝契约（对话如何触发 tool-use、结果如何回写对话上下文）。
+  - ③ 行业/竞品 `extractJson` sanitize 提到 `json-utils.ts` 复用（上次 hotfix 遗留）。
+- 阻塞 / 待总控：无（Phase 1 独立可交付，不依赖其他域）。
 - 开放问题：
-  - V 域 `BiDashboardPane.tsx:37` 直接 fetch 漏 `/data` 后缀（历史项，未核实是否已修）。
-  - 「行业/竞品」属外部公开情报，pi 实际"联网"能力取决于 pi cli 自身工具；当前 prompt "有联网优先检索"，未强约束真实检索。
-  - ~~web typecheck 被 `BusinessRequirementPane.tsx` 阻塞~~ **已解决**（2026-06-11：V 域续传推广改造该 Pane 时清掉 setGenerating/setClarifying 未定义错误，`npm run build` 全绿）。
+  - `api.ts`（接缝层）已有同名 `listExtractionTools` / `runExtractionTool` 与旧名 `listExtractionToolTestCases`。本次 `dataApi` 以新语义名 `getToolTestCases` + 等价签名覆盖 legacy——总控可评估是否将 legacy 的 3 个 extraction-tools 方法从 `api.ts` 移除以收敛入口。
+  - tool-use 输出目录必须已存在（server `validateExtractionInput` 强校验），当前 UI 通过 `pickLocalPath("dir")` 让用户挑选既存目录——未来可考虑"自动创建输出目录"或"默认 workspace 下新建"。
+  - 参数表单的 `default` 值在工具切换时重置——若用户修改参数后切工具再切回，修改会丢失（设计如此，与 ExtractionPane 一致）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -36,6 +38,7 @@
 |---|---|---|
 | 计算工具·聚合 | `AggregatePane.tsx` · `lib/aggregate.ts` | `routes/data.ts`(新) |
 | 计算工具·提取 | `ExtractionPane.tsx` | `server/tools/registry.ts` + `server/tools/*` |
+| 计算工具·tool-use | `ToolUsePane.tsx` | 复用 `server/tools/registry.ts` + `index.ts` `/api/extraction-tools*` |
 | 计算工具·SQL | `SqlConnectPane.tsx` | `sql-connections.ts` |
 | 数据探索 | `DataExplorationPane.tsx` + `data-exploration/*` · `lib/{duckdb,profiling,insights,joins}.ts` | 仅二进制文件流，**零 LLM** |
 | 指标/业务环境/rules/案例 | `IndicatorsPane` `BusinessContextPane` `RulesPane` `CasesPane` | `db/data.ts`(新) · `memory-injection.ts` |
@@ -45,7 +48,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 
 > **导航变更（2026-06-10 快修，脚手架）**：
 > - **规则记忆 6 大模块**：`rules`→偏好记忆 / `indicators`→指标记忆 / `cases`→项目记忆（仅 label 改，id 与后端不动）；新增 `failure_memory`失败记忆 / `field_memory`字段记忆 / `process_memory`流程记忆（**占位 Placeholder**，后端 db/路由/api/pane + 记忆注入待补，参照 rules/indicators/cases 并接入 `App.tsx refreshRulesPromptInfo` 合计）。业务环境/trace/知识图谱保留并列。
-> - **计算工具**新增二级 `tool_use`（tool-use，占位）。
+> - **计算工具**新增二级 `tool_use`（tool-use，2026-06-12 Phase 1 落地，见 §0）。
 > - **探索·工作视图红线只读栏**：新增 `components/CleanDataDocsColumn.tsx`，在 explore+view 左侧列 `clean_data` 文档并支持预览 + 一键复制内容。**红线范式：展示聚合数据仅走只读路径 API**（`list*Paths`/`workspacePathTree`/`workspacePathFileGet`），零 LLM、无写入、无删除——可作后续"只读展示 clean_data"的安全模板。导航接缝细节见 `notes-infra §四`。
 
 ---
@@ -63,6 +66,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 4. **SQL 安全**：危险操作（DROP/DELETE/UPDATE/INSERT/ALTER/CREATE/TRUNCATE/GRANT/EXEC…）被 `validateSql()` 拦截返回 400，不可绕过。
 5. **风险分层 L0–L3**：L0 自动(预览)/L1 自动+trace(只读查询·探查·提取默认)/L2 需确认(SQL导出·L2工具)/L3 默认禁止(危险SQL)。
 6. **SQL 凭证明文存 JSON**：本地单用户，不加密（如需再引 keychain）。
+7. **tool-use 输入数据红线**：输入数据选择器**仅允许 clean_data 已登记路径**，draw_data 不可选/不可传。`ToolUsePane` 通过 `<select>` 枚举当前作用域 `clean_data` 路径 + 提交前双重校验 `cleanPaths.some()`，无手动输入入口。
 
 ---
 
@@ -74,6 +78,10 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - SQL 校验用**关键词+模式双重正则**（~40 行，无依赖），不用 AST 解析器（太重、方言兼容差）。
 - trace 写入由可选 `workspaceId` 触发，保持计算工具模块独立性。
 - 提取工具 manifest 扩展 `riskLevel/allowedUse/forbiddenUse/failureHandling/traceFields`。
+- **tool-use 数据源约束**：输入数据选择器仅枚举 `clean_data` 已登记路径（作用域感知：workspace/session/flow），draw_data 不可选/不可传。`ToolUsePane` 双重校验：`<select>` 只列 clean_data 路径 + `execute()` 前 `cleanPaths.some()` 再次确认。无手动输入入口，防止绕过。
+- **tool-use 参数表单**：按 `tool.parameters` 动态渲染（boolean/select/string/number），`default` 值在工具切换时重置（与 ExtractionPane 一致），不跨工具保留。
+- **tool-use 输出目录记忆**：按 `scope+toolId` 存 localStorage，跨 session 保留用户偏好。
+- **tool-use 与 ExtractionPane 差异**：ExtractionPane 允许手动输入任意本地路径（通用提取工具），ToolUsePane 仅允许 clean_data 已登记路径（计算工具链安全约束）。
 
 **数据探索**
 - 跨表 JOIN **物化成真实 duckdb 表**(`__joined_<ts>`)而非泛化 SQL → 出图/剖析/洞察管线**零改动复用**；DROP joined 表与源表独立。
@@ -103,6 +111,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **resumableTask snapshot 引用稳定性**（2026-06-11）：`useResumableTask` 内用 `WeakMap<Entry, snapshot>` 缓存——`useSyncExternalStore` 要求 `getSnapshot` 在状态未变时返回**同一对象引用**，否则触发 React 18 "getSnapshot should be cached" 警告 + 无限重渲染。任何复制此 hook 到其他模块的人必须保留 WeakMap 缓存逻辑。
 - **resumableTask key 命名硬约束**：按字符串拼，不用模板字符串（避免拼写抖动）；同一上下文必须 key 唯一在飞。当前 store 是 module 单例 + 永不 GC，工作区数量级 OK；未来高频 key 需评估 LRU。
 - **sanitizeBarePlaceholders 已知不完美点**：字符串型字段被 LLM 写裸占位符（如 `"summary": 待定`）会被替换为 `0` 而非 `""`，前端会显示字面 "0"。可接受（不致命），如需精细化需按字段类型映射，但 parse 时无类型信息——本次不做。
+- **scope 对象引用不稳定**（2026-06-12）：`TabContext.folderScope` 来自 `App.tsx`，每帧重建新对象。若 `useCallback` / `useEffect` 直接依赖 `scope`（对象），会导致每帧触发 → API 调用 → setState → 重渲染 → 死循环。**修复**：用 `useMemo(() => scopeKey(scope), [scope])` 转为稳定字符串 key，所有依赖链改用字符串。此模式适用于任何从 `tabCtx` 消费 `folderScope` 的组件。
 
 ---
 

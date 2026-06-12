@@ -17,7 +17,7 @@ import type { TabContext } from "@/tabs/types";
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
-import { asBlocks, textOf, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
+import { asBlocks, textOf, type ContentBlock, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
 
 let uid = 0;
 const nextId = () => `m${++uid}`;
@@ -29,6 +29,82 @@ const SESSION_RUNNING_ERROR = "session already has a running turn";
 function displayError(error: string, consecutiveStreamErrors: number): string {
   if (error !== STREAM_END_ERROR || consecutiveStreamErrors < 2) return error;
   return `${error}\n\n连续出现流式响应中断。请切换到 MiniMax-M3 后重试；生成长报告时应分块写入文件。`;
+}
+
+function toolUseId(block: ContentBlock): string | undefined {
+  if (block.type === "tool_use") return typeof block.id === "string" ? block.id : undefined;
+  if (block.type === "tool_result") return typeof block.tool_use_id === "string" ? block.tool_use_id : undefined;
+  return undefined;
+}
+
+function collectToolUseIds(messages: UiMessage[]): Set<string> {
+  const ids = new Set<string>();
+  for (const message of messages) {
+    for (const block of message.content) {
+      const id = toolUseId(block);
+      if (id) ids.add(id);
+    }
+  }
+  return ids;
+}
+
+function filterDuplicateToolBlocks(blocks: ContentBlock[], messages: UiMessage[]): ContentBlock[] {
+  const existingIds = collectToolUseIds(messages);
+  return blocks.filter((block) => {
+    if (block.type !== "tool_use" && block.type !== "tool_result") return true;
+    const id = toolUseId(block);
+    return !id || !existingIds.has(id);
+  });
+}
+
+function toolCallBlock(event: Extract<PiEvent, { type: "tool_call" }>): Extract<ContentBlock, { type: "tool_use" }> {
+  return {
+    type: "tool_use",
+    id: event.id ?? event.tool_use_id,
+    name: event.name,
+    input: event.input,
+    status: "running",
+  };
+}
+
+function toolResultBlock(event: Extract<PiEvent, { type: "tool_result" }>): Extract<ContentBlock, { type: "tool_result" }> {
+  return {
+    type: "tool_result",
+    tool_use_id: event.tool_use_id ?? event.id,
+    name: event.name,
+    content: event.content,
+    is_error: event.is_error,
+  };
+}
+
+function appendToolCall(messages: UiMessage[], block: Extract<ContentBlock, { type: "tool_use" }>): UiMessage[] {
+  if (block.id && collectToolUseIds(messages).has(block.id)) return messages;
+  return [...messages, { id: nextId(), role: "assistant", content: [block] }];
+}
+
+function appendToolResult(messages: UiMessage[], block: Extract<ContentBlock, { type: "tool_result" }>): UiMessage[] {
+  const toolUseId = block.tool_use_id;
+  if (!toolUseId) return [...messages, { id: nextId(), role: "tool", content: [block] }];
+  let matched = false;
+  const next = messages.map((message) => {
+    let changed = false;
+    const content: ContentBlock[] = [];
+    for (const current of message.content) {
+      if (current.type === "tool_result" && current.tool_use_id === toolUseId) matched = true;
+      if (current.type === "tool_use" && current.id === toolUseId) {
+        matched = true;
+        changed = true;
+        content.push({ ...current, status: block.is_error ? "error" : "completed" });
+        if (!message.content.some((item) => item.type === "tool_result" && item.tool_use_id === toolUseId)) {
+          content.push(block);
+        }
+      } else {
+        content.push(current);
+      }
+    }
+    return changed ? { ...message, content } : message;
+  });
+  return matched ? next : [...messages, { id: nextId(), role: "tool", content: [block] }];
 }
 
 export default function App() {
@@ -249,7 +325,12 @@ export default function App() {
             lastError: typeof ev.errorMessage === "string" ? ev.errorMessage : null,
           } : current);
         }
-        if (ev.type === "message_end") {
+        if (ev.type === "tool_call") {
+          setMessages((cur) => appendToolCall(cur, toolCallBlock(ev as Extract<PiEvent, { type: "tool_call" }>)));
+        } else if (ev.type === "tool_result") {
+          setMessages((cur) => appendToolResult(cur, toolResultBlock(ev as Extract<PiEvent, { type: "tool_result" }>)));
+          setArtifactRefreshKey((current) => current + 1);
+        } else if (ev.type === "message_end") {
           const { message: m } = ev as Extract<PiEvent, { type: "message_end" }>;
           if (m.role === "user") return;
           const blocks = asBlocks(m.content);
@@ -260,7 +341,10 @@ export default function App() {
               return [...cur, { id: nextId(), role: m.role, content: blocks, error: displayError(m.errorMessage!, repeated) }];
             });
           } else {
-            setMessages((cur) => [...cur, { id: nextId(), role: m.role, content: blocks }]);
+            setMessages((cur) => {
+              const visibleBlocks = filterDuplicateToolBlocks(blocks, cur);
+              return visibleBlocks.length > 0 ? [...cur, { id: nextId(), role: m.role, content: visibleBlocks }] : cur;
+            });
             const text = textOf(m.content);
             if (m.role === "assistant" && text) setReport(text);
           }

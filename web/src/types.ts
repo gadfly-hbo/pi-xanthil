@@ -1276,8 +1276,8 @@ export interface PiTextBlock {
 // pi content blocks (tolerant — render known kinds, pass the rest through).
 export type ContentBlock =
   | { type: "text"; text: string }
-  | { type: "tool_use"; id?: string; name?: string; input?: unknown }
-  | { type: "tool_result"; tool_use_id?: string; content?: unknown; is_error?: boolean }
+  | { type: "tool_use"; id?: string; name?: string; input?: unknown; status?: "running" | "completed" | "error" }
+  | { type: "tool_result"; tool_use_id?: string; name?: string; content?: unknown; is_error?: boolean }
   | { type: "thinking"; thinking?: string; text?: string }
   | { type: string; [k: string]: unknown };
 
@@ -1332,6 +1332,8 @@ export type PiEvent =
   | { type: "message_end"; message: PiMessage }
   | { type: "turn_end"; message: PiMessage; toolResults: unknown[] }
   | { type: "agent_end"; messages: PiMessage[]; willRetry: boolean }
+  | { type: "tool_call"; id?: string; tool_use_id?: string; name?: string; input?: unknown }
+  | { type: "tool_result"; id?: string; tool_use_id?: string; name?: string; content?: unknown; is_error?: boolean }
   | { type: string; [k: string]: unknown };
 
 // ---- AnaX P3 change management ----

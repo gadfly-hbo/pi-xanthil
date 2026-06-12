@@ -1,10 +1,11 @@
-import { Database, Store, Wrench, CircleX, Tags, Workflow } from "lucide-react";
+import { Database, Store, CircleX, Tags, Workflow } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { DataExplorationPane } from "@/components/DataExplorationPane";
 import { AggregatePane } from "@/components/AggregatePane";
 import { ExtractionPane } from "@/components/ExtractionPane";
 import { SqlConnectPane } from "@/components/SqlConnectPane";
+import { ToolUsePane } from "@/components/ToolUsePane";
 import { RulesPane } from "@/components/RulesPane";
 import { BusinessContextPane } from "@/components/BusinessContextPane";
 import { IndicatorsPane } from "@/components/IndicatorsPane";
@@ -44,7 +45,7 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <SqlConnectPane workspaceId={ctx.activeWorkspaceId} />
       )}
       {activeTab === "aggregate" && activeSubTab === "tool_use" && (
-        <Placeholder icon={Wrench} title="tool-use" hint="工具调用计算，即将推出" />
+        <ToolUsePane scope={ctx.folderScope} workspaceId={ctx.activeWorkspaceId} />
       )}
 
       {activeTab === "rule_memory" && activeSubTab === "rules" && (

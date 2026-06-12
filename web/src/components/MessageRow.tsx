@@ -23,6 +23,10 @@ export function hasTraceBlocks(m: UiMessage): boolean {
   return m.role === "tool" || m.content.some((block) => block.type !== "text");
 }
 
+export function hasToolBlocks(m: UiMessage): boolean {
+  return m.content.some((block) => block.type === "tool_use" || block.type === "tool_result");
+}
+
 export const MessageRow = memo(function MessageRow({ m, showTrace = false }: { m: UiMessage; showTrace?: boolean }) {
   if (m.error) {
     return (
@@ -48,7 +52,7 @@ export const MessageRow = memo(function MessageRow({ m, showTrace = false }: { m
             </div>
           </div>
         )}
-        {showTrace && results.map((b, i) => (
+        {results.map((b, i) => (
           <ToolResult key={i} block={b as Extract<ContentBlock, { type: "tool_result" }>} />
         ))}
       </>
@@ -56,7 +60,6 @@ export const MessageRow = memo(function MessageRow({ m, showTrace = false }: { m
   }
 
   if (m.role === "tool") {
-    if (!showTrace) return null;
     return (
       <>
         {m.content.map((b, i) =>
@@ -81,8 +84,8 @@ export const MessageRow = memo(function MessageRow({ m, showTrace = false }: { m
             </div>
           ) : null;
         }
-        if (b.type === "tool_use") return showTrace ? <ToolUse key={i} block={b as Extract<ContentBlock, { type: "tool_use" }>} /> : null;
-        if (b.type === "tool_result") return showTrace ? <ToolResult key={i} block={b as Extract<ContentBlock, { type: "tool_result" }>} /> : null;
+        if (b.type === "tool_use") return <ToolUse key={i} block={b as Extract<ContentBlock, { type: "tool_use" }>} />;
+        if (b.type === "tool_result") return <ToolResult key={i} block={b as Extract<ContentBlock, { type: "tool_result" }>} />;
         if (b.type === "thinking") {
           const t = (b as { thinking?: string; text?: string }).thinking ?? (b as { text?: string }).text ?? "";
           return showTrace && t ? <Thinking key={i} text={t} /> : null;

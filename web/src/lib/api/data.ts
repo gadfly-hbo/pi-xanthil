@@ -10,11 +10,39 @@
 //   };
 
 import { json } from "./_http";
-import type { BiAggregationDataset, BiAggregationData, IndustryIntel, CompetitorIntel } from "@/types";
+import type {
+  BiAggregationDataset,
+  BiAggregationData,
+  IndustryIntel,
+  CompetitorIntel,
+  ExtractionTool,
+  ExtractionRun,
+  ToolEvalCaseTemplateList,
+} from "@/types";
 
 export const dataApi = {
   getBiAggregations: (workspaceId: string) =>
     fetch(`/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`).then(json<BiAggregationDataset[]>),
+
+  // ---- 计算工具 · tool-use（仅调用既有 /api/extraction-tools*，不改接缝层）----
+  listExtractionTools: () =>
+    fetch("/api/extraction-tools").then(json<ExtractionTool[]>),
+
+  getToolTestCases: (id: string) =>
+    fetch(`/api/extraction-tools/${encodeURIComponent(id)}/test-cases`).then(json<ToolEvalCaseTemplateList>),
+
+  runExtractionTool: (
+    id: string,
+    inputPath: string,
+    outputPath: string,
+    params?: Record<string, string | number | boolean>,
+    workspaceId?: string,
+  ) =>
+    fetch(`/api/extraction-tools/${encodeURIComponent(id)}/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ inputPath, outputPath, params, workspaceId }),
+    }).then(json<ExtractionRun>),
 
   getBiAggregationData: (pathId: string, limit?: number) => {
     const params = new URLSearchParams();

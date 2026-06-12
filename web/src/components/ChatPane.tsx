@@ -2,7 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Sparkles, Square, Workflow } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
-import { hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
+import { hasToolBlocks, hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
 import { cn } from "@/lib/cn";
@@ -110,6 +110,7 @@ export function ChatPane(p: Props) {
 
   const businessMessages = p.messages.filter((message) => {
     if (message.error || message.role === "user") return true;
+    if (hasToolBlocks(message)) return true;
     return message.role === "assistant"
       && textOf(message.content).trim().length > 0
       && !hasTraceBlocks(message);

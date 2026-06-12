@@ -200,7 +200,9 @@
       "Bash(sed -n '745,795p' server/src/db/viz.ts)",
       "Bash(sed -n '355,370p' web/src/components/ActionsPane.tsx)",
       "Bash(npm test *)",
-      "Bash(grep -nE \"<ChatPane|ChatPane$|workspaceId=|activeWorkspaceId\" web/src/App.tsx)"
+      "Bash(grep -nE \"<ChatPane|ChatPane$|workspaceId=|activeWorkspaceId\" web/src/App.tsx)",
+      "Bash(pi list *)",
+      "Bash(pi install *)"
     ]
   }
 }

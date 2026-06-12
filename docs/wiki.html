@@ -217,6 +217,63 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "X", status: "todo", title: "【红线硬化·独立议题】数据分析 pi session 内建工具可达 draw_data 评估 + 收口", brief:
+`来源：tool-use Phase 2a spike 取证（2026-06-12，详见 notes-infra.md §五）发现的**既有潜在敞口**，用户决策「单列为独立红线议题」，与 tool-use 解耦单独评估。
+
+【问题】数据分析对话 handleSend(index.ts:5536) 的 runPiTurn cwd=workspace 根、内建 read/bash/edit/write 全开，draw_data 物理在 sessions/*/010_raw。当前红线保护**仅靠「路径不披露」(behavioral)**：output-paths.ts:98 不把 draw_data 路径给 pi。但 pi 有 bash+read，理论上能 find/cat 到原始数据 → 非硬沙箱。
+
+【评估范围(本卡先评估,不急实现)】对比三方案的代价/有效性：① pi-sandbox 扩展限定 pi 仅可访问任务 020_clean/060_reports(不含 010_raw)；② 把 draw_data 移出 session cwd(物理隔离,但动目录标准影响大);③ --exclude-tools 或 --tools allowlist 收窄(但 session 依赖 read/write 读 clean_data/写报告,不能全禁)。**约束**：session 离不开内建 read/write(读 clean_data 路径分析、写 060_reports)，方案不能破坏该能力。
+【验收(评估阶段)】产出方案对比 + 推荐 + 是否实施结论，写入 notes-infra；若实施则另立实现子项。
+【约束】纯接缝层(index.ts/pi-adapter)，总控自留；全程不碰 git。` },
+  { dom: "D", status: "done", title: "计算工具→tool-use 管理面板（替换占位，复用 ExtractionTool 注册表，手动试跑，零 AI）", brief:
+`✅ 总控终审通过（2026-06-12）。D 交付：ToolUsePane.tsx(新) + DataTabs tool_use 分支换真 Pane + lib/api/data.ts(listExtractionTools/getToolTestCases/runExtractionTool，仅调既有 /api/extraction-tools*)。门禁 server+web typecheck + build + 数据探索隔离 grep 全绿。红线核：输入仅 clean_data(listCleanDataPaths 按 scope 过滤)、**双重守卫**(canRun 要 inputPathRegistered + execute 再校验非列表路径拒跑)、draw_data 禁用、零 LLM、run 未带 source→manual 无回归；ExtractionTool/ExtractionRun 既有类型从 @/types import；未碰 index.ts extraction-tools API/接缝层；根 overflow-auto + useResumableTask 续传。**待用户提交 + 浏览器实跑点检**(列工具/选 clean_data/手动跑出 summary/参数表单)。
+
+— 原始需求 —
+新需求 Phase 1：计算工具 tab 的「tool-use」子页（DataTabs.tsx:46 当前 <Placeholder title="tool-use" hint="工具调用计算，即将推出"/>）落地为**工具管理 + 手动试跑面板**。复用既有 ExtractionTool 注册表（server/tools/registry.ts）与 API（index.ts: GET /api/extraction-tools、POST /api/extraction-tools/:id/run、GET /:id/test-cases），**零 AI、不碰接缝层**。本卡独立可交付，亦是 Phase 2「数据分析对话接 tool-use」的 UI 基础。
+
+【文件边界(D slot)】新建 ToolUsePane.tsx · DataTabs.tsx（tool_use 分支从 Placeholder 换真 Pane）· lib/api/data.ts（补 client：listExtractionTools / runExtractionTool / getToolTestCases，均走既有 /api/extraction-tools*）。**不碰 index.ts 的 extraction-tools API**（接缝层总控持有，只调不改）。
+
+【1 · 列表】GET /api/extraction-tools 列出已注册工具（id/name/描述/runtime/parameters）卡片展示。
+【2 · 手动试跑】选工具 → ① 选输入数据：**仅列 clean_data(聚合数据)，draw_data 不可选**（红线：原始数据不进工具链 UI，与看板数据源同口径）→ ② 按 tool.parameters 动态渲染参数表单（required/default）→ ③ 选/默认输出目录 → POST /:id/run {inputPath,outputPath,params,workspaceId} → 展示 summary.json + 产物路径。
+【3 · 用例查看(只读,可选)】GET /api/extraction-tools/:id/test-cases 展示该工具测试用例。
+【4 · 长任务】run 走断点续传（useResumableTask，与黄金策/onto 抽取一致，切 tab 不丢）。
+
+【红线】输入数据选择器**只允许 clean_data**，draw_data 不可选/不可传；纯前端选路径 + 调既有 API，零 LLM；不碰数据探索子树。改完跑数据探索隔离 grep（应空）。
+【验收】server+web typecheck+build 绿；tool-use 子页可列工具、选 clean_data 手动跑出 summary、参数表单生效、draw_data 不可选；隔离 grep 空。
+【约束】不碰接缝层（index.ts/types/constants/App）；只调 extraction-tools API 不改；全程不碰 git，回流总控终审；新踩坑/约束列回报交总控补 notes-data。` },
+  { dom: "X", status: "done", title: "数据分析对话接 tool-use —— pi 工具桥机制 spike + 红线守卫 + 契约（接缝层，总控自留）", brief:
+`✅ 总控自做+自检通过（2026-06-12，server typecheck + web build + 数据探索隔离 grep 全绿）。**交付（MCP 桥）**：① 手写零依赖 stdio MCP server \`server/src/mcp/extraction-tools-mcp.ts\`（JSON-RPC initialize/tools-list/tools-call/ping，stdio→HTTP 代理；冒烟测 initialize/ping 通过）② 🔴 红线守卫 \`index.ts\` POST /api/extraction-tools/:id/run 加 source=ai 模式：inputPath 必须是该工作区已登记 clean_data，否则 403（draw_data 永禁；手动模式无回归）③ 每工作区 .mcp.json 注册 \`server/src/mcp/register.ts\`（createWorkspace 写 + 启动 registerAllWorkspaceMcp 回填；pi-mcp-adapter 读 cwd=workspaceRoot）④ 契约：tool 事件走 PiEvent catch-all + turn_end.toolResults，**未改 types.ts**（无需新 union）。**待 E 卡（ChatPane tool 渲染）+ 用户浏览器实跑点检**：pi↔MCP 活体握手(tools/list/call 经 pi-mcp-adapter)、AI 调工具命中守卫(clean_data 放行/draw_data 403)、tool 事件渲染。spike 结论见 notes-infra §五。
+
+— 实现修订记录 —
+✅ 设计 spike 完成（2026-06-12，结论见 docs/notes-infra.md §五）。**用户拍板：桥机制改 MCP（原 brief 的 skill+bash 经 spike 验证不红线安全，已否决）；既有内建工具潜在敞口单列独立红线卡，本卡不绑。** 实现按下方修订执行：
+【修订 · 桥机制 = MCP】① server 侧建 MCP server，把「AI 安全工具」(只吃 clean_data 的 ExtractionTool)暴露为 MCP tool；handler 走带 clean_data 硬守卫的 /api/extraction-tools/:id/run（复用 isInsideStandardDir，命中 draw_data/010_raw→403）。② 经已装 pi-mcp-adapter 把该 MCP server 注入 ChatPane session 的 runPiTurn（具体注入方式实现前先验 pi-mcp-adapter 接口）。③ pi 调用必过守卫、不碰原始文件系统；tool_call/tool_result 走 PiEvent catch-all + turn_end.toolResults，供 E 渲染。④ 后端 clean_data 守卫无论机制如何都必做（硬执行点）。原【2 · pi 工具桥(skill 注入)】作废，其余红线/契约/WS 接线项仍有效。
+
+— 原始需求（设计背景，skill+bash 桥已被 MCP 取代）—
+新需求 Phase 2a：让「数据分析」pi 对话（ChatPane）能在对话中 tool-use 已注册 ExtractionTool。本卡 = 接缝层/架构/红线，**总控自留自做**（涉 pi-adapter + index.ts 接缝 + 数据安全铁律，架构决策不可委派），先于 E 前端卡。
+
+【设计 spike(第一步必做)】验证 pi CLI 工具/技能协议：runPiTurn 已支持 --skill <path>（pi-adapter:274）。确认 pi 调 skill→执行外部工具的事件流（tool_call/tool_result 在 PiEvent union 的形态），定下「ExtractionTool→pi skill 桥」可行路径（skill 内调 /api/extraction-tools/:id/run 或直接 spawn）。spike 结论写入 notes-infra，再做实现。
+
+【1 · 红线守卫(最高优先,索引 AGENTS.md §一)】index.ts POST /api/extraction-tools/:id/run 加「AI 调用模式」守卫：当来自 pi 对话（标记 source=ai）时，inputPath **必须 resolve 在该 workspace 的 clean_data 目录内**，命中 draw_data/010_raw → 403。理由：工具结果会回喂 pi(LLM)，原始数据经工具洗一道再进 LLM 仍是泄漏。手动模式(D 卡)沿用前端限制即可，AI 模式后端硬卡。
+【2 · pi 工具桥(pi-adapter,接缝)】把「AI 安全工具」（只读 clean_data、不读 draw_data 的 ExtractionTool）转为 pi skill 注入 ChatPane session 的 runPiTurn(skillPaths)；skill 描述工具用途/参数/调用方式（限 clean_data）。
+【3 · 契约(types.ts 双侧)】工具调用展示用类型（如 ToolCallEvent {toolId;input;status;summary;outputPath}）；若经 WS 流式则在 ServerMessage union 注册 tool-call 事件，供 E 的 ChatPane 渲染。
+【4 · index.ts WS 接线】ChatPane 主 session 的 runPiTurn 调用处接入 skillPaths（可用工具）+ 把 pi 的 tool_call/tool_result 透传前端（带 sessionId）。
+
+【验收】server+web typecheck+build 绿；spike 结论确定可行机制（写入 notes-infra）；红线守卫实测 draw_data 输入被 403、clean_data 放行；ChatPane session 能成功注入工具 skill。
+【约束】pi-adapter/index.ts/types 仅总控写；红线守卫不可省；全程不碰 git。` },
+  { dom: "E", status: "done", title: "数据分析对话 tool-use 前端 + skill 桥逻辑（ChatPane 工具调用展示，依赖 X）", brief:
+`✅ 总控终审通过（2026-06-12，随 D 卡一并交付于工作树）。实际实现：ChatPane.tsx + MessageRow.tsx + ProcessTrace.tsx 渲染 pi 的 tool_call/tool_result（工具名/输入/summary/产物，previewExtractionFile 预览）。**桥=MCP（X 卡已建）**；E 另在 skills.ts 生成一个**指向 MCP 的 helper skill**（\`.pi/skills/xanthil-extraction-tools/SKILL.md\`，列工具 + Contract 明示「经 workspace MCP server 调、入参 cleanDataPath」）—— 非竞争性第二座桥、不教 bash，审过无红线回归（硬守卫仍在 API）。**总控决策：该 skill 不自动注入 runPiTurn，保持 SkillSelector 可选**（MCP proxy 已可按需发现，无需每轮强塞）。小注：ensureExtractionToolSkill 在 listSkills 读路径里写文件（幂等+try/catch，可接受，非阻断）。skills.ts 属 E slot 合规。**接缝层改动(总控审签)**：types.ts 给 ContentBlock 加 tool_use.status、给 PiEvent 加 tool_call/tool_result 变体；App.tsx 加事件→block 转换(toolCallBlock/toolResultBlock)+去重合并(filterDuplicateToolBlocks)。逐行审过、正确必需、gate 全绿。**流程记一笔**：接缝层(types/App)本应总控写、本次由实现方代笔，结果无害已签收(§六)。**待用户提交 + 浏览器实跑点检**(整条 pi↔MCP↔守卫↔渲染链零运行时验证，强烈建议 npm run dev + 真实对话跑通：AI 调工具命中守卫 clean_data 放行/draw_data 403、工具结果卡渲染)。
+
+— 原始需求（skill 桥已被 X 卡 MCP 取代）—
+新需求 Phase 2b：数据分析对话（ChatPane）呈现 pi 调用 ExtractionTool 的过程与结果。依赖总控「pi 工具桥 + 红线 + 契约」卡（spike 结论 + skillPaths 注入 + ToolCall 契约），顺序在其后。
+
+【文件边界(E slot)】ChatPane.tsx（工具调用展示）· skills.ts / skill-*（E slot：ExtractionTool→pi skill 的生成/注册逻辑，若 X spike 定为 skill 桥）· lib/api/engine.ts（若需）。不碰 pi-adapter/index.ts/types（总控持有）。
+
+【1 · skill 桥生成(E skill slot)】按 X spike 结论，把 ExtractionTool 注册表生成 pi skill（描述 + 调用契约,限 clean_data），供总控 runPiTurn skillPaths 注入。
+【2 · ChatPane 工具调用展示】渲染 pi 的 tool_call/tool_result 事件（来自 X 的 WS 透传/契约）：调用中→转圈、完成→结果卡（工具名+输入数据+summary+产物链接可预览）。复用既有工具事件渲染（MessageRow.tsx 已含 tool 渲染、ProcessTrace）。
+【3 · ToolLab 联动(可选)】从 ChatPane 工具结果跳转 ToolLab 看该工具评测。
+
+【验收】web build 绿；数据分析对话里 pi 调工具时前端展示调用过程+结果+产物；仅 clean_data 工具可被调（红线由 X 后端守）。
+【约束】不碰接缝层/pi-adapter/types；数据仅传路径（clean_data）；全程不碰 git，回流总控终审。` },
   { dom: "X", status: "done", delegate: "E", title: "onto 文档分批抽取 —— 契约 + schema 审定（types.ts ExtractJob / extract_jobs 表，总控持有）", brief:
 `✅ E 代笔交付、总控加重终审通过（2026-06-12）。逐行核：① ExtractJob/ExtractJobStatus 双侧字段完全一致 ✓ ② issues 复用既有 ValidationIssue（server 经 import type from onto-validator.ts、web 本地已有），无本地重声明 ✓ ③ types.ts→onto-validator.ts 单向 type-only import，无循环依赖 ✓ ④ 插位贴 onto 类型区（ObjectKind 前）✓ ⑤ 仅双侧 types.ts 改动、未扩散其他接缝层契约/他域 slot ✓ ⑥ server typecheck + web build 全绿 ✓。extract_jobs 表口径(§2)交 V 在 db/viz.ts 落地、本卡不含建表代码(职责正确)。**首个「总控卡委派」试点跑通**。待 V 卡实装 + 用户提交。
 
