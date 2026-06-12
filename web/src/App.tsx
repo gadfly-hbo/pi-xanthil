@@ -298,8 +298,8 @@ export default function App() {
   }, []);
 
   const deleteWorkspace = useCallback(
-    async (id: string) => {
-      await api.deleteWorkspace(id);
+    async (id: string, deleteFiles = false) => {
+      await api.deleteWorkspace(id, deleteFiles);
       setWorkspaces((cur) => {
         const next = cur.filter((w) => w.id !== id);
         if (activeWorkspaceId === id) setActiveWorkspaceId(next[0]?.id ?? null);
@@ -315,8 +315,8 @@ export default function App() {
   }, []);
 
   const deleteSession = useCallback(
-    async (id: string) => {
-      await api.deleteSession(id);
+    async (id: string, deleteFiles = false) => {
+      await api.deleteSession(id, deleteFiles);
       setSessions((cur) => {
         const next = cur.filter((s) => s.id !== id);
         if (activeSessionId === id) setActiveSessionId(next[0]?.id ?? null);
@@ -341,8 +341,8 @@ export default function App() {
   }, []);
 
   const deleteFlow = useCallback(
-    async (id: string) => {
-      await api.deleteFlow(id);
+    async (id: string, deleteFiles = false) => {
+      await api.deleteFlow(id, deleteFiles);
       setFlows((cur) => {
         const next = cur.filter((f) => f.id !== id);
         if (activeFlowId === id) setActiveFlowId(next[0]?.id ?? null);

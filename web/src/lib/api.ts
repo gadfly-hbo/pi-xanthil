@@ -320,14 +320,16 @@ const legacyApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
     }).then(json<{ ok: true }>),
-  deleteWorkspace: (id: string) => fetch(`/api/workspaces/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  deleteWorkspace: (id: string, deleteFiles = false) =>
+    fetch(`/api/workspaces/${id}${deleteFiles ? "?deleteFiles=true" : ""}`, { method: "DELETE" }).then(json<{ ok: true }>),
   renameSession: (id: string, title: string) =>
     fetch(`/api/sessions/${id}`, {
       method: "PATCH",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title }),
     }).then(json<{ ok: true }>),
-  deleteSession: (id: string) => fetch(`/api/sessions/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  deleteSession: (id: string, deleteFiles = false) =>
+    fetch(`/api/sessions/${id}${deleteFiles ? "?deleteFiles=true" : ""}`, { method: "DELETE" }).then(json<{ ok: true }>),
 
   // ---- flows ----
   listFlows: (workspaceId: string) =>
@@ -357,7 +359,8 @@ const legacyApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
     }).then(json<{ ok: true }>),
-  deleteFlow: (id: string) => fetch(`/api/flows/${id}`, { method: "DELETE" }).then(json<{ ok: true }>),
+  deleteFlow: (id: string, deleteFiles = false) =>
+    fetch(`/api/flows/${id}${deleteFiles ? "?deleteFiles=true" : ""}`, { method: "DELETE" }).then(json<{ ok: true }>),
   listWorkflowFavorites: () => fetch("/api/workflow-favorites").then(json<WorkflowFavorite[]>),
   favoriteFlow: (flowId: string) =>
     fetch(`/api/flows/${flowId}/favorite`, { method: "POST" }).then(json<WorkflowFavorite>),
@@ -426,11 +429,11 @@ const legacyApi = {
     }).then(json<WorkspacePath>),
   removeWorkspacePath: (workspaceId: string, pathId: number) =>
     fetch(`/api/workspaces/${workspaceId}/paths/${pathId}`, { method: "DELETE" }).then(json<{ ok: true }>),
-  pickLocalPath: (mode: "file" | "dir" = "file") =>
+  pickLocalPath: (mode: "file" | "dir" = "file", opts?: { folder?: string; sessionId?: string; flowId?: string }) =>
     fetch("/api/pick-path", {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ mode }),
+      body: JSON.stringify({ mode, folder: opts?.folder, sessionId: opts?.sessionId, flowId: opts?.flowId }),
     }).then(json<{ path: string }>),
 
   // ---- SQL connections ----

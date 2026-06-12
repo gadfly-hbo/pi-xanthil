@@ -162,7 +162,12 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
     if (!addingKind) return;
     setPicking(true);
     try {
-      const { path } = await api.pickLocalPath(addingKind === "dir" ? "dir" : "file");
+      // Default the dialog to this task's standard dir (session/flow scope; the
+      // standard is task-bound, workspace scope has no standard dir).
+      const taskScope = scope?.type === "session" ? { sessionId: scope.sessionId }
+        : scope?.type === "flow" ? { flowId: scope.flowId }
+        : {};
+      const { path } = await api.pickLocalPath(addingKind === "dir" ? "dir" : "file", { folder, ...taskScope });
       setDraft(path);
     } catch {
       // user cancelled — no-op

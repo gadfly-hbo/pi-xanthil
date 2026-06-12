@@ -293,6 +293,47 @@ P3(onto + KG)：
    status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
    字段: { status, title, brief }（无 dom —— 不指定域）。 */
 const HOTFIX = [
+  { status: "done", title: "工作区文件夹标准化（初始化模板 + 文件归类硬锁 + 报告输出路由）", brief:
+`✅ 总控自做并自检通过（2026-06-12，未派发，用户改判由总控直写最稳）。**重要：标准目录最终绑「任务」而非「工作区」**（用户决策：session 与 flow 各是一个任务、各自独立一棵 010_raw/020_clean/060_reports，workspace 根不建这三个）。落地：workspace-dirs.ts 改基目录相对(FOLDER_DIRS + sessionDir + standardDirIn + ensureStandardDirs + isInsideStandardDir 防 ../ 越狱)；createWorkspace 不建标准目录；createSession 预建 sessions/<id>/{三目录}、createFlow 在 flows/<id>/ 下补建；index.ts 6 处 fallback 按作用域落任务 060_reports(session→sessionDir、flow→flow.folderPath；run/tmp 不动)；addWorkspacePath 硬锁改任务级(session/flow 作用域且任务标准目录已存在才拦,workspace 作用域不锁)；/api/pick-path 收 sessionId/flowId、原生框 default location 定位任务标准子目录；readArtifactTree 缺失目录兜底空树；api.pickLocalPath opts 改 sessionId/flowId、FolderPathsPane.pick() 按 scope 传。仅新建生效(legacy 任务无目录则不锁)。server typecheck ✅ + web build ✅ + 隔离 grep ✅ 空匹配。output-paths.ts:98 draw_data 披露排除未动。**待用户提交 + 浏览器实跑点检**。
+
+— 原始 brief —
+【背景/目标】数据分析工作台缺文件夹规范，原始/聚合/报告散落致乱。本任务给工作区钉死一套极简物理目录标准，并让上传/输出都对齐：① 新建工作区自动生成标准目录 ② 上传时文件选择器默认定位到对应标准子目录、选了目录外文件后端拒绝(硬锁) ③ 报告固定输出到 060_reports。已与用户定稿三项决策：三位编号留间隔 / 硬锁走「原生选择器默认目录 + 后端路径前缀校验」/ 仅新建工作区生效(存量不迁移)。
+
+⚠️【总控判定·必读 —— 本条触接缝层 + 数据安全红线，执行须谨慎，终审不可跳过】
+- 多数改动落在接缝层(index.ts / db.ts，写权本归总控)与红线(读写 draw_data/clean_data 路径逻辑 + output-paths.ts 的"draw_data 永不向 LLM 披露")。本条因整体性强、不可干净拆域，破例整条下发，但改动须严格限定在下述行点，不顺手重构他处。
+- 铁律：全程禁止 import 任何 LLM 相关 api(chat*/generate*/extract*/clarify* …)；禁止把任何路径或文件内容送 LLM；绝对不得削弱 output-paths.ts(约 line 98)对 draw_data 的披露排除。
+- 改完必跑数据探索隔离 grep(见自检④)；务必回流总控终审；产生新约束/踩坑在回报中列出，由总控补 notes(执行者不维护 notes)。
+
+【文件夹标准(已定 · 物理目录 ↔ 现有逻辑标签，标签不改只钉死落点)】
+  draw_data(原始数据·只读·禁LLM)  →  010_raw/
+  clean_data(聚合数据·可被LLM读)   →  020_clean/
+  report(报告输出)                 →  060_reports/
+  030~050 不建，留扩展(中间产物/图表/外部情报)；现有 files/、.pi-sessions/ 保留不动。
+
+【改造点(5 处，均已定位)】
+① 映射常量(新建文件，非接缝骨架，可自由建)：server/src/workspace-dirs.ts，导出
+   - FOLDER_DIRS = { draw_data:"010_raw", clean_data:"020_clean", report:"060_reports" }
+   - standardDir(rootPath, folder) → join(rootPath, FOLDER_DIRS[folder])
+   - isInsideStandardDir(rootPath, folder, absPath)：两侧先 resolve，再用 path.relative(标准目录, absPath) 判定结果不以 ".." 开头且非绝对路径(防 ../ 越狱)。
+   全链路复用此文件，勿到处硬编码目录名。
+② 初始化模板：db.ts:781 createWorkspace —— 在现有 mkdir(files / .pi-sessions)旁，新增 mkdirSync 三个标准目录(用 FOLDER_DIRS，recursive:true)。仅影响新建工作区，存量不动。
+③ 自动输出路由：index.ts 共 5 处 fallbackOutputDir: workspace.rootPath(约 770 / 1704 / 1723 / 3182 / 5341 行)→ 改为 standardDir(workspace.rootPath, "report")。这样即使用户没在报告 tab 登记路径，报告也固定落 060_reports。output-paths.ts 的 selectOutputPath 优先级保持不变(仍优先 report tab 登记目录)。
+④ 选择器默认目录：index.ts:4220 /api/pick-path —— 接收 workspaceId + folder 入参，给 osascript 的 choose file/folder 加 default location(POSIX file 形式的 standardDir(...))，让原生框默认开在对应标准子目录。前端 FolderPathsPane.tsx 的 pick() 调用处把当前 scope 的 workspaceId 与 folder 传过去(仅 workspace scope 适用)。
+⑤ 后端硬锁校验：db.ts:1799 addWorkspacePath —— 新增校验：当 folder ∈ {draw_data,clean_data,report} 且为 workspace scope 时，path 必须 isInsideStandardDir(workspace.rootPath, folder, resolve(path))，否则 throw new Error("请先把文件放进对应标准目录(010_raw/020_clean/060_reports)再添加")。FolderPathsPane.tsx 的 confirm() 已有 catch→setAddError 会展示该报错，确认文案对用户可读即可。
+
+【红线/边界】
+- 接缝层 index.ts/db.ts 改动只准落在上述行点，不扩散。
+- 不碰 DataExplorationPane.tsx / data-exploration 子树。
+- output-paths.ts 仅按需读；若要动只改 fallback 相关，draw_data 披露排除(约 line 98)绝对保留。
+
+【自检/验收】
+1. server typecheck：cd server && npm run typecheck → 绿。
+2. web build：cd web && npm run build → 绿。
+3. 功能实跑(强烈建议 npm run dev 走一遍)：新建工作区 → 磁盘出现 010_raw/020_clean/060_reports；聚合数据 tab 点添加 → 选择器默认开在 020_clean，选目录外文件提交被拒并有可读提示；不登记报告路径时让 agent 产报告 → 落 060_reports。
+4. 数据探索 LLM 隔离 grep(必跑，应空匹配)：
+   grep -rE "(generate|chat|extract|clarify|sink|distill).*api\\." web/src/components/DataExplorationPane.tsx web/src/components/data-exploration/
+
+【收尾】不执行任何 git。改完列改动文件清单，回流总控终审；新踩坑/约束在回报中列出交总控补 notes。按 /px-hotfix SOP 执行。` },
   { status: "done", title: "推广断点续传到其余 LLM 长任务 Pane（黄金策/onto抽取/聚合LLM/报告审核 等 8 处）", brief:
 `✅ 总控终审通过（2026-06-11）：resumableTask.ts 落地，GoldenStrategy/Ontology/Aggregate/ReportReview/Presentation/BusinessRequirement/Toc/DecisionTree 8 个 Pane 均接 useResumableTask；web build 绿。
 

@@ -1,8 +1,10 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
 import { join } from "node:path";
-import { mkdirSync, statSync } from "node:fs";
+import { existsSync, mkdirSync, statSync } from "node:fs";
+import { resolve } from "node:path";
 import { DB_PATH, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
+import { FOLDER_DIRS, ensureStandardDirs, isInsideStandardDir, sessionDir, standardDirIn } from "./workspace-dirs.ts";
 import type { AnalysisCase, AnalysisCaseInput, AnaxGateConfig, AnalysisStandard, AnalysisStandardKind, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalInput, ChangeProposalStatus, CreateRuleResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, KgEdge, KgNode, KgNodeType, KgRelation, MemoryEvalVariant, MemoryEvaluation, MemoryEvaluationDetail, MemoryEvaluationResult, MemoryInjectionRecord, MemoryInjectionSnapshot, MemoryProposal, MemoryProposalRiskFlag, MemoryFailureAttribution, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, RuleConflict, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, PiUsage, PredictionResult, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, SkillCurationProposalRecord, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillEvalSet, SkillEvalTask, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, StaleNode, StaleNodeReason, StoredFlowMessage, StoredMessage, TokenUsageStats, TokenUsageTargetKind, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, TraceErrorType, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
 import { parseEvaluationError, serializeEvaluationError } from "./evaluation-errors.ts";
 import { initSharedTables, backfillMemoryEnablements, listEnabledItemIds, enableForOrigin } from "./db/shared.ts";
@@ -784,6 +786,9 @@ export function createWorkspace(name: string): Workspace {
   mkdirSync(rootPath, { recursive: true });
   mkdirSync(join(rootPath, "files"), { recursive: true });
   mkdirSync(join(rootPath, ".pi-sessions"), { recursive: true });
+  // Standard data-organization dirs (010_raw/020_clean/060_reports) are bound to
+  // the task, not the workspace — created per session (createSession) and per
+  // flow (createFlow), so the workspace root intentionally carries none.
   const createdAt = Date.now();
   db.prepare(
     "INSERT INTO workspaces (id, name, root_path, created_at) VALUES (?, ?, ?, ?)",
@@ -854,6 +859,9 @@ export function deleteWorkspace(id: string): void {
 export function createSession(workspaceId: string, title: string, workflowId: string | null = null): Session {
   const id = randomUUID();
   const now = Date.now();
+  // Pre-build the session's task-bound standard dirs (010_raw/020_clean/060_reports).
+  const ws = getWorkspace(workspaceId);
+  if (ws) ensureStandardDirs(sessionDir(ws.rootPath, id));
   db.prepare(
     "INSERT INTO sessions (id, workspace_id, title, workflow_id, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
   ).run(id, workspaceId, title, workflowId, now, now);
@@ -998,6 +1006,8 @@ export function createFlow(
   if (!ws) throw new Error("workspace not found");
   const folderPath = join(ws.rootPath, "flows", id);
   mkdirSync(folderPath, { recursive: true });
+  // Flow is a task: give it the same standard dirs (010_raw/020_clean/060_reports).
+  ensureStandardDirs(folderPath);
   const now = Date.now();
   db.prepare(
     "INSERT INTO flows (id, workspace_id, name, folder_path, source_name, source_session_id, generation_status, generation_error, kind, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
@@ -1799,6 +1809,26 @@ const VALID_PATH_KINDS = new Set<string>(["file", "dir"]);
 export function addWorkspacePath(workspaceId: string, folder: string, path: string, kind: string, sessionId: string | null = null, flowId: string | null = null, fileHash: string | null = null): WorkspacePath {
   if (!VALID_FOLDERS.has(folder)) throw new Error(`invalid folder: ${folder}`);
   if (!VALID_PATH_KINDS.has(kind)) throw new Error(`invalid path kind: ${kind}`);
+  // Hard-lock: task-scoped (session/flow) paths must live inside that task's
+  // standard dir. Bound to the task, not the workspace — so workspace-scope adds
+  // (no active task) are not locked. Only enforced when the dir exists, so legacy
+  // tasks created before the standard keep accepting arbitrary paths (仅新建生效).
+  if (sessionId !== null || flowId !== null) {
+    let baseDir: string | undefined;
+    if (flowId !== null) {
+      baseDir = getFlow(flowId)?.folderPath;
+    } else if (sessionId !== null) {
+      const session = getSession(sessionId);
+      const ws = session ? getWorkspace(session.workspaceId) : undefined;
+      if (ws) baseDir = sessionDir(ws.rootPath, sessionId);
+    }
+    if (baseDir) {
+      const f = folder as WorkspaceFolderName;
+      if (existsSync(standardDirIn(baseDir, f)) && !isInsideStandardDir(baseDir, f, resolve(path))) {
+        throw new Error(`请先把文件放进该任务的标准目录（${FOLDER_DIRS[f]}）再添加`);
+      }
+    }
+  }
   const now = Date.now();
   const result = db
     .prepare("INSERT INTO workspace_paths (workspace_id, session_id, flow_id, folder, path, kind, file_hash, added_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)")

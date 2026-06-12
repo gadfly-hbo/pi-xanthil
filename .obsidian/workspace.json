@@ -13,12 +13,12 @@
             "state": {
               "type": "markdown",
               "state": {
-                "file": "handoff-工作流.md",
+                "file": "docs/notes-viz.md",
                 "mode": "source",
                 "source": false
               },
               "icon": "lucide-file",
-              "title": "handoff-工作流"
+              "title": "notes-viz"
             }
           }
         ]
@@ -185,6 +185,10 @@
   },
   "active": "6d6ba93273ff25fa",
   "lastOpenFiles": [
+    "docs/notes-infra.md",
+    "docs/notes-engine.md",
+    "docs/notes-data.md",
+    "docs/backlog/onto-xanthil-全局本体扩展.md",
     "web/dist/assets/index-BsKttAUP.css",
     "web/dist/assets/index-B4A8Vhlw.js",
     "web/src/components/OldMemberRecallPane.tsx",
@@ -197,7 +201,6 @@
     "web/dist/assets/index-DMLcA4nd.css",
     "web/dist/assets/index-C2wgreRl.js",
     "handoff- Dashboard.md",
-    "web/dist/assets/index-4RPeQC3o.css",
     "handoff-model-lab.md",
     "handoff-计算工具.md",
     "handoff-缓存命中.md",

@@ -3,6 +3,8 @@ import { execFile, execFileSync } from "node:child_process";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
+import { sessionDir, standardDirIn } from "./workspace-dirs.ts";
+import { moveManagedDirToTrash } from "./trash.ts";
 import { registerDomainRoutes } from "./routes/index.ts";
 import { parseAggregationBuffer } from "./bi-dataset-parser.ts";
 import express from "express";
@@ -767,7 +769,7 @@ async function generateGoldenStrategyArtifact(params: {
     const target = resolveOutputTarget(listWorkspacePaths(session.workspaceId), {
       workspaceId: session.workspaceId,
       sessionId: session.id,
-      fallbackOutputDir: workspace.rootPath,
+      fallbackOutputDir: standardDirIn(sessionDir(workspace.rootPath, session.id), "report"),
     });
     validateArtifactPath(path, target.source);
     const report = readFlowFile(target.outputDir, path).content;
@@ -1079,7 +1081,12 @@ app.patch("/api/workspaces/:id", (req, res) => {
   res.json({ ok: true });
 });
 app.delete("/api/workspaces/:id", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  if (req.query.deleteFiles === "true") {
+    try { moveManagedDirToTrash(workspace.rootPath); }
+    catch (err) { return res.status(500).json({ error: String(err) }); }
+  }
   deleteWorkspace(req.params.id);
   res.json({ ok: true });
 });
@@ -1104,7 +1111,15 @@ app.patch("/api/sessions/:id", (req, res) => {
   res.json({ ok: true });
 });
 app.delete("/api/sessions/:id", (req, res) => {
-  if (!getSession(req.params.id)) return res.status(404).json({ error: "session not found" });
+  const session = getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  if (req.query.deleteFiles === "true") {
+    const ws = getWorkspace(session.workspaceId);
+    if (ws) {
+      try { moveManagedDirToTrash(sessionDir(ws.rootPath, session.id)); }
+      catch (err) { return res.status(500).json({ error: String(err) }); }
+    }
+  }
   deleteSession(req.params.id);
   res.json({ ok: true });
 });
@@ -1701,7 +1716,7 @@ app.get("/api/sessions/:id/artifacts/tree", (req, res) => {
   const target = resolveOutputTarget(listWorkspacePaths(session.workspaceId), {
     workspaceId: session.workspaceId,
     sessionId: session.id,
-    fallbackOutputDir: workspace.rootPath,
+    fallbackOutputDir: standardDirIn(sessionDir(workspace.rootPath, session.id), "report"),
   });
   try {
     res.json({ rootPath: target.outputDir, source: target.source, hasConfiguredReportPath: target.hasConfiguredReportPath, tree: readArtifactTree(target.outputDir) });
@@ -1720,7 +1735,7 @@ app.get("/api/sessions/:id/artifacts/file", (req, res) => {
   const target = resolveOutputTarget(listWorkspacePaths(session.workspaceId), {
     workspaceId: session.workspaceId,
     sessionId: session.id,
-    fallbackOutputDir: workspace.rootPath,
+    fallbackOutputDir: standardDirIn(sessionDir(workspace.rootPath, session.id), "report"),
   });
   try {
     validateArtifactPath(path, target.source);
@@ -1736,6 +1751,10 @@ app.get("/api/sessions/:id/artifacts/file", (req, res) => {
 });
 
 function readArtifactTree(rootPath: string): ReturnType<typeof readTree> {
+  // The report fallback now points at the standard 060_reports dir, which may
+  // not exist yet (legacy workspaces, or no report written). Treat missing as
+  // an empty tree instead of letting readTree's statSync throw.
+  if (!existsSync(rootPath)) return { name: "", path: "", kind: "dir", mtime: 0, children: [] };
   const filter = (node: ReturnType<typeof readTree>): ReturnType<typeof readTree> => ({
     ...node,
     children: node.children
@@ -3179,7 +3198,7 @@ app.post("/api/decision-tree/generate", async (req, res) => {
       const target = resolveOutputTarget(listWorkspacePaths(session.workspaceId), {
         workspaceId: session.workspaceId,
         sessionId: session.id,
-        fallbackOutputDir: workspace.rootPath,
+        fallbackOutputDir: standardDirIn(sessionDir(workspace.rootPath, session.id), "report"),
       });
       validateArtifactPath(path, target.source);
       const report = readFlowFile(target.outputDir, path).content;
@@ -3389,7 +3408,12 @@ app.patch("/api/flows/:id", (req, res) => {
   res.json({ ok: true });
 });
 app.delete("/api/flows/:id", (req, res) => {
-  if (!getFlow(req.params.id)) return res.status(404).json({ error: "flow not found" });
+  const flow = getFlow(req.params.id);
+  if (!flow) return res.status(404).json({ error: "flow not found" });
+  if (req.query.deleteFiles === "true") {
+    try { moveManagedDirToTrash(flow.folderPath); }
+    catch (err) { return res.status(500).json({ error: String(err) }); }
+  }
   deleteFlow(req.params.id);
   res.json({ ok: true });
 });
@@ -4219,10 +4243,31 @@ app.get("/api/workspace-paths/:pathId/file-binary", (req, res) => {
 // ---- macOS native file/folder picker ----
 app.post("/api/pick-path", (req, res) => {
   const mode = String(req.body?.mode ?? "file");
-  const script =
-    mode === "dir"
-      ? "POSIX path of (choose folder)"
-      : "POSIX path of (choose file)";
+  // Default the native dialog to the task's standard dir (session/flow scope; the
+  // standard is task-bound). Only when it exists — else a plain chooser.
+  const folder = req.body?.folder ? String(req.body.folder) : "";
+  const sessionId = req.body?.sessionId ? String(req.body.sessionId) : "";
+  const flowId = req.body?.flowId ? String(req.body.flowId) : "";
+  let defaultLocation = "";
+  if (folder === "draw_data" || folder === "clean_data" || folder === "report") {
+    let baseDir = "";
+    if (flowId) {
+      baseDir = getFlow(flowId)?.folderPath ?? "";
+    } else if (sessionId) {
+      const session = getSession(sessionId);
+      const ws = session ? getWorkspace(session.workspaceId) : undefined;
+      if (ws) baseDir = sessionDir(ws.rootPath, sessionId);
+    }
+    if (baseDir) {
+      const dir = standardDirIn(baseDir, folder);
+      if (existsSync(dir)) defaultLocation = dir;
+    }
+  }
+  const chooser = mode === "dir" ? "choose folder" : "choose file";
+  const withDefault = defaultLocation
+    ? `${chooser} default location (POSIX file ${JSON.stringify(defaultLocation)})`
+    : chooser;
+  const script = `POSIX path of (${withDefault})`;
   execFile("osascript", ["-e", script], (err, stdout) => {
     if (err) return res.status(400).json({ error: "cancelled" });
     res.json({ path: stdout.trim() });
@@ -5338,7 +5383,7 @@ async function handleSend(
   const contextPrefix = buildRegisteredPathContext(sessionPaths, {
     workspaceId: session.workspaceId,
     sessionId: session.id,
-    fallbackOutputDir: ws_.rootPath,
+    fallbackOutputDir: standardDirIn(sessionDir(ws_.rootPath, session.id), "report"),
   }, sessionAnalyses);
   let businessRequirementContext = "";
   try {
@@ -5421,7 +5466,7 @@ async function handleSendFlow(
   const contextPrefix = buildRegisteredPathContext(flowChatPaths, {
     workspaceId: flow.workspaceId,
     flowId: flow.id,
-    fallbackOutputDir: flow.folderPath,
+    fallbackOutputDir: standardDirIn(flow.folderPath, "report"),
   }, flowChatAnalyses);
 
   let capturedText = "";

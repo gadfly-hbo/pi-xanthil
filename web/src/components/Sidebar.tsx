@@ -12,7 +12,10 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { useTheme } from "@/lib/theme";
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import type { Session, Workspace } from "@/types";
+
+type PendingDelete = { kind: "ws"; id: string; name: string } | { kind: "session"; id: string; name: string };
 
 interface Props {
   workspaces: Workspace[];
@@ -24,9 +27,9 @@ interface Props {
   onNewWorkspace: (name: string) => void;
   onNewSession: () => void;
   onRenameWorkspace: (id: string, name: string) => void;
-  onDeleteWorkspace: (id: string) => void;
+  onDeleteWorkspace: (id: string, deleteFiles: boolean) => void;
   onRenameSession: (id: string, title: string) => void;
-  onDeleteSession: (id: string) => void;
+  onDeleteSession: (id: string, deleteFiles: boolean) => void;
   onCollapse: () => void;
   onOpenSettings: () => void;
 }
@@ -59,6 +62,7 @@ export function Sidebar(p: Props) {
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
   const [editing, setEditing] = useState<{ kind: "ws" | "session"; id: string; value: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
 
   const [width, setWidth] = useState(() => Number(localStorage.getItem("xanthil-sidebar-w")) || 264);
   const dragging = useRef(false);
@@ -162,9 +166,7 @@ export function Sidebar(p: Props) {
                     <button
                       className={rowActionBtn}
                       title="删除"
-                      onClick={() => {
-                        if (confirm(`删除工作区「${w.name}」及其全部会话记录？（磁盘文件保留）`)) p.onDeleteWorkspace(w.id);
-                      }}
+                      onClick={() => setPendingDelete({ kind: "ws", id: w.id, name: w.name })}
                     >
                       <Trash2 className="h-3.5 w-3.5" strokeWidth={ICON} />
                     </button>
@@ -241,9 +243,7 @@ export function Sidebar(p: Props) {
                       <button
                         className={rowActionBtn}
                         title="删除"
-                        onClick={() => {
-                          if (confirm(`删除会话「${s.title}」？`)) p.onDeleteSession(s.id);
-                        }}
+                        onClick={() => setPendingDelete({ kind: "session", id: s.id, name: s.title })}
                       >
                         <Trash2 className="h-3.5 w-3.5" strokeWidth={ICON} />
                       </button>
@@ -280,6 +280,23 @@ export function Sidebar(p: Props) {
         onMouseDown={onDragStart}
         className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-neutral-300 dark:hover:bg-neutral-700"
       />
+
+      {pendingDelete && (
+        <ConfirmDeleteDialog
+          title={pendingDelete.kind === "ws"
+            ? `删除工作区「${pendingDelete.name}」及其全部会话记录？`
+            : `删除会话「${pendingDelete.name}」？`}
+          fileToggleLabel={pendingDelete.kind === "ws"
+            ? "同时删除该工作区的文档（含其下所有任务文件夹）"
+            : "同时删除该会话的文档文件夹"}
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={(deleteFiles) => {
+            if (pendingDelete.kind === "ws") p.onDeleteWorkspace(pendingDelete.id, deleteFiles);
+            else p.onDeleteSession(pendingDelete.id, deleteFiles);
+            setPendingDelete(null);
+          }}
+        />
+      )}
     </aside>
   );
 }

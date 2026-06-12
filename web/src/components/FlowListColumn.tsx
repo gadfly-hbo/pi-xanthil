@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { ChevronRight, PanelLeftClose, Pencil, Plus, Trash2, Workflow } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
 import type { Flow } from "@/types";
 
 /**
@@ -14,7 +15,7 @@ interface Props {
   onSelectFlow: (id: string) => void;
   onNewFlow: (kind: "single" | "multi") => void;
   onRenameFlow: (id: string, name: string) => void;
-  onDeleteFlow: (id: string) => void;
+  onDeleteFlow: (id: string, deleteFiles: boolean) => void;
 }
 
 const rowActionBtn =
@@ -23,6 +24,7 @@ const rowActionBtn =
 export function FlowListColumn({ flows, activeFlowId, onSelectFlow, onNewFlow, onRenameFlow, onDeleteFlow }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
+  const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
 
   // 排除 AnaX 模板派生 flow（与原侧栏过滤保持一致）。
   const visible = flows.filter((f) => f.kind === "multi" && f.sourceName !== "AnaX v3.0" && f.sourceName !== "AnaX v3.0 Quick");
@@ -105,9 +107,7 @@ export function FlowListColumn({ flows, activeFlowId, onSelectFlow, onNewFlow, o
                 <button
                   className={rowActionBtn}
                   title="删除"
-                  onClick={() => {
-                    if (confirm(`删除工作流「${f.name}」？（磁盘文件保留）`)) onDeleteFlow(f.id);
-                  }}
+                  onClick={() => setPendingDelete({ id: f.id, name: f.name })}
                 >
                   <Trash2 className="h-3.5 w-3.5" strokeWidth={1.75} />
                 </button>
@@ -119,6 +119,18 @@ export function FlowListColumn({ flows, activeFlowId, onSelectFlow, onNewFlow, o
           <p className="px-2 py-6 text-center text-[11.5px] leading-5 text-neutral-400 dark:text-neutral-500">还没有工作流，点上方 + 新建。</p>
         )}
       </div>
+
+      {pendingDelete && (
+        <ConfirmDeleteDialog
+          title={`删除工作流「${pendingDelete.name}」？`}
+          fileToggleLabel="同时删除该工作流的文档文件夹"
+          onCancel={() => setPendingDelete(null)}
+          onConfirm={(deleteFiles) => {
+            onDeleteFlow(pendingDelete.id, deleteFiles);
+            setPendingDelete(null);
+          }}
+        />
+      )}
     </aside>
   );
 }
