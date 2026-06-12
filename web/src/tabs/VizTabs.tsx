@@ -4,6 +4,7 @@ import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { PresentationVersionPane } from "@/components/PresentationVersionPane";
 import { ReportReviewPane } from "@/components/ReportReviewPane";
 import { GoldenStrategyPane } from "@/components/GoldenStrategyPane";
+import { ActionsPane } from "@/components/ActionsPane";
 import { TracePane } from "@/components/TracePane";
 import { TokenStatsPane } from "@/components/TokenStatsPane";
 import { KnowledgeGraphPane } from "@/components/KnowledgeGraphPane";
@@ -33,10 +34,16 @@ export function VizTabs({ ctx }: { ctx: TabContext }) {
         <ReportReviewPane scope={ctx.folderScope} model={ctx.model} models={ctx.models} onGenerated={bump} />
       )}
       {activeTab === "explore" && activeSubTab === "golden_strategy" && (
-        <GoldenStrategyPane scope={{ type: "session", sessionId: ctx.activeSessionId }} models={ctx.models} onGenerated={bump} />
+        <GoldenStrategyPane scope={{ type: "session", sessionId: ctx.activeSessionId }} models={ctx.models} onGenerated={bump} onNavigateToActions={() => ctx.setActiveSubTab("actions")} />
       )}
       {activeTab === "multi" && activeSubTab === "golden_strategy" && (
-        <GoldenStrategyPane scope={{ type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} onGenerated={bump} />
+        <GoldenStrategyPane scope={{ type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} onGenerated={bump} onNavigateToActions={() => ctx.setActiveSubTab("actions")} />
+      )}
+      {activeTab === "explore" && activeSubTab === "actions" && (
+        <ActionsPane scope={{ type: "session", sessionId: ctx.activeSessionId }} models={ctx.models} />
+      )}
+      {activeTab === "multi" && activeSubTab === "actions" && (
+        <ActionsPane scope={{ type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} />
       )}
 
       {activeTab === "rule_memory" && activeSubTab === "trace" && (

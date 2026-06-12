@@ -17,6 +17,15 @@ import type {
   OntoActionInput,
   OntoPrompt,
   OntoPromptInput,
+  ActionItem,
+  ActionTask,
+  ActionFeedback,
+  ActionScene,
+  ActionLifecycle,
+  ActionPriority,
+  ActionEffort,
+  ActionItemStatus,
+  ActionTaskStatus,
 } from "../types.ts";
 
 export interface DbDashboard {
@@ -50,6 +59,60 @@ export function initVizTables(): void {
     // ignore
   }
   initOntoTables();
+  initActionTables();
+}
+
+function initActionTables(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS action_items (
+      id TEXT PRIMARY KEY,
+      source_kind TEXT NOT NULL,
+      scope_id TEXT NOT NULL,
+      run_id TEXT,
+      report_path TEXT NOT NULL,
+      title TEXT NOT NULL,
+      rationale TEXT NOT NULL,
+      scene TEXT NOT NULL,
+      lifecycle TEXT NOT NULL,
+      expected_impact TEXT NOT NULL,
+      metric_ref TEXT,
+      priority TEXT NOT NULL,
+      effort TEXT NOT NULL,
+      confidence REAL NOT NULL,
+      status TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS action_tasks (
+      id TEXT PRIMARY KEY,
+      action_item_id TEXT NOT NULL REFERENCES action_items(id) ON DELETE CASCADE,
+      title TEXT NOT NULL,
+      owner TEXT NOT NULL,
+      due_date TEXT,
+      status TEXT NOT NULL,
+      priority TEXT NOT NULL,
+      note TEXT NOT NULL DEFAULT '',
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS action_feedback (
+      id TEXT PRIMARY KEY,
+      task_id TEXT NOT NULL REFERENCES action_tasks(id) ON DELETE CASCADE,
+      adopted INTEGER NOT NULL,
+      outcome TEXT NOT NULL DEFAULT '',
+      metric_delta TEXT NOT NULL DEFAULT '',
+      review TEXT NOT NULL DEFAULT '',
+      score INTEGER NOT NULL DEFAULT 0,
+      created_at INTEGER NOT NULL
+    );
+  `);
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_action_items_scope ON action_items(scope_id, report_path);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_action_tasks_item ON action_tasks(action_item_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_action_feedback_task ON action_feedback(task_id);`);
+  } catch {
+    // ignore
+  }
 }
 
 /**
@@ -695,4 +758,132 @@ export function updateOntoPrompt(id: string, patch: Partial<OntoPromptInput>): O
 
 export function deleteOntoPrompt(id: string): boolean {
   return db.prepare("DELETE FROM onto_prompts WHERE id = ?").run(id).changes > 0;
+}
+
+// ============================================================================
+// Actions（行动闭环）
+// ============================================================================
+
+interface ActionItemRow {
+  id: string; source_kind: string; scope_id: string; run_id: string | null; report_path: string;
+  title: string; rationale: string; scene: string; lifecycle: string; expected_impact: string;
+  metric_ref: string | null; priority: string; effort: string; confidence: number;
+  status: string; created_at: number; updated_at: number;
+}
+
+function parseActionItem(r: ActionItemRow): ActionItem {
+  return {
+    id: r.id, sourceKind: r.source_kind as "session" | "flow-run", scopeId: r.scope_id, runId: r.run_id ?? undefined,
+    reportPath: r.report_path, title: r.title, rationale: r.rationale,
+    scene: r.scene ? (r.scene as ActionScene) : undefined,
+    lifecycle: r.lifecycle ? (r.lifecycle as ActionLifecycle) : undefined,
+    expectedImpact: r.expected_impact, metricRef: r.metric_ref ?? undefined,
+    priority: r.priority as ActionPriority, effort: r.effort as ActionEffort, confidence: r.confidence,
+    status: r.status as ActionItemStatus,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function listActionItems(scopeId: string, reportPath?: string): ActionItem[] {
+  if (reportPath) {
+    return (db.prepare("SELECT * FROM action_items WHERE scope_id = ? AND report_path = ? ORDER BY created_at DESC").all(scopeId, reportPath) as unknown as ActionItemRow[]).map(parseActionItem);
+  }
+  return (db.prepare("SELECT * FROM action_items WHERE scope_id = ? ORDER BY created_at DESC").all(scopeId) as unknown as ActionItemRow[]).map(parseActionItem);
+}
+
+export function createActionItem(input: Omit<ActionItem, "id" | "createdAt" | "updatedAt">): ActionItem {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO action_items (id, source_kind, scope_id, run_id, report_path, title, rationale, scene, lifecycle, expected_impact, metric_ref, priority, effort, confidence, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, input.sourceKind, input.scopeId, input.runId ?? null, input.reportPath, input.title, input.rationale, input.scene ?? "", input.lifecycle ?? "", input.expectedImpact, input.metricRef ?? null, input.priority, input.effort, input.confidence, input.status, now, now);
+  return { ...input, id, createdAt: now, updatedAt: now };
+}
+
+export function updateActionItem(id: string, patch: Partial<Omit<ActionItem, "id" | "createdAt" | "updatedAt">>): ActionItem | undefined {
+  const r = db.prepare("SELECT * FROM action_items WHERE id = ?").get(id) as unknown as ActionItemRow | undefined;
+  if (!r) return undefined;
+  const existing = parseActionItem(r);
+  const next = { ...existing, ...patch, updatedAt: Date.now() };
+  db.prepare(
+    "UPDATE action_items SET source_kind = ?, scope_id = ?, run_id = ?, report_path = ?, title = ?, rationale = ?, scene = ?, lifecycle = ?, expected_impact = ?, metric_ref = ?, priority = ?, effort = ?, confidence = ?, status = ?, updated_at = ? WHERE id = ?"
+  ).run(next.sourceKind, next.scopeId, next.runId ?? null, next.reportPath, next.title, next.rationale, next.scene ?? "", next.lifecycle ?? "", next.expectedImpact, next.metricRef ?? null, next.priority, next.effort, next.confidence, next.status, next.updatedAt, id);
+  return next;
+}
+
+export function deleteActionItem(id: string): boolean {
+  return db.prepare("DELETE FROM action_items WHERE id = ?").run(id).changes > 0;
+}
+
+interface ActionTaskRow {
+  id: string; action_item_id: string; title: string; owner: string; due_date: string | null;
+  status: string; priority: string; note: string; created_at: number; updated_at: number;
+}
+
+function parseActionTask(r: ActionTaskRow): ActionTask {
+  return {
+    id: r.id, actionItemId: r.action_item_id, title: r.title, owner: r.owner,
+    dueDate: r.due_date ?? undefined, status: r.status as ActionTaskStatus, priority: r.priority as ActionPriority,
+    note: r.note, createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function listActionTasks(actionItemId?: string, scopeId?: string): ActionTask[] {
+  if (actionItemId) {
+    return (db.prepare("SELECT * FROM action_tasks WHERE action_item_id = ? ORDER BY created_at DESC").all(actionItemId) as unknown as ActionTaskRow[]).map(parseActionTask);
+  }
+  if (scopeId) {
+    return (db.prepare(`
+      SELECT t.* FROM action_tasks t
+      JOIN action_items i ON t.action_item_id = i.id
+      WHERE i.scope_id = ? ORDER BY t.created_at DESC
+    `).all(scopeId) as unknown as ActionTaskRow[]).map(parseActionTask);
+  }
+  return [];
+}
+
+export function createActionTask(input: Omit<ActionTask, "id" | "createdAt" | "updatedAt">): ActionTask {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO action_tasks (id, action_item_id, title, owner, due_date, status, priority, note, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, input.actionItemId, input.title, input.owner, input.dueDate ?? null, input.status, input.priority, input.note ?? "", now, now);
+  return { ...input, id, createdAt: now, updatedAt: now };
+}
+
+export function updateActionTask(id: string, patch: Partial<Omit<ActionTask, "id" | "createdAt" | "updatedAt">>): ActionTask | undefined {
+  const r = db.prepare("SELECT * FROM action_tasks WHERE id = ?").get(id) as unknown as ActionTaskRow | undefined;
+  if (!r) return undefined;
+  const existing = parseActionTask(r);
+  const next = { ...existing, ...patch, updatedAt: Date.now() };
+  db.prepare(
+    "UPDATE action_tasks SET action_item_id = ?, title = ?, owner = ?, due_date = ?, status = ?, priority = ?, note = ?, updated_at = ? WHERE id = ?"
+  ).run(next.actionItemId, next.title, next.owner, next.dueDate ?? null, next.status, next.priority, next.note, next.updatedAt, id);
+  return next;
+}
+
+interface ActionFeedbackRow {
+  id: string; task_id: string; adopted: number; outcome: string; metric_delta: string;
+  review: string; score: number; created_at: number;
+}
+
+function parseActionFeedback(r: ActionFeedbackRow): ActionFeedback {
+  return {
+    id: r.id, taskId: r.task_id, adopted: r.adopted === 1, outcome: r.outcome,
+    metricDelta: r.metric_delta, review: r.review, score: r.score, createdAt: r.created_at,
+  };
+}
+
+export function createActionFeedback(input: Omit<ActionFeedback, "id" | "createdAt">): ActionFeedback {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO action_feedback (id, task_id, adopted, outcome, metric_delta, review, score, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?)"
+  ).run(id, input.taskId, input.adopted ? 1 : 0, input.outcome, input.metricDelta, input.review, input.score ?? 0, now);
+  return { ...input, id, createdAt: now };
+}
+
+export function getActionFeedback(taskId: string): ActionFeedback | undefined {
+  const r = db.prepare("SELECT * FROM action_feedback WHERE task_id = ?").get(taskId) as unknown as ActionFeedbackRow | undefined;
+  return r ? parseActionFeedback(r) : undefined;
 }

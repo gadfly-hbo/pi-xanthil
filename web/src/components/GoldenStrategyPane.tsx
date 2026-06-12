@@ -214,10 +214,12 @@ export function GoldenStrategyPane({
   scope,
   models,
   onGenerated,
+  onNavigateToActions,
 }: {
   scope: Scope;
   models: PiModel[];
   onGenerated?: () => void;
+  onNavigateToActions?: () => void;
 }) {
   const [reports, setReports] = useState<ReportOption[]>([]);
   const [selectedReportId, setSelectedReportId] = useState("");
@@ -581,15 +583,29 @@ export function GoldenStrategyPane({
             <Sparkles className="h-3.5 w-3.5 text-violet-500" strokeWidth={1.75} />
             业务洞见
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto p-3">
-            {activeResult ? (
-              <p className="text-[12px] leading-5 text-neutral-400">
-                基于「{ANALYSIS_MODELS.find((item) => item.id === activeResult.analysisModel)?.label ?? activeResult.analysisModel}」决策模型演绎结果提炼业务洞见，即将推出。
-              </p>
-            ) : (
-              <p className="text-[12px] leading-5 text-neutral-400">
-                生成决策模型图示后，这里将基于演绎结果自动提炼业务洞见。
-              </p>
+          <div className="min-h-0 flex-1 overflow-y-auto p-3 flex flex-col justify-between">
+            <div>
+              {activeResult ? (
+                <p className="text-[12px] leading-5 text-neutral-400">
+                  基于「{ANALYSIS_MODELS.find((item) => item.id === activeResult.analysisModel)?.label ?? activeResult.analysisModel}」决策模型演绎结果提炼业务洞见，即将推出。
+                </p>
+              ) : (
+                <p className="text-[12px] leading-5 text-neutral-400">
+                  生成决策模型图示后，这里将基于演绎结果自动提炼业务洞见。
+                </p>
+              )}
+            </div>
+            
+            {onNavigateToActions && (
+              <div className="mt-4 pt-4 border-t border-neutral-200 dark:border-neutral-800">
+                <button
+                  onClick={onNavigateToActions}
+                  className="w-full flex items-center justify-center gap-1.5 py-2 px-3 rounded-md bg-emerald-50 text-emerald-700 hover:bg-emerald-100 dark:bg-emerald-950/30 dark:text-emerald-300 dark:hover:bg-emerald-900/40 transition-colors text-[12px] font-medium border border-emerald-200 dark:border-emerald-800"
+                >
+                  <Sparkles className="h-3.5 w-3.5" />
+                  去提取行动项 ➔
+                </button>
+              </div>
             )}
           </div>
         </aside>

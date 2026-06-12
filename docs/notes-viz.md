@@ -7,19 +7,19 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-11 · V 域本体(Ontology)及相关可视化组件全局池化改造收尾。
+- 最近更新：2026-06-12 · 新增「业务行动」（Actions）提取、执行、反馈三段闭环功能。
 - 进度：
-  - **OntologyPane**：完成本体列表全局池化，每本体增加「本工作区启用」复选框。开关状态直接与 `workspace_memory_enablements` 的 `ontology` 类型双向绑定。本体内的对象、关系、指标、逻辑和动作不再独立设 enable 开关，均跟随所属的父级本体隐式生效。
-  - **KnowledgeGraphPane / KG Projection**：核对确认 `server/src/knowledge-graph.ts` 中 `syncKnowledgeGraph` 已通过 `listEnabledItemIds` 实现对本工作区启用条目（rules/standards/metrics/biz_ctx）的过滤，KG 对齐了全局池投影口径，无需额外独立 enable 状态管理。
-  - **TracePane**：决策保持原状，维持 per-workspace 不进池行为不变。
-- 校验：`cd web && npm run typecheck` ✅；`cd web && npm run build` ✅ built。
+  - **ActionsPane**：完成探索及工作流域的“提取行动 → 任务分配执行 → 结果反馈”三段式闭环 UI（继承 neutral/emerald/amber 视觉规范）。支持通过报告源读取策略内容。
+  - **提取机制**：通过 `POST /api/actions/extract` 利用大模型能力解析报告文本为 `ActionItems` JSON，隔离 `--no-skills` 执行，无缝读取生成产物且防数据越界。
+  - **API/DB 层**：添加了 `action_items`、`action_tasks`、`action_feedback` 3 张 SQLite 表并开放 REST Endpoint。
+- 校验：`npm run typecheck` ✅；`npm run build` ✅ built。
 - 下一步：
-  - 真机联调测试（V 域无法充分测试）：跨工作区验证本体 toggle 的真实效果；核对 KG 投影在真实图谱画布中的展示结果，确保无废弃节点残留或未启用的节点外溢。
-  - 待总控排期并整合其他关联模块的池化。
+  - 后续基于 `action_tasks` 可以实现更加完整的项目管理视图或与业务需求（Business Contexts）对接。
+  - 等待总控针对行动项到本体 `onto_actions` 之间的联动进行设计审批。
 - 阻塞 / 待总控：
-  - 本体对象池创建的联动：若在新工作区新建本体，需确认 `enableForOrigin` 能否如期在创建瞬间勾上本工作区状态。
+  - 无。
 - 开放问题：
-  - 无新增开放问题。
+  - 在 `POST /api/actions/extract` 提取时仅使用纯正则容错 JSON 解析，如果后续选用其他对齐度偏低的开源模型可能解析率欠佳，是否需要加入二次 retry 机制？
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -93,6 +93,8 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - API 契约调用陷阱：跨域（V 调用 D 的 REST 接口）获取数据源数据时，必须直接复用已封装的领域 `dataApi.getBiAggregationData` 方法。如果在 V 域侧自行硬编码 `fetch` 拼接路径，极易因对方实际路由细节（如尾部 `/:pathId/data` 的后缀设计）导致偶发的 404 Not Found 漏洞。
 - **全局池 toggle 的 stale closure 陷阱**：写 `setEnablements(new Map(enablements).set(id, next))` 看似 OK，实则 `enablements` 是 render 快照，快速连点第二次仍读旧 Map → 第一次更新丢失。必须用函数式 setState `setEnablements(prev => { const m = new Map(prev); m.set(id, next); return m; })`。同坑在所有"Map/Set state + 高频 toggle"场景重现。
 - **全局池创建后启用态显示停用**：总控约定创建时自动 `enableForOrigin`，但前端如果只 `setItems(...prev, created)` 而不重拉 enablements，新建条目因 enablements Map 里没记录，`get(id) ?? false` 显示"停用"。规避：所有 create/update/delete 一律 `await refresh()` 全量重拉，别想省那一次 round-trip。
+- **调用 LLM 提取陷阱（pi-adapter.ts）**：使用 `runPiPrompt` 提取策略报告时，注意该接口源码已内建 `--no-skills`, `--no-tools`, `--no-context-files` 参数（针对独立分析/重排任务优化），调用方切勿通过 `extraArgs` 或 `prompt` 中再多此一举传入；同时其返回的纯文本应基于 `try/catch + RegExp` 处理 Markdown Json block，以防部分模型输出絮叨开头（如 `Here is the JSON...`）导致解析阻断。
+- **跨域私有工具方法导出**：若在路由层（如 `routes/viz.ts`）尝试复用其它域的 `validateArtifactPath`（挂载于 `index.ts` 私有域），TypeScript 跨文件 import 将报 2305 错。应对方式：若不想扰乱原文件的导出契约，可以在自身域就近实现无害等价物或走正当重构（抽取 `flow-fs.ts` 或 `output-paths.ts`）。
 
 ---
 

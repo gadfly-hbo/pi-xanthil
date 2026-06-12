@@ -1323,6 +1323,97 @@ export interface OntoActionInput {
   confidence?: number;
 }
 
+// ─── actions（分析→行动→执行 闭环）──────────────────────────────
+// 探索 tab「黄金策」后的「行动」二级 tab：报告 →①提取行动项 →②采纳建任务 →③执行反馈 → 回流知识。
+export type ActionScene = "开业" | "日常" | "假日" | "大促"; // 单店模型场景运营
+export type ActionLifecycle = "A获取" | "A激活" | "R培育" | "R复购" | "R裂变"; // 会员运营 AARRR SOP
+export type ActionPriority = "high" | "medium" | "low";
+export type ActionEffort = "high" | "medium" | "low";
+export type ActionItemStatus = "suggested" | "adopted" | "dismissed";
+export type ActionTaskStatus = "todo" | "doing" | "done" | "cancelled";
+
+// LLM 从报告提取的行动项草稿（未落库，前端确认后转 ActionItem）
+export interface ActionItemDraft {
+  title: string;
+  rationale: string; // 依据：命中报告哪条发现
+  scene?: ActionScene;
+  lifecycle?: ActionLifecycle;
+  expectedImpact: string; // 预期效果
+  metricRef?: string; // 关联指标（自由文本，下轮接语义层）
+  priority: ActionPriority;
+  effort: ActionEffort;
+  confidence: number; // 0..1
+}
+
+export interface ActionItem extends ActionItemDraft {
+  id: string;
+  sourceKind: "session" | "flow-run";
+  scopeId: string; // sessionId 或 flowId
+  runId?: string;
+  reportPath: string;
+  status: ActionItemStatus;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ActionItemInput {
+  sourceKind: "session" | "flow-run";
+  scopeId: string;
+  runId?: string;
+  reportPath: string;
+  title: string;
+  rationale: string;
+  scene?: ActionScene;
+  lifecycle?: ActionLifecycle;
+  expectedImpact: string;
+  metricRef?: string;
+  priority: ActionPriority;
+  effort: ActionEffort;
+  confidence: number;
+}
+
+export interface ActionTask {
+  id: string;
+  actionItemId: string;
+  title: string;
+  owner: string;
+  dueDate?: string; // ISO date
+  status: ActionTaskStatus;
+  priority: ActionPriority;
+  note: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface ActionTaskInput {
+  actionItemId: string;
+  title: string;
+  owner?: string;
+  dueDate?: string;
+  status?: ActionTaskStatus;
+  priority?: ActionPriority;
+  note?: string;
+}
+
+export interface ActionFeedback {
+  id: string;
+  taskId: string;
+  adopted: boolean; // 是否采纳
+  outcome: string; // 执行结果
+  metricDelta: string; // 指标变化（自由文本）
+  review: string; // 复盘 lessons
+  score?: number; // 0..5 评分
+  createdAt: number;
+}
+
+export interface ActionFeedbackInput {
+  adopted: boolean;
+  outcome?: string;
+  metricDelta?: string;
+  review?: string;
+  score?: number;
+}
+
 // ─── 抽取 Prompt 管理（P8，对齐 nano Prompt 表：命名+版本化+模板复用）──────
 export interface OntoPrompt {
   id: string;

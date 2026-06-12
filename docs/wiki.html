@@ -215,6 +215,63 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "X", status: "done", title: "actions（行动）接缝层 + 契约（types.ts / constants / App 接线 / schema 审批）", brief:
+`✅ 总控自做并自检通过（2026-06-12）：契约已就位，V 可开工。交付：① types.ts 双侧定义 ActionScene/ActionLifecycle/ActionPriority/ActionEffort/ActionItemStatus/ActionTaskStatus + ActionItemDraft/ActionItem/ActionItemInput/ActionTask/ActionTaskInput/ActionFeedback/ActionFeedbackInput（server 插在 OntoActionInput 后、web 插在 GoldenStrategyBatchResult 后）；② constants.ts SubTab union 加 'actions'、SUB_TABS 在 golden_strategy 后加 { id:'actions', label:'行动' }（explore/multi 经 getSubTabsForTab fallthrough 自动含）；③ App.tsx 零改（subtab 数据驱动，VizTabs ctx 已传 scope/models/bump）；④ schema 口径已审定（见下方 V 卡【1】三表+外键），V 在 db/viz.ts:initVizTables 落 CREATE TABLE IF NOT EXISTS、无需 MIGRATIONS 版本。server typecheck ✅ + web build ✅。actions subtab 已可达（VizTabs 暂无分支故内容空，待 V 补 Pane+分支）。**待 V 完成后整体提交**。
+
+— 原始需求 —
+新需求：「探索」tab「黄金策」之后新增 actions（行动）二级 tab，落地 onto-xanthil「分析→行动、决策→执行」理念，闭环 = 分析报告 →①提取建议行动项 →②采纳建任务 →③执行反馈 → 回流知识。三段全闭环；行动项打「单店模型」场景+会员阶段标签；行动项↔onto_actions 桥接下轮再接。
+本卡为总控接缝/契约（V 依赖此契约，必须先于 V 完成）。
+
+【1 · types.ts 契约（双侧 server/src/types.ts + web/src/types.ts 同步定义）】
+- 枚举：ActionScene = 'opening'|'daily'|'holiday'|'promotion'(开业/日常/假日/大促)；ActionLifecycle = 'acquire'|'activate'|'nurture'|'repurchase'|'refer'(A获取/A激活/R培育/R复购/R裂变)；ActionItemStatus = 'suggested'|'adopted'|'dismissed'；ActionTaskStatus = 'todo'|'doing'|'done'|'cancelled'；ActionPriority/ActionEffort = 'high'|'medium'|'low'。
+- ActionItem { id; sourceKind:'session'|'flow-run'; scopeId; runId?; reportPath; title; rationale(依据:命中报告哪条发现); scene?:ActionScene; lifecycle?:ActionLifecycle; expectedImpact; metricRef?(自由文本,下轮接语义层); priority:ActionPriority; effort:ActionEffort; confidence:number(0..1); status:ActionItemStatus; createdAt; updatedAt }。
+- ActionTask { id; actionItemId; title; owner; dueDate?(ISO); status:ActionTaskStatus; priority:ActionPriority; note; createdAt; updatedAt }。
+- ActionFeedback { id; taskId; adopted:boolean(是否采纳); outcome(执行结果); metricDelta(指标变化,自由文本); review(复盘lessons); score?:number(0..5); createdAt }。
+- 对应 *Input 类型（建/改入参，省略 id/时间戳）。LLM 提取返回用 ActionItemDraft[]（无 id/status，供前端确认后落库）。
+
+【2 · constants.ts（总控）】SubTab union 末尾加 'actions'；SUB_TABS 在 golden_strategy 后加 { id: 'actions', label: '行动' }；getSubTabsForTab 对 explore 与 multi 两个 tab 均包含 actions（与 golden_strategy 同款，两 tab 都可达）。
+
+【3 · App.tsx 接线（总控）】actions 走 VizTabs 渲染、props 与 golden_strategy 同款(scope/models/bump)，预计零改或极小改（subtab 数据驱动）；若 handleTabChange 默认子 tab 逻辑需要，按需补。
+
+【4 · schema 审批（总控）】V 在 db/viz.ts:initVizTables 新建 action_items / action_tasks / action_feedback 三表（CREATE TABLE IF NOT EXISTS 模式，与 onto_* 同，base schema 后调用，无需 MIGRATIONS 版本）。总控审表结构与外键口径(action_tasks.action_item_id→action_items.id；action_feedback.task_id→action_tasks.id)，确认不撞 schema、不 ALTER 他域表。
+
+【验收】server+web typecheck + build 绿；actions subtab 在 explore/multi 均可达（先渲染 V 的占位/真实 Pane）。
+【约束】接缝层(types/constants/App)仅总控写；不碰红线域；全程不碰 git。` },
+  { dom: "V", status: "done", title: "actions（行动）功能主体：三段闭环 Pane + 提取LLM + 三表CRUD + 路由 + VizTabs 分支", brief:
+`✅ 总控回流终审通过（2026-06-12）。V 交付：ActionsPane 三段式 + routes/viz extract LLM & 行动项/任务/反馈 CRUD + db/viz 三表 + lib/api/viz client + VizTabs 两分支 + 黄金策侧栏「去行动」跳转(onNavigateToActions)。门禁：server typecheck ✅ + web build ✅。红线核验：读 report/run 输出(🟢衍生物)、validateArtifactPath 防穿越、不碰 draw_data、runPiPrompt 无 --no-extensions 陷阱、数据探索隔离 grep 空。无路由冲突(/api/actions/:id=既有 OntoAction，行动项走 /api/action-items)。schema 合规(FK CASCADE+索引)。未碰接缝层。
+【终审发现 2 偏差 → 总控收敛修复(用户决策「收敛到 enum」)】① 单一真源违规(§五.2)：db/viz.ts + lib/api/viz.ts 各自本地重声明 ActionItem/Task/Feedback → 删除本地声明、改 import 自 types.ts(api/viz 加 re-export 供 ActionsPane)。② scene/lifecycle 被实装成自由文本 → 契约 enum 改为中文规范标签(ActionScene=开业/日常/假日/大促；ActionLifecycle=A获取/A激活/R培育/R复购/R裂变)，extract prompt 约束取值 + 后端归一化(非法→省略)，三表 NOT NULL 列空值存""、parse 回 undefined，ActionsPane 标签 chip 加存在性守卫。收敛后 server typecheck + web build 复跑全绿。**待用户提交**。
+
+— 原始需求 —
+新需求：「探索」tab「黄金策」之后 actions（行动）二级 tab，分析→行动→执行→反馈闭环。依赖总控「actions 接缝层 + 契约」(types/constants/App/schema 审批)完成，顺序在其后。
+LLM 提取复用黄金策同款 pattern（报告是 🟢 衍生产物，可读 LLM，不碰红线）。三段全闭环；行动项打场景+会员阶段标签；onto_actions 桥接下轮再接（本轮不做）。
+
+【文件边界(V slot)】新建 ActionsPane.tsx · db/viz.ts(三表+CRUD,initVizTables) · routes/viz.ts(端点) · lib/api/viz.ts(client) · VizTabs.tsx(2 渲染分支) · 可选 GoldenStrategyPane.tsx「业务洞见」侧栏(GoldenStrategyPane.tsx:578-595 占位)加"去行动"跳转入口。
+
+【1 · db/viz.ts（总控审表后落地）】initVizTables 加三表：
+- action_items(id,source_kind,scope_id,run_id,report_path,title,rationale,scene,lifecycle,expected_impact,metric_ref,priority,effort,confidence,status,created_at,updated_at) + idx(scope_id,report_path)。
+- action_tasks(id,action_item_id,title,owner,due_date,status,priority,note,created_at,updated_at) + idx(action_item_id)。
+- action_feedback(id,task_id,adopted,outcome,metric_delta,review,score,created_at) + idx(task_id)。
+- CRUD：list/create/update/delete action_items（按 scope+report 过滤）；list/create/update action_tasks（按 action_item 或 scope）；create/get action_feedback（按 task）。parseRow 把 0/1↔boolean、JSON 字段还原。
+
+【2 · routes/viz.ts（均带 /api 前缀）】
+- POST /api/actions/extract —— 入参{source,sessionId?,flowId?,runId?,path,prompt?,model}；读报告内容(复用黄金策取报告内容逻辑:sessionArtifactFileGet / flowRunFileGet)→ runPiPrompt 让模型输出 ActionItemDraft[](title/rationale/scene/lifecycle/expectedImpact/priority/effort/confidence)；要求模型严格 JSON，后端容错解析(参考竞品/行业 JSON 容错教训：占位符/非法 JSON 兜底)。返回 drafts，不直接落库。
+- 行动项：GET /api/action-items?scope=…  POST /api/action-items(确认 draft 落库,status=suggested)  PATCH /api/action-items/:id(改 status: adopt/dismiss / 编辑字段)  DELETE /api/action-items/:id。
+- 任务：GET /api/action-tasks?actionItemId=…|scope=…  POST /api/action-tasks(由行动项采纳创建)  PATCH /api/action-tasks/:id(改 status/owner/due/note)。
+- 反馈：POST /api/action-tasks/:id/feedback  GET /api/action-tasks/:id/feedback。
+- runPiPrompt 用 --no-skills（勿用 --no-extensions，见 AGENTS.md §四 pi 陷阱）。
+
+【3 · lib/api/viz.ts】对应 client 方法：extractActions / list|create|updateActionItem|deleteActionItem / list|create|updateActionTask / submit|getActionFeedback。提取走断点续传(useResumableTask,与黄金策一致,长任务防切 tab 丢进度)。
+
+【4 · ActionsPane.tsx（三段式 UI，scope 与黄金策同款 session/flow）】
+- ①行动项：报告选择器(复用黄金策 report picker 逻辑) + 模型选择 + 「提取行动项」按钮(resumableTask)→ drafts 卡片列表，每卡显示 title/依据/预期效果 + scene/lifecycle 标签 + priority/effort/confidence；操作「采纳」(→落库 adopted 并建任务)/「忽略」(dismiss)。
+- ②任务：已采纳行动项 → 任务列表，建任务表单(owner/due/priority/note)，状态流转 todo→doing→done→cancelled。
+- ③反馈：任务 done → 反馈表单(是否采纳/执行结果/指标变化/复盘/评分)→ 记录展示；done+有反馈的任务标"已闭环"。
+- 视觉与黄金策一致(neutral/emerald/amber 主题)；空态引导。
+
+【5 · VizTabs.tsx】仿 golden_strategy 加两分支：explore&&actions → <ActionsPane scope={{type:'session',sessionId:ctx.activeSessionId}} .../>；multi&&actions → <ActionsPane scope={{type:'flow',flow:…}} .../>。
+
+【验收】server typecheck + web build 绿；explore/multi 下 actions tab 可达；选报告→提取出结构化行动项→采纳建任务→任务流转→录反馈闭环；切 tab 提取不丢进度；报告内容仅本流程内送 LLM(衍生产物,合规)。
+【约束】不碰接缝层(types/api.ts/constants/App)；不碰数据探索红线子树与 draw_data；db/viz.ts 建表须总控审过再落；全程不碰 git，回流总控终审；新踩坑/约束在回报中列出交总控补 notes。` },
   { dom: "X", status: "todo", title: "decision 模块导航/渲染接线（接缝层注册）", brief:
 `decision 模块（产品第三种第一性能力，owner: 总控；详见 docs/decision-intelligence-plan.md）目前只有骨架文件 web/src/tabs/DecisionTabs.tsx（4 个占位 Shell：决策看板/工作台/助手/复盘）。前序快修已在接缝层补了类型字面量让 build 转绿（MainHeader Tab 加 "decision"；constants SubTab 加 decision_board/workbench/assistant/review），但导航与渲染尚未接线，该 tab 当前不可达。
 
@@ -293,6 +350,10 @@ P3(onto + KG)：
    status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
    字段: { status, title, brief }（无 dom —— 不指定域）。 */
 const HOTFIX = [
+  { status: "done", title: "探索 tab：工作视图改名「数据分析」+ subtab 重排", brief:
+`✅ 总控自做并自检通过（2026-06-12，接缝层 constants.ts 仅总控写，非红线，直改最稳）。需求：探索 tab「工作视图」改名「数据分析」并调整二级 tab 顺序为 业务需求-原始数据-聚合数据-数据探索-数据分析-报告输出-汇报版本-报告审核-黄金策-行动。
+做法（仅 web/src/lib/constants.ts）：因 explore 与 multi 共用 SUB_TABS 但 view 在两 tab 渲染不同（explore=聚合数据文档列；multi=工作流列表竖栏），用户决策「只改探索」→ 新增 EXPLORE_SUB_TABS（view 改名「数据分析」并移至 data_exploration 之后）+ getSubTabsForTab 加 if(tab==='explore') return EXPLORE_SUB_TABS；multi/工作流 仍用 SUB_TABS（工作视图保持首位不变）。App.tsx 零改（handleTabChange 探索默认子 tab 仍为 view='数据分析'）。
+自检：constants.ts typecheck 零报错（隔离验证）。注：当时整体 web build 红是 V 在研 ActionsPane.tsx 的 3 个 TS6133 未用声明所致，与本快修无关，按用户决策留 V 回流终审一并处理。未碰 git。` },
   { status: "done", title: "工作区文件夹标准化（初始化模板 + 文件归类硬锁 + 报告输出路由）", brief:
 `✅ 总控自做并自检通过（2026-06-12，未派发，用户改判由总控直写最稳）。**重要：标准目录最终绑「任务」而非「工作区」**（用户决策：session 与 flow 各是一个任务、各自独立一棵 010_raw/020_clean/060_reports，workspace 根不建这三个）。落地：workspace-dirs.ts 改基目录相对(FOLDER_DIRS + sessionDir + standardDirIn + ensureStandardDirs + isInsideStandardDir 防 ../ 越狱)；createWorkspace 不建标准目录；createSession 预建 sessions/<id>/{三目录}、createFlow 在 flows/<id>/ 下补建；index.ts 6 处 fallback 按作用域落任务 060_reports(session→sessionDir、flow→flow.folderPath；run/tmp 不动)；addWorkspacePath 硬锁改任务级(session/flow 作用域且任务标准目录已存在才拦,workspace 作用域不锁)；/api/pick-path 收 sessionId/flowId、原生框 default location 定位任务标准子目录；readArtifactTree 缺失目录兜底空树；api.pickLocalPath opts 改 sessionId/flowId、FolderPathsPane.pick() 按 scope 传。仅新建生效(legacy 任务无目录则不锁)。server typecheck ✅ + web build ✅ + 隔离 grep ✅ 空匹配。output-paths.ts:98 draw_data 披露排除未动。**待用户提交 + 浏览器实跑点检**。
 

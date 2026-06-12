@@ -15,7 +15,14 @@ import type {
   OntoActionInput,
   OntoPrompt,
   OntoPromptInput,
+  ActionItemDraft,
+  ActionItem,
+  ActionTask,
+  ActionFeedback,
 } from "@/types";
+
+// 单一真源：Action 契约由 @/types 持有（总控），此处仅 re-export 供本域消费者引用。
+export type { ActionItemDraft, ActionItem, ActionTask, ActionFeedback } from "@/types";
 
 export interface Dashboard {
   id: string;
@@ -138,4 +145,33 @@ export const vizApi = {
     fetch(`/api/onto-prompts/${encodeURIComponent(promptId)}`, jsonBody("PATCH", data)).then(json<OntoPrompt>),
   deleteOntoPrompt: (promptId: string) =>
     fetch(`/api/onto-prompts/${encodeURIComponent(promptId)}`, jsonBody("DELETE")).then(json<{ success: boolean }>),
+
+  // ---- Actions（行动闭环）----
+  extractActions: (data: { source: "session" | "flow-run"; sessionId?: string; flowId?: string; runId?: string; path: string; prompt?: string; model?: string }) =>
+    fetch(`/api/actions/extract`, jsonBody("POST", data)).then(json<ActionItemDraft[]>),
+  
+  listActionItems: (scopeId: string, reportPath?: string) =>
+    fetch(`/api/action-items?scope=${encodeURIComponent(scopeId)}${reportPath ? `&reportPath=${encodeURIComponent(reportPath)}` : ""}`).then(json<ActionItem[]>),
+  createActionItem: (data: Omit<ActionItem, "id" | "createdAt" | "updatedAt">) =>
+    fetch(`/api/action-items`, jsonBody("POST", data)).then(json<ActionItem>),
+  updateActionItem: (id: string, data: Partial<Omit<ActionItem, "id" | "createdAt" | "updatedAt">>) =>
+    fetch(`/api/action-items/${encodeURIComponent(id)}`, jsonBody("PATCH", data)).then(json<ActionItem>),
+  deleteActionItem: (id: string) =>
+    fetch(`/api/action-items/${encodeURIComponent(id)}`, jsonBody("DELETE")).then(json<{ success: boolean }>),
+
+  listActionTasks: (params: { actionItemId?: string; scopeId?: string }) => {
+    const q = new URLSearchParams();
+    if (params.actionItemId) q.set("actionItemId", params.actionItemId);
+    if (params.scopeId) q.set("scope", params.scopeId);
+    return fetch(`/api/action-tasks?${q.toString()}`).then(json<ActionTask[]>);
+  },
+  createActionTask: (data: Omit<ActionTask, "id" | "createdAt" | "updatedAt">) =>
+    fetch(`/api/action-tasks`, jsonBody("POST", data)).then(json<ActionTask>),
+  updateActionTask: (id: string, data: Partial<Omit<ActionTask, "id" | "createdAt" | "updatedAt">>) =>
+    fetch(`/api/action-tasks/${encodeURIComponent(id)}`, jsonBody("PATCH", data)).then(json<ActionTask>),
+
+  getActionFeedback: (taskId: string) =>
+    fetch(`/api/action-tasks/${encodeURIComponent(taskId)}/feedback`).then(json<ActionFeedback>),
+  submitActionFeedback: (taskId: string, data: Omit<ActionFeedback, "id" | "taskId" | "createdAt">) =>
+    fetch(`/api/action-tasks/${encodeURIComponent(taskId)}/feedback`, jsonBody("POST", data)).then(json<ActionFeedback>),
 };

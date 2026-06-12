@@ -1,8 +1,11 @@
 import type { Tab } from '@/components/MainHeader';
 
-export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'readme' | 'hypothesis' | 'extraction' | 'draw_data' | 'clean_data' | 'data_exploration' | 'report' | 'presentation_version' | 'report_review' | 'golden_strategy' | 'decision_tree' | 'toc' | 'skill' | 'tool' | 'model' | 'rules' | 'indicators' | 'cases' | 'trace' | 'token_stats' | 'the-crowd' | 'weather' | 'business_district' | 'industry' | 'competitor' | 'sql_connect' | 'operational_model' | 'change_mgmt' | 'knowledge_graph' | 'model_history' | 'report_history' | 'dlf' | 'quick_notes' | 'tool_use' | 'failure_memory' | 'field_memory' | 'process_memory' | 'anax_view' | 'onto_readme' | 'onto_objects' | 'onto_links' | 'onto_metrics' | 'onto_logic' | 'onto_actions' | 'onto_graph' | 'onto_import';
+export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'readme' | 'hypothesis' | 'extraction' | 'draw_data' | 'clean_data' | 'data_exploration' | 'report' | 'presentation_version' | 'report_review' | 'golden_strategy' | 'decision_tree' | 'toc' | 'skill' | 'tool' | 'model' | 'rules' | 'indicators' | 'cases' | 'trace' | 'token_stats' | 'the-crowd' | 'weather' | 'business_district' | 'industry' | 'competitor' | 'sql_connect' | 'operational_model' | 'change_mgmt' | 'knowledge_graph' | 'model_history' | 'report_history' | 'dlf' | 'quick_notes' | 'tool_use' | 'failure_memory' | 'field_memory' | 'process_memory' | 'anax_view' | 'onto_readme' | 'onto_objects' | 'onto_links' | 'onto_metrics' | 'onto_logic' | 'onto_actions' | 'onto_graph' | 'onto_import' | 'actions';
 
-export const SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }];
+export const SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }];
+
+// 探索 tab 专用排序：view 改名「数据分析」并移至数据探索之后（multi/工作流 仍用 SUB_TABS，工作视图保持首位）。
+export const EXPLORE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'view', label: '数据分析' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }];
 
 export const VIEW_ONLY_TABS = new Set<Tab>(['aggregate', 'research_lab', 'dashboard']);
 
@@ -33,6 +36,7 @@ export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'xan_db') return XAN_DB_SUB_TABS;
   if (tab === 'dashboard') return DASHBOARD_SUB_TABS;
   if (tab === 'onto_xanthil') return ONTO_SUB_TABS;
+  if (tab === 'explore') return EXPLORE_SUB_TABS;
   if (VIEW_ONLY_TABS.has(tab)) return SUB_TABS.slice(0, 1);
   return SUB_TABS;
 }

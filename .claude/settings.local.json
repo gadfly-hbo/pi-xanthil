@@ -195,7 +195,11 @@
       "Bash(echo \"exit=$? \\(1=无匹配=安全\\)\")",
       "Bash(sed -n '/export function deleteWorkspace/,/^}/p' db.ts)",
       "Bash(sed -n '/export function deleteSession/,/^}/p' db.ts)",
-      "Bash(echo \"exit=$? \\(1=空匹配=安全\\)\")"
+      "Bash(echo \"exit=$? \\(1=空匹配=安全\\)\")",
+      "Bash(sed -n '1,20p' server/src/db/viz.ts)",
+      "Bash(sed -n '745,795p' server/src/db/viz.ts)",
+      "Bash(sed -n '355,370p' web/src/components/ActionsPane.tsx)",
+      "Bash(npm test *)"
     ]
   }
 }
