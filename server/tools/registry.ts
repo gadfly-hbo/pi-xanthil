@@ -12,6 +12,8 @@ export interface ToolParameter {
   description?: string;
 }
 
+export type ExtractionToolCategory = "ingestion" | "analysis";
+
 export interface ExtractionToolManifest {
   id: string;
   name: string;
@@ -19,6 +21,7 @@ export interface ExtractionToolManifest {
   description: string;
   entry: string;
   runtime: "python3";
+  category?: ExtractionToolCategory;
   input: {
     accept: string[];
     modes: Array<"file" | "directory">;
@@ -66,6 +69,14 @@ function isManifest(value: unknown): value is ExtractionToolManifest {
     && (!item.resultColumns || Array.isArray(item.resultColumns));
 }
 
+function normalizeCategory(value: unknown): ExtractionToolCategory {
+  return value === "analysis" ? "analysis" : "ingestion";
+}
+
+function normalizeManifest(manifest: ExtractionToolManifest): ExtractionToolManifest {
+  return { ...manifest, category: normalizeCategory(manifest.category) };
+}
+
 function resolveInside(rootPath: string, relativePath: string): string {
   const absolute = resolve(rootPath, relativePath);
   if (absolute !== rootPath && !absolute.startsWith(rootPath + sep)) {
@@ -86,18 +97,17 @@ function loadTools(): RegisteredExtractionTool[] {
       if (manifest.id !== entry.name) throw new Error(`tool id must match folder name: ${entry.name}`);
       const entryPath = resolveInside(rootPath, manifest.entry);
       if (!statSync(entryPath).isFile()) throw new Error(`tool entry not found: ${entryPath}`);
-      return [{ ...manifest, rootPath, entryPath }];
+      return [{ ...normalizeManifest(manifest), rootPath, entryPath }];
     });
 }
 
-const tools = loadTools();
-const toolsById = new Map(tools.map((tool) => [tool.id, tool]));
-
 export function listExtractionTools(): ExtractionToolManifest[] {
+  const tools = loadTools();
   return tools.map(({ rootPath: _rootPath, entryPath: _entryPath, ...manifest }) => manifest);
 }
 
 export function getExtractionTool(id: string): RegisteredExtractionTool | null {
+  const toolsById = new Map(loadTools().map((tool) => [tool.id, tool]));
   return toolsById.get(id) ?? null;
 }
 

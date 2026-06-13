@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Sparkles, Square, Workflow } from "lucide-react";
+import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Sparkles, Square, Workflow, Wrench } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
+import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
 import { hasToolBlocks, hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
@@ -64,7 +65,7 @@ function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: st
 export function ChatPane(p: Props) {
   const [input, setInput] = useState("");
   const [selectedSkillPaths, setSelectedSkillPaths] = useState<string[]>([]);
-  const [activeAssistPanel, setActiveAssistPanel] = useState<"fork" | "delegate" | null>(null);
+  const [activeAssistPanel, setActiveAssistPanel] = useState<"fork" | "delegate" | "tool" | null>(null);
   const {
     contexts: businessRequirementContexts,
     selectedId: selectedBusinessRequirementId,
@@ -221,6 +222,20 @@ export function ChatPane(p: Props) {
         <div className="mx-auto max-w-[760px]">
           <div className="mb-2 flex flex-wrap items-center gap-2">
             <button
+              onClick={() => setActiveAssistPanel((current) => current === "tool" ? null : "tool")}
+              disabled={!canUseSessionTools}
+              className={cn(
+                "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
+                activeAssistPanel === "tool"
+                  ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                  : "border-neutral-200 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800",
+              )}
+              title={canUseSessionTools ? "手动运行 analysis 工具并回流结果" : "先选择或新建一个会话"}
+            >
+              <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
+              @工具
+            </button>
+            <button
               onClick={() => setActiveAssistPanel((current) => current === "fork" ? null : "fork")}
               disabled={!canUseSessionTools}
               className={cn(
@@ -255,6 +270,15 @@ export function ChatPane(p: Props) {
               <ForkBranchPanel
                 parentSessionId={activeSessionId}
                 model={p.model}
+                onBackflow={(text) => p.onSend(text)}
+              />
+            </div>
+          )}
+          {activeSessionId && activeAssistPanel === "tool" && (
+            <div className="mb-3">
+              <ManualAnalysisToolCard
+                sessionId={activeSessionId}
+                workspaceId={p.workspaceId}
                 onBackflow={(text) => p.onSend(text)}
               />
             </div>

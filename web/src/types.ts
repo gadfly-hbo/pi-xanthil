@@ -91,6 +91,8 @@ export interface ToolParameter {
   description?: string;
 }
 
+export type ExtractionToolCategory = "ingestion" | "analysis";
+
 export interface ExtractionTool {
   id: string;
   name: string;
@@ -98,6 +100,7 @@ export interface ExtractionTool {
   description: string;
   entry: string;
   runtime: "python3";
+  category?: ExtractionToolCategory;
   timeoutMs?: number;
   parameters?: ToolParameter[];
   resultColumns?: Array<{ key: string; label: string }>;

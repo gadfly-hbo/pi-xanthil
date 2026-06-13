@@ -1,0 +1,34 @@
+{
+  "id": "rfm-segmentation",
+  "name": "RFM 会员分群",
+  "version": "1.0.0",
+  "description": "对客户级去标识聚合 CSV 进行 RFM 分群。期望列（含别名）: customer_id（或 顾客ID/用户ID/member_id）、recency（或 最近购买日期/last_purchase_date/recency_days，日期会换算为距今天数）、frequency（或 购买频次/购买次数/orders）、monetary（或 累计金额/总消费/amount/sales）。算法：每维 5 分位打分（1=最差,5=最佳，R 反向）→ 经典 8 群（重要价值/重要发展/重要保持/重要挽留/一般价值/一般发展/一般保持/一般挽留）。输出群规模/占比/各维均值与画像 md+json。",
+  "entry": "rfm_segmentation.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".md", ".json"],
+  "riskLevel": "L0",
+  "allowedUse": "对去标识客户级聚合表做 RFM 分群与画像统计；产物为聚合层（群规模/均值），不含原始客户行。",
+  "forbiddenUse": "不得用于含手机号/姓名等 PII 的原始数据；不得用于事件级（多行/客户）数据（须先聚合）。",
+  "failureHandling": "缺少必需列时返回 '缺少必需字段: ...' 错误；行数 < 8 时返回 '客户数过少' 错误。",
+  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "resultColumns": [
+    { "key": "customers", "label": "客户数" },
+    { "key": "segments", "label": "分群数" },
+    { "key": "topSegment", "label": "最大群" }
+  ],
+  "parameters": [
+    {
+      "name": "reference_date",
+      "label": "参考日期",
+      "type": "string",
+      "required": false,
+      "default": "",
+      "description": "若 recency 列为日期，按该日计算 recency_days；空则取数据中最大日期。格式 YYYY-MM-DD。"
+    }
+  ]
+}

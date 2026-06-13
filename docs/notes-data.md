@@ -8,25 +8,42 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-12 · 计算工具 tool-use 子页落地（Phase 1）
+- 最近更新：2026-06-13 · **D-v3 进阶算法工具（4 工具 + code review 修复）**
 - 进度：
-  - **tool-use 子页落地**：`DataTabs.tsx:46` 的 Placeholder 替换为 `ToolUsePane`（477 行）。功能：① 左侧卡片列已注册工具（id/name/version/runtime/accept）② 输入数据仅从 clean_data 已登记路径选择（draw_data 不可选，红线）③ 按 `tool.parameters` 动态渲染参数表单（boolean/select/string/number，required/default 生效）④ 输出目录按 `scope+toolId` localStorage 记忆 ⑤ POST `/api/extraction-tools/:id/run` → 展示 summary.json（success/failed/results/产物路径/日志）⑥ 测试用例只读查看（GET `/:id/test-cases`）⑦ 长任务用 `useResumableTask`，key=`tool-use:{toolId}:{inputPath}`，切 tab 不丢。
-  - **D 域 client 补全**：`lib/api/data.ts` 新增 `listExtractionTools` / `runExtractionTool` / `getToolTestCases`，全部走既有 `/api/extraction-tools*`，不碰接缝层 `api.ts`。`dataApi` 与 `legacyApi` 同名方法在合并时覆盖（等价签名，无副作用）。
-  - **审核修复**：① `scope` 对象引用不稳定 → 引入 `scopeKeyStr = useMemo(() => scopeKey(scope), [scope])` 替代所有 `scope` 依赖，避免 `useCallback` 无限循环 ② emoji 违规（`📁` `📄`）→ 改为 `[dir]` / `[file]` 文本前缀。
+  - **新增 4 个 analysis 工具**（纯 numpy/scipy/pandas，未引入新依赖）：
+    - `market-basket`：Apriori 频繁项集 + 关联规则（support/confidence/lift），支持长表（order×item）与宽表（order + items 分隔符串）双格式
+    - `churn-risk`：Kaplan-Meier 群体存活估计 + 特征劣势分位综合打分 → 4 层风险分层（低/中/高/极高），含 KM 拟合 fallback
+    - `clustering`：纯 numpy K-means++ 多重启 + 肘部+轮廓综合选 k，输出各群标准化与原始空间均值画像
+    - `aarrr-flow`：阶段人数时序 → 阶段间转化率 + 整段关系加深率 + 环比变化 + 趋势探测（improving/stable/declining）
+  - 4 工具均含 `tool.json`（全字段：riskLevel/allowedUse/forbiddenUse/failureHandling/parameters/resultColumns）+ `tests/cases.json`（各 4-5 个 case：field-presence + must-fail×3-4）+ `tests/fixtures/`
+  - **code review 修复（2026-06-13）**：
+    - 删除 `clustering.py` 死代码 `ids` 变量
+    - 两处裸 `except Exception` → `except (ValueError, RuntimeError) as e` + 记录 fallback 原因（`clustering.py` / `churn_risk.py`）
+    - `clustering.py` 距离矩阵从 `(n,k,f)` 一次性分配 → 逐中心分批计算（消除大样本 OOM 风险）
+    - `market_basket.py` 修复 `find_col` 子串匹配导致 `items` 列被同时匹配为 `item` 和 `items_list` 的 bug，增加 `_is_wide_column` 自动检测分隔符判断格式
+    - 新增 2 个测试 fixture：`market-basket/wide.csv`（宽表格式）、`churn-risk/no-monetary.csv`（无 monetary 可选列）
+  - **工具总数**：13（9 analysis + 4 ingestion），全部被 registry 自动加载
 - 校验：
-  - `cd web && npm run typecheck`：✅ 全绿
-  - `cd web && npm run build`：✅ 全绿
-  - `cd server && npm run typecheck`：✅ 全绿
+  - `npm run typecheck`：✅ server + web 全绿
+  - `npm run build`：✅ 全绿
   - 数据探索 LLM 隔离 grep：✅ 空匹配
-- 下一步：
-  - ① tool-use 真机回归：选工具 → 选 clean_data 路径 → 配参数 → 跑出 summary → 切 tab 后回来看结果是否仍在（useResumableTask 续传验证）。
-  - ② Phase 2「数据分析对话接 tool-use」需总控定义接缝契约（对话如何触发 tool-use、结果如何回写对话上下文）。
-  - ③ 行业/竞品 `extractJson` sanitize 提到 `json-utils.ts` 复用（上次 hotfix 遗留）。
-- 阻塞 / 待总控：无（Phase 1 独立可交付，不依赖其他域）。
+  - 4 工具主路径全部用合成数据跑通（market-basket: beer→chips lift 5.0；churn-risk: KM 365 天降至 7%；clustering: 自动选 k=3 silhouette 0.84；aarrr-flow: 整段加深率 2.48% improving）
+  - 4 工具错误路径全部验证（缺列/数据过少/非法扩展名）
+  - 未引入 sklearn / mlxtend / lifelines 等未装依赖
+- 下一步（接续优先级）：
+  - ① **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）：aggregate → tool-use 确认 13 工具列表 / 筛选 / 详情 / cases 查看正常
+  - ② **pi-agent 经 MCP 端到端验证**（D-v2 遗留）：pi-agent 通过 MCP 调 analysis 工具，看输出能否被 LLM 正确解读
+  - ③ **cohort 数据可用性确认**（D-v2 遗留）：确认是否有事件级订单流水可用
+  - ④ **D-v3 工具生产数据验证**：用真实 clean_data 跑 4 工具，确认参数默认值合理、输出可解读
+  - ⑤ （可选增强）暴露 `select_k` 权重（0.6/0.4）与 churn 混合权重（0.7/0.3）为 tool.json 参数
+- 阻塞 / 待总控：
+  - **clean_data 路径白名单**：Python 端无 `draw_data` 路径检查，纵深防御仅靠 server 端 `source=ai` 守卫
+  - **cohort 数据源**：见下一步 ③
 - 开放问题：
-  - `api.ts`（接缝层）已有同名 `listExtractionTools` / `runExtractionTool` 与旧名 `listExtractionToolTestCases`。本次 `dataApi` 以新语义名 `getToolTestCases` + 等价签名覆盖 legacy——总控可评估是否将 legacy 的 3 个 extraction-tools 方法从 `api.ts` 移除以收敛入口。
-  - tool-use 输出目录必须已存在（server `validateExtractionInput` 强校验），当前 UI 通过 `pickLocalPath("dir")` 让用户挑选既存目录——未来可考虑"自动创建输出目录"或"默认 workspace 下新建"。
-  - 参数表单的 `default` 值在工具切换时重置——若用户修改参数后切工具再切回，修改会丢失（设计如此，与 ExtractionPane 一致）。
+  - clean_data 路径白名单（Python 端纵深防御是否补强）
+  - cohort-retention 在生产数据上能否实际产出（依赖事件级订单表）
+  - `select_k` 与 churn 混合权重是否暴露为参数（当前硬编码，见下一步 ⑤）
+  - `api.ts`（接缝层）legacy `listExtractionTools` / `runExtractionTool` 与 D 域 `dataApi` 同名方法并存（待总控收敛入口）
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -37,7 +54,7 @@
 | 子模块 | 前端 | 后端 |
 |---|---|---|
 | 计算工具·聚合 | `AggregatePane.tsx` · `lib/aggregate.ts` | `routes/data.ts`(新) |
-| 计算工具·提取 | `ExtractionPane.tsx` | `server/tools/registry.ts` + `server/tools/*` |
+| 计算工具·提取 | `ExtractionPane.tsx` | `server/tools/registry.ts` + `server/tools/*`（含 `_tool_utils.py` 共享模块） |
 | 计算工具·tool-use | `ToolUsePane.tsx` | 复用 `server/tools/registry.ts` + `index.ts` `/api/extraction-tools*` |
 | 计算工具·SQL | `SqlConnectPane.tsx` | `sql-connections.ts` |
 | 数据探索 | `DataExplorationPane.tsx` + `data-exploration/*` · `lib/{duckdb,profiling,insights,joins}.ts` | 仅二进制文件流，**零 LLM** |
@@ -66,7 +83,8 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 4. **SQL 安全**：危险操作（DROP/DELETE/UPDATE/INSERT/ALTER/CREATE/TRUNCATE/GRANT/EXEC…）被 `validateSql()` 拦截返回 400，不可绕过。
 5. **风险分层 L0–L3**：L0 自动(预览)/L1 自动+trace(只读查询·探查·提取默认)/L2 需确认(SQL导出·L2工具)/L3 默认禁止(危险SQL)。
 6. **SQL 凭证明文存 JSON**：本地单用户，不加密（如需再引 keychain）。
-7. **tool-use 输入数据红线**：输入数据选择器**仅允许 clean_data 已登记路径**，draw_data 不可选/不可传。`ToolUsePane` 通过 `<select>` 枚举当前作用域 `clean_data` 路径 + 提交前双重校验 `cleanPaths.some()`，无手动输入入口。
+7. **tool-use 管理控制台**：`ToolUsePane` 是工具管理控制台（列表/详情/验证），**不在此跑工具、不在此选 clean_data 路径**。analysis 工具由 pi-agent 经 MCP 调用（后端 `source=ai` 守卫强制 clean_data），ingestion 工具由「数据提取」面板手动触发。
+8. **Python 工具依赖必须沉淀**（2026-06-13）：新增/修改 `server/tools/*` 工具引入新第三方包，**必须同步**改 `server/tools/requirements.txt` + `server/tools/README.md` 工具×依赖映射表。tool-runner 复用宿主机 system Python，不打包 venv，依赖必须可被 `pip install -r server/tools/requirements.txt` 一键复现，否则 `/run` 会以 `ModuleNotFoundError` 失败。
 
 ---
 
@@ -78,10 +96,18 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - SQL 校验用**关键词+模式双重正则**（~40 行，无依赖），不用 AST 解析器（太重、方言兼容差）。
 - trace 写入由可选 `workspaceId` 触发，保持计算工具模块独立性。
 - 提取工具 manifest 扩展 `riskLevel/allowedUse/forbiddenUse/failureHandling/traceFields`。
-- **tool-use 数据源约束**：输入数据选择器仅枚举 `clean_data` 已登记路径（作用域感知：workspace/session/flow），draw_data 不可选/不可传。`ToolUsePane` 双重校验：`<select>` 只列 clean_data 路径 + `execute()` 前 `cleanPaths.some()` 再次确认。无手动输入入口，防止绕过。
-- **tool-use 参数表单**：按 `tool.parameters` 动态渲染（boolean/select/string/number），`default` 值在工具切换时重置（与 ExtractionPane 一致），不跨工具保留。
-- **tool-use 输出目录记忆**：按 `scope+toolId` 存 localStorage，跨 session 保留用户偏好。
+- **tool-use 数据源约束（2026-06-12 修订）**：旧"试跑"模式已作废。新管理控制台模式不在此跑工具；analysis 工具由 pi-agent 经 MCP 调用，后端 `POST /api/extraction-tools/:id/run` 的 `source=ai` 守卫强制输入必须是已登记 clean_data，draw_data 永久禁止（403）。ingestion 工具由「数据提取」面板手动触发。
 - **tool-use 与 ExtractionPane 差异**：ExtractionPane 允许手动输入任意本地路径（通用提取工具），ToolUsePane 仅允许 clean_data 已登记路径（计算工具链安全约束）。
+- **工具用途分类体系（2026-06-12）**：`ExtractionToolManifest.category` ∈ `"ingestion" | "analysis"`，由 `registry.ts` 的 `normalizeCategory` 默认 `"ingestion"`。`ingestion`=读 HTML/原始 Excel 等半结构化数据，仅「数据提取」面板手动触发，不向 AI 暴露；`analysis`=读 clean_data 聚合 CSV 产出分析结果，经 MCP 暴露给 pi-agent。分类是 manifest 内禀属性，UI 只展示不强改。
+- **ToolUsePane 定位修正（2026-06-12）**：推翻旧"试跑"设计（选 clean_data 跑工具产出结果），重做为**管理控制台**（列表/详情/验证/跳 ToolLab）。工具新增/修改的代码仍由开发者放 `server/tools/`，UI 不写代码、不在此跑用户数据。理由：tool-use 的工具是给 pi-agent 经 MCP 用的，前端不该像数据提取那样"在 UI 拿工具跑用户数据"。
+- **analysis 工具筛选原则（2026-06-13）**：MCP 暴露给 pi-agent 的 analysis 工具应满足 ① 强领域特色（行业 know-how，不可被通用 SQL/duckdb 替代）② 算法复杂度足（如 STL/Holt-Winters，不是单条 `df.describe()`）③ 单输入聚合 CSV 即可产出结构化结论。**反例**：`csv-summary-stats`（dtype/缺失率/min/max/mean）这种描述统计被判定"太简单不该建"——它属于**探索模块**本职范畴（前端 duckdb-wasm `computeProfile()` 已覆盖），让 LLM 通过 MCP 重做一遍纯属浪费 token。**正例**：apparel-structure（服饰六大行业指标）/ seasonal-forecast（STL+Holt-Winters）。
+- **可选字段缺失处理范式（2026-06-13）**：当 CSV 缺可选字段（如 apparel-structure 缺"商品编号"），**必须返回 None 让该指标完全不出现在输出**，禁止注入伪值（如 `hash(file_path) % 10000` 作伪 ID 会让 SKU 宽深度恒为 1，误导用户）。MD 渲染层用 `if metric in r:` guard 跳过缺失项。这是分析工具数据完整性的核心约束。
+- **时序预测 CI 必须扇形扩张（2026-06-13）**：Holt-Winters / ARIMA 等序列预测的 95% 置信区间应随预测距离平方根扩张（`band = 1.96 * sigma * sqrt(h)`），不能用单一 sigma 平铺所有期。平铺会让用户严重低估远期不确定性。如 statsmodels 直接给的 `model.get_prediction()` 也支持，自实现需注意此点。
+- **会员价值三件套设计原则（2026-06-13）**：RFM / CLV / Cohort 三工具构成"会员价值方法论"闭环——RFM 做现状分群、CLV 做未来预测、Cohort 做时间维度留存。三工具均吃去标识客户级聚合 CSV，产物为聚合层（群均值/分层/矩阵），不含原始客户行。每个工具在 manifest description + 代码里声明并校验期望列，缺列给清晰中文报错。
+- **BG/NBD + Gamma-Gamma 纯算法实现（2026-06-13）**：CLV 工具用 `scipy.optimize.minimize`(Nelder-Mead) + `scipy.special.{gammaln,hyp2f1}` 自实现似然函数，不引 lifetimes 第三方库。scipy 已是 statsmodels 的传递依赖（seasonal-forecast 在用），无需新增依赖。参数空间做 log-transform 保证正约束；3 seed 多起点防局部最优；拟合失败回退均值估计并标注 `fallback=true`。
+- **cohort 粒度硬校验策略（2026-06-13）**：cohort-retention 严格要求事件级表（同一 customer_id 多行），`总行数 < 客户数 × 1.2` 时报错"数据粒度不符"。**不做近似**——客户级单行汇总表（仅含首/末购日 + 频次）无法重建事件序列，强行近似会误导用户。若生产数据无事件级表，该工具在生产上会触发合规报错（设计如此）。
+- **共享工具模块 `_tool_utils.py`（2026-06-13）**：提取 `find_col` / `run_tool` / `main_tool` 三个在 rfm/clv/cohort 中完全重复的函数。`main_tool` 统一 argparse + 参数解析 + 异常兜底，各工具只需提供 `process_fn` / `format_fn` / `report_suffix`。新 analysis 工具应复用此模块，不再复制样板代码。
+- **D-v3 进阶算法工具设计原则（2026-06-13）**：4 工具（market-basket/churn-risk/clustering/aarrr-flow）全部纯 numpy/scipy/pandas 实现，不引入 sklearn/mlxtend/lifelines 等未装依赖。算法选型优先"已装依赖可实现"而非"最省代码"——Apriori 纯 numpy 而非 mlxtend、KM 纯 numpy 而非 lifelines、K-means 纯 numpy 而非 sklearn。每个工具声明并校验期望列，缺列清晰报错；产物均为聚合/衍生（频繁项集、分层统计、群均值、转化率），不含原始行。输入按红线新政策可读 draw_data 明细，输出只含聚合产物。
 
 **数据探索**
 - 跨表 JOIN **物化成真实 duckdb 表**(`__joined_<ts>`)而非泛化 SQL → 出图/剖析/洞察管线**零改动复用**；DROP joined 表与源表独立。
@@ -112,6 +138,16 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **resumableTask key 命名硬约束**：按字符串拼，不用模板字符串（避免拼写抖动）；同一上下文必须 key 唯一在飞。当前 store 是 module 单例 + 永不 GC，工作区数量级 OK；未来高频 key 需评估 LRU。
 - **sanitizeBarePlaceholders 已知不完美点**：字符串型字段被 LLM 写裸占位符（如 `"summary": 待定`）会被替换为 `0` 而非 `""`，前端会显示字面 "0"。可接受（不致命），如需精细化需按字段类型映射，但 parse 时无类型信息——本次不做。
 - **scope 对象引用不稳定**（2026-06-12）：`TabContext.folderScope` 来自 `App.tsx`，每帧重建新对象。若 `useCallback` / `useEffect` 直接依赖 `scope`（对象），会导致每帧触发 → API 调用 → setState → 重渲染 → 死循环。**修复**：用 `useMemo(() => scopeKey(scope), [scope])` 转为稳定字符串 key，所有依赖链改用字符串。此模式适用于任何从 `tabCtx` 消费 `folderScope` 的组件。
+- **opencode 工具 input arg 大小限制（2026-06-12）**：单次 `write` / `edit` / `bash` 的 input arg 约 16K char 上限，超大 TSX（含中文）会被 JSON parser 截断报 `Unterminated string`。**workaround**：先 `awk 'NR<=N' > tmp` truncate 文件 + 多次 `cat >> file <<'EOF'` heredoc append（每块 < 4K char）。本次 ToolUsePane 重做用此法分 4 chunk 落地。
+- **`pd.to_datetime` 静默把整数转纳秒时间戳（2026-06-13）**：用 `pd.to_datetime(df[col])` 检测某列是否是日期列**不可靠**——纯数值列（如 `[100, 110, 120]`）会被静默转为 `Timestamp('1970-01-01 00:00:00.000000100')` 而非 raise，导致后续把销售额误识为日期列。**修复**：检测前先 `pd.api.types.is_numeric_dtype(df[col])` 跳过数值列；并对解析后用 `parsed.notna().sum() >= len(df) // 2` 二次验证。任何"自动列检测"逻辑都应警惕这个陷阱。
+- **`argparse` 参数名 dash/underscore 转换（2026-06-13）**：`parser.add_argument("--param-price_bands")` 在 namespace 上是 `args.param_price_bands`（dash 全部转 underscore，但已有 underscore 保留）。Server 端 `index.ts:5065` 通过 `--param-${param.name}` 拼接 CLI 参数，所以 tool.json 里的 `parameters[].name` 用 underscore 就好（如 `inventory_window_days`）；用 dash 也合法但 Python 端访问要相应改。**统一约定：tool.json 参数名用 underscore_case**。
+- **`statsmodels` 不在 stdlib（2026-06-13 已收口）**：seasonal-forecast 在函数体内 lazy import `statsmodels.tsa.seasonal.STL` + `statsmodels.tsa.holtwinters.ExponentialSmoothing`（无依赖兜底分支，缺包必 ImportError）。2026-06-13 总控终审打回时确认本条事实，已通过 `server/tools/requirements.txt` 沉淀（`statsmodels>=0.14`，本机 0.14.6）+ `server/tools/README.md` 工具依赖表 + §七 同步登记。**经验教训**：扫描 Python 第三方依赖必须容许任意缩进（`^[[:space:]]*(import|from)`），否则函数体内 lazy import 会被锚定行首的 grep 漏扫——这正是首版 requirements.txt 漏 statsmodels 的根因。
+- **lazy import 与 requirements 同步**（2026-06-13）：lazy import 是合理的（启动加速 / 失败回退），但容易让依赖在静态扫描中"消失"。约定：① 任何 lazy import 在 `requirements.txt` 注释里标 "lazy import"；② lazy import 改回顶层 / 删除 / 替换时同步检查 `requirements.txt` 是否还需该包。
+- **`hyp2f1` 在极端参数下返回 NaN（2026-06-13）**：BG/NBD 期望交易数计算中 `hyp2f1(r+x, b+x, a+b+x-1, z)` 当 `a+b+x-1` 接近 0 或负数时返回 NaN，传播到 CLV 输出。**修复**：`np.nan_to_num(hyp, nan=1.0)` 兜底。任何使用 `hyp2f1` 的地方都应加 NaN guard。
+- **`pd.Period` 减法返回 Offset 对象（2026-06-13）**：`(period_a - period_b)` 返回 `pandas._libs.tslibs.offsets.MonthEnd`（非 int），需 `.n` 属性取期数差。老版本 pandas 可能无 `.n`，需 `hasattr` 回退。cohort-retention 已加注释说明。
+- **opencode write 工具 input arg 大小限制（2026-06-13 再次确认）**：单次 `write` 约 16K char 上限，超大会被 JSON parser 截断报 `Unterminated string`。**workaround**：① 用 `write` 写前半 + `cat >> file <<'PYEOF'` heredoc append 后半 ② 或分多个小 `write`。本次三工具均用此法。
+- **`find_col` 子串匹配导致列歧义（2026-06-13）**：`_tool_utils.find_col` 的 fallback 逻辑用 `if alias.lower() in col.lower()` 做子串匹配，导致 `items` 列被同时匹配为 `item`（ITEM_ALIASES 含 `item`）和 `items_list`（ITEMS_LIST_ALIASES 含 `items`）。**修复**：在 `build_transactions` 中检测两别名是否指向同一列 + 用 `_is_wide_column` 采样前 20 行判断是否含分隔符（`,;；|\s`），含分隔符走宽表路径，否则走长表路径。**通用教训**：任何依赖 `find_col` 且别名间有子串包含关系的工具，都应在业务逻辑层做二次消歧，不能假设别名匹配唯一。
+- **裸 `except Exception` 吞异常信息（2026-06-13）**：`clustering.py` 和 `churn_risk.py` 的 fallback 路径用裸 `except Exception`，不记录任何诊断信息，用户只能看到 `fallback=true` 但不知道原因。**修复**：改为 `except (ValueError, RuntimeError) as e` + 记录 `fallback_reasons` / `fallback_reason` 到输出。**通用约定**：工具 fallback 路径必须记录失败原因，方便用户和后续维护者排查。
 
 ---
 
@@ -121,9 +157,30 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - 提取工具 `TOOL_COLUMNS` 前端硬编码，中期迁 `tool.json` manifest `resultColumns`。
 - SQL 参数化查询(`{{start_date}}`)、增量取数水位线、Python 子进程隔离 — 历史 P1。
 - 商圈/行业/竞品/the-crowd 看板待建（数据源待定）。
+- Python 工具运行时缺依赖的"友好提示"（ImportError → summary.json 引导 `pip install`）与 server 启动 `pip check` / import 预热 — 低优可选增强（见 §0 下一步 ④⑤）。
 
 ---
 
 ## 六、P1 前置：指标语义层（总控定契约，D 实现）
 
 总控将在 `server/src/types.ts` + `web/src/types.ts` 定义 `MetricDefinition`（id/name/expression/grain/caliber/lineage/version…，草案见 `KICKOFF-P0.md`）。D 负责：`db/data.ts` 建 `metrics`/`metric_lineage` 表 + `routes/data.ts` CRUD + `IndicatorsPane` 升级为可执行 metric store。E 写 SQL / V 看板取数**强制引用** metric，根治"同一指标多口径"。
+
+---
+
+## 七、Python 工具运行依赖（D-v2 终审遗留，2026-06-13）
+
+`server/tools/*` 下 `runtime: python3` 的工具由 `/api/extraction-tools/:id/run`（`server/src/lib/tool-runner.ts`）直接调用宿主机 `python3` 执行，**不打包 venv**。新机器/新部署必须先装依赖，否则 `/run` 会以 `ModuleNotFoundError` 失败（错误会出现在 `summary.json` 的 stderr 字段）。
+
+清单与版本见 `server/tools/requirements.txt`，安装：
+
+```bash
+pip install -r server/tools/requirements.txt
+# 校验
+python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print('ok')"
+```
+
+覆盖范围：
+- 9 个分析工具：apparel-structure / churn-risk / clv-prediction / clustering / cohort-retention / market-basket / rfm-segmentation = pandas + numpy（+ scipy 仅 clv-prediction）；**seasonal-forecast = pandas + numpy + statsmodels**（STL + Holt-Winters，函数体 lazy import，无兜底分支，缺 statsmodels 必 ImportError）；aarrr-flow = pandas + numpy。
+- 4 个摄取工具：phone-cleaner = pandas + openpyxl(.xlsx) + xlrd(.xls)；extract-sycm-member = beautifulsoup4（用 `html.parser`，**不需 lxml**）；extract-tmall-profile / extract-xhs-insight 仅标准库。
+
+新增依赖时同步改 `server/tools/requirements.txt` + `server/tools/README.md`。

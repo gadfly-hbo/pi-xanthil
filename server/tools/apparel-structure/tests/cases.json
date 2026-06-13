@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "id": "apparel-structure-field-presence",
+      "name": "Minimal CSV required fields",
+      "inputPath": "tests/fixtures/minimal.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["priceBandDistribution", "motionRate", "priceStats", "skuBreadthDepth"]
+      }
+    },
+    {
+      "id": "apparel-structure-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    },
+    {
+      "id": "apparel-structure-missing-fields",
+      "name": "CSV missing required columns must fail",
+      "inputPath": "tests/fixtures/missing-fields.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "缺少必需字段"
+      }
+    },
+    {
+      "id": "apparel-structure-empty-data",
+      "name": "CSV with header only must fail",
+      "inputPath": "tests/fixtures/empty-data.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "CSV 文件为空"
+      }
+    }
+  ]
+}

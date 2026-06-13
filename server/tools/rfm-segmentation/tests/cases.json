@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "id": "rfm-segmentation-field-presence",
+      "name": "Minimal RFM CSV produces required output keys",
+      "inputPath": "tests/fixtures/minimal.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["overall", "segments", "score_distribution"]
+      }
+    },
+    {
+      "id": "rfm-segmentation-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    },
+    {
+      "id": "rfm-segmentation-missing-cols",
+      "name": "CSV missing RFM columns must fail with clear message",
+      "inputPath": "tests/fixtures/missing-cols.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "缺少必需字段"
+      }
+    },
+    {
+      "id": "rfm-segmentation-too-few-rows",
+      "name": "Too few customers must fail",
+      "inputPath": "tests/fixtures/too-few-rows.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "客户数过少"
+      }
+    }
+  ]
+}

@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "id": "churn-risk-field-presence",
+      "name": "Customer-level RFM CSV produces required keys",
+      "inputPath": "tests/fixtures/minimal.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["overall", "tiers", "topHighRisk"]
+      }
+    },
+    {
+      "id": "churn-risk-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    },
+    {
+      "id": "churn-risk-missing-cols",
+      "name": "Missing recency/frequency must fail",
+      "inputPath": "tests/fixtures/missing-cols.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "缺少必需字段"
+      }
+    },
+    {
+      "id": "churn-risk-too-few-rows",
+      "name": "Too few customers must fail",
+      "inputPath": "tests/fixtures/too-few-rows.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "客户数过少"
+      }
+    },
+    {
+      "id": "churn-risk-no-monetary",
+      "name": "CSV without monetary column produces required keys",
+      "inputPath": "tests/fixtures/no-monetary.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["overall", "tiers", "topHighRisk"]
+      }
+    }
+  ]
+}

@@ -1,0 +1,4 @@
+customer_id,frequency,recency,T,monetary
+C1,1,30,60,100
+C2,2,40,80,200
+C3,0,0,30,0

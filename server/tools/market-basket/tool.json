@@ -1,0 +1,58 @@
+{
+  "id": "market-basket",
+  "name": "购物篮关联规则分析 (Apriori)",
+  "version": "1.0.0",
+  "description": "对订单-商品级 CSV 做购物篮分析。期望列（含别名）: order_id（或 order/transaction_id/订单号）；item（或 sku/product_id/商品/商品ID/商品名称）。支持两种粒度: (a) 每行一条 order×item 长表; (b) 每行一个 order_id + items 列（逗号/分号/竖线分隔的商品列表）。算法：Apriori 频繁项集 + 关联规则 (support / confidence / lift)，纯 pandas/numpy 实现，无 mlxtend 依赖。输出 top-N 频繁项集与按 lift 排序的 top-N 关联规则（聚合衍生产物，不含原始订单行）。",
+  "entry": "market_basket.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".md", ".json"],
+  "riskLevel": "L0",
+  "allowedUse": "对去标识订单-商品级表做购物篮关联分析；产物为频繁项集与关联规则聚合，不回写任何订单原始行。",
+  "forbiddenUse": "不得用于含 PII 的订单原始数据；不得直接把订单×商品长表作为产物输出（仅输出聚合规则）。",
+  "failureHandling": "缺列时返回 '缺少必需字段'；订单数 < 5 时返回 '订单数过少'；找不到任何满足 min_support 的项集时返回提示并将 itemsets/rules 设为空。",
+  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "resultColumns": [
+    { "key": "orders", "label": "订单数" },
+    { "key": "uniqueItems", "label": "商品数" },
+    { "key": "rules", "label": "规则数" }
+  ],
+  "parameters": [
+    {
+      "name": "min_support",
+      "label": "最小支持度",
+      "type": "number",
+      "required": false,
+      "default": 0.02,
+      "description": "频繁项集最小支持度 (0-1)，默认 0.02"
+    },
+    {
+      "name": "min_confidence",
+      "label": "最小置信度",
+      "type": "number",
+      "required": false,
+      "default": 0.3,
+      "description": "关联规则最小置信度 (0-1)，默认 0.3"
+    },
+    {
+      "name": "max_len",
+      "label": "最大项集长度",
+      "type": "number",
+      "required": false,
+      "default": 3,
+      "description": "频繁项集最大长度 (>=2)，默认 3"
+    },
+    {
+      "name": "top_n",
+      "label": "Top-N 输出",
+      "type": "number",
+      "required": false,
+      "default": 30,
+      "description": "频繁项集与规则各保留前 N 条，默认 30"
+    }
+  ]
+}

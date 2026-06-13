@@ -5,6 +5,7 @@
   "description": "从小红书灵犀人群画像导出的 HTML 文件中提取 AI 解读与结构化标签（性别、年龄、地域、城市等级、消费特征、兴趣类目、关键词、博主偏好、生活方式等），输出 Markdown 和 JSON。",
   "entry": "extract_xhs_insight.py",
   "runtime": "python3",
+  "category": "ingestion",
   "input": {
     "accept": [".html"],
     "modes": ["file", "directory"]

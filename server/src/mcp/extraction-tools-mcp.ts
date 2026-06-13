@@ -4,8 +4,8 @@
  * `pi-mcp-adapter`, which reads `<workspaceRoot>/.mcp.json`).
  *
  * 红线（AGENTS.md §一）：本进程只是 stdio→HTTP 代理，所有工具调用经主服务的
- * `POST /api/extraction-tools/:id/run` + `source=ai` 守卫执行——该守卫强制输入必须是
- * 本工作区已登记的 clean_data，draw_data 永久禁止。本进程自身不读任何数据文件。
+ * `POST /api/extraction-tools/:id/run` + `source=ai` 执行。AI 可调工具允许读取已登记数据路径；
+ * 工具对其产物是否含原始行负责，禁止把 draw_data 原始行/明细整体回灌 LLM。本进程自身不读任何数据文件。
  *
  * Transport: newline-delimited JSON-RPC 2.0 over stdin/stdout (MCP stdio standard).
  * Spawned per `.mcp.json`: `node --experimental-strip-types <this> --workspace <id> --api <baseUrl>`.
@@ -24,7 +24,13 @@ const API_BASE = (argOf("--api") ?? "http://localhost:8787").replace(/\/$/, "");
 const PROTOCOL_VERSION = "2024-11-05";
 
 interface ToolParameter { name: string; type?: string; description?: string; required?: boolean; default?: unknown }
-interface RemoteTool { id: string; name: string; description?: string; parameters?: ToolParameter[] }
+interface RemoteTool {
+  id: string;
+  name: string;
+  description?: string;
+  category?: "ingestion" | "analysis";
+  parameters?: ToolParameter[];
+}
 
 type JsonRpcId = string | number | null;
 interface JsonRpcRequest { jsonrpc: "2.0"; id?: JsonRpcId; method: string; params?: Record<string, unknown> }
@@ -45,12 +51,16 @@ async function fetchTools(): Promise<RemoteTool[]> {
   return (await res.json()) as RemoteTool[];
 }
 
-/** MCP tool def per ExtractionTool. Input is constrained to a registered clean_data path. */
+function isAiExposed(tool: RemoteTool): boolean {
+  return tool.category === "analysis";
+}
+
+/** MCP tool def per ExtractionTool. Input may be any registered data path accepted by the tool. */
 function toMcpTool(t: RemoteTool) {
   const properties: Record<string, unknown> = {
     cleanDataPath: {
       type: "string",
-      description: "要处理的聚合数据（clean_data）文件的绝对路径。必须是本工作区已登记的 clean_data；原始数据 draw_data 一律禁止（后端 403）。",
+      description: "要处理的数据文件绝对路径。可为本工作区已登记且该工具接受的数据路径；工具产物不得包含原始行级明细。",
     },
   };
   const required = ["cleanDataPath"];
@@ -60,14 +70,14 @@ function toMcpTool(t: RemoteTool) {
   }
   return {
     name: t.id,
-    description: `${t.name}${t.description ? ` — ${t.description}` : ""}（数据分析工具，仅可处理已登记的 clean_data 聚合数据）`,
+    description: `${t.name}${t.description ? ` — ${t.description}` : ""}（数据分析工具，可处理本工作区已登记且该工具接受的数据路径；产物不得包含原始行级明细）`,
     inputSchema: { type: "object", properties, required },
   };
 }
 
 async function callTool(name: string, args: Record<string, unknown>): Promise<{ content: { type: "text"; text: string }[]; isError?: boolean }> {
   const cleanDataPath = typeof args.cleanDataPath === "string" ? args.cleanDataPath : "";
-  if (!cleanDataPath) return { content: [{ type: "text", text: "缺少 cleanDataPath（已登记的 clean_data 文件路径）" }], isError: true };
+  if (!cleanDataPath) return { content: [{ type: "text", text: "缺少 cleanDataPath（已登记且工具接受的数据文件路径）" }], isError: true };
 
   // Output goes to a workspace-local managed dir (cwd = workspaceRoot when spawned by pi).
   const outputPath = join(process.cwd(), "tool_runs", `${Date.now()}-${Math.random().toString(36).slice(2)}`);
@@ -100,7 +110,7 @@ async function handle(req: JsonRpcRequest): Promise<void> {
       });
     }
     if (method === "tools/list") {
-      const tools = await fetchTools();
+      const tools = (await fetchTools()).filter(isAiExposed);
       return reply(id ?? null, { tools: tools.map(toMcpTool) });
     }
     if (method === "tools/call") {
@@ -108,6 +118,8 @@ async function handle(req: JsonRpcRequest): Promise<void> {
       const name = typeof p.name === "string" ? p.name : "";
       const args = (p.arguments && typeof p.arguments === "object" ? p.arguments : {}) as Record<string, unknown>;
       if (!name) return replyError(id ?? null, -32602, "missing tool name");
+      const tool = (await fetchTools()).find((item) => item.id === name);
+      if (!tool || !isAiExposed(tool)) return replyError(id ?? null, -32602, "tool is not exposed for AI use");
       return reply(id ?? null, await callTool(name, args));
     }
     if (method === "ping") return reply(id ?? null, {});

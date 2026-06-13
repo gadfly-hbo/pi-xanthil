@@ -1,0 +1,56 @@
+{
+  "cases": [
+    {
+      "id": "market-basket-field-presence",
+      "name": "Long-form order×item CSV produces required keys",
+      "inputPath": "tests/fixtures/minimal.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["overall", "itemsets", "topRules"]
+      }
+    },
+    {
+      "id": "market-basket-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    },
+    {
+      "id": "market-basket-missing-cols",
+      "name": "Missing item column must fail",
+      "inputPath": "tests/fixtures/missing-cols.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "缺少必需字段"
+      }
+    },
+    {
+      "id": "market-basket-too-few-orders",
+      "name": "Too few orders must fail",
+      "inputPath": "tests/fixtures/too-few-orders.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "订单数过少"
+      }
+    },
+    {
+      "id": "market-basket-wide-format",
+      "name": "Wide-format (order_id + items list) produces required keys",
+      "inputPath": "tests/fixtures/wide.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["overall", "itemsets", "topRules"]
+      }
+    }
+  ]
+}

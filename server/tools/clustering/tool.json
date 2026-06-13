@@ -1,0 +1,67 @@
+{
+  "id": "clustering",
+  "name": "数值特征聚类分群 (K-means + 轮廓)",
+  "version": "1.0.0",
+  "description": "对实体级数值特征表做无监督聚类。期望 CSV 第 1 列为实体 id（自动识别 customer_id/user_id/sku/entity_id 等别名，识别失败则取首列），其余所有数值列作为特征；非数值列自动忽略。算法：z-score 标准化 → k 在 [k_min, k_max] 区间用纯 numpy K-means(k-means++ 初始化, 多次重启) 拟合 → 用肘部 (相邻 k 间 SSE 改善率) 与轮廓系数 (silhouette, 抽样上限 1500) 综合选 k → 输出群标签 + 各群规模 + 各群标准化空间均值画像 + 原始空间均值画像。纯 numpy 实现，无 sklearn 依赖。",
+  "entry": "clustering.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".md", ".json"],
+  "riskLevel": "L0",
+  "allowedUse": "对去标识实体级数值特征表做聚类；产物为各群规模与均值画像，不回写原始实体行明细。",
+  "forbiddenUse": "不得用于含 PII 的原始数据；非数值特征（自由文本/类别等）需上游先编码为数值。",
+  "failureHandling": "数值特征列 < 2 时返回 '可用数值特征过少'；样本数 < k_max 时返回 '样本数过少'；K-means 退化（某簇空）回退到 k-1 并标注 fallback=true。",
+  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "resultColumns": [
+    { "key": "samples", "label": "样本数" },
+    { "key": "features", "label": "特征数" },
+    { "key": "k", "label": "选定 k" },
+    { "key": "silhouette", "label": "轮廓系数" }
+  ],
+  "parameters": [
+    {
+      "name": "k_min",
+      "label": "最小簇数",
+      "type": "number",
+      "required": false,
+      "default": 2,
+      "description": "搜索 k 的下界 (>=2)"
+    },
+    {
+      "name": "k_max",
+      "label": "最大簇数",
+      "type": "number",
+      "required": false,
+      "default": 8,
+      "description": "搜索 k 的上界 (<=20)"
+    },
+    {
+      "name": "n_init",
+      "label": "重启次数",
+      "type": "number",
+      "required": false,
+      "default": 10,
+      "description": "每个 k 的随机重启次数"
+    },
+    {
+      "name": "max_iter",
+      "label": "最大迭代",
+      "type": "number",
+      "required": false,
+      "default": 300,
+      "description": "单次 K-means 最大迭代步数"
+    },
+    {
+      "name": "random_state",
+      "label": "随机种子",
+      "type": "number",
+      "required": false,
+      "default": 42,
+      "description": "保证可复现"
+    }
+  ]
+}

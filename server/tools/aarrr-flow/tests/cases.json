@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "id": "aarrr-flow-field-presence",
+      "name": "Period x stage CSV produces required keys",
+      "inputPath": "tests/fixtures/minimal.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["overall", "funnel", "perPeriod", "deepeningCurve"]
+      }
+    },
+    {
+      "id": "aarrr-flow-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    },
+    {
+      "id": "aarrr-flow-missing-stages",
+      "name": "Missing stage columns must fail",
+      "inputPath": "tests/fixtures/missing-cols.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "缺少必需字段"
+      }
+    },
+    {
+      "id": "aarrr-flow-missing-period",
+      "name": "Missing period column must fail",
+      "inputPath": "tests/fixtures/missing-period.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "缺少必需字段"
+      }
+    }
+  ]
+}

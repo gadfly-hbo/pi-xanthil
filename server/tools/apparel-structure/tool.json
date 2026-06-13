@@ -1,0 +1,44 @@
+{
+  "id": "apparel-structure",
+  "name": "服饰商品结构分析",
+  "version": "1.0.0",
+  "description": "对服饰类商品/SKU 聚合 CSV 进行商品结构分析，包含价格带分桶分布、连带率(UPT)、动销率、售罄率、库销比、SKU 宽深度等指标，输出结构化 Markdown 报告和 JSON 数据。输入数据需包含商品 SKU 级别的价格、吊牌价、销量、库存、入库等字段。",
+  "entry": "apparel_structure.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".md", ".json"],
+  "riskLevel": "L0",
+  "allowedUse": "对服饰行业商品结构进行分析，支持以下字段：商品编号、SKU编号、价格、吊牌价、销量、库存、入库数量、订单数、件数。分析结果为聚合指标，不包含个人身份信息。",
+  "forbiddenUse": "不能处理含个人身份信息（PII）的数据；不能用于非服饰品类的商品结构分析；分析结果不应作为唯一的库存或定价决策依据。",
+  "failureHandling": "CSV 缺少必需字段时返回详细错误信息；空 CSV 返回 0 指标；超时自动终止子进程。",
+  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "resultColumns": [
+    { "key": "totalSkus", "label": "SKU 总数" },
+    { "key": "priceBandCount", "label": "价格带数" },
+    { "key": "sellThroughRate", "label": "售罄率" },
+    { "key": "motionRate", "label": "动销率" },
+    { "key": "upt", "label": "连带率(UPT)" }
+  ],
+  "parameters": [
+    {
+      "name": "price_bands",
+      "label": "价格带分档",
+      "type": "string",
+      "required": false,
+      "default": "0-99,100-199,200-399,400-699,700-999,1000+",
+      "description": "价格带区间，逗号分隔"
+    },
+    {
+      "name": "inventory_window_days",
+      "label": "库销比时间窗口(天)",
+      "type": "number",
+      "required": false,
+      "default": 30,
+      "description": "计算库销比时使用的时间窗口（天），用于将累计销量折算为日均销量"
+    }
+  ]
+}

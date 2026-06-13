@@ -8,26 +8,34 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-- 最近更新：2026-06-12 · 总控（数据分析 tool-use Phase 2a **后端实装完成**：MCP 桥 + clean_data 红线守卫 + 每工作区 .mcp.json；详见 §五）
-- **本 session(06-12) ✅ 数据分析 tool-use Phase 2a 后端**（总控自做+自检，server typecheck + web build + 隔离 grep 全绿）：让数据分析 pi 对话经 **MCP 桥**调用已注册 ExtractionTool。spike 先行（原卡 skill+bash 经验证不红线安全→改 MCP）。交付：手写零依赖 stdio MCP server(`server/src/mcp/extraction-tools-mcp.ts`) + `/run` 的 `source=ai` clean_data 硬守卫(draw_data 403) + 每工作区 .mcp.json 注册(`server/src/mcp/register.ts`)。未改 types.ts(tool 事件走 PiEvent catch-all)。**待 E 卡(ChatPane tool 渲染) + 浏览器/pi 实跑点检**(活体握手 + 守卫命中)。全程取证 + 实现细节见 §五。
-- **本 session(06-12) ✅ tool-use D(P1) + E(P2b) 终审通过**（随后交付于工作树，总控终审）：D=ToolUsePane 手动试跑面板(仅 clean_data 双重守卫/零 LLM)；E=ChatPane/MessageRow/ProcessTrace 渲染 pi tool_call/tool_result。**桥=MCP(X 卡)，E 的原 skill 桥作废、只做渲染**。**接缝层 types.ts(PiEvent tool_call/tool_result + ContentBlock tool_use.status)/App.tsx(事件→block 转换+去重) 由实现方代笔、总控逐行审签**(§六 记一笔：本应总控写)。gate 全绿。**⚠ 整条 pi↔MCP↔守卫↔渲染链零运行时验证，待 npm run dev 实跑**。
-- **本 session(06-12) 已开「红线硬化·独立议题」卡**(wiki TASKS dom=X todo)：spike 发现数据分析 session 内建 read/bash 全开 + cwd=workspace 根 → pi 理论可达 `sessions/*/010_raw`(draw_data)，且全局 mcp.json 的 filesystem server 能读 ~/Dev；现有保护仅"路径不披露"(behavioral)。用户决策与 tool-use 解耦、单列评估三方案(pi-sandbox/移目录/exclude-tools)。
-- **本 session(06-12) ✅ 数据分析对话 fork 分支 + 委派子 agent 后端**（总控自做+自检，server typecheck + web build 绿；机制 A，E 前端卡待派发）：解决 pi session 多轮交互上下文撑爆——心智「开子 pi session 干重活，只把结论回流主 session」。**契约 ForkBranch/SubAgentTask 双侧 + fork_branches/subagent_tasks 两表(db/shared) + pi-adapter forkFrom + index.ts REST/handleSend 分叉/后台 runDelegatedSubAgent**。三大简化：回流=给主 session 发普通消息(无后端)、fork 分支=真实 session 复用 send/messages、委派=REST+DB 轮询(非 WS)。**App.tsx 零改、WS union 零改**。详见 §二。**未运行时实跑**——需点检 pi `--fork` 组合行为 + 子 agent 写 060_reports/摘要捕获(见 §二)。
-- **本 session(06-12) ✅ actions（行动）模块全闭环**（机制 A：X 契约总控自做 → V 实装 → 总控回流终审+收敛）：探索 tab「黄金策」后新增「行动」二级 tab，落地 onto-xanthil「分析→行动→执行」——报告 →①LLM 提取行动项 →②采纳建任务 →③执行反馈，三段闭环。**X 契约(总控)**：`types.ts` 双侧定 7 类型(ActionScene/ActionLifecycle/ActionPriority/ActionEffort/ActionItemStatus/ActionTaskStatus + ActionItemDraft/ActionItem/ActionTask/ActionFeedback 及 Input) + `constants.ts` SubTab 加 `actions`。**V 实装**：`ActionsPane`(三段式) + `routes/viz.ts`(extract LLM + 行动项/任务/反馈 CRUD) + `db/viz.ts`(action_items/action_tasks/action_feedback 三表+FK CASCADE) + `lib/api/viz.ts` + VizTabs 两分支 + 黄金策侧栏「去行动」跳转。**终审收敛 2 偏差(用户决策「收敛到 enum」)**：① 单一真源——db/viz + api/viz 曾各自本地重声明 → 删本地改 import `types.ts`(api/viz 加 re-export)；② scene/lifecycle 曾被实装成自由文本 → enum 定为**中文规范标签**(详见 §二)、extract prompt 约束取值 + 后端归一化、NOT NULL 列空值存 `""`/parse 回 `undefined`。typecheck+build 全绿。**待用户提交 + 浏览器实跑点检**(提取→采纳→任务流转→反馈闭环)。
-- **本 session(06-12) ✅ 探索 subtab 快修**（总控直改 constants.ts，非红线）：「工作视图」改名「数据分析」+ 重排为 业务需求-原始数据-聚合数据-数据探索-数据分析-报告输出-汇报版本-报告审核-黄金策-行动。**仅改探索**(用户决策)：新增 `EXPLORE_SUB_TABS` + `getSubTabsForTab` 加 explore 分支；multi/工作流仍用 `SUB_TABS`(工作视图保持首位，因 view 在 multi 渲染工作流列表)。详见 §四。
-- **本 session(06-12) ✅ 文件夹标准化（任务绑定终态）**（总控自做+自检，typecheck+build+隔离 grep 全绿；原拟发快修，用户改判由总控直写最稳）：三段目录标准 `draw_data→010_raw` / `clean_data→020_clean` / `report→060_reports`(`030~050` 留扩展)。**关键决策(用户)：标准目录绑「任务」而非「工作区」**——session 与 flow 各是一个任务、各自独立一棵树；**workspace 根不建这三个**。落地：① `server/src/workspace-dirs.ts`(`FOLDER_DIRS` + `sessionDir` + `standardDirIn` + `ensureStandardDirs` + `isInsideStandardDir` 防 `../` 越狱，全部基目录相对) ② `createWorkspace` **不建**标准目录(仅 files/.pi-sessions/flows) ③ `createSession` **预建** `sessions/<id>/{010,020,060}`、`createFlow` 在 `flows/<id>/` 下补建三目录 ④ 输出路由：`index.ts` 6 处 fallback 按作用域取任务目录——4 处 session→`standardDirIn(sessionDir(root,session.id),"report")`、chat 上下文(ws_)同理、flow→`standardDirIn(flow.folderPath,"report")`；run(runDir)/tmp fallback 不动 ⑤ `addWorkspacePath` 硬锁改**任务级**(session/flow 作用域且任务标准目录已存在→目录外 path throw 中文报错；**workspace 作用域不锁**) ⑥ `/api/pick-path` 收 `sessionId/flowId`、原生框 `default location` 定位任务标准子目录 ⑦ `readArtifactTree` 缺失目录兜底空树(防 legacy 任务无目录时 `/artifacts/tree` 抛错) + 前端 `api.pickLocalPath` opts 改 `sessionId/flowId`、`FolderPathsPane.pick()` 按 scope 传。**仅新建生效**：legacy session/flow 无标准目录→不锁、旧行为保留。`output-paths.ts:98` draw_data 披露排除未动。wiki HOTFIX 该条已 done。**待用户提交 + 浏览器实跑点检**(原生选择器无法自动化驱动)。
-- **本 session(06-12) ✅ 删除时可选「连同文档一起删」**（总控自做+自检全绿）：删除工作区/会话/工作流时弹窗多一个勾选「同时删除文档」（默认不勾=保留，沿用旧安全默认），用于一键清理历史/测试文档。**安全红线**：`workspace_paths` 登记路径可指向任意外部位置(如 ~/Downloads)，故「删除文档」**只删 app 自管目录**(workspace=`rootPath`/session=`sessions/<id>`/flow=`flow.folderPath`，均在 `WORKSPACES_ROOT` 内)，**外部登记路径永不动**。删除方式=**移 macOS 废纸篓**(可恢复，非 rm 永久删)。落地：新建 `server/src/trash.ts:moveManagedDirToTrash`(osascript Finder delete + 「必须严格在 WORKSPACES_ROOT 内」越界防护，否则 throw)；3 个 DELETE 路由收 `?deleteFiles=true` 透传；`api.deleteWorkspace/Session/Flow` + App 回调加 `deleteFiles`；新建复用组件 `web/src/components/ConfirmDeleteDialog.tsx`(带勾选)，`Sidebar.tsx`(工作区+会话)/`FlowListColumn.tsx`(工作流) 三处原生 confirm 替换为该弹窗。**注**：首次使用 macOS 会弹「允许控制 Finder」自动化授权(一次性)。**待用户提交 + 浏览器实跑点检**。
-- **本 session(06-11) 快修批 ✅**（总控直接执行+终审，typecheck+build 全绿，详见 wiki 快修台账 + §四）：① UI 导航改造(实验室并入 AnaX 两级/规则记忆 6 模块/Xan前移/onto-xanthil 一级 tab/黄金策业务洞见占位/探索红线只读栏 `CleanDataDocsColumn`) ② 随手记 `QuickNotesPane` 落地(localStorage,仿 wiki) ③ **侧栏改造**:精选收藏下线(删 UI 入口,后端休眠)、「探索」→「任务」、工作流移入「工作流·工作视图」左竖栏(`FlowListColumn`) ④ **pi `runPiPrompt` 超时根因修复**(见 §三) ⑤ decision 模块**确定暂缓/取消**(并入需求池)，孤儿残留 `web/src/tabs/DecisionTabs.tsx` 已删、typecheck/build 转绿（接线派卡作废）
-- 进度（接缝/治理底座）：接缝重构批1~3✅ · 文档治理✅ · 连续性 SOP+`/px-*`✅ · 协作闭环(机制A)+归档✅ · wiki(5 tab)✅ · 快修通道固化✅ · 随手记✅ · 缓存 harness 三层闭环(回填未真验) · P0-A/B/D 均终审+实跑✅；**仅剩 P0-C E2E 验证(E)待进场**
-- **onto-xanthil 全期交付完毕 ✅**（2026-06-10 总控独立开发，详见 `docs/onto-xanthil-design.md` + wiki 已完成区）：数据语义层(Palantir 取向·借 nano 工程·做轻)。P1 契约/db/路由/前端骨架+聚合集生成 · P2a 共享 `GraphCanvas`(KG 改用同底座) · P2b/P2b' **metric 完全切源**(`metric_definitions` 唯一真源，3 注入管线+IndicatorsPane 全切，启动迁移先拷后删旧行) · P3 文档导入+pi LLM 抽取(`onto-extract.ts`)。五能力(对象/关系/指标/图谱/导入)齐活，均实跑通过
-- **onto-xanthil 差距对齐 P4~P8 ✅**（2026-06-10 总控独立开发，对照参考产品 `nano-ontoprompt` 全量核查，详见 `docs/onto-xanthil-design.md §9`）：**P4** 质检 `onto-validator.ts` 2→7 检查(结构/字段/引用/去重/kind白名单/function_code启发式/linked语义引用) · **P5** `onto-export.ts` 五格式导出(JSON/YAML/CSV/HTML/Turtle，纯字符串零依赖,超 nano 无需 rdflib/pyyaml) · **P6** `logic_rules`/`onto_actions` 两表(Logic Rule+Action 层全链路:契约/db/8路由/前端两Section/2子tab/导出并入) · **P7** 抽取覆盖四类(entity/relation/logic/action)+四类校准+拆出可测 `processExtractionOutput` · **P8** `onto_prompts` 表 prompt 管理(模板版本化,{{content}}占位)+文档上传(.md/.txt/.csv 客户端FileReader)。全绿+实跑 63 项
-- **onto-xanthil readme + 左竖栏 + 滚动修复 ✅**（2026-06-10）：①加二级 tab `onto_readme`「说明」(纯静态文档:概念表/各子页操作详解/供应链示例)，设为 onto 默认落地页 ②onto 全部二级 tab **改左侧竖栏**呈现(顶部条对 onto 隐藏,仿 AnaX `LAB_ANAX_SUB_TABS` 范式) ③修 `OntologyPane` 根容器无滚动 bug(父级 `min-h-0` 裁切超长内容→加 `h-full overflow-y-auto` 外壳)
-- 下一步：① **P0-C E2E 验证(E)** 待进场，P0 齐活后归档 changelog v2.1；② **onto-xanthil 全部新 UI 仍未浏览器实跑点检**(逻辑/动作/说明子tab、左竖栏切换、导出下拉、文件上传、prompt 编辑器、metric 切源注入)，强烈建议 `npm run dev` 走一遍真实交互(逻辑/db 层已 63 项实跑，但浏览器渲染/交互未验)；③ 工作流「创建」链路 E 前端待联调(见下)；④ **本 session UI 改动同样未浏览器实跑点检**(侧栏任务/工作流左栏、实验室 AnaX 左竖栏、随手记增删/导入导出、黄金策洞见栏)，建议 `npm run dev` 走一遍；⑤ ~~decision 模块导航/渲染接线~~ **作废**(2026-06-11)：decision 确定暂缓并入需求池，孤儿 `DecisionTabs.tsx` 已删，不再接线；⑥ **文件夹标准化实跑点检**(06-12，任务绑定终态)：`npm run dev` 验 —— 新开 session 后磁盘出现 `sessions/<id>/{010_raw,020_clean,060_reports}`、新建 flow 的 `flows/<id>/` 下同样三目录；任务态下聚合 tab 添加时选择器默认开在该任务 `020_clean`、选任务目录外文件被拒显中文报错；该任务不登记报告路径时 agent 产报告落该任务 `060_reports`；workspace 根不出现三目录、无任务态添加路径不被锁；legacy session/flow 不被硬锁拦
-- 开放问题：① 缓存回填效果待真实双 session 验证 ② onto metric 切源动了 D 域 live 注入功能，须真实对话验证指标注入生效 ③ onto 抽取的 `function_code` 仅启发式校验(TS 侧无法 ast.parse Python)，若要真语法门禁需接 pi(按需) ④ Turtle 导出对 logic/action 暂未映射(OWL 语义有限,按需)
-- **工作流「创建」链路修复 ✅ done(2026-06-11，终审+联调实跑通过)**：三层协同——总控后端 `index.ts captureWorkflowFromText` 三路捕获+回填 + E `MultiAgentExecutionPane` prompt 硬化(禁提问+钉死 flow 目录+输出目录约束不适用 workflow.json) + `CreationPane` 重试轮询/提问可回复/超时空态引导。浏览器联调实跑(创建带输出目录约束→workflow.json 落 flow 目录→UI 显节点；pi 提问可回复)通过
-- UI 导航台账：实验室重组 + 规则记忆 6 模块 + tab 增删排序 + 探索红线只读栏 + **onto-xanthil 8 子tab(说明/对象/关系/指标/逻辑/动作/图谱/导入)·左竖栏呈现**，详见 §四
-- **关键约束/坑**：① `node:sqlite` 的 `DatabaseSync` **无 `.transaction()`**(better-sqlite3 才有)，事务用 `db.exec("BEGIN"/"COMMIT"/"ROLLBACK")` ② metric 真源 = `metric_definitions`(非 `analysis_standards`)，analysis_standards 仅留 `reference_file` ③ **文件夹标准（任务绑定）**：标准目录绑**任务**(session=`sessions/<id>/`、flow=`flow.folderPath`)，**非工作区**(workspace 根不建)；映射/路径判定统一走 `server/src/workspace-dirs.ts`(`FOLDER_DIRS`/`sessionDir`/`standardDirIn`/`ensureStandardDirs`/`isInsideStandardDir`，基目录相对)，勿各处硬编码目录名；硬锁与目录预建**仅新建生效**(legacy 任务无标准目录则 `addWorkspacePath` 不校验)；报告 fallback 按作用域落任务 `060_reports`，凡读 `target.outputDir` 的新逻辑须容忍目录不存在(参 `readArtifactTree` 兜底)；`/api/pick-path` 的 `default location` 仅 macOS osascript，跨平台未覆盖
-- **终审教训**：仅 typecheck/build 绿 ≠ 功能可用；终审一律加运行时端到端实跑门禁
+- 最近更新：2026-06-13 · Codex（infra 收尾：ManualAnalysisToolCard 输入放开 + report 输出目录固定当前 session；详见 §五.9）
+- 进度：
+  - ✅ 用户红线政策已更新：仅放开“AI 可调工具读取 `draw_data`”这一条；`draw_data` 原始行级内容/明细仍禁止直接进 LLM，经注册工具处理后的聚合/衍生产物（不含原始行）允许回流 LLM。
+  - ✅ `server/src/index.ts` 的 `/api/extraction-tools/:id/run` 已移除 `source=ai` clean_data 白名单 403 守卫；`source` 仅作为 AI/MCP 来源标记保留并进入 trace payload；`validateExtractionInput()` 仍执行工具输入格式校验。
+  - ✅ `server/src/mcp/extraction-tools-mcp.ts` 已同步红线注释和 MCP tool schema/提示：输入可为本工作区已登记且工具接受的数据路径；工具产物不得包含原始行级明细；`callTool` 仍带 `source: "ai"`。
+  - ✅ `AGENTS.md` §一已按新安全契约更新；“数据探索模块硬约束”整节未改，`DataExplorationPane` 及子树纯前端零 LLM 红线不变。
+  - ✅ `docs/notes-infra.md` §五.7 已记录 I4 决策反转：原“接缝层单点拦 draw_data”作废，当前红线转为“禁原始行直进 LLM、工具聚合/衍生产物可进 LLM”。
+  - ✅ 接口 smoke 已完成：隔离 server 下 `seasonal-forecast /run` 使用 `source=ai` + `/tmp/.../draw_data/sample.csv` 返回 `HTTP 200`，证明不再触发旧 403。
+  - ✅ `ManualAnalysisToolCard` 已与新红线政策对齐：输入选择从 clean_data-only 改为 workspace 已登记 `draw_data + clean_data` 文件，analysis 工具筛选仍只保留 `category === "analysis"`。
+  - ✅ `ManualAnalysisToolCard` 的 `report 输出目录` 已去掉多选下拉，改为固定使用当前任务 session 的 `report` 目录；前端复用现有 `api.listSessionPaths(sessionId, "report")`，无需新增 session-reports 端点。
+  - ✅ `ChatPane` 已向 `ManualAnalysisToolCard` 传入 `activeSessionId`，工具运行结果仍按 `onBackflow` 作为可编辑普通消息回流当前对话。
+  - ✅ 本次收尾校验：`npm run typecheck` 通过；`npm run build` 通过（仅既有 Vite dynamic import / chunk size warning）。目标域为 infra，未跑 data 专属数据探索 LLM 隔离 grep。
+- 下一步：
+  - 补浏览器实跑：在真实 workspace/session 中确认 `@工具` 输入下拉同时出现已登记 `draw_data` 与 `clean_data` 文件，输出目录只读显示当前 session `060_reports`，无 report 多选下拉。
+  - 补真实运行点检：选 draw_data 输入运行一个 analysis 工具，确认 `source=ai` 请求成功、产物写入当前 session `060_reports`，结果仍能编辑后 `onBackflow` 入对话。
+  - 补 pi↔MCP 活体点检：用已登记 `draw_data` 路径经 MCP `tools/call` 调 analysis 工具，确认工具发现、`source=ai` 运行、结果回流三段都正常。
+  - 继续确认“不重启服务”的 registry 刷新链路：新增/删除 `server/tools/<id>/` 后，tool-use 控制台刷新和 MCP `tools/list` 应立即反映最新工具与分类。
+  - 后续新增 AI 可调 analysis 工具时，必须在 `tool.json` 标 `category: "analysis"`，并在工具实现/summary 层保证输出为聚合/衍生产物，不回灌原始行/明细。
+  - D 卡若增加 `enabled` 管理开关，MCP 暴露条件扩为 `category === "analysis" && enabled`，只改 `server/src/mcp/extraction-tools-mcp.ts:isAiExposed()`。
+- 阻塞：
+  - 无代码阻塞；本轮未做浏览器实跑、真实 draw_data 工具运行点检或 pi↔MCP 活体点检。
+- 开放问题：
+  - 总控需拍板：是否要求 analysis 工具 manifest 增加“输出不含原始行/明细”的机器可校验字段，或继续用文档/工具实现约束。
+  - 总控是否要求为 `/run source=ai` + draw_data 放行补自动化 API 测试，避免未来误把 clean_data 守卫加回。
+  - 总控是否要求为 `ManualAnalysisToolCard` 增加前端组件测试或 API mock 测试，覆盖 draw_data/clean_data 输入、无 analysis 工具、无 session report 目录、运行成功回流四态。
+  - 总控是否要求在 `ManualAnalysisToolCard` UI 增加显式红线提示（工具产物不得包含原始行/明细），或保持现有轻量表单。
+  - 总控是否要求为 `isAiExposed()` 增加独立单元测试/stdio MCP 冒烟 fixture，还是等 D 卡 `enabled` 一并补。
+  - 红线硬化独立议题仍待总控拍板：数据分析 session 内建 read/bash 与全局 filesystem MCP 的文件系统可达性是否通过 pi-sandbox / 移目录 / exclude-tools 收紧。
 
 ---
 
@@ -127,9 +135,9 @@
 - 推论：保护**非硬沙箱**——pi 有 bash/read + cwd=root，理论上能 `ls`/`find`/`cat` 到 `sessions/*/010_raw`（draw_data）。属**既有潜在敞口**，靠"不告诉 pi 路径 + 不指示读"维持。**session 离不开内建 read/write**（读 clean_data、写报告），故不能简单 `--no-builtin-tools`。
 
 **3 · 桥机制结论**：
-- ❌ **skill+bash 不安全**：skill 让 pi 用 bash 跑工具二进制 → 绕过后端 clean_data 守卫，且 bash 本就能读 draw_data。否决。
-- ✅ **推荐 MCP**（`pi-mcp-adapter` 已装）：建一个 server 侧 MCP server，把「AI 安全工具」（只吃 clean_data 的 ExtractionTool）暴露为 MCP tool；handler 走既有 `/api/extraction-tools/:id/run` **带 clean_data 硬守卫**（X 卡 §1）。pi 经 MCP 调用 → 必过守卫、不碰原始文件系统；tool_call/tool_result 走 MCP 事件（PiEvent catch-all `{type:string;...}` + `turn_end.toolResults` + content `tool_use/tool_result` 可渲染）。
-- **后端 clean_data 守卫（X §1）无论如何必做**，是硬执行点；MCP 路由保证 pi 工具调用必经它。复用现成 `isInsideStandardDir(baseDir,"clean_data",absPath)`（workspace-dirs.ts，已拒 `../` 逃逸）。
+- ❌ **skill+bash 不安全**：skill 让 pi 用 bash 跑工具二进制，且 bash 本就能读 draw_data。否决。
+- ✅ **推荐 MCP**（`pi-mcp-adapter` 已装）：建一个 server 侧 MCP server，把 AI 可调 `ExtractionTool` 暴露为 MCP tool；handler 走既有 `/api/extraction-tools/:id/run` 并带 `source=ai` 来源标记。pi 经 MCP 调用；tool_call/tool_result 走 MCP 事件（PiEvent catch-all `{type:string;...}` + `turn_end.toolResults` + content `tool_use/tool_result` 可渲染）。
+- **2026-06-13 更新**：原后端 clean_data 守卫已按用户红线政策移除；当前红线是禁止原始行/明细直接进 LLM，工具聚合/衍生产物可回流。
 
 **4 · 决策（2026-06-12 用户拍板）**：① 桥机制 = **MCP**（确认，非原卡 skill+bash）；② 既有内建工具潜在敞口 = **单列独立红线卡**（wiki TASKS 已开「红线硬化·独立议题」，与本卡解耦）。
 
@@ -140,8 +148,29 @@
 
 **6 · 实现（✅ 已落地 2026-06-12，总控自做+自检；server typecheck + web build + 隔离 grep 全绿）**：
 - (a) ✅ `server/src/mcp/extraction-tools-mcp.ts`：手写**零依赖** stdio MCP server（JSON-RPC initialize/tools-list/tools-call/ping，newline-delimited）。纯 stdio→HTTP 代理，自身不读数据文件；`tools/call` → POST `/api/extraction-tools/:id/run` 带 `source=ai`。冒烟测 initialize/ping 通过；tools/list·call 需活体 API + pi 实跑。
-- (b) ✅ `index.ts` `/run` 加 `source=ai` 守卫：inputPath 必须是该工作区**已登记 clean_data**（`listWorkspacePaths(wsId,"clean_data").some(p=>resolve(p.path)===inputPath)`），否则 **403**；draw_data 永禁。**手动模式（不传 source）无回归**。比原计划的 `isInsideStandardDir` 更稳——只认登记表里的 clean_data，draw_data 路径根本不在表中。
+- (b) ✅ `index.ts` `/run` 曾加 `source=ai` clean_data 守卫；2026-06-13 红线政策已反转，当前 `/run` 不再按 clean_data 白名单拦输入，`source=ai` 仅作来源标记，详见 §五.7。
 - (c) ✅ 注册 = **每工作区 .mcp.json**（用户决策）：`server/src/mcp/register.ts:ensureWorkspaceMcpConfig`（合并写、保留他 server）在 `createWorkspace` 调 + 启动 `registerAllWorkspaceMcp()` 回填既有工作区。pi-mcp-adapter 读 cwd=workspaceRoot/.mcp.json → 工具仅在该工作区数据分析 session(handleSend cwd=ws.rootPath) 可见。
 - (d) ✅ 契约：tool 事件走 PiEvent catch-all `{type:string;...}` + `turn_end.toolResults`，**未改 types.ts**（无新 WS union）。
 - (e) ✅ E helper skill（Phase 2b）：`skills.ts:ensureExtractionToolSkill` 生成 `.pi/skills/xanthil-extraction-tools/SKILL.md`（列工具 + Contract「经 workspace MCP server 调、入参 cleanDataPath」），**指向 MCP 的引导 skill，非竞争桥、不教 bash**。**总控决策：不自动注入 runPiTurn**（MCP proxy 已可按需发现），保持 SkillSelector 可选；E 当前「可发现、未自动注入」即正确。小注：写文件在 listSkills 读路径(幂等+try/catch，可接受)。
-- **待实跑点检**（typecheck/build≠功能）：pi↔MCP 活体握手(pi-mcp-adapter 起 server / tools 发现) + AI 调工具命中守卫(clean_data 放行 / draw_data 403) + E 卡 ChatPane tool 渲染。
+- (f) ✅ **AI-safe 工具分类契约（2026-06-12 E 代笔，总控口径）**：`ExtractionTool.category?: "ingestion" | "analysis"` 双侧同义；缺省/非法值保守归一为 `ingestion`。`ingestion`=吃原始源文件的摄取型工具（如 .html/原始 Excel/PII 清洗），永不进 AI/tool-use；`analysis`=只读已备好的 clean_data 聚合数据，可被 AI 调用。MCP `tools/list` 和 `tools/call` 统一走 `isAiExposed(tool)`，当前条件仅 `category === "analysis"`；D 卡若接入 `enabled`，只把该函数改成 `category === "analysis" && enabled`。`GET /api/extraction-tools` 不过滤，消费方各自按 category 决策。
+- **待实跑点检**（typecheck/build≠功能）：pi↔MCP 活体握手(pi-mcp-adapter 起 server / tools 发现) + AI 调工具经 `/run source=ai` 放行 draw_data 路径 + E 卡 ChatPane tool 渲染。
+
+**7 · I4 决策更新：AI 可调工具输入放开，禁原始行直进 LLM（2026-06-13 用户红线政策决策）**——原“守卫单点拦 draw_data”已被政策反转。结论：
+- **AI 路径**：MCP → `/run source=ai` 仍作为来源标记，但 `/run` 不再按 clean_data 白名单拦输入；AI 可调工具可读取已登记数据路径。
+- **新红线**：`draw_data` 原始行级内容/明细禁止直接进 LLM；经注册工具处理后的聚合/衍生产物（不含原始行）允许进 LLM。
+- **工具责任**：工具对其产物是否含原始行负责；禁止把 `draw_data` 原始行/明细整体回灌 LLM。`validateExtractionInput()` 仍保留格式与工具输入契约校验。
+- **不变边界**：数据探索模块（`DataExplorationPane` 及其子树）纯前端零 LLM 的硬约束不变，绝不可动。
+
+**8 · ExtractionTool registry 加载策略（2026-06-13 用户实跑发现 + E 代笔）**：
+- **坑**：`server/tools/registry.ts` 原先模块级 `const tools = loadTools()` / `toolsById` 只在服务启动时加载一次；`tool.json` / `.py` 是 `readdirSync` 读取而非 import，`node --watch` 不会因工具目录增删自动重启；tool-use 控制台“刷新”只重发 GET，后端仍返回旧快照。
+- **决策**：工具数量个位数，扫盘成本可忽略；registry 不做模块级缓存，`listExtractionTools()` 与 `getExtractionTool(id)` 每次调用实时 `loadTools()`。
+- **影响面**：函数签名/返回类型不变，`index.ts`、MCP server、ToolLab、tool-use 控制台无需改；刷新按钮自然拿到最新工具列表。
+- **验收口径**：不重启服务，新增/删除 `server/tools/<id>/` 后点击控制台“刷新”应反映最新工具与分类计数；MCP 经 HTTP 调 `/api/extraction-tools` 同样受益。
+
+**9 · ChatPane `@工具` 人工触发 analysis 工具（2026-06-13）**：
+- **定位**：补齐“用户手动指定调哪个工具”的空档，区别于 pi-agent 经 MCP 自主调工具。用户在探索「数据分析」对话中手动选择 `analysis` 工具、已登记数据文件和参数，运行后把结果作为普通消息回流当前 session。
+- **实现边界**：E 侧最小闭环，新增 `ManualAnalysisToolCard` 并挂到 `ChatPane` 辅助面板；不改 `index.ts`/`types.ts`/`App.tsx`/`api.ts` 等接缝层骨架，不碰数据探索红线子树。
+- **安全路径**：前端只展示 `category === "analysis"` 工具；专用 API 方法 `runAnalysisTool()` 调 `/api/extraction-tools/:id/run` 时强制带 `source: "ai"` 作为来源标记。不要用普通 `runExtractionTool()` 实现该入口，因为它默认是 manual 模式。
+- **输入路径决策（2026-06-13 红线政策同步）**：输入选择不再 clean_data-only；`ManualAnalysisToolCard` 读取 workspace 已登记路径并只展示 `draw_data` / `clean_data` 文件，analysis 工具筛选仍不变。
+- **输出路径决策**：`outputPath` 固定取当前任务 session 的 `report` 目录（标准 060_reports），UI 只读显示，不再提供多选下拉。复用现有 `api.listSessionPaths(sessionId, "report")`，无需新增后端 output-dir/session-reports 端点，不自动创建 `tool_runs`。
+- **回流决策**：先做文本 summary + outputs 路径，可编辑后“发送到对话”；暂不做结构化结果卡、JSON viewer 或产物预览。pi 后续负责解释、整合、写作、下一步规划，不重复工具的确定性计算。

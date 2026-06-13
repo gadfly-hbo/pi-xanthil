@@ -44,6 +44,21 @@ export const dataApi = {
       body: JSON.stringify({ inputPath, outputPath, params, workspaceId }),
     }).then(json<ExtractionRun>),
 
+  runAnalysisTool: (
+    id: string,
+    payload: {
+      workspaceId: string;
+      inputPath: string;
+      outputPath: string;
+      params?: Record<string, string | number | boolean>;
+    },
+  ) =>
+    fetch(`/api/extraction-tools/${encodeURIComponent(id)}/run`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ ...payload, source: "ai" }),
+    }).then(json<ExtractionRun>),
+
   getBiAggregationData: (pathId: string, limit?: number) => {
     const params = new URLSearchParams();
     if (limit !== undefined) params.set("limit", String(limit));

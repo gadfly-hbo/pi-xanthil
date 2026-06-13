@@ -217,6 +217,174 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "X", status: "done", delegate: "E", title: "【tool-use·红线政策变更】放开 AI 工具输入限制（去 clean_data 守卫）+ 改写 AGENTS.md §一", brief:
+`✅ E 代笔交付、总控加重终审通过（2026-06-13，红线政策变更最高审查级）。逐项核：① index.ts /run 的 source=ai clean_data 白名单 403 块已移除（source 留作来源标记+注释，typecheck 净）✓ ② AGENTS.md §一 draw_data 行按口径改写（原始行禁直进 LLM、工具聚合/衍生产物可进）+ 政策说明 ✓ ③ **数据探索模块硬约束整节未动（关键边界守住）** ✓ ④ MCP server 描述/头注释改为"允许已登记数据路径"、旧禁止措辞已无 ✓ ⑤ notes-infra §五.7 + §0 记 I4 反转 ✓ ⑥ server typecheck+build 绿 + 探索隔离 grep 空 ✓。E 抛的"手动卡是否放开"=已由 Card B(E)覆盖。**待实跑**：source=ai 传 draw_data 路径不再 403 + 工具聚合产物回灌对话整链。
+
+— 原始需求 —
+来源：用户红线政策决策（2026-06-13）——放开 AI 可调工具的输入限制（允许读 draw_data）。**新政策：禁原始行直接进 LLM；工具产出的聚合/衍生结果可进 LLM**。本卡=接缝层守卫 + 核心安全契约文档，总控审定口径(下方写死)、**委派 E 代笔**、总控加重终审。
+
+【⚠ 红线政策变更 · 边界】仅放开"工具读 draw_data"这一条；**数据探索模块(DataExplorationPane 及子树)纯前端零 LLM 的硬约束不变、绝不可动**。
+
+【1 · index.ts /api/extraction-tools/:id/run 去守卫】移除 source=ai 的 clean_data 白名单那段（if(source==="ai"){ listWorkspacePaths(...).some(...) 否则 403 }，约 5031-5041）。AI 模式输入不再限制、与 manual 一致（validateExtractionInput 格式校验保留）。source 字段保留作来源标记无妨。
+【2 · AGENTS.md §一 改写（按此口径替换）】
+   - draw_data 行「LLM 可读」列：❌ 永久禁止 → ⚠️ **原始行级内容禁直接进 LLM；经注册工具处理后的聚合/衍生产物（不含原始行）允许进 LLM**。
+   - 补政策说明一句：工具调用经 /api/extraction-tools/:id/run，工具对其产物是否含原始行负责；禁止把 draw_data 原始行/明细整体回灌 LLM。
+   - **「数据探索模块硬约束」整节不动**（DataExplorationPane 零 LLM 仍永久禁）。
+【3 · MCP server extraction-tools-mcp.ts】文件头红线注释 + toMcpTool 的 cleanDataPath inputSchema 描述「draw_data 一律禁止（后端 403）」→ 改为不限制措辞（输入可为任意已登记数据路径）；callTool 的 source=ai 保留（仅来源标记，守卫已去）。
+【4 · notes-infra §五.7 I4 决策更新】原"守卫单点拦 draw_data"已被政策反转 → 改记"政策放开：禁原始行直进 LLM、工具聚合产物可进；/run 不再按 clean_data 拦输入"。
+
+【验收】server+web typecheck+build 绿；/run source=ai 传 draw_data 路径不再 403；AGENTS.md §一 措辞与新政策一致且数据探索硬约束整节未动。
+【约束】仅本卡 4 项；不动数据探索模块约束；接缝层仅总控写权→E 代笔按图施工；回流总控加重终审；不碰 git。` },
+  { dom: "E", status: "done", title: "【tool-use·手动卡调整】放开输入(允许 draw_data) + report 输出目录绑定 session 060_reports（修下拉框）", brief:
+`✅ 总控回流终审通过（2026-06-13）。E 交付：ManualAnalysisToolCard ① 输入放开 = 列 draw_data + clean_data 文件(去 clean_data-only 过滤，与新政策一致) ② report 输出目录改为绑定当前 session（listSessionPaths(sessionId,"report") 取 060_reports 目录、去多选下拉、空态提示"未配置 report 目录") ③ 加 sessionId prop + ChatPane 接线。**无新端点/未碰 seam**（复用既有 listSessionPaths）。门禁 web typecheck+build 绿、探索隔离 grep 空。红线：输入允许 draw_data 符合新政策、结果回灌由工具聚合产物负责。**待实跑**：选 draw_data 跑工具→结果入对话。
+
+— 原始需求 —
+来源：用户（2026-06-13）——① 手动工具栏(ManualAnalysisToolCard)输入限制放开，与红线新政策一致（见 X 红线政策卡）② 小修复：report 输出目录应直接绑定当前任务 session 的 060_reports，目前是多选下拉（截图：可选 clean_data 等多个无关目录，错误）。依赖/并行 X 红线政策卡（前端放开不依赖后端编译，但语义以 X 政策为准）。
+
+【文件边界(E slot)】web/src/components/ManualAnalysisToolCard.tsx；若取 session 060_reports 路径需新端点则小段 X（见开放点）。
+
+【1 · 输入放开】输入文件选择器去掉 clean_data-only 过滤（约 line 160/164 的 listWorkspacePaths(ws,"clean_data")）→ 列**所有已登记数据路径**（draw_data + clean_data），与摄取类输入自由度一致。analysis 工具列表筛选不变（本卡仍只列 analysis 工具）。
+【2 · 输出目录修复】「report 输出目录」**去掉多选下拉**，直接绑定**当前任务 session 的 060_reports**（standardDirIn(sessionDir(root, sessionId),"report")）。UI 显示为只读固定路径（或隐藏自动用）；不再列 clean_data 等无关目录。
+
+【开放点（开发时定，回报总控）】前端如何拿 session 060_reports 绝对路径：① 复用现有 session artifact/output 目录端点→纯 E；② 若无现成端点→补一个小 GET（小段 X，总控/接缝）。
+
+【验收】web build 绿；手动卡输入可选 draw_data + clean_data；输出目录固定为当前 session 060_reports、无多选下拉；跑通后结果仍按 onBackflow 入对话。
+【约束】不碰接缝层（除必要的 session-reports 读取端点走 X）；回流总控终审；不碰 git。` },
+  { dom: "X", status: "done", delegate: "E", title: "ExtractionTool 用途分类契约 + AI-safe 过滤（types.ts category + MCP/registry，总控审定·E 代笔）", brief:
+`✅ E 代笔交付、总控加重终审通过（2026-06-12）。逐行核：① 双侧 category 对齐（web types.ts + server registry.ts 均 ExtractionToolCategory="ingestion"|"analysis"，ExtractionTool/Manifest 加 category?）✓ ② normalizeCategory 非 analysis 一律→ingestion（默认/非法/legacy 全覆盖）✓ ③ MCP isAiExposed() 集中判定（前向兼容点）、tools/list+call 双过滤、非 analysis 拒 ✓ ④ /run 的 source=ai+clean_data 403 守卫原样未动 ✓ ⑤ 范围仅 5 文件、未碰 GET/App/index 接缝 ✓ ⑥ server+web typecheck+build 绿 ✓。2 benign：ExtractionToolCategory 双定义=既有 server/web 分离结构镜像(非新违规)、E 顺手更新 notes-infra §0/§五(内容准、§六知识沉淀本归总控，记一笔)。**待用户提交 + 待 D 卡(管理控制台+补 analysis 工具)落地后整链实跑**。
+
+— 原始需求 —
+来源：tool-use vs 数据提取 对比发现的 gap（2026-06-12，详见 notes-infra §五/§0）——两者共用同一 ExtractionTool 注册表，但现有 4 工具全是摄取型（吃 .html/原始 Excel），无"读 clean_data 的分析型"；tool-use/MCP 的"AI 安全工具"过滤目前是空话（列了全部）。本卡=接缝层契约，总控审定口径（下方写死）、**委派 E 代笔**、总控加重终审。先于 D 卡。
+
+【⇄ 委派 E 代笔 · 口径已审定】仅按图施工，勿改其他接缝层契约/不扩散他域；按 /px-resume·/px-wrapup 走、不碰 git。机制见 Orchestration §六。
+
+【1 · types.ts(双侧) + registry.ts 加分类字段（口径已审定）】
+- 字段：category?: "ingestion" | "analysis"。**可选，默认 "ingestion"**（关键红线默认：未打标/legacy 工具一律视为摄取型 → 永不进 AI/tool-use 路径，保守安全）。
+- 加在 web/src/types.ts 的 ExtractionTool 与 server/tools/registry.ts 的 ExtractionToolManifest（两处同名同义）；registry manifest 校验接受该可选字段（非法值→回落 ingestion）。
+- 语义：ingestion=摄取型（吃原始源文件，如 .html/原始 Excel）；analysis=分析型（读已备好的 clean_data 聚合数据，可被 AI 调）。
+
+【2 · MCP server 过滤（AI-safe 真正落地，extraction-tools-mcp.ts）】
+- tools/list **只暴露 category === "analysis"**（默认 ingestion 即被排除）——这是"AI 安全工具"的实落地：摄取型（尤其 phone-cleaner 吃原始 PII）永不暴露给 pi。
+- tools/call 同样只允许 analysis（按 name 查到的工具 category 必须 analysis，否则拒）。
+
+【3 · 不动的部分】index.ts /run 的 source=ai + clean_data 守卫保持（双保险：分类过滤 + 路径硬卡）；GET /api/extraction-tools 不加过滤（消费方各自按 category 过滤，减接缝改动）。
+【前向兼容提示】D 的管理控制台卡可能加"启停 enabled"，届时 MCP 暴露条件会扩为 category=analysis && enabled。**本卡 E 把 tools/list·call 的过滤写成易扩展形态**（集中一个 isAiExposed(tool) 判定函数），enabled 接入时只改该函数；本轮先只判 category。
+
+【验收】server+web typecheck+build 绿；ExtractionTool/Manifest 双侧含 category；MCP tools/list·call 仅 analysis；默认 ingestion 不外泄。
+【约束】types.ts 仅按本卡口径加字段、勿改他契约；红线守卫不可动；全程不碰 git。` },
+  { dom: "D", status: "done", title: "【tool-use·D-v1 基座】工具管理控制台 + 打标 + 首批 2 工具（服饰商品结构 / 季节性预测）", brief:
+`✅ 总控终审通过（2026-06-12，D-v1 全量完成）。领域工具 apparel-structure + seasonal-forecast 已建（category=analysis、input.accept=[.csv]、entry+tests 齐、结构规范）；控制台+4 工具打标见下。门禁 server+web typecheck 绿。**I4 红线决策（D 抛回，总控拍板）**：draw_data 拦截 = 接缝层 /run source=ai 守卫单点执行（已实现），**工具内不做路径白名单**（工具不知登记状态/易散落/违单一执行点），工具仅 manifest 声明 forbiddenUse+input.accept；manual 路径边界 → ExtractionPane 按 category 只列 ingestion（D 小后续，非阻塞）。详见 notes-infra §五.7。**待实跑**：2 个 analysis 工具(apparel-structure/seasonal-forecast)经 pi↔MCP 真机跑通 + 命中 clean_data 守卫。csv-summary-stats 已按用户决策**删除**（描述统计太简单、属探索模块 duckdb 本职、不该 MCP 暴露浪费 token，详见 notes-data §筛选原则）。
+
+【进度·总控终审 2026-06-12】**基座✅完成并通过终审**：① ToolUsePane 重做为管理控制台（标题/说明明确"只管理、UI 不写代码、不跑用户数据、摄取类去数据提取、深度评测去 ToolLab"，按 category 分类 + AI 暴露标识 + 验证跳 ToolLab）——完全符合定位；② 4 工具打标 ingestion；server+web typecheck+build 全绿。**领域首批工具(apparel-structure/seasonal-forecast)未建** —— 实际建的是 csv-summary-stats(描述统计，按原始 brief 旧建议)，而它正是后续筛选原则判定"太简单不该建"的类型。**待用户定 csv-summary-stats 去留**（留作整链验证工具 / 按筛选删）+ 补建本版真正的领域首批工具。故本卡 doing。
+
+— 原始 brief —
+tool-use 分析工具开发的第 1 版（共 3 版，阶段交付）。本版=控制台基座 + 现有工具打标 + 首批 2 个"吃聚合数据、无客户级粒度依赖"的工具（先验证整链 pi↔MCP↔守卫↔工具）。依赖总控「分类契约」卡（category + MCP 过滤，✅已完成），顺序在其后。
+
+【文件边界(D slot)】web/src/components/ToolUsePane.tsx(重做) · server/tools/*/tool.json(4 manifest 打 category) · server/tools/<新工具>/(2 个新工具目录) · routes/data.ts + db/data.ts(仅当做启停覆盖) · lib/api/data.ts。**不碰** types.ts/registry.ts 字段定义(X 已定)/MCP server/接缝层。
+
+【1 · ToolUsePane 重做 = 工具管理控制台】（用户定位：管理/创建台，**不在 UI 跑用户数据**——那是 pi-agent 经 MCP 的职责 / 摄取类是数据提取的职责）
+- 列表：id/name/category(摄取|分析)/AI 是否暴露(category=analysis 即经 MCP 暴露)/runtime/input.accept。
+- 详情：params/risk/allowedUse/forbiddenUse/output。
+- 验证：复用既有评测勿重造——调用或「跳转 ToolLab」(实验室→tool)；深度评测留 ToolLab。
+- (可选)启停 enabled：覆盖态存 db/data.ts + routes/data.ts PATCH(D 自有，非 index.ts)；MCP 暴露须 = analysis && enabled(协调点见下)。category 是 manifest 内禀、UI 只展示。
+
+【2 · 现有 4 工具打标 category="ingestion"】tmall/xhs/sycm/phone-cleaner(吃 .html/原始 Excel；phone-cleaner 吃原始 PII 尤不可 AI 调)。
+
+【3 · 首批 2 工具（category="analysis", input.accept=[".csv"], 吃聚合数据无粒度门槛）】
+- **apparel-structure 服饰商品结构分析**：输入=商品/SKU 聚合 CSV(价格/吊牌价/销量/库存/入库等列)。算法=价格带分桶分布 + 连带率 UPT(件数/单数) + 动销率(有销 SKU/总 SKU) + 售罄率(销量/入库) + 库销比 + SKU 宽深度。输出=各指标 md 表+json。服饰零售强行业特色。
+- **seasonal-forecast 季节性分解+预测**：输入=时序聚合 CSV(日期+指标)。算法=STL/季节分解(趋势/季节/残差) + Holt-Winters 预测下 N 期 + 置信区间。输出=分量+预测值 md+json。服饰强季节性、复杂算法。
+- 均按既有结构：tool.json(含 category) + python3 + tests/cases.json + --input/--output/--json-summary 协议。
+
+【协调点(回报总控)】若做启停：MCP 过滤(X 卡)需读 effective(analysis && enabled)；建议 GET /api/extraction-tools 增 effective 由 D 提供、MCP 共读 —— 回报总控调 X 卡口径，勿自行改 MCP server。
+
+【验收】server+web typecheck+build 绿；控制台列/详情/验证可用且非跑数据面板；4 工具标 ingestion；2 新工具 category=analysis 可被 MCP 暴露+有 tests；整链可跑(待 pi 实跑)。
+【约束】不碰 X 的 category 定义/MCP server/接缝层；不碰数据探索红线子树；工具读 clean_data(非 draw_data)；全程不碰 git，回流总控终审；新踩坑列回报交总控补 notes-data。` },
+  { dom: "D", status: "done", title: "【tool-use·D-v2 会员价值】RFM 分群 + Cohort 留存复购 + CLV/LTV 预测（需客户级聚合表）", brief:
+`✅ 总控回流终审通过（2026-06-13）。D 交付 3 工具：rfm-segmentation / clv-prediction / cohort-retention（均 category=analysis、带 tests、--input/--output/--json-summary 协议）。CLV 用 scipy 自实现 BG/NBD 似然(gammaln/hyp2f1/minimize)——**scipy/numpy/pandas 均已装(scipy 1.13.1)、与既有工具 pandas/numpy 先例同栈、clv import 冒烟过、无新增安装**(D 未按卡回报依赖,记一笔,无实质违规)。门禁 server typecheck+build 绿。**cohort 决策（用户拍板）：保留为报错 stub** —— 需事件级订单流水(每客户多行)，喂客户级单行汇总时清晰报错"数据粒度不符"(合规设计)，将来有事件表即可用，本轮不禁用不删。**待实跑**：rfm/clv 用客户级样本跑出合理结果、cohort 报错符合预期、3 工具经 pi↔MCP 调用。
+**遗留小项（非阻断）**：① 工具 python 依赖(pandas/numpy/scipy)宜补 requirements 文档/打包(移机需装)——交总控记 notes ② enabled 启停机制仍未做(D-v1 §可选)，cohort 暂靠 stub 报错而非禁用。
+
+— 原始 brief —
+tool-use 分析工具第 2 版：会员价值方法论三件套（项目域价值最高）。依赖 D-v1（控制台 + 分类基座），顺序在其后。
+
+【✅ 粒度已确认（用户 2026-06-13）】clean_data 有**完整客户级去标识聚合表（带日期/频次/金额）** → RFM + CLV + Cohort 三工具全可做。注：红线政策已放开（input.accept 不再限 clean_data），但这三工具语义上吃**去标识客户级聚合**，**每个工具须在 manifest description + 代码里声明并校验其期望列，缺列给清晰报错**（clean_data 列名因数据而异）。
+
+【文件边界(D slot)】server/tools/<3 工具>/ + tests；不碰控制台(v1 已建)外的接缝层。三工具 category="analysis"、input.accept=[".csv"]、按既有工具结构（tool.json + python3 + tests/cases.json + --input/--output/--json-summary）。
+
+【工具明细（输入契约已精确）】
+- **rfm 会员分群**：输入=**单行/客户** CSV，期望列 [customer_id, 最近购买日期(或 recency_days), 购买频次 frequency, 累计金额 monetary]。算法=R/F/M 各 5 分位打分 → 分群(经典 8 群或高/中/低价值群) + 群画像(规模/占比/各维均值)。输出=分群结果+画像 md+json。
+- **clv 客户终身价值预测**：输入=**单行/客户** CSV，RFM-T 格式 [customer_id, frequency(重复购买次数,BG/NBD 口径), recency(末购-首购间隔), T(观察期/客户年龄), monetary(均额)]。算法=BG/NBD(期望交易数) + Gamma-Gamma(客单价) → CLV 预测 + 价值分层。输出=客户 CLV+分层。真复杂概率模型。**实现可借 lifetimes 思路但勿强引第三方重依赖**(优先纯算法实现 BG/NBD 似然，按需评估依赖→回报总控)。
+- **cohort-retention 同期群留存/复购**：⚠ **粒度不同于上两者**——需**事件/期级** [customer_id, 购买日期(或期)]（每客户多行），非单行汇总。若数据是单行/客户汇总(仅首/末购日)，则只能近似、须在报告里标注口径局限。算法=按首购期分 cohort → 留存/复购三角矩阵 + 留存曲线。输出=cohort 矩阵+曲线 json。**开发时确认数据是否有事件/期级表，回报总控**。
+
+【验收】server+web typecheck+build 绿；3 工具 category=analysis、有 tests、可被 MCP 暴露；各工具声明并校验输入列、缺列清晰报错；用客户级样本跑出合理结果（cohort 视数据粒度给完整或标注口径的结果）。
+【约束】读已登记数据路径(政策已放开，但工具产物须为聚合/衍生不含原始行——见 AGENTS.md §一新政策)；不碰接缝层/MCP server；引第三方依赖须回报总控确认；回流总控终审、不碰 git；新踩坑交总控补 notes-data。` },
+  { dom: "D", status: "done", title: "【tool-use·小修】工具 python 依赖打包（requirements + 安装说明，防移机 ImportError）", brief:
+`✅ 总控终审通过（2026-06-13，1 次打回后复审过）。server/tools/requirements.txt（pandas/numpy/scipy/statsmodels/beautifulsoup4/openpyxl/xlrd）+ README 安装说明已建。**打回修复**：首版漏 statsmodels（seasonal-forecast 的 STL+Holt-Winters）→ 已补 statsmodels>=0.14 + 覆盖注释更新。**复审交叉扫描全覆盖**：工具实际 import 的直接依赖(pandas/numpy/scipy/statsmodels/bs4)+pandas Excel 引擎(openpyxl/xlrd) 全在、无遗漏；bs4→beautifulsoup4 映射正确；extract-tmall/xhs 仅标准库无需依赖。终审教训：依赖打包必须交叉扫描实际 import vs requirements，纯看清单会漏。
+
+— 原始 brief —
+来源：D-v2 终审遗留（2026-06-13）——工具 python 依赖（pandas/numpy/scipy 等）现仅本机已装、无 requirements 清单，移机/部署/换环境会 ImportError。补依赖打包，小修。
+
+【文件边界(D slot)】server/tools/requirements.txt（新）+ 安装说明（server/tools/README 或 notes-data 一节）。不碰工具代码逻辑、不碰接缝层。
+
+【做什么】
+1. 扫 server/tools/*/*.py 的第三方 import（排除标准库），汇总实际依赖：已知 pandas/numpy/scipy + 摄取类可能用 openpyxl/xlrd(读 Excel)、beautifulsoup4 或 lxml(解析 HTML) 等 —— **以实际 import 为准**。
+2. 写 server/tools/requirements.txt（包名 + 版本可按当前已装 pin 或宽松，注明 python>=3.x）。
+3. 安装说明：notes-data 或 server/tools/README 记 pip install -r server/tools/requirements.txt；说明 tool runtime=python3 需这些包，否则 /run 报 ImportError。
+4. (可选)运行时友好：工具 import 失败时 summary.json 给"缺依赖 X，请 pip install"提示（非必须）。
+
+【验收】requirements.txt 覆盖所有工具实际第三方依赖；空环境按它装完后 5 个 analysis 工具 + 4 摄取工具均能 import/跑 tests；安装说明可循。
+【约束】不改工具算法逻辑、不碰接缝层；回流总控终审；不碰 git；新踩坑交总控补 notes-data。` },
+  { dom: "D", status: "done", title: "【tool-use·D-v3 进阶+边界】购物篮关联 + 流失预警 + 聚类分群 + AARRR 关系流转", brief:
+`✅ 总控回流终审通过（2026-06-13）。D 交付 4 工具：market-basket / churn-risk / clustering / aarrr-flow（均 category=analysis、带 tests、按既有协议）。**依赖红线守住**：4 工具仅 import numpy+pandas（已装），**未碰 sklearn/mlxtend/lifelines** —— Apriori/K-means/生存打分均纯 numpy/pandas 自实现（requirements 无需更新）。门禁 server typecheck+build 绿。粒度均已确认（购物篮=订单-商品级、流失=客户级、聚类=数值特征、AARRR=阶段时序）。红线：产物为聚合规则/风险分/群画像/流转率（衍生非原始行，§一新政策合规）。**待实跑**：4 工具用对应粒度样本跑出合理结果 + 经 pi↔MCP 调用。至此 tool-use analysis 工具共 9 个。
+
+— 原始 brief —
+tool-use 分析工具第 3 版：进阶算法 + 项目特色边界工具。依赖 D-v1、顺序在 D-v2 后。
+
+【✅ 粒度已确认（用户 2026-06-13）】四工具全可做：购物篮=有订单-商品级数据、流失=客户级(D-v2 已确认)、聚类=数值特征(灵活)、AARRR=有阶段人数时序。红线政策已放开 → 输入可读 draw_data 明细（**工具产物须为聚合/衍生不含原始行**，见 AGENTS.md §一新政策）。
+
+【⚠ 依赖红线（重要，吸取 clv 用 scipy 教训）】scipy/numpy/pandas **已装可用**；**sklearn / mlxtend / lifelines 等未装依赖不得擅自 import**（§十 不装未确认依赖）——优先用已装 scipy/numpy/pandas 纯实现；确需新依赖 → **回报总控确认再加**。
+
+【文件边界(D slot)】server/tools/<4 工具>/ + tests；category="analysis"、input.accept 按需、按既有结构。每工具**声明+校验期望列、缺列清晰报错**。不碰接缝层/MCP server。
+
+【工具明细（输入契约已精确）】
+- **market-basket 购物篮**：输入=订单-商品级 [order_id, item/sku]（每行一条 order×item；或 order_id + items 列表）。算法=Apriori/FP-growth 频繁项集 + 关联规则(support/confidence/lift) top-N。**Apriori 优先纯 pandas/numpy 实现**(避免 mlxtend；确需回报)。读明细→输出聚合规则(政策合规)。
+- **churn-risk 会员流失预警**：输入=客户级特征 [customer_id, recency, frequency, monetary, 最近活跃间隔 等]。算法=生存分析(Kaplan-Meier 估计/简化 Cox)或特征打分 → 流失概率 + 风险分层。**优先纯 numpy/scipy 实现**(避免 lifelines；确需回报)。输出=风险分+分层。
+- **clustering 聚类分群**：输入=[实体 id + 若干数值特征列]。算法=标准化 + K-means(肘部/轮廓选 k) + 群画像。**优先纯 numpy 实现 K-means**(避免 sklearn；确需回报)。输出=群标签+画像。
+- **aarrr-flow AARRR 关系流转**：输入=阶段人数时序 [期/日期 + 认知/兴趣/购买/忠诚 各阶段人数]。算法=阶段间转化率 + 关系周加深率(对接 onto「消费者关系阶段」口径)。输出=漏斗+流转率 md+json。
+
+【验收】server+web typecheck+build 绿；4 工具 category=analysis、有 tests、各声明校验输入列、可被 MCP 暴露；**未擅自引入未装依赖**；用对应粒度样本跑出合理结果。
+【约束】工具产物须聚合/衍生(不含原始行,§一新政策)；不碰接缝层/MCP server；新依赖须回报总控；回流总控终审；不碰 git；新踩坑交总控补 notes-data。` },
+  { dom: "E", status: "done", title: "【tool-use·增强】对话里手动选工具 + 跑 clean_data + 结果入对话（人工触发，非 agent 自主）", brief:
+`✅ 总控回流终审通过（2026-06-13）。E 交付：新 ManualAnalysisToolCard.tsx（ChatPane 第三 assist panel「工具」，与 fork/delegate 并列）—— 只列 analysis 工具(filter category=analysis) + 选 clean_data 文件 + 选 report 输出目录 + 参数表单 → 调既有 /run（data.ts 加 source=ai，命中 clean_data 守卫）→ formatRunSummary 转可编辑摘要 → onBackflow→p.onSend 注入当前 session（复用 fork/委派回流范式）。门禁 web+server typecheck 绿、隔离 grep 空。红线：仅 analysis+clean_data、source=ai 后端硬卡 draw_data、输出落 060_reports 衍生物。小注：E 在 D 的 lib/api/data.ts 加 client 方法(自然归属,benign)、顺手更新 notes-infra(总控域,记一笔)。**待实跑**：手动选工具→跑→结果入对话整链真机点检（与 pi↔MCP 自主调链一并验）。
+
+— 原始需求 —
+来源：用户提问"探索对话能否手动指定调哪个工具"（2026-06-12）。当前 tool-use 是 **pi-agent 经 MCP 自主调**、无"手动指定"入口；用户要补一个**人工触发**通道。**本卡仅记录，用户后续找机会开发。**
+
+【定位】区别于 agent 自主调：用户在「探索」数据分析对话里**手动选一个 analysis 工具 + 选 clean_data 文件 + 填参数 → 跑 → 结果作为一条消息入对话**（pi 后续可基于结果续聊）。也区别于"数据提取"（摄取型/原始文件）与"管理控制台"（只管理不跑数据）——这是对话上下文内的人工工具调用，填补"手动指定工具"的设计空档。
+
+【建议方案（待开发细化）】
+- 入口：ChatPane 输入区加「@工具」选择器/按钮 → 列 category=analysis 工具（GET /api/extraction-tools 过滤）+ 选 clean_data 文件（listWorkspacePaths clean_data）+ 参数表单。
+- 执行：前端 POST /api/extraction-tools/:id/run {source:"ai", workspaceId, inputPath:clean_data, outputPath, params} —— **复用既有 source=ai + clean_data 守卫**（draw_data 403），无需新守卫。
+- 结果入对话：summary + 产物链接作为一条消息 onSend 进当前 session（仿 fork/委派"结论入对话"范式），pi 基于结果续聊。
+
+【开放点（开发时定）】① outputPath 落哪（任务 060_reports / 新建 tool_runs；可能需后端小端点建目录或复用现有）② 纯前端调既有 /run 即可（若 outputPath 可指定既有目录）还是需补小段 X（总控/接缝）③ 结果呈现（纯文本 summary / 结构化卡）。
+
+【domain】主体 **E**（ChatPane）；若需 output-dir 端点则小段 X。**依赖**：tool-use 基座（X 分类契约✅）+ 有 analysis 工具可选（即 D-v1 领域工具落地后才有实际可选工具）。
+【约束】不碰数据探索红线子树；仅 analysis 工具 + 仅 clean_data（复用既有 /run 守卫勿绕过）；回流总控终审；不碰 git。` },
+  { dom: "X", status: "done", delegate: "E", title: "【tool-use·修复】工具注册表去启动缓存 → 实时扫描（控制台刷新生效、增删工具免重启）", brief:
+`✅ E 代笔交付、总控加重终审通过（2026-06-13）。逐行核：① 模块级 const tools/toolsById 缓存已移除→listExtractionTools()/getExtractionTool() 每次实时 loadTools() 扫盘 ✓ ② 函数签名/返回类型不变、消费方零改 ✓ ③ normalizeCategory 归一保留、分类契约不破 ✓ ④ 范围仅 registry.ts ✓ ⑤ server typecheck+build 绿 ✓。无关 nit：getExtractionTool 为单次查找建整 Map(可 .find())，~6 工具开销可忽略、不要求改。**待活体确认**：不重启服务、删/加 server/tools/<id>/ 后点控制台「刷新」即反映最新（含 MCP tools/list）。
+
+— 原始需求 —
+来源：用户实跑发现（2026-06-13）——tool-use 管理控制台显示的是**服务启动时的旧工具快照**（截图：csv-summary-stats 已删却仍显示、apparel-structure/seasonal-forecast 已建却不显示、计数"分析 1"）。根因：registry.ts 模块级 \`const tools = loadTools()\` 只在启动加载一次缓存；tool.json/.py 是 readdirSync 读取、非 import → node --watch 不重启；控制台「刷新」只重发 GET 但后端返缓存 → 刷新无效。本卡=infra 小修，总控审定口径、**委派 E 代笔**、总控终审。
+
+【⇄ 委派 E 代笔 · 口径已审定】仅按图施工、不扩散他域、不碰 git。
+
+【口径（写死）】
+- server/tools/registry.ts：**去掉模块级 \`const tools = loadTools()\` / \`const toolsById\` 缓存**；改为 \`listExtractionTools()\` 与 \`getExtractionTool(id)\` **每次调用时实时 loadTools() 扫描**（工具数个位数，扫盘成本可忽略）。normalizeCategory 归一逻辑保持不变。
+- **函数签名/返回类型不变** —— 消费方（index.ts 的 GET /api/extraction-tools、MCP server、ToolLab、tool-use 控制台）全部无需改。
+- 控制台「刷新」按钮无需改：它重发 GET，后端改实时扫描后自然返回最新。MCP server 经 HTTP 调 GET 同样受益。
+
+【验收】server typecheck + build 绿；不重启服务，删/加 server/tools/<x>/ 目录后点控制台「刷新」即反映最新（apparel-structure/seasonal-forecast 出现、csv-summary-stats 消失、计数对）。
+【约束】**仅改 registry.ts 加载策略**；不碰 index.ts/types/MCP server/接缝层其余；与 /run source=ai 红线守卫无关勿动；回流总控终审；不碰 git。` },
   { dom: "X", status: "todo", title: "【红线硬化·独立议题】数据分析 pi session 内建工具可达 draw_data 评估 + 收口", brief:
 `来源：tool-use Phase 2a spike 取证（2026-06-12，详见 notes-infra.md §五）发现的**既有潜在敞口**，用户决策「单列为独立红线议题」，与 tool-use 解耦单独评估。
 

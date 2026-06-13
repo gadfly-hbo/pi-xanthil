@@ -1,0 +1,25 @@
+{
+  "id": "aarrr-flow",
+  "name": "AARRR 关系流转分析",
+  "version": "1.0.0",
+  "description": "对阶段人数时序做 AARRR / 消费者关系阶段流转分析。期望 CSV 列: period（或 date / week / 期数）+ 至少两个阶段人数列。可识别别名 (大小写+中文): awareness/认知, interest/兴趣, consideration/考虑, purchase/购买/转化, loyalty/忠诚/复购, advocacy/推荐 等；上游也可直接用 stage1..stageN 兜底。算法：(1) 每期阶段间转化率 = 后阶段人数 / 前阶段人数；(2) 关系周加深率 = 末阶段人数 / 首阶段人数；(3) 期间环比变化（每期相对上一期同阶段人数变化）。输出漏斗、分期转化矩阵、整段关系加深曲线 markdown + json。",
+  "entry": "aarrr_flow.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".md", ".json"],
+  "riskLevel": "L0",
+  "allowedUse": "对去标识阶段人数时序表做关系流转分析；产物为聚合转化率与漏斗，不含原始用户行。",
+  "forbiddenUse": "不得用于含 PII 的原始用户行数据（输入须先聚合到阶段人数时序）。",
+  "failureHandling": "缺 period 列或可识别阶段列 < 2 时返回 '缺少必需字段'；时序行数 < 1 时返回 '时序数据为空'；某阶段全 0 时该转化率标 0 并继续。",
+  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "resultColumns": [
+    { "key": "periods", "label": "期数" },
+    { "key": "stages", "label": "阶段数" },
+    { "key": "overallDeepening", "label": "整段加深率" }
+  ],
+  "parameters": []
+}

@@ -5,6 +5,7 @@
   "description": "从生意参谋『会员分析』导出的 HTML 文件中提取 AI 诊断、核心指标看板、会员资产结构、复购概览与复购商品 TOP 排行，输出排版优化的 Markdown 与结构化 JSON。",
   "entry": "extract_sycm_member.py",
   "runtime": "python3",
+  "category": "ingestion",
   "input": {
     "accept": [".html"],
     "modes": ["file", "directory"]

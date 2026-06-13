@@ -1,0 +1,31 @@
+# server/tools Python runtime dependencies
+# Required by tools whose runtime is "python3" (see each tool.json).
+# Python: >= 3.9
+#
+# Coverage (实际 import 扫描，含函数体 lazy import):
+#   pandas:        apparel-structure / churn-risk / clv-prediction /
+#                  cohort-retention / market-basket / phone-cleaner /
+#                  rfm-segmentation / seasonal-forecast
+#   numpy:         apparel-structure / churn-risk / clv-prediction /
+#                  cohort-retention / market-basket / rfm-segmentation /
+#                  seasonal-forecast
+#   scipy:         clv-prediction (scipy.optimize / scipy.special)
+#   statsmodels:   seasonal-forecast (statsmodels.tsa.seasonal.STL +
+#                  statsmodels.tsa.holtwinters.ExponentialSmoothing,
+#                  函数体 lazy import；无依赖兜底分支，缺包必 ImportError)
+#   beautifulsoup4: extract-sycm-member (parser=html.parser, 不需 lxml)
+#   openpyxl:      phone-cleaner 读 .xlsx (pandas read_excel 引擎)
+#   xlrd:          phone-cleaner 读 .xls  (pandas read_excel 引擎; xlrd 2.x 仅 .xls)
+#
+# extract-tmall-profile / extract-xhs-insight 仅用标准库，无需第三方依赖。
+# aarrr-flow / clustering 当前仅 tests/ 占位，无 .py 入口。
+#
+# 版本以当前已装为基线 pin（>= 当前版本即可，按需放宽/升级）。
+
+pandas>=2.0
+numpy>=1.24,<3
+scipy>=1.10
+statsmodels>=0.14
+beautifulsoup4>=4.12
+openpyxl>=3.1
+xlrd>=2.0

@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "id": "cohort-retention-field-presence",
+      "name": "Event-level CSV produces required keys",
+      "inputPath": "tests/fixtures/minimal.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["overall", "cohortLabels", "retentionMatrix", "averageCurve"]
+      }
+    },
+    {
+      "id": "cohort-retention-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    },
+    {
+      "id": "cohort-retention-missing-cols",
+      "name": "Missing date column must fail",
+      "inputPath": "tests/fixtures/missing-cols.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "缺少必需字段"
+      }
+    },
+    {
+      "id": "cohort-retention-wrong-grain",
+      "name": "Customer-level summary (1 row/customer) must fail with grain warning",
+      "inputPath": "tests/fixtures/single-row-per-customer.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "数据粒度不符"
+      }
+    }
+  ]
+}

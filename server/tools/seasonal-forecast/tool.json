@@ -1,0 +1,42 @@
+{
+  "id": "seasonal-forecast",
+  "name": "季节性分解与预测",
+  "version": "1.0.0",
+  "description": "对时序聚合 CSV（日期+指标）进行 STL 季节分解（趋势/季节/残差分量）和 Holt-Winters 指数平滑预测，输出下 N 期预测值及 95% 置信区间。特别适用于服饰等强季节性品类的销售、流量或其他 KPI 预测。输入文件需包含日期列和指标列。",
+  "entry": "seasonal_forecast.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".md", ".json"],
+  "riskLevel": "L0",
+  "allowedUse": "对含日期和数值指标的 CSV 进行时间序列分解与预测，结果包含趋势/季节/残差分量及置信区间。",
+  "forbiddenUse": "不能处理含个人身份信息（PII）的数据；不能用于非时间序列数据；预测结果不应作为唯一的业务决策依据。",
+  "failureHandling": "CSV 数据过少（<2 个季节周期）时返回可读警告；缺少必需字段时返回详细错误；超时自动终止子进程。",
+  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "resultColumns": [
+    { "key": "dataPoints", "label": "数据点数" },
+    { "key": "forecastPeriods", "label": "预测期数" },
+    { "key": "seasonalPeriod", "label": "季节周期" }
+  ],
+  "parameters": [
+    {
+      "name": "seasonal_period",
+      "label": "季节周期",
+      "type": "number",
+      "required": false,
+      "default": 7,
+      "description": "季节周期长度（天/周/月），默认 7 表示按周"
+    },
+    {
+      "name": "forecast_horizon",
+      "label": "预测期数",
+      "type": "number",
+      "required": false,
+      "default": 14,
+      "description": "向前预测的期数"
+    }
+  ]
+}

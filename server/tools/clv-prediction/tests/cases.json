@@ -1,0 +1,45 @@
+{
+  "cases": [
+    {
+      "id": "clv-prediction-field-presence",
+      "name": "Minimal RFM-T CSV produces required keys",
+      "inputPath": "tests/fixtures/minimal.csv",
+      "timeoutMs": 120000,
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["overall", "tiers", "topCustomers"]
+      }
+    },
+    {
+      "id": "clv-prediction-invalid-extension",
+      "name": "Invalid extension must fail",
+      "inputPath": "tests/fixtures/invalid.txt",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "input extension"
+      }
+    },
+    {
+      "id": "clv-prediction-missing-cols",
+      "name": "Missing RFM-T columns must fail",
+      "inputPath": "tests/fixtures/missing-cols.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "缺少必需字段"
+      }
+    },
+    {
+      "id": "clv-prediction-too-few-rows",
+      "name": "Too few customers must fail",
+      "inputPath": "tests/fixtures/too-few-rows.csv",
+      "timeoutMs": 60000,
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "客户数过少"
+      }
+    }
+  ]
+}
