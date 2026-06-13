@@ -25,6 +25,15 @@ import type { ExtractionTool, PiModel, WorkflowDef, WorkflowNode } from "@/types
 // ---- types ----
 type NodeKind = NonNullable<WorkflowNode["kind"]>;
 
+interface GateOnBlock {
+  retryFromNodeId: string;
+  maxIterations?: number;
+  feedbackVar?: string;
+}
+
+type EditableWorkflowNode = WorkflowNode & { onBlock?: GateOnBlock };
+type EditableWorkflowDef = Omit<WorkflowDef, "nodes"> & { nodes: EditableWorkflowNode[] };
+
 interface DagNodeData extends Record<string, unknown> {
   label: string;
   kind: NodeKind;
@@ -114,6 +123,39 @@ function initRFEdges(wf: WorkflowDef): Edge[] {
   }));
 }
 
+function topoOrder(workflow: EditableWorkflowDef): EditableWorkflowNode[] {
+  const idToNode = new Map(workflow.nodes.map((n) => [n.id, n] as const));
+  const indeg = new Map<string, number>(workflow.nodes.map((n) => [n.id, 0]));
+  const fwd = new Map<string, string[]>(workflow.nodes.map((n) => [n.id, []]));
+  for (const e of workflow.edges) {
+    if (!idToNode.has(e.source) || !idToNode.has(e.target)) continue;
+    indeg.set(e.target, (indeg.get(e.target) ?? 0) + 1);
+    fwd.get(e.source)!.push(e.target);
+  }
+  const queue: string[] = [];
+  for (const n of workflow.nodes) if ((indeg.get(n.id) ?? 0) === 0) queue.push(n.id);
+  const out: EditableWorkflowNode[] = [];
+  const seen = new Set<string>();
+  while (queue.length > 0) {
+    const id = queue.shift()!;
+    if (seen.has(id)) continue;
+    seen.add(id);
+    out.push(idToNode.get(id)!);
+    for (const nxt of fwd.get(id) ?? []) {
+      indeg.set(nxt, (indeg.get(nxt) ?? 1) - 1);
+      if ((indeg.get(nxt) ?? 0) <= 0) queue.push(nxt);
+    }
+  }
+  for (const n of workflow.nodes) if (!seen.has(n.id)) out.push(n);
+  return out;
+}
+
+function nodesBeforeGate(workflow: EditableWorkflowDef, gateId: string): EditableWorkflowNode[] {
+  const ordered = topoOrder(workflow);
+  const gateIndex = ordered.findIndex((n) => n.id === gateId);
+  return gateIndex > 0 ? ordered.slice(0, gateIndex) : [];
+}
+
 // ---- custom ReactFlow node ----
 function WorkflowNodeCard({ data, selected }: NodeProps<RFNode>) {
   const kind = data.kind as NodeKind;
@@ -175,8 +217,8 @@ interface WorkflowDagEditorProps {
 }
 
 export function WorkflowDagEditor(p: WorkflowDagEditorProps) {
-  const wfRef = useRef<WorkflowDef>(p.workflow);
-  const [localWf, setLocalWf] = useState<WorkflowDef>(p.workflow);
+  const wfRef = useRef<EditableWorkflowDef>(p.workflow as EditableWorkflowDef);
+  const [localWf, setLocalWf] = useState<EditableWorkflowDef>(p.workflow as EditableWorkflowDef);
   const [selectedNodeId, setSelectedNodeId] = useState<string | null>(null);
 
   // Initialized once on mount — intentionally not re-derived from prop updates
@@ -187,11 +229,11 @@ export function WorkflowDagEditor(p: WorkflowDagEditorProps) {
   const [rfEdges, setRfEdges, onRfEdgesChange] = useEdgesState<Edge>(initialEdges);
 
   const applyWfChange = useCallback(
-    (updater: (wf: WorkflowDef) => WorkflowDef) => {
+    (updater: (wf: EditableWorkflowDef) => EditableWorkflowDef) => {
       setLocalWf((cur) => {
         const next = updater(cur);
         wfRef.current = next;
-        p.onWorkflowChange(next);
+        p.onWorkflowChange(next as WorkflowDef);
         return next;
       });
     },
@@ -228,7 +270,9 @@ export function WorkflowDagEditor(p: WorkflowDagEditorProps) {
       if (removed.size > 0) {
         applyWfChange((wf) => ({
           ...wf,
-          nodes: wf.nodes.filter((n) => !removed.has(n.id)),
+          nodes: wf.nodes
+            .filter((n) => !removed.has(n.id))
+            .map((n) => n.onBlock && removed.has(n.onBlock.retryFromNodeId) ? { ...n, onBlock: undefined } : n),
           edges: wf.edges.filter((e) => !removed.has(e.source) && !removed.has(e.target)),
         }));
         setRfEdges((eds) => eds.filter((e) => !removed.has(e.source) && !removed.has(e.target)));
@@ -275,7 +319,7 @@ export function WorkflowDagEditor(p: WorkflowDagEditorProps) {
   }, []);
 
   const updateNodeProp = useCallback(
-    (nodeId: string, patch: Partial<WorkflowNode>) => {
+    (nodeId: string, patch: Partial<EditableWorkflowNode>) => {
       applyWfChange((wf) => ({
         ...wf,
         nodes: wf.nodes.map((n) => (n.id === nodeId ? { ...n, ...patch } : n)),
@@ -307,7 +351,9 @@ export function WorkflowDagEditor(p: WorkflowDagEditorProps) {
       setRfEdges((eds) => eds.filter((e) => e.source !== nodeId && e.target !== nodeId));
       applyWfChange((wf) => ({
         ...wf,
-        nodes: wf.nodes.filter((n) => n.id !== nodeId),
+        nodes: wf.nodes
+          .filter((n) => n.id !== nodeId)
+          .map((n) => n.onBlock?.retryFromNodeId === nodeId ? { ...n, onBlock: undefined } : n),
         edges: wf.edges.filter((e) => e.source !== nodeId && e.target !== nodeId),
       }));
       setSelectedNodeId((id) => (id === nodeId ? null : id));
@@ -316,6 +362,7 @@ export function WorkflowDagEditor(p: WorkflowDagEditorProps) {
   );
 
   const selectedNode = localWf.nodes.find((n) => n.id === selectedNodeId) ?? null;
+  const retryCandidates = selectedNode?.kind === "gate" ? nodesBeforeGate(localWf, selectedNode.id) : [];
 
   return (
     <div className="fixed inset-0 z-50 flex flex-col bg-neutral-50 dark:bg-neutral-950">
@@ -369,6 +416,7 @@ export function WorkflowDagEditor(p: WorkflowDagEditorProps) {
           {selectedNode ? (
             <NodePropertyPanel
               node={selectedNode}
+              retryCandidates={retryCandidates}
               models={p.models}
               tools={p.tools}
               running={p.running}
@@ -393,17 +441,20 @@ export function WorkflowDagEditor(p: WorkflowDagEditorProps) {
 
 // ---- node property panel ----
 interface NodePropertyPanelProps {
-  node: WorkflowNode;
+  node: EditableWorkflowNode;
+  retryCandidates: EditableWorkflowNode[];
   models: PiModel[];
   tools: ExtractionTool[];
   running: boolean;
-  onChange: (patch: Partial<WorkflowNode>) => void;
+  onChange: (patch: Partial<EditableWorkflowNode>) => void;
   onDelete: () => void;
 }
 
-function NodePropertyPanel({ node, models, tools, running, onChange, onDelete }: NodePropertyPanelProps) {
+function NodePropertyPanel({ node, retryCandidates, models, tools, running, onChange, onDelete }: NodePropertyPanelProps) {
   const kind = node.kind ?? "agent";
   const color = kindColor(kind);
+  const onBlockEnabled = kind === "gate" && Boolean(node.onBlock);
+  const onBlock = node.onBlock;
 
   return (
     <div className="flex flex-col gap-3">
@@ -447,7 +498,10 @@ function NodePropertyPanel({ node, models, tools, running, onChange, onDelete }:
           <select
             value={kind}
             disabled={running}
-            onChange={(e) => onChange({ kind: e.target.value as NodeKind })}
+            onChange={(e) => {
+              const nextKind = e.target.value as NodeKind;
+              onChange(nextKind === "gate" ? { kind: nextKind } : { kind: nextKind, onBlock: undefined });
+            }}
             className={fieldInputCls}
           >
             <option value="agent">agent</option>
@@ -522,6 +576,80 @@ function NodePropertyPanel({ node, models, tools, running, onChange, onDelete }:
             className={cn(fieldInputCls, "resize-y")}
           />
         </PropField>
+      )}
+
+      {kind === "gate" && (
+        <div className="rounded-md border border-amber-100 bg-amber-50/40 p-2 dark:border-amber-900/40 dark:bg-amber-950/20">
+          <label className="flex items-center gap-2 text-[11px] font-medium text-amber-800 dark:text-amber-200">
+            <input
+              type="checkbox"
+              checked={onBlockEnabled}
+              disabled={running || retryCandidates.length === 0}
+              onChange={(e) => {
+                if (!e.target.checked) {
+                  onChange({ onBlock: undefined });
+                  return;
+                }
+                const fallback = retryCandidates.at(-1)?.id;
+                if (fallback) onChange({ onBlock: { retryFromNodeId: fallback, maxIterations: 3 } });
+              }}
+              className="h-3.5 w-3.5"
+            />
+            blocked 时回跳重试
+          </label>
+          {retryCandidates.length === 0 && (
+            <p className="mt-1 text-[10px] text-amber-700/70 dark:text-amber-300/70">
+              当前 gate 前没有可回跳节点。
+            </p>
+          )}
+          {onBlockEnabled && onBlock && (
+            <div className="mt-2 grid gap-2">
+              <PropField label="retryFromNodeId">
+                <select
+                  value={onBlock.retryFromNodeId}
+                  disabled={running}
+                  onChange={(e) => onChange({ onBlock: { ...onBlock, retryFromNodeId: e.target.value } })}
+                  className={cn(fieldInputCls, "font-mono")}
+                >
+                  {retryCandidates.map((candidate) => (
+                    <option key={candidate.id} value={candidate.id}>{candidate.id}</option>
+                  ))}
+                </select>
+              </PropField>
+              <PropField label="maxIterations">
+                <input
+                  type="number"
+                  min={1}
+                  step={1}
+                  value={onBlock.maxIterations ?? ""}
+                  disabled={running}
+                  placeholder="3"
+                  onChange={(e) => onChange({
+                    onBlock: {
+                      ...onBlock,
+                      maxIterations: e.target.value ? Number(e.target.value) : undefined,
+                    },
+                  })}
+                  className={fieldInputCls}
+                />
+              </PropField>
+              <PropField label="feedbackVar">
+                <input
+                  value={onBlock.feedbackVar ?? ""}
+                  disabled={running}
+                  placeholder={`${node.id}__feedback`}
+                  onChange={(e) => onChange({
+                    onBlock: {
+                      ...onBlock,
+                      feedbackVar: e.target.value.trim() || undefined,
+                    },
+                  })}
+                  className={cn(fieldInputCls, "font-mono")}
+                />
+              </PropField>
+            </div>
+          )}
+        </div>
       )}
 
       <p className="text-[10px] leading-4 text-neutral-400">

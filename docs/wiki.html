@@ -683,6 +683,208 @@ P3(onto + KG)：
 
 【验收】web typecheck + build 绿；切工作区只变本体启用态；KG 随启用集合重投影；trace 行为不退化。
 【约束】不碰接缝层；不碰数据安全红线；全程不碰 git，回流总控终审。` },
+
+  { dom: "X", status: "done", title: "【工作流改造·阶段1·接缝】抽 runtime.ts —— 暴露运行时句柄（总控自做）", brief:
+`✅ 总控自做并自检通过（2026-06-13）：activeSessionRuns/activeSessionControls/activeFlowRuns/activeMultiAgentRuns + send + ActiveChatRun/ActiveMultiAgentRun 已上移 server/src/runtime.ts，index.ts import 回；wss 留 bootstrap。typecheck/build/33 测试绿。（后续 T-C2b 又把 getActiveChatRun/abortChatRun 一并并入 runtime.ts。）
+
+— 原始 brief —
+工作流改造 0→1→2 的接缝前置；无前置可立即开工。方案见 docs/工作流模块改造方案.md §3.2、派发书 docs/工作流改造-任务派发.md T-C1。
+
+【背景】flow 路由与流式 handler 长期压在 legacy index.ts，因需访问运行时状态(activeFlowRuns/activeMultiAgentRuns/wss/send)而无法迁出。先把这些句柄上移到独立 runtime.ts，才能在 T-C2 把路由迁入 routes/engine.ts。
+
+【文件边界(接缝层·总控)】新建 server/src/runtime.ts；index.ts 改为从 runtime.ts 引用句柄。只搬不改逻辑。
+
+【待做】
+1. 新建 server/src/runtime.ts，导出 activeFlowRuns / activeMultiAgentRuns / wss / send 等运行时句柄与相关类型(ActiveMultiAgentRun 等)。
+2. index.ts 删本地定义、改 import 自 runtime.ts，行为不变。
+3. 自检：server typecheck + web build 绿；现有 engine 测试绿；multi/AnaX tab 冒烟无回归。
+
+【约束】只搬运不改逻辑；不动他域；全程不碰 git。` },
+
+  { dom: "X", status: "done", title: "【工作流改造·阶段0·契约】删 execute_flow 死契约 + handleExecuteFlow（server 侧）", brief:
+`✅ 总控自做并自检通过（2026-06-13）。删除内容：① index.ts handleExecuteFlow 函数(112 行单 agent 运行路径) ② index.ts execute_flow dispatch 分支 ③ server/src/types.ts execute_flow ClientMessage 成员。server+web typecheck 绿、build 绿、引擎 33/33 测试全过；server 侧 grep 零残留。
+
+【协调关键发现（推翻"必须原子同批"）】server 与 web 各有独立 types.ts(非共享/软链)，execute_flow 的消费(server index.ts)与发送(web 孤儿文件)分处两侧 → 两侧解耦、各自独立可绿，**无 build-red 耦合**。故 server 侧(本卡)先行落地不影响 web；web 侧 execute_flow 删除归入 T-E0(与前端文件删除天然耦合)。
+
+【级联已核实·无孤儿】activeFlowRuns / abort_flow 仍被**活的** handleSendFlow(工作流对话生成路径，CreationPane 在用)使用，与已删的 handleExecuteFlow(单 agent 运行路径)无关 → 不删，保持活跃。T-C1 的 activeFlowRuns→runtime.ts 迁移仍正当。
+
+【交接 T-E0】web 侧剩余 execute_flow 残留(随 T-E0 删除)：web/src/types.ts ClientMessage 成员 + ExecutionPane.tsx + FlowWorkflowPane.tsx(后两者整文件删)。
+
+【约束】Flow.kind 列未动(存量全 multi，免 db migration)；全程未碰 git。` },
+
+  { dom: "E", status: "done", title: "【工作流改造·阶段0】删孤儿前端 5 文件 + single 退化 + web execute_flow（T-C0 server 侧已完成，本卡独立可做）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-13）：5 孤儿文件(ExecutionPane/AgentFlowPane/FlowChatPane/FlowWorkflowPane/FlowEditorPane)已删；web/src/types.ts execute_flow 成员已删；CreationPane single 分支已收敛。终审核验：5 文件确已不存在、web 侧 execute_flow 零残留、5 组件无悬空引用、server+web typecheck ✅、build ✅。至此阶段0 清场全部完成(server 侧 T-C0 + web 侧本卡)。
+
+— 原始 brief —
+方案 §0③/§2、派发书 T-E0。清掉早期设计遗留、经精确引用扫描确认无人渲染的孤儿前端(每个文件除自身定义外引用链全指向同样无人渲染的组件)。删后活跃代码只面对一条真路径。
+
+【⚠️ 协调更新（2026-06-13，总控）】原"与 T-C0 同批"前提已推翻：server 与 web 各有独立 types.ts，两侧解耦、各自独立可绿。**T-C0 的 server 侧已由总控完成并全绿**(handleExecuteFlow + dispatch + server types.ts execute_flow 已删)。本卡现在**独立可做、无 build-red 风险**，且接管 web 侧 execute_flow 删除。
+
+【文件边界(E 域前端)】
+- 删 web/src/components 下 5 文件：ExecutionPane.tsx · AgentFlowPane.tsx · FlowChatPane.tsx · FlowWorkflowPane.tsx · FlowEditorPane.tsx（其内含 execute_flow 发送点，随文件一并消失）。
+- 删 web/src/types.ts 的 execute_flow ClientMessage 成员（server 侧已删，对齐）。
+- CreationPane.tsx 内 single 退化分支收敛。
+
+【待做】
+1. 删前再跑全量引用 grep 复核，确认 5 文件无活跃 import/渲染点。
+2. 删 5 文件 + web/src/types.ts execute_flow 成员。
+3. CreationPane：删 kind==='multi' 三元里的 single 文案分支，kind 入参收敛为常量 multi(MultiAgentExecutionPane 已硬编码 kind="multi")。
+4. 自检：web typecheck + build 绿(无悬空 import、无 execute_flow 残留)；multi/AnaX tab 冒烟无回归。
+
+【约束】不碰接缝层(App/constants/server 契约归总控)；不碰数据安全红线；全程不碰 git，回流总控终审。` },
+
+  { dom: "X", status: "done", title: "【工作流改造·阶段1·接缝】flow 路由+流式 handler 迁入 routes/engine.ts（T-C2 pre/a/b 全完成；import/anax-config 残留另迁）", brief:
+`方案 §3.2、派发书 T-C2。依赖 T-C1✅。因 flow 代码与 index.ts 本地 helper 深度纠缠(已迁路由证实"路由只 import 共享模块"的铁律)，拆为 pre/a/b 三步。
+
+【✅ T-C2-pre 已完成(总控,2026-06-13)】抽 normalizeWorkflow 簇到 server/src/workflow-config.ts(WorkflowLike + listConfiguredModelIds + resolveConfiguredModelId + normalizeWorkflowModels + normalizeWorkflowSkills + validateWorkflowSkillList，validateSkillPaths 复用 skills.ts)；index.ts import 回。typecheck/build 绿。注：trackUsageEvent(跨域 session+flow) / traceFlowEvent / withRulesPrompt / backfill* / captureWorkflowFromText 的抽取归入 T-C2b(其主消费者是流式 handler)。
+
+【✅ T-C2a 首批已完成(总控,2026-06-13)】连续且依赖纯净的 12 条迁入 engine.ts：messages/tree/file(GET·PUT)/import-local/workflow(GET·PUT)/runs/runs·tree/runs·file(GET·PUT)。**已隔离端口实跑冒烟通过**(404 走 JSON·tree/workflow/file 读写往返一致)。
+
+【✅ T-C2a 第二批已完成(总控,2026-06-13)】再迁 12 条：GET workspaces/:id/flows · GET flows/:id · POST workspaces/:id/flows · anax/instantiate(+quick) · PATCH/DELETE flows/:id · workflow-favorites(GET/POST·favorite/DELETE/reuse，含 2 个 favorites helper) · GET flows/:id/skills。engine.ts 共 24 路由；index.ts 零残留、清掉 13 个死 import；server+web typecheck ✅、build ✅、引擎 33/33 ✅。**实跑冒烟通过**(create/list/get/anax-instantiate/skills/favorite/rename/delete 全 200)。
+
+【✅ T-C2a 末批已完成(总控,2026-06-13)】抽 withWorkspacePathStatus(es)→server/src/workspace-path-status.ts(被 flow/workspace/session paths 共用)；再迁 5 条：runs/:runId/stale-nodes · runs/:runId/cascade(db.ts getStaleNodes/markNodesStale + change-management getDownstreamNodeIds) · flows/:id/paths(GET/POST/DELETE)。engine.ts 共 **29 路由**；清死 import getStaleNodes；typecheck/build/33 测试 ✅；**实跑冒烟通过**(stale=[] · cascade 校验 400 · paths GET/DELETE/404 · POST 命中标准目录硬锁=逻辑完整)。
+
+【✅ T-C2a 全部完成】index.ts 仅剩 1 条 flow REST：flows/:id/import(multer，牵 traceFlowEvent)→ 归 **T-C2b**。另 anax-gate-config(GET/PUT) 属 anax 配置非 flow CRUD，按需另迁。
+
+【✅ T-C2b-pre 已完成(总控,2026-06-13)】抽 4 个跨域 helper 出 index.ts：getActiveChatRun/abortChatRun→runtime.ts(run-map 老家)、trackUsageEvent→cache.ts、traceFlowEvent→新建 flow-trace.ts、withRulesPrompt→memory-injection.ts。index.ts import 回、清死 import(trackWorkspaceUsage/ActiveChatRun)；server+web typecheck ✅、build ✅、引擎 33/33 ✅。依赖测绘结论：traceFlowEvent 被 abort 派发(留 index)+handler(迁出)共用故必抽；backfill*/captureWorkflowFromText/parseWorkflowCandidate 为 flow-only，随 handler 搬。
+
+【✅ T-C2b-main 已完成(总控,2026-06-13)】3 个流式 WS handler(handleSendFlow / handleExecuteMultiAgent / handleAnaxPrecheck)+ flow-only 私有 helper(captureWorkflowFromText/parseWorkflowCandidate/backfillHypothesesFromArchive/backfillProposalsFromRecommend)+ PRECHECK_PROMPT/activePrechecks 全部迁入 engine.ts 并导出；index.ts 的 wss.on 派发分支反向 import handler；abort_anax_precheck 经新增 export abortAnaxPrecheck 调用(封装 activePrechecks)。另抽 flowMessageText→新建 message-text.ts(flow handler + subagent 共用)。清 8 个死 import(整行 multi-agent-runner + normalizeWorkflowSkills/buildMemoryPrompt/buildHypothesisLibraryContext/upsertHypothesisFromArchive/createFlowRun/copyFlowSnapshot)。无循环依赖(engine.ts 不 import index.ts)。server+web typecheck ✅、build ✅、引擎 33/33 ✅。**WS 级 smoke 通过**：连 WS→对无 workflow.json 的 flow 发 execute_multi_agent→收到精确 error("workflow.json not found...")，证明派发→engine handler→send/traceFlowEvent 全链路正常(无需 pi)。
+
+【✅ 残留收尾(2026-06-13)】① flows/:id/import(multer) **已迁 routes/engine.ts**——核查发现 multer upload/uploadDirs 仅该路由用(bi-datasets/upload 用自己内联 multer)，非共用基建，随路由整块搬，无需抽共享；端到端上传冒烟通过(404 走 JSON / 真实上传 200 / 文件落 flow 目录读回一致)。**index.ts flow REST 路由已彻底清零**。② 仅剩 anax-gate-config(GET/PUT)非 flow CRUD，按需另迁。
+
+【约束】只搬运不改逻辑；不碰他域；全程不碰 git。` },
+
+  { dom: "X", status: "done", title: "【工作流改造·阶段2·契约】定义 WorkflowNode.onBlock 口径（交付 E 实现）", brief:
+`✅ 总控已交付（2026-06-13）：权威口径文档 docs/工作流-onblock契约.md（字段/语义/回跳区间/迭代计数/红线·预算优先级/与 fan-out·resume 交互/validateWorkflow 规则/明确不做）。wiki 的 T-E1、T-E3 卡及方案 §4、backlog §3 已接指针指向该文档。E 据此实现、不得改口径。
+
+— 原始 brief —
+方案 §4、闭环草案 docs/backlog/agent-loop-工作流闭环.md §3、派发书 T-C3。阶段2 闭环契约期，口径只读权归总控，E 据此实现、不得改口径。
+
+【口径(交付物)】
+- 字段(加在 multi-agent-runner.ts 的 WorkflowNode，仅 kind:gate 生效)：onBlock { retryFromNodeId:string; maxIterations 可选(默认 3); feedbackVar 可选(默认 节点 id 加后缀 __feedback) }。
+- 语义：gate blocked 且本节点迭代次数 < maxIterations 时，把 verdict.reasons 格式化写入 blackboard[feedbackVar]、重置回跳区间(retryFromNodeId 到当前节点)的脏产物、执行游标拨回 retryFromNodeId 重跑；预算耗尽则按现行 blocked 真中断(return code:1)升级人工。
+- validateWorkflow 校验：retryFromNodeId 必须存在且在本节点之前的 topo 序；maxIterations 为正整数；onBlock 仅当 kind 为 gate 允许。
+- 向后兼容：不配 onBlock 时行为与现状完全一致(halt-or-pass)。
+
+【交付】把口径固化进方案 §4，通知 E 开 T-E1。
+【约束】口径只读权归总控；E 不得改口径只实现。本卡为契约交付，onBlock 字段由 E 在 T-E1 加入产品代码。` },
+
+  { dom: "X", status: "done", title: "【工作流改造·阶段2·infra】cache.ts run 级预算原语（总控自做）", brief:
+`✅ 总控自做并自检通过（2026-06-13）：server/src/cache.ts 新增 getRunTokenUsage(workspaceId,runId) + RunBudgetLimits/RunBudgetStatus + evaluateRunBudget(workspaceId,runId,limits)（读 flow_run target 实时累计、按 token/cost 上限判定、返回可落 trace 的中文 reason）。纯读既有统计、不改累计口径；typecheck 绿。T-E2 接线消费这些原语。
+
+— 原始 brief —
+方案 §4、派发书 T-C4。为闭环预算守卫提供底座。
+
+【背景】loop 需 run 级 token/cost 预算上限(白皮书停止条件之一)。cache.ts 已有 trackSessionUsage 等 token 统计，在其上暴露 run 级累计查询 + 阈值判定原语，供 runner(T-E2)注入调用。
+
+【文件边界(infra·总控)】server/src/cache.ts。
+
+【待做】
+1. 暴露按 run / flow_run targetId 聚合的 token/cost 累计查询。
+2. 暴露阈值判定原语(给定上限→是否超预算)，供 runner 每节点后判断是否中断。
+3. 自检：不破坏现有 session/workspace token 统计与缓存命中率；typecheck 绿。
+
+【约束】只加不改既有统计口径；全程不碰 git。` },
+
+  { dom: "E", status: "done", title: "【工作流改造·阶段2】runner onBlock 回跳 + trace 迭代谱系（依赖 T-C3）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-13）。逐条对照契约核验：GateOnBlock 字段 + validateWorkflow 校验(仅 kind:gate / retryFromNodeId 必填且前于 gate 的 topo 序 / maxIterations≥1 整数 / feedbackVar 非空)；主循环改带回跳游标的索引循环；停止判定顺序正确=红线(extraReasons>0)硬停不重试→预算硬停→onBlock 重试(iter<maxIterations)→耗尽中断；迭代计数 1-based 含首轮；feedbackVar 默认 <id>__feedback + 格式"第 N 轮/共 M 轮"；resetLoopBlackboard 只删 loop 体节点 id、保留 feedbackVar；trace=runDir/<node>/iter-N + gates/<id>-iterN.json + 终态 gates/<id>.json。**向后兼容**(无 onBlock 行为不变，既有 33 测试绿)。**运行时 fake-adapter 烟测通过**：draft→gate(blocked)→draft→gate(pass)→tail，裁决[blocked,pass]，失败证据"第1轮"注入重跑 prompt，code 0。typecheck+build 绿。
+注：① runBudget 钩子已在 runner 就位但 handler 未接线(=T-E2)；② onBlock 单测仍由 T-E5 补(本终审用临时烟测验证，已删)。
+
+— 原始 brief —
+权威口径见 docs/工作流-onblock契约.md（T-C3 已交付）；方案 §4、闭环草案 §3、派发书 T-E1。严格按契约实现，不得改口径。
+
+【文件边界(E 域)】server/src/multi-agent-runner.ts。
+
+【待做】
+1. WorkflowNode 加 onBlock 字段(按 T-C3)；validateWorkflow 加校验(retryFromNodeId 在本节点前 topo 序 / maxIterations 正整数 / 仅 kind:gate)。
+2. runMultiAgent 主循环(约 :364)从顺序遍历改为带"回跳指针"的索引循环：gate blocked 且迭代 < maxIterations → 写 blackboard[feedbackVar]=格式化(verdict.reasons)、重置回跳区间脏产物、游标拨回 retryFromNodeId；否则真中断。
+3. loop 头节点 prompt 用占位读上一轮失败证据(renderPrompt 已支持 blackboard 占位)。
+4. trace：每轮产物落 runDir/<nodeId>/iter-<n>/，verdict 落 gates/<id>-iter<n>.json。
+
+【验收】不配 onBlock 行为零变化(向后兼容)；现有 AnaX flow 不受影响；engine 测试绿。
+【约束】不改 T-C3 口径；不碰接缝层；全程不碰 git，回流总控终审。` },
+
+  { dom: "E", status: "done", title: "【工作流改造·阶段2】runner 预算/停止条件接线（依赖 T-C4、T-E1）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-13）；预算生产接线缺口已由总控补齐（2026-06-13）。runner 侧：四类停止全部就位——成功(pass)/失败上限(maxIterations)/风险(红线 extraReasons>0 硬停不重试)/成本(evaluateRunBudgetForRun→T-C4 evaluateRunBudget)。每节点后查预算；红线优先于预算优先于重试。单测覆盖：budget stop(:621 限 maxTotalTokens:5 触发并落 __run_budget_stop)、红线 no-retry(:665/:1059)、maxIterations 耗尽(:557/:998)。
+✅【缺口已闭合·总控】config.ts 加 RUN_BUDGET_LIMITS(读 env XANTHIL_RUN_MAX_TOKENS / XANTHIL_RUN_MAX_COST_USD，>0 才生效，未设=null)；engine.ts handleExecuteMultiAgent 传 runBudget: RUN_BUDGET_LIMITS ? {workspaceId, limits} : undefined。默认不设 env→不传→行为不变(无意外中断)；设 env→生产路径预算停止生效。typecheck/build 绿，env 解析已验证(设 50000→{maxTotalTokens:50000}，未设→null)。未硬编码魔法上限、未引 DB 配置。
+
+— 原始 brief —
+方案 §4、派发书 T-E2。
+
+【文件边界(E 域)】server/src/multi-agent-runner.ts(消费总控 T-C4 在 cache.ts 暴露的预算原语)。
+
+【待做】
+1. 接入 maxIterations 上限(每个 onBlock 节点独立计数)。
+2. 接入 run 级 token/cost 超阈中断(调用 T-C4 原语)。
+3. 红线命中(deterministicRedLineCheck)→硬中断，**不进重试环**(数据安全不可被 loop 绕过)。
+4. 四类停止可触发：成功 / 失败上限 / 预算 / 风险；人工续跑沿用 resumeFromNodeId。
+
+【验收】四类停止均可触发并落 trace；engine 测试绿。
+【约束】不碰接缝层；预算原语由总控提供，不自造统计；全程不碰 git，回流终审。` },
+
+  { dom: "E", status: "done", title: "【工作流改造·阶段2】gate 节点编辑器 UI：onBlock 配置（依赖 T-C3）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-13）。WorkflowDagEditor gate 节点新增 onBlock 配置块："blocked 时回跳重试" 复选框 + retryFromNodeId 下拉(限 nodesBeforeGate=topoOrder 切 gate 前，与 server validateWorkflow 完全一致，UI 不会出 server 会拒的选项) + maxIterations(min=1，占位 3) + feedbackVar(可选，占位 <id>__feedback)。启用默认 {retryFromNodeId:最近上游, maxIterations:3}(合契约)。防御逻辑完备：切 kind 离开 gate / 删节点 / 删 retryFromNodeId 目标 → onBlock 自动清除；无上游候选时复选框禁用。web+server typecheck ✅、build ✅。注：web 用局部 EditableWorkflowNode 扩展承载 onBlock(web/types.ts WorkflowNode 未加该字段)，workflow.json 序列化往返正确，可接受。
+
+— 原始 brief —
+权威口径见 docs/工作流-onblock契约.md（§1 字段 / §6 trace 轮次）；方案 §4、派发书 T-E3。
+
+【文件边界(E 域前端)】web/src/components/WorkflowDagEditor.tsx(+ 执行面板)。
+
+【待做】
+1. gate 节点编辑器加 onBlock 配置：retryFromNodeId 下拉(限本节点前的节点) + maxIterations 输入 + feedbackVar(可选)。
+2. 执行面板展示当前迭代轮次 / 上限。
+3. 写回 workflow.json 的 onBlock 字段(契约同 T-C3)。
+
+【验收】可视化配置回跳与预算；不破坏现有 DAG 编辑 / 运行；web build 绿。
+【约束】不碰接缝层；AnaXPane 不动；全程不碰 git，回流终审。` },
+
+  { dom: "E", status: "done", title: "【工作流改造·阶段2·MVP】SQL 修复 loop 预置模板 + sql_gate 确定性校验器", brief:
+`✅ E 完成 + 总控终审通过（2026-06-13）。sql-loop-template.ts buildSqlLoopWorkflow：plan→sql→run_sql(tool)→sql_gate(onBlock 回 sql, maxIterations:5, feedbackVar:sql_error)，sql 节点 prompt 读 {{sql_error}} 只修失败部分。run_sql=runner 内联 executeSqlQueryToolNode(executeToolNode 按 toolId 分发)：validateSql 只读守卫(拒 DROP/DELETE/写) + getConnection + executeQuery(cap 500)，失败也返回 code:0 把错误塞进结构化 sql_tool 输出(故流程能走到 gate 而非 halt)。sql_gate=确定性 evaluateSqlGate(anax-gate.ts)：查 code===0&&success / rowCount>0 / requiredFields⊆columns，**零 LLM**(测试 :724 断言 sql_gate 无 LLM 调用)。engine.ts 加 /api/workspaces/:id/sql-loop/instantiate。typecheck/build/全测试绿。注：isDeterministicSqlGateNode 以 node.id==="sql_gate" 识别(magic string，预置模板可接受)。
+
+— 原始 brief —
+方案 §4、闭环草案 §4、派发书 T-E4。loop 能力首个落地价值点。依赖 T-E1。
+
+【文件边界(E 域)】仿 server/src/anax-template.ts 新增 SQL loop 模板；sql_gate 校验复用 anax-gate.ts 确定性范式。
+
+【待做】
+1. 预置 flow 模板：plan(分析计划)→sql(生成 SQL)→run_sql(tool 节点执行)→sql_gate(kind:gate)；sql_gate 配 onBlock 回 sql 节点(maxIterations:5, feedbackVar:'sql_error')；sql 节点 prompt 读 sql_error 占位只修复失败部分、不改业务逻辑。
+2. sql_gate 确定性校验器：执行码=0 / 结果非空 / 关键字段完整(复用 anax-gate 确定性重算，不靠模型自报)。
+3. 模板可懒加载实例化为真实 flow(参考 AnaX instantiate)。
+
+【验收】模板可实例化运行；sql_gate 能正确 pass/block 并触发回跳。
+【约束】需真实可执行 SQL 工具节点(缺真实库连接时与总控协调降级标记，见 T-E5)；不碰接缝层；全程不碰 git，回流终审。` },
+
+  { dom: "E", status: "done", title: "【工作流改造·阶段2·门禁】单测 + MVP 实跑收敛（依赖 T-E1..E4）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-13）。multi-agent-runner.test.ts 新增覆盖：onBlock pass(:514)、maxIterations 耗尽(:557)、run budget 停止(:621)、红线硬停不重试(:665)、SQL loop 模板有效(:711)、SQL 工具失败→sql_gate→sql_error 反馈重试(:724)、确定性 loop 三态(:918/:998/:1059)。**真实实跑(非 fake)**：T-E5 :800 用真实 SQLite + 真实 run-sql-query 工具跑通 SQL loop 收敛——满足"实跑收敛"门禁，无需降级。runner 测试 30/30、全量套件 **108/108** 绿；typecheck+build 绿。总控另用临时 fake 烟测复核过回跳(见 T-E1)，本卡测试覆盖更全。
+
+— 原始 brief —
+方案 §4、派发书 T-E5。阶段2 门禁：吸取 P0-C "fake 跑通≠E2E 验证" 教训，loop 必须真实实跑收敛。
+
+【文件边界(E 域)】server/src/multi-agent-runner.test.ts(+ 必要 test-helpers)。
+
+【待做】
+1. 确定性单测(fake adapter 注入 runTurn/runTool，无需真 pi)：① blocked→回跳→第二轮 pass；② 预算耗尽(maxIterations)→中断；③ 红线命中→不进重试环直接中断。
+2. MVP SQL loop 用真实可执行 SQL 工具 + 真实聚合数据**实跑确认收敛**(非 fake)；若本机缺 PG/MySQL 凭据无法真跑，按 P0-C 先例标记"降级 P1 遗留"并报总控。
+
+【验收】单测全绿；MVP 实跑收敛已确认或明确降级登记。
+【约束】不碰接缝层；全程不碰 git，回流总控终审。` },
+
+  { dom: "E", status: "done", title: "【工作流改造·阶段1.3·可缓】主栈 MultiAgentExecutionPane 内部拆分（AnaX 不参与）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-13）。执行+恢复逻辑剥成主栈私有 hook web/src/components/multi-agent/useMultiAgentRun.ts(175 行)，MultiAgentExecutionPane 消费它(1296→996 行)。**AnaXPane 零改动**(终审 grep 确认未引入 useMultiAgentRun/useFlowRun)——符合"AnaX 独立演化、前端解耦"边界。web typecheck+build 绿。
+
+— 原始 brief —
+方案 §3.3、派发书 T-E6。**低优先 / 可缓**——非 loop 承重项，可在阶段0/1/2 之后按需进行。
+
+【边界决策】AnaX 定位独立产品 / 后台系统(白皮书 type-B)，前端与工作流主栈**解耦**：useFlowRun 跨 pane 共享 hook 缓做，AnaXPane 的 WS 订阅 / 恢复重复暂留作"独立演化保险"。本卡仅在工作流主栈内部收敛，**AnaXPane 零改动、不去重**。
+
+【文件边界(E 域前端)】web/src/components/MultiAgentExecutionPane.tsx(1296 巨型单体)。
+
+【待做】
+1. 按职责拆分：DAG 编辑 / 节点编辑器 / 执行面板 / run 历史 / tool 配置。
+2. 把"执行+恢复"逻辑剥成**主栈私有** hook(不抽成跨 AnaX 的共享 hook)。
+
+【验收】主栈拆分后行为不变；web build 绿；AnaXPane 零改动。
+【约束】不与 AnaXPane 共享前端逻辑；不碰接缝层；全程不碰 git，回流终审。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──

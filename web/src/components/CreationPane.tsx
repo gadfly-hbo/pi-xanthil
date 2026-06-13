@@ -21,7 +21,7 @@ import { asBlocks, textOf, type Flow, type PiEvent, type PiModel, type ServerMes
 
 interface Props {
   flow: Flow;
-  kind: "single" | "multi";
+  kind: "multi";
   models: PiModel[];
   model: string;
   onModelChange: (m: string) => void;
@@ -481,7 +481,7 @@ export function CreationPane(p: Props) {
                             <div className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-100">
                               {node.label}
                             </div>
-                            {p.kind === "multi" && node.role && (
+                            {node.role && (
                               <span
                                 className="mt-0.5 inline-block rounded-full px-2 py-px text-[9px] font-medium"
                                 style={{ backgroundColor: color + "22", color }}
@@ -491,7 +491,7 @@ export function CreationPane(p: Props) {
                             )}
                           </div>
                         </div>
-                        {p.kind === "multi" && node.desc && (
+                        {node.desc && (
                           <p className="text-[11px] leading-relaxed text-neutral-500 dark:text-neutral-400">
                             {node.desc}
                           </p>
@@ -587,7 +587,7 @@ export function CreationPane(p: Props) {
           {messages.length === 0 && !chatRunning ? (
             <div className="flex flex-col items-center gap-2 px-4 py-6">
               <p className="text-[11.5px] text-neutral-400 dark:text-neutral-500">
-                描述你想创建的{p.kind === "multi" ? "多" : ""}智能体，pi 会引导你完成设计
+                描述你想创建的多智能体，pi 会引导你完成设计
               </p>
               <div className="flex flex-wrap gap-1.5">
                 {[

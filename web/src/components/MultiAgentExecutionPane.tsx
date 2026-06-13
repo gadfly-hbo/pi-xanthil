@@ -4,13 +4,10 @@ import {
   AlertCircle,
   GitBranch,
   CheckCircle2,
-  Copy,
   Loader2,
   MessageSquare,
-  Play,
   Plus,
   Save,
-  Square,
   Trash2,
   Users,
   Workflow,
@@ -22,9 +19,24 @@ import { CreationPane } from "@/components/CreationPane";
 import { RunOutputPanel } from "@/components/RunOutputPanel";
 import { WorkflowDagEditor } from "@/components/WorkflowDagEditor";
 import { api } from "@/lib/api";
-import { gateway } from "@/lib/ws";
 import { cn } from "@/lib/cn";
-import type { ExtractionTool, Flow, FlowRun, FlowTreeNode, PiEvent, PiModel, ServerMessage, WorkflowDef, WorkflowNode } from "@/types";
+import type { ExtractionTool, Flow, PiModel, WorkflowDef, WorkflowNode } from "@/types";
+import type { CenterTab, EditableWorkflowDef, EditableWorkflowNode, WorkflowIssue, WorkflowNodeKind } from "@/components/multi-agent/types";
+import { RunControlPanel } from "@/components/multi-agent/RunControlPanel";
+import { ToolNodeConfig } from "@/components/multi-agent/ToolNodeConfig";
+import { useMultiAgentRun } from "@/components/multi-agent/useMultiAgentRun";
+import {
+  gateMaxIterations,
+  makeEdgeId,
+  nextUniqueId,
+  nodeKindLabel,
+  nodesBeforeGate,
+  normalizedNodeKind,
+  parseToolStepOutput,
+  toRunRelativePath,
+  upstreamRefs,
+  validateWorkflowEditor,
+} from "@/components/multi-agent/workflow-utils";
 
 interface Props {
   flow: Flow | null;
@@ -35,52 +47,7 @@ interface Props {
   rulesPromptEnabled: boolean;
 }
 
-type StepStatus = "pending" | "running" | "done" | "failed";
-
-interface StepState {
-  status: StepStatus;
-  output: string;
-  events: PiEvent[];
-}
-
-interface ToolStepOutput {
-  kind: "tool";
-  toolId: string;
-  outputPath: string;
-  summaryPath: string;
-  success: boolean;
-  artifacts: string[];
-}
-
-type CenterTab = "flow" | "logs";
-
 type View = "chat" | "execute";
-
-type WorkflowNodeKind = NonNullable<WorkflowNode["kind"]>;
-type WorkflowIssueLevel = "warning" | "error";
-
-interface WorkflowIssue {
-  level: WorkflowIssueLevel;
-  nodeId?: string;
-  edgeId?: string;
-  message: string;
-}
-
-const PLACEHOLDER_RE = /\{\{\s*([a-zA-Z0-9_\-一-鿿.]+)\s*\}\}/g;
-/** Built-in injected keys that are not upstream node references. */
-const INPUT_KEYS = new Set(["task", "prompt", "query"]);
-
-/** Parse a node's prompt for {{nodeId}} placeholders referencing upstream nodes. */
-function upstreamRefs(prompt: string | undefined, nodeIds: Set<string>): string[] {
-  if (!prompt) return [];
-  const out = new Set<string>();
-  for (const m of prompt.matchAll(PLACEHOLDER_RE)) {
-    const key = m[1]!;
-    if (key.startsWith("input.") || INPUT_KEYS.has(key)) continue;
-    if (nodeIds.has(key)) out.add(key);
-  }
-  return [...out];
-}
 
 const CREATION_SYSTEM_PROMPT = `你是一个多智能体工作流设计师。用户描述需求后，你需要：
 
@@ -106,20 +73,6 @@ const PRIMING_PROMPT = `你是一个多智能体工作流编排器。请：
    每个节点对应一个 agent 步骤，edges 按执行顺序串联。为每个节点设置合适的 role/icon/color/desc 字段以便前端渲染。
    如果 workflow.json 已存在且内容合理则无需覆盖。`;
 
-function makeRunId(): string {
-  return `r${Date.now().toString(36)}${Math.random().toString(36).slice(2, 6)}`;
-}
-
-function basename(path: string): string {
-  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
-}
-
-function collectTreeDirs(node: FlowTreeNode, out = new Set<string>()): Set<string> {
-  if (node.kind === "dir") out.add(node.path);
-  for (const child of node.children ?? []) collectTreeDirs(child, out);
-  return out;
-}
-
 /** Pick a deterministic fallback color when the node doesn't specify one. */
 const FALLBACK_COLORS = [
   "#0ea5e9", // sky
@@ -143,125 +96,11 @@ function iconForNode(node: WorkflowNode): string {
   return "\u{1F916}"; // 🤖 default
 }
 
-function normalizedNodeKind(node: WorkflowNode): WorkflowNodeKind {
-  return node.kind ?? "agent";
-}
-
-function nodeKindLabel(kind: WorkflowNodeKind): string {
-  if (kind === "tool") return "tool";
-  if (kind === "gate") return "gate";
-  return "agent";
-}
-
-function nextUniqueId(base: string, used: Set<string>): string {
-  const cleaned = base.trim().replace(/[^a-zA-Z0-9_-]+/g, "-").replace(/^-+|-+$/g, "") || "node";
-  if (!used.has(cleaned)) return cleaned;
-  for (let i = 2; i < 1000; i += 1) {
-    const candidate = `${cleaned}-${i}`;
-    if (!used.has(candidate)) return candidate;
-  }
-  return `${cleaned}-${Date.now().toString(36)}`;
-}
-
-function makeEdgeId(source: string, target: string, used: Set<string>): string {
-  return nextUniqueId(`e-${source}-${target}`, used);
-}
-
-function validateWorkflowEditor(workflow: WorkflowDef | null): WorkflowIssue[] {
-  if (!workflow) return [];
-  const issues: WorkflowIssue[] = [];
-  const seen = new Set<string>();
-  const duplicates = new Set<string>();
-  for (const node of workflow.nodes) {
-    if (!node.id.trim()) issues.push({ level: "error", nodeId: node.id, message: "node id 不能为空" });
-    if (seen.has(node.id)) duplicates.add(node.id);
-    seen.add(node.id);
-    if (!node.label.trim()) issues.push({ level: "warning", nodeId: node.id, message: `${node.id || "未命名节点"} 缺少节点名称` });
-    if (normalizedNodeKind(node) === "tool") {
-      if (!node.toolId?.trim()) issues.push({ level: "error", nodeId: node.id, message: `${node.id} 缺少 toolId` });
-      if (!node.inputPath?.trim()) issues.push({ level: "error", nodeId: node.id, message: `${node.id} 缺少 inputPath` });
-    }
-  }
-  for (const id of duplicates) issues.push({ level: "error", nodeId: id, message: `node id 重复：${id}` });
-  const nodeIds = new Set(workflow.nodes.map((node) => node.id));
-  for (const edge of workflow.edges) {
-    if (!nodeIds.has(edge.source)) issues.push({ level: "error", edgeId: edge.id, message: `${edge.id} source 不存在：${edge.source}` });
-    if (!nodeIds.has(edge.target)) issues.push({ level: "error", edgeId: edge.id, message: `${edge.id} target 不存在：${edge.target}` });
-    if (edge.source === edge.target) issues.push({ level: "warning", edgeId: edge.id, message: `${edge.id} 指向自身` });
-  }
-  return issues;
-}
-
-function parseToolStepOutput(text: string): ToolStepOutput | null {
-  if (!text.trim()) return null;
-  try {
-    const value = JSON.parse(text) as Partial<ToolStepOutput>;
-    if (
-      value.kind !== "tool"
-      || typeof value.toolId !== "string"
-      || typeof value.outputPath !== "string"
-      || typeof value.summaryPath !== "string"
-      || typeof value.success !== "boolean"
-      || !Array.isArray(value.artifacts)
-      || !value.artifacts.every((item) => typeof item === "string")
-    ) {
-      return null;
-    }
-    return value as ToolStepOutput;
-  } catch {
-    return null;
-  }
-}
-
-function toRunRelativePath(runRoot: string | null, absoluteOrRelative: string): string | null {
-  const value = absoluteOrRelative.trim();
-  if (!value) return null;
-  if (!runRoot) return value.startsWith("/") ? null : value;
-  const normalizedRoot = runRoot.replace(/\/+$/, "");
-  if (value === normalizedRoot) return "";
-  if (value.startsWith(normalizedRoot + "/")) return value.slice(normalizedRoot.length + 1);
-  return value.startsWith("/") ? null : value;
-}
-
-/** Extract text from pi message_end events for the live dialog tab. */
-function extractEventText(event: PiEvent): string {
-  if (event.type !== "message_end") return "";
-  const msg = (event as { message?: { role?: string; content?: unknown } }).message;
-  if (!msg || msg.role !== "assistant") return "";
-  if (!Array.isArray(msg.content)) return "";
-  return msg.content
-    .filter(
-      (b): b is { type: "text"; text: string } =>
-        typeof b === "object" && b !== null && (b as { type?: string }).type === "text",
-    )
-    .map((b) => b.text)
-    .join("\n")
-    .trim();
-}
-
-function describePiEvent(event: PiEvent): string | null {
-  if (event.type === "process_start") {
-    const cwd = typeof event.cwd === "string" ? event.cwd : "";
-    const command = typeof event.command === "string" ? event.command : "pi";
-    return `启动 ${command} cwd=${cwd}`;
-  }
-  if (event.type === "spawn_error") {
-    return `spawn_error: ${typeof event.message === "string" ? event.message : JSON.stringify(event)}`;
-  }
-  if (event.type === "stderr") {
-    const text = typeof event.text === "string" ? event.text.trim() : JSON.stringify(event);
-    return text ? `stderr: ${text}` : null;
-  }
-  if (event.type === "turn_start") return "pi turn_start";
-  if (event.type === "agent_start") return "pi agent_start";
-  return null;
-}
-
 export function MultiAgentExecutionPane(p: Props) {
   const flowId = p.flow?.id ?? "";
   const [view, setView] = useState<View>("chat");
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
-  const [workflow, setWorkflow] = useState<WorkflowDef | null>(null);
+  const [workflow, setWorkflow] = useState<EditableWorkflowDef | null>(null);
   const [loading, setLoading] = useState(true);
   const [workflowDirty, setWorkflowDirty] = useState(false);
   const [savingWorkflow, setSavingWorkflow] = useState(false);
@@ -270,19 +109,30 @@ export function MultiAgentExecutionPane(p: Props) {
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [loadingTools, setLoadingTools] = useState(false);
 
-  // ---- execute state ----
-  const [taskText, setTaskText] = useState("");
-  const [runId, setRunId] = useState<string | null>(null);
-  const [running, setRunning] = useState(false);
-  const [activeNodeId, setActiveNodeId] = useState<string | null>(null);
-  const [stepStates, setStepStates] = useState<Record<string, StepState>>({});
-  const [logs, setLogs] = useState<string[]>([]);
-
-  const [runs, setRuns] = useState<FlowRun[]>([]);
   const [centerTab, setCenterTab] = useState<CenterTab>("flow");
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
-  const [requestedOutputFile, setRequestedOutputFile] = useState<{ path: string; nonce: number } | null>(null);
   const [showDagEditor, setShowDagEditor] = useState(false);
+  const {
+    taskText,
+    setTaskText,
+    runId,
+    running,
+    activeNodeId,
+    stepStates,
+    gateIterations,
+    logs,
+    runs,
+    requestedOutputFile,
+    currentOutputDir,
+    handleRun,
+    handleAbortRun,
+    openRunOutputFile,
+  } = useMultiAgentRun({
+    flow: p.flow,
+    workflow,
+    model: p.model,
+    rulesPromptEnabled: p.rulesPromptEnabled,
+  });
 
   // ---- resizable left rail ----
   const [leftWidth, setLeftWidth] = useState(() => Number(localStorage.getItem("xanthil-magent-left-w")) || 288);
@@ -316,12 +166,6 @@ export function MultiAgentExecutionPane(p: Props) {
     };
   }, []);
 
-  const runIdRef = useRef<string | null>(null);
-  runIdRef.current = runId;
-
-  const flowIdRef = useRef<string | null>(null);
-  flowIdRef.current = flowId;
-
   // ---- Load workflow.json on flow change / refresh ----
   useEffect(() => {
     if (!flowId) return;
@@ -329,7 +173,7 @@ export function MultiAgentExecutionPane(p: Props) {
     setLoading(true);
     api.flowWorkflowGet(flowId).then((r) => {
       if (cancelled) return;
-      setWorkflow(r.workflow);
+      setWorkflow(r.workflow as EditableWorkflowDef);
       setWorkflowDirty(false);
       setWorkflowSaveError(null);
       setWorkflowSaveMessage(null);
@@ -358,109 +202,13 @@ export function MultiAgentExecutionPane(p: Props) {
     };
   }, []);
 
-  // ---- Load run history ----
-  useEffect(() => {
-    if (!flowId) return;
-    api.listFlowRuns(flowId).then((rows) => {
-      setRuns(rows);
-      const active = rows.find((r) => r.status === "running");
-      if (active) {
-        const restoredRunId = basename(active.outputDir);
-        setRunId(restoredRunId);
-        setRunning(true);
-        setLogs((cur) => cur.length > 0 ? cur : [`─ 已从历史恢复运行状态 ${restoredRunId}`]);
-        api.flowRunTree(flowId, active.id).then((tree) => {
-          const dirs = collectTreeDirs(tree);
-          setStepStates((cur) => {
-            const next = { ...cur };
-            const created = (workflow?.nodes ?? []).filter((node) => dirs.has(node.id));
-            created.forEach((node, idx) => {
-              const isLastCreated = idx === created.length - 1;
-              next[node.id] = next[node.id] ?? { status: isLastCreated ? "running" : "done", output: "", events: [] };
-            });
-            return next;
-          });
-          const activeNode = [...(workflow?.nodes ?? [])].reverse().find((node) => dirs.has(node.id));
-          if (activeNode) setActiveNodeId(activeNode.id);
-        }).catch(() => undefined);
-      }
-    }).catch(() => setRuns([]));
-  }, [flowId, workflow]);
-
-  // ---- Subscribe to multi-agent execution events ----
-  useEffect(() => {
-    return gateway.subscribe((msg: ServerMessage) => {
-      if (!("flowId" in msg) || msg.flowId !== flowId) return;
-      if (!("runId" in msg) || msg.runId !== runIdRef.current) return;
-
-      switch (msg.type) {
-        case "run_start":
-          // The DB run row now exists — pull it so the output panel can resolve run.id.
-          api.listFlowRuns(flowId).then(setRuns).catch(() => undefined);
-          break;
-        case "agent_step_start":
-          setActiveNodeId(msg.nodeId);
-          setStepStates((cur) => ({
-            ...cur,
-            [msg.nodeId]: { status: "running", output: "", events: [] },
-          }));
-          setLogs((cur) => [...cur, `▶ ${msg.nodeId} 开始执行`]);
-          break;
-        case "agent_event": {
-          const line = describePiEvent(msg.event);
-          if (line) setLogs((cur) => [...cur, `[${msg.nodeId}] ${line}`]);
-          setStepStates((cur) => {
-            const prev = cur[msg.nodeId] ?? { status: "running" as StepStatus, output: "", events: [] };
-            const text = extractEventText(msg.event);
-            return {
-              ...cur,
-              [msg.nodeId]: {
-                ...prev,
-                events: [...prev.events, msg.event],
-                output: text || prev.output,
-              },
-            };
-          });
-          break;
-        }
-        case "agent_step_end":
-          setStepStates((cur) => {
-            const prev = cur[msg.nodeId] ?? { status: "done" as StepStatus, output: "", events: [] };
-            return {
-              ...cur,
-              [msg.nodeId]: { ...prev, status: msg.code === 0 ? "done" : "failed" },
-            };
-          });
-          setLogs((cur) => [...cur, msg.code === 0 ? `✔ ${msg.nodeId} 完成` : `✖ ${msg.nodeId} 失败 (code=${msg.code})`]);
-          break;
-        case "blackboard_update":
-          // Final per-node text — fold into stepStates as the authoritative output.
-          setStepStates((cur) => {
-            const prev = cur[msg.key] ?? { status: "done" as StepStatus, output: "", events: [] };
-            return { ...cur, [msg.key]: { ...prev, output: msg.value || prev.output } };
-          });
-          break;
-        case "run_end":
-          setRunning(false);
-          setActiveNodeId(null);
-          setLogs((cur) => [...cur, msg.aborted ? "─ 已强制停止" : `─ 运行结束 (code=${msg.code})`]);
-          api.listFlowRuns(flowId).then(setRuns).catch(() => undefined);
-          break;
-        case "error":
-          setRunning(false);
-          setLogs((cur) => [...cur, `✖ ${msg.message}`]);
-          break;
-      }
-    });
-  }, [flowId]);
-
   // ---- apply to editor ----
   const applyToEditor = useCallback(() => {
     setView("execute");
     setWorkflowRefreshKey((k) => k + 1);
   }, []);
 
-  const updateWorkflowNode = useCallback((nodeId: string, patch: Partial<WorkflowNode>) => {
+  const updateWorkflowNode = useCallback((nodeId: string, patch: Partial<EditableWorkflowNode>) => {
     setWorkflow((cur) => {
       if (!cur) return cur;
       return {
@@ -479,7 +227,13 @@ export function MultiAgentExecutionPane(p: Props) {
       if (!cur) return cur;
       return {
         ...cur,
-        nodes: cur.nodes.map((node) => (node.id === nodeId ? { ...node, id: nextId } : node)),
+        nodes: cur.nodes.map((node) => {
+          if (node.id === nodeId) return { ...node, id: nextId };
+          if (node.onBlock?.retryFromNodeId === nodeId) {
+            return { ...node, onBlock: { ...node.onBlock, retryFromNodeId: nextId } };
+          }
+          return node;
+        }),
         edges: cur.edges.map((edge) => ({
           ...edge,
           source: edge.source === nodeId ? nextId : edge.source,
@@ -527,7 +281,9 @@ export function MultiAgentExecutionPane(p: Props) {
       if (!cur) return cur;
       return {
         ...cur,
-        nodes: cur.nodes.filter((node) => node.id !== nodeId),
+        nodes: cur.nodes
+          .filter((node) => node.id !== nodeId)
+          .map((node) => node.onBlock?.retryFromNodeId === nodeId ? { ...node, onBlock: undefined } : node),
         edges: cur.edges.filter((edge) => edge.source !== nodeId && edge.target !== nodeId),
       };
     });
@@ -587,7 +343,7 @@ export function MultiAgentExecutionPane(p: Props) {
     setWorkflowSaveError(null);
     setWorkflowSaveMessage(null);
     try {
-      await api.flowWorkflowPut(flowId, workflow);
+      await api.flowWorkflowPut(flowId, workflow as WorkflowDef);
       setWorkflowDirty(false);
       setWorkflowSaveMessage("已保存 workflow.json");
     } catch (err) {
@@ -597,49 +353,12 @@ export function MultiAgentExecutionPane(p: Props) {
     }
   }, [flowId, workflow, savingWorkflow]);
 
-  // ---- execute actions ----
-  const handleRun = useCallback(() => {
-    if (!flowId || !workflow || running) return;
-    const firstError = validateWorkflowEditor(workflow).find((issue) => issue.level === "error");
-    if (firstError) {
-      setLogs((cur) => [...cur, `✖ workflow 无法运行：${firstError.message}`]);
-      return;
-    }
-    const newRunId = makeRunId();
-    setRunId(newRunId);
-    setRunning(true);
-    setStepStates({});
-    setLogs([`─ 启动运行 ${newRunId}`]);
-    setActiveNodeId(null);
-    const inputs = taskText.trim()
-      ? { task: taskText.trim(), prompt: taskText.trim(), query: taskText.trim() }
-      : undefined;
-    gateway.send({
-      type: "execute_multi_agent",
-      flowId,
-      runId: newRunId,
-      inputs,
-      model: p.model || undefined,
-      injectRulesPrompt: p.rulesPromptEnabled,
-    });
-  }, [flowId, workflow, running, p.model, p.rulesPromptEnabled, taskText]);
-
-  const handleAbortRun = useCallback(() => {
-    if (!flowId || !runId || !running) return;
-    gateway.send({ type: "abort_multi_agent", flowId, runId });
-    setLogs((cur) => [...cur, "─ 正在强制停止当前工作流…"]);
-  }, [flowId, runId, running]);
-
   const orderedNodes = useMemo(() => workflow?.nodes ?? [], [workflow]);
   const nodeIdSet = useMemo(() => new Set(orderedNodes.map((n) => n.id)), [orderedNodes]);
   const doneCount = useMemo(
     () => orderedNodes.filter((n) => stepStates[n.id]?.status === "done").length,
     [orderedNodes, stepStates],
   );
-  const currentOutputDir = p.flow && runId ? `${p.flow.folderPath}/runs/${runId}` : null;
-  const openRunOutputFile = useCallback((path: string) => {
-    setRequestedOutputFile({ path, nonce: Date.now() });
-  }, []);
   const workflowIssues = useMemo(() => validateWorkflowEditor(workflow), [workflow]);
   const workflowHasErrors = workflowIssues.some((issue) => issue.level === "error");
   const issueByNodeId = useMemo(() => {
@@ -719,75 +438,20 @@ export function MultiAgentExecutionPane(p: Props) {
           </div>
         ) : (
           <div className="flex min-h-0 flex-1">
-            {/* ---- Left: run control + task brief ---- */}
-            <aside
-              style={{ width: leftWidth }}
-              className="relative flex shrink-0 flex-col border-r border-neutral-200 dark:border-neutral-800"
-            >
-              {/* run header */}
-              <div className="flex h-10 shrink-0 items-center gap-2 border-b border-neutral-200 px-3 dark:border-neutral-800">
-                <span className="min-w-0 truncate text-[11px] font-medium text-neutral-500">{runId ?? "等待运行"}</span>
-                {runId && (
-                  <span className={cn(
-                    "ml-auto text-[10px] font-medium",
-                    running ? "text-amber-600" : "text-neutral-400",
-                  )}>
-                    {running ? "运行中" : "已结束"}
-                  </span>
-                )}
-              </div>
-
-              {/* task brief — fills the rail, drag the right edge to widen */}
-              <div className="flex min-h-0 flex-1 flex-col gap-1.5 px-3 py-3">
-                <label className="shrink-0 text-[11px] font-medium text-neutral-500">任务说明</label>
-                <textarea
-                  value={taskText}
-                  onChange={(e) => setTaskText(e.target.value)}
-                  disabled={running}
-                  placeholder="描述本次工作流的任务目标、输入数据范围、关键约束与期望产出。内容将作为 {{task}} 注入各节点。"
-                  className="min-h-0 w-full flex-1 resize-none rounded-md border border-neutral-200 bg-transparent px-2.5 py-2 text-[12px] leading-5 text-neutral-900 outline-none placeholder:text-neutral-400 focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
-                />
-              </div>
-
-              {/* run button + output path */}
-              <div className="flex shrink-0 flex-col gap-1 border-t border-neutral-200 px-3 py-2 dark:border-neutral-800">
-                {running ? (
-                  <button
-                    onClick={handleAbortRun}
-                    className="flex h-8 w-full items-center justify-center gap-1.5 rounded-md bg-rose-500 text-[12.5px] font-medium text-white transition-colors hover:bg-rose-600 dark:bg-rose-600 dark:hover:bg-rose-700"
-                  >
-                    <Square className="h-3.5 w-3.5" strokeWidth={2} fill="currentColor" />
-                    强制停止
-                  </button>
-                ) : (
-                  <button
-                    onClick={handleRun}
-                    disabled={!workflow || workflowHasErrors}
-                    className={cn(
-                      "flex w-full items-center justify-center gap-1.5 rounded-md h-8 text-[12.5px] font-medium transition-colors",
-                      !workflow || workflowHasErrors
-                        ? "bg-neutral-100 text-neutral-400 cursor-not-allowed dark:bg-neutral-800 dark:text-neutral-600"
-                        : "bg-sky-500 text-white hover:bg-sky-600 dark:bg-sky-600 dark:hover:bg-sky-700",
-                    )}
-                    title={workflowHasErrors ? workflowIssues.find((issue) => issue.level === "error")?.message : undefined}
-                  >
-                    <Play className="h-3.5 w-3.5" strokeWidth={2} />
-                    运行工作流
-                  </button>
-                )}
-                {currentOutputDir && (
-                  <div className="truncate font-mono text-[9px] text-neutral-400" title={currentOutputDir}>
-                    输出：{currentOutputDir}
-                  </div>
-                )}
-              </div>
-
-              {/* resize handle */}
-              <div
-                onMouseDown={onLeftDragStart}
-                className="absolute right-0 top-0 h-full w-1 cursor-col-resize hover:bg-neutral-300 dark:hover:bg-neutral-700"
-              />
-            </aside>
+            <RunControlPanel
+              width={leftWidth}
+              runId={runId}
+              running={running}
+              taskText={taskText}
+              currentOutputDir={currentOutputDir}
+              workflowReady={Boolean(workflow)}
+              workflowHasErrors={workflowHasErrors}
+              workflowIssues={workflowIssues}
+              onTaskTextChange={setTaskText}
+              onRun={handleRun}
+              onAbort={handleAbortRun}
+              onResizeStart={onLeftDragStart}
+            />
 
             {/* ---- Center: dialog / blackboard / logs ---- */}
             <div className="flex min-h-0 min-w-0 flex-1 flex-col">
@@ -896,6 +560,10 @@ export function MultiAgentExecutionPane(p: Props) {
                         const toolOutput = kind === "tool" && state?.output ? parseToolStepOutput(state.output) : null;
                         const nodeIssues = issueByNodeId.get(node.id) ?? [];
                         const hasNodeError = nodeIssues.some((issue) => issue.level === "error");
+                        const gateRetryCandidates = kind === "gate" ? nodesBeforeGate(workflow, node.id) : [];
+                        const gateIteration = kind === "gate" && node.onBlock
+                          ? gateIterations[node.id] ?? (running ? 1 : 0)
+                          : 0;
                         return (
                           <div
                             key={node.id}
@@ -951,6 +619,14 @@ export function MultiAgentExecutionPane(p: Props) {
                                   {node.role}
                                 </span>
                               )}
+                              {kind === "gate" && node.onBlock && (
+                                <span
+                                  className="shrink-0 rounded-full bg-amber-50 px-1.5 py-0.5 font-mono text-[9px] font-medium text-amber-700 dark:bg-amber-900/30 dark:text-amber-300"
+                                  title={`blocked 回跳到 ${node.onBlock.retryFromNodeId}`}
+                                >
+                                  iter {gateIteration}/{gateMaxIterations(node)}
+                                </span>
+                              )}
                               {refs.length > 0 && (
                                 <span className="flex shrink-0 items-center gap-0.5 text-[10px] text-neutral-400" title={`引用上游节点：${refs.join(", ")}`}>
                                   <ArrowRight className="h-3 w-3" strokeWidth={1.75} />
@@ -978,7 +654,10 @@ export function MultiAgentExecutionPane(p: Props) {
                                     <select
                                       value={kind}
                                       disabled={running}
-                                      onChange={(e) => updateWorkflowNode(node.id, { kind: e.target.value as WorkflowNodeKind })}
+                                      onChange={(e) => {
+                                        const nextKind = e.target.value as WorkflowNodeKind;
+                                        updateWorkflowNode(node.id, nextKind === "gate" ? { kind: nextKind } : { kind: nextKind, onBlock: undefined });
+                                      }}
                                       className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
                                     >
                                       <option value="agent">agent</option>
@@ -1029,6 +708,87 @@ export function MultiAgentExecutionPane(p: Props) {
                                     </label>
                                   )}
                                 </div>
+                                {kind === "gate" && (
+                                  <div className="grid gap-2 rounded-md border border-amber-100 bg-amber-50/40 p-2 dark:border-amber-900/40 dark:bg-amber-950/20 md:grid-cols-2">
+                                    <label className="flex items-center gap-2 md:col-span-2">
+                                      <input
+                                        type="checkbox"
+                                        checked={Boolean(node.onBlock)}
+                                        disabled={running || gateRetryCandidates.length === 0}
+                                        onChange={(e) => {
+                                          if (!e.target.checked) {
+                                            updateWorkflowNode(node.id, { onBlock: undefined });
+                                            return;
+                                          }
+                                          const fallback = gateRetryCandidates.at(-1)?.id;
+                                          if (fallback) updateWorkflowNode(node.id, { onBlock: { retryFromNodeId: fallback, maxIterations: 3 } });
+                                        }}
+                                        className="h-3.5 w-3.5"
+                                      />
+                                      <span className="text-[10.5px] font-medium text-amber-800 dark:text-amber-200">blocked 时回跳重试</span>
+                                      {node.onBlock && (
+                                        <span className="ml-auto font-mono text-[10px] text-amber-700 dark:text-amber-300">
+                                          iter {gateIteration}/{gateMaxIterations(node)}
+                                        </span>
+                                      )}
+                                    </label>
+                                    {gateRetryCandidates.length === 0 && (
+                                      <p className="text-[10.5px] text-amber-700/70 dark:text-amber-300/70 md:col-span-2">
+                                        当前 gate 前没有可回跳节点。
+                                      </p>
+                                    )}
+                                    {node.onBlock && (
+                                      <>
+                                        <label className="flex flex-col gap-1">
+                                          <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">retryFromNodeId</span>
+                                          <select
+                                            value={node.onBlock.retryFromNodeId}
+                                            disabled={running}
+                                            onChange={(e) => updateWorkflowNode(node.id, { onBlock: { ...node.onBlock!, retryFromNodeId: e.target.value } })}
+                                            className="h-8 rounded-md border border-amber-200 bg-white px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-amber-400 disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950 dark:text-neutral-100"
+                                          >
+                                            {gateRetryCandidates.map((candidate) => (
+                                              <option key={candidate.id} value={candidate.id}>{candidate.id}</option>
+                                            ))}
+                                          </select>
+                                        </label>
+                                        <label className="flex flex-col gap-1">
+                                          <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">maxIterations</span>
+                                          <input
+                                            type="number"
+                                            min={1}
+                                            step={1}
+                                            value={node.onBlock.maxIterations ?? ""}
+                                            disabled={running}
+                                            placeholder="3"
+                                            onChange={(e) => updateWorkflowNode(node.id, {
+                                              onBlock: {
+                                                ...node.onBlock!,
+                                                maxIterations: e.target.value ? Number(e.target.value) : undefined,
+                                              },
+                                            })}
+                                            className="h-8 rounded-md border border-amber-200 bg-white px-2 text-[12px] text-neutral-900 outline-none focus:border-amber-400 disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950 dark:text-neutral-100"
+                                          />
+                                        </label>
+                                        <label className="flex flex-col gap-1 md:col-span-2">
+                                          <span className="text-[10px] font-medium text-amber-700 dark:text-amber-300">feedbackVar</span>
+                                          <input
+                                            value={node.onBlock.feedbackVar ?? ""}
+                                            disabled={running}
+                                            placeholder={`${node.id}__feedback`}
+                                            onChange={(e) => updateWorkflowNode(node.id, {
+                                              onBlock: {
+                                                ...node.onBlock!,
+                                                feedbackVar: e.target.value.trim() || undefined,
+                                              },
+                                            })}
+                                            className="h-8 rounded-md border border-amber-200 bg-white px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-amber-400 disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950 dark:text-neutral-100"
+                                          />
+                                        </label>
+                                      </>
+                                    )}
+                                  </div>
+                                )}
                                 <div className="flex flex-col gap-1.5 rounded-md border border-neutral-100 bg-neutral-50/60 p-2 dark:border-neutral-800 dark:bg-neutral-900/30">
                                   <div className="flex items-center gap-2">
                                     <span className="text-[10px] font-medium text-neutral-500">edges</span>
@@ -1098,75 +858,15 @@ export function MultiAgentExecutionPane(p: Props) {
                                   </div>
                                 )}
                                 {kind === "tool" && (
-                                  <div className="grid gap-2 rounded-md border border-emerald-100 bg-emerald-50/40 p-2 dark:border-emerald-900/40 dark:bg-emerald-950/20 md:grid-cols-2">
-                                    <label className="flex flex-col gap-1">
-                                      <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">toolId</span>
-                                      <select
-                                        value={node.toolId ?? ""}
-                                        disabled={running || loadingTools}
-                                        onChange={(e) => updateWorkflowNode(node.id, { toolId: e.target.value })}
-                                        className="h-8 rounded-md border border-emerald-200 bg-white px-2 text-[12px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
-                                      >
-                                        <option value="">{loadingTools ? "加载工具中…" : "选择 registered tool"}</option>
-                                        {tools.map((tool) => (
-                                          <option key={tool.id} value={tool.id}>{tool.id}</option>
-                                        ))}
-                                      </select>
-                                    </label>
-                                    <label className="flex flex-col gap-1">
-                                      <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">timeoutMs</span>
-                                      <input
-                                        type="number"
-                                        min={1}
-                                        value={node.timeoutMs ?? ""}
-                                        disabled={running}
-                                        onChange={(e) => updateWorkflowNode(node.id, { timeoutMs: e.target.value ? Number(e.target.value) : undefined })}
-                                        placeholder="60000"
-                                        className="h-8 rounded-md border border-emerald-200 bg-white px-2 text-[12px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
-                                      />
-                                    </label>
-                                    <label className="flex flex-col gap-1 md:col-span-2">
-                                      <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">inputPath</span>
-                                      <input
-                                        value={node.inputPath ?? ""}
-                                        disabled={running}
-                                        onChange={(e) => updateWorkflowNode(node.id, { inputPath: e.target.value })}
-                                        placeholder="{{input.file}} 或上游节点产出的路径"
-                                        className="h-8 rounded-md border border-emerald-200 bg-white px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
-                                      />
-                                    </label>
-                                    <label className="flex flex-col gap-1 md:col-span-2">
-                                      <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">outputDir</span>
-                                      <input
-                                        value={node.outputDir ?? ""}
-                                        disabled={running}
-                                        onChange={(e) => updateWorkflowNode(node.id, { outputDir: e.target.value || undefined })}
-                                        placeholder="留空则写入当前 node run directory"
-                                        className="h-8 rounded-md border border-emerald-200 bg-white px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
-                                      />
-                                    </label>
-                                    {selectedTool && (
-                                      <div className="flex items-center gap-2 md:col-span-2">
-                                        <div className="min-w-0 flex-1 truncate text-[10.5px] leading-4 text-emerald-700 dark:text-emerald-300">
-                                          {selectedTool.name} · input {selectedTool.input.modes.join("/")} · accept {selectedTool.input.accept.join(", ")} · output {selectedTool.output.join(", ")}
-                                        </div>
-                                        <button
-                                          onClick={() => applyToolTemplateToNode(node.id, selectedTool)}
-                                          disabled={running}
-                                          className="inline-flex h-6 shrink-0 items-center gap-1 rounded border border-emerald-200 bg-white px-1.5 text-[10px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:cursor-not-allowed disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
-                                        >
-                                          <Copy className="h-3 w-3" strokeWidth={1.75} />
-                                          套用
-                                        </button>
-                                      </div>
-                                    )}
-                                    {(!node.toolId || !node.inputPath) && (
-                                      <div className="flex items-center gap-1 md:col-span-2 text-[10.5px] text-amber-700 dark:text-amber-300">
-                                        <AlertCircle className="h-3 w-3 shrink-0" strokeWidth={1.75} />
-                                        tool node 运行前需要保存有效的 toolId 和 inputPath。
-                                      </div>
-                                    )}
-                                  </div>
+                                  <ToolNodeConfig
+                                    node={node}
+                                    tools={tools}
+                                    loadingTools={loadingTools}
+                                    running={running}
+                                    selectedTool={selectedTool}
+                                    onNodeChange={updateWorkflowNode}
+                                    onApplyTemplate={applyToolTemplateToNode}
+                                  />
                                 )}
                                 <div className="flex justify-end">
                                   <button
@@ -1283,7 +983,7 @@ export function MultiAgentExecutionPane(p: Props) {
           flowName={p.flow?.name ?? ""}
           running={running}
           onWorkflowChange={(wf) => {
-            setWorkflow(wf);
+            setWorkflow(wf as EditableWorkflowDef);
             setWorkflowDirty(true);
             setWorkflowSaveError(null);
             setWorkflowSaveMessage(null);

@@ -1093,7 +1093,6 @@ export type ClientMessage =
   | { type: "send_flow"; flowId: string; text: string; model?: string; systemPrompt?: string; skillPaths?: string[]; injectRulesPrompt?: boolean }
   | { type: "abort_flow"; flowId: string }
   | { type: "abort_multi_agent"; flowId: string; runId: string }
-  | { type: "execute_flow"; flowId: string; runId: string; text: string; model?: string; injectRulesPrompt?: boolean }
   | { type: "execute_multi_agent"; flowId: string; runId: string; inputs?: Record<string, string>; model?: string; injectRulesPrompt?: boolean; resumeFromNodeId?: string; previousRunId?: string }
   | { type: "subscribe"; sessionId: string }
   | { type: "execute_anax_precheck"; precheckId: string; workspaceId: string; data_files: string; model?: string }

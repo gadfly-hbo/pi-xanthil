@@ -188,3 +188,13 @@ export function buildMemoryPrompt(workspaceId: string, targetScope?: "chat" | "w
     .filter(Boolean)
     .join("\n\n");
 }
+
+/**
+ * 把工作区记忆 prompt 拼到给定 systemPrompt 之前。无记忆时原样返回 systemPrompt。
+ * chat / workflow 两域共用（T-C2b：从 index.ts 上移）。
+ */
+export function withRulesPrompt(workspaceId: string, targetScope: "chat" | "workflow", systemPrompt?: string): string | undefined {
+  const memoryPrompt = buildMemoryPrompt(workspaceId, targetScope);
+  if (!memoryPrompt) return systemPrompt;
+  return [memoryPrompt, systemPrompt].filter(Boolean).join("\n\n");
+}

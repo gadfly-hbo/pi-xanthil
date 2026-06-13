@@ -7,27 +7,25 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-12 · Phase 2b 数据分析对话展示 ExtractionTool 调用过程与结果
-- 进度：
-  - **ChatPane 工具调用实时展示已接入**：前端订阅 X 透传的 `pi_event.tool_call` / `pi_event.tool_result`，把调用映射为 `tool_use` running 卡，结果回来后回填 completed/error 状态；最终 `message_end` 若再带同一 tool block，会按 tool id 去重，避免重复卡片。
-  - **工具结果卡已升级**：`ProcessTrace` 可展示工具名、输入参数、`runId`、成功/失败数、错误信息、`results[].outputs` 产物列表；产物复用现有 `/api/extraction-tools/preview` 做文本预览，不新增预览端点。
-  - **ChatPane 主流可见**：工具调用/结果默认显示在数据分析对话主消息流，`thinking` 仍保留在「执行详情」里；这保证业务用户能看到 pi 调工具的过程，同时不把内部思考混入主回答。
-  - **ExtractionTool skill 桥已生成**：`listSkills(workspaceRoot)` 会确保 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md` 存在，内容由 ExtractionTool 注册表生成，描述工具 id、参数和调用契约；若该文件被用户手写且无生成标记，不覆盖。
-  - **数据安全边界保持后端红线**：skill 明确要求只传已登记 `clean_data` 绝对路径与标量参数，不粘贴数据内容；AI 模式实际强制仍由 `/api/extraction-tools/:id/run` 的 `source=ai + workspaceId + clean_data` 守卫承担。
-- 校验：
-  - `npm run typecheck`：✅ 全绿。
-  - `npm run build`：✅ 全绿；仅 Vite 既有 chunk size / echarts 动静混合 import 警告。
-  - 本次目标域为 engine，未改 data exploration 子树；按 SOP 未执行 data 域 LLM 隔离 grep。
-- 下一步：
-  - ① 等总控 X 的最终 tool event 契约落地后做一次真实 E2E：ChatPane 提问 → pi 通过 skill/MCP 调 ExtractionTool → 前端显示 running → completed/error → 产物可预览 → assistant 总结结果。
-  - ② 总控需要确认 `runPiTurn skillPaths` 是否自动注入 `xanthil-extraction-tools`，还是由 ChatPane/SkillSelector 显式勾选；当前 E 侧只保证 skill 可发现、可校验。
-  - ③ ToolLab 联动仍未实现：当前结果卡只展示/预览产物；若要「从结果跳 ToolLab 看该工具评测」，需要总控确认 EngineTabs/路由状态如何从 ChatPane 指定 toolId 切到 ToolLab。
-  - ④ 若 X 最终事件字段不是 `tool_call/tool_result` 或 tool id 字段不是 `id/tool_use_id`，需在 `App.tsx` 的容错映射层做一次小调整。
-- 阻塞 / 待总控：无代码阻塞；真实 pi 工具调用链依赖总控 X 的「pi 工具桥 + 红线 + 契约」最终落地与真实环境冒烟。
-- 开放问题：
-  - 总控需拍板：ExtractionTool skill 是默认自动注入所有数据分析对话，还是仅当用户选择/触发工具模式时注入？
-  - 总控需拍板：ToolLab 联动的入口形态，是直接切到 `research_lab/tool` 并预选 toolId，还是只在结果卡展示一个「查看评测」链接等待后续路由能力？
-  - 总控需确认：X 透传的 `tool_result.content` 是否稳定为 MCP content array / JSON string / object；当前前端三者都兼容，但产物识别优先依赖 `results[].outputs`。
+- 最近更新：2026-06-13 · 工作流改造 0→1→2 全部完成（总控终审 + 预算缺口已补）
+- 进度（**工作流改造 12 卡全 ✅，全程 typecheck/build/108 测试绿**；方案见 `docs/工作流模块改造方案.md`、契约 `docs/工作流-onblock契约.md`、派发书 `docs/工作流改造-任务派发.md`、wiki 卡）：
+  - **阶段0 清场** ✅：删 `execute_flow` 死契约+`handleExecuteFlow`、删 5 孤儿前端(ExecutionPane/AgentFlowPane/FlowChatPane/FlowWorkflowPane/FlowEditorPane)+single 退化。
+  - **阶段1 收口** ✅：抽 `runtime.ts`(运行时句柄)；**所有 flow REST 路由 + 3 个流式 WS handler(handleSendFlow/handleExecuteMultiAgent/handleAnaxPrecheck)从 index.ts 迁入 `routes/engine.ts`**(wss.on 派发分支留 index.ts 反向 import)；主栈 `MultiAgentExecutionPane` 拆出 `multi-agent/useMultiAgentRun.ts` 等(1479→996 行)，AnaXPane 零改动。
+  - **阶段2 加闭环** ✅：`WorkflowNode.onBlock` 契约+runner 回跳+trace 迭代谱系(红线>预算>重试 优先级；红线硬停不重试)；`cache.ts` run 级预算原语；gate 编辑器 UI onBlock 配置(retryFromNodeId 限 topo 上游)；**SQL 修复 loop MVP**(sql-loop-template + 内联 executeSqlQueryToolNode 真实 SQL + 确定性 evaluateSqlGate 零 LLM)；真实 SQLite MVP 收敛测试通过。
+  - **预算生产接线(总控补，2026-06-13)** ✅：`config.ts` RUN_BUDGET_LIMITS(env XANTHIL_RUN_MAX_TOKENS/COST_USD，未设=null)；engine.ts handler 传 runBudget。
+- 校验：`npm run typecheck` ✅ · `npm run build` ✅(仅既有 chunk/echarts 警告) · 全量 108 测试 ✅；engine 域未碰 data 子树。
+- 下一步（**残留，非阻塞**）：
+  - ① ✅ flow/anax 业务路由**全部迁出 index.ts**(2026-06-13)：含 `flows/:id/import`(multer 随路由搬) 与 `anax-gate-config`(GET/PUT)，均冒烟通过。接缝迁移彻底收官。
+  - ② SQL loop 前端入口未做：`POST /api/workspaces/:id/sql-loop/instantiate` 已就绪，但无 UI 入口(放 SQL 连接页/workflow 模板库/实验室待定)。
+  - ③ 业务行为浏览器 smoke：主栈 workflow 创建→编辑(含 onBlock gate)→保存→运行→停止；本轮做了 WS 级 + fake-adapter + 真实 SQLite 烟测，未做浏览器交互截图。
+  - ④ 可选 T-E6 第二阶段深拆(WorkflowNodeEditor/EdgeEditor/ExecutionPanel)，为控风险未续。
+- 阻塞 / 待总控：无代码阻塞。
+- 开放问题（仍待决；本会话已解决的 runBudget 来源/T-E6 终审/AnaX 解耦 已落定，不再列）：
+  - SQL loop 输入字段 `sql_connection_id / required_fields / schema_context / task` 命名是否固定；若接缝层将来有统一 workflow input schema 需对齐。
+  - 预算停止经 `__run_budget_stop` blackboard update 落 trace，是否需专门 `run_budget_stop` trace/WS 事件。
+  - T-E3 前端以 `agent_gate` 计数推导迭代轮次；是否需接缝层显式发 `iter`/`maxIterations` 以支持刷新恢复 + 多 gate 精确展示。
+  - isDeterministicSqlGateNode 以 `node.id === "sql_gate"`(magic string)识别确定性 SQL gate；将来若多种确定性 gate，考虑改为按上游 tool 输出 kind 识别。
+  - （上轮 tool-use 遗留，待核实是否仍开）ExtractionTool skill 注入时机、ToolLab 联动入口、`tool_result.content` 形态。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -39,7 +37,7 @@
 |---|---|---|
 | 探索·对话 | `ChatPane` `MessageRow` | session 路由(legacy) |
 | 业务需求 | `BusinessRequirementPane` `useBusinessRequirementContexts` | `routes/engine.ts`(新) |
-| 工作流 | `MultiAgentExecutionPane` `CreationPane` `FlowEditorPane` `WorkflowDagEditor` `DecisionTreePane` `TocPane` `FlowChatPane` `RunOutputPanel` | `multi-agent-runner.ts` `flow-fs.ts` |
+| 工作流 | `MultiAgentExecutionPane` `CreationPane` `WorkflowDagEditor` `DecisionTreePane` `TocPane` `RunOutputPanel` | `multi-agent-runner.ts` `flow-fs.ts` |
 | AnaX | `AnaXPane` `HypothesisPane` `ChangeManagementPane` `AnaXReadmePane` | `anax-template.ts` `anax-gate.ts` |
 | 实验室 | `SkillLabPane` `ToolLabPane` `ModelLabPane` `ModelBuilder` `OperationalModelPane` | `*-evaluation-runner.ts` `skill-{curator,distillation,retrieval,activation}.ts` `model-lab.ts` `web/src/data/models.ts` |
 
@@ -62,6 +60,14 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
 - **ChatPane ExtractionTool 展示边界**：前端只展示 X 透传的 tool event / pi content block，不直接触发工具执行；`tool_call` 映射为 running `tool_use`，`tool_result` 回填同 id 卡片，最终 `message_end` 再带同一 tool block 时按 `id/tool_use_id` 去重。真实红线仍在后端 `source=ai` 守卫，前端不得把 `draw_data` 内容或样本送入 LLM。
 - **ExtractionTool skill 桥落盘策略**：生成到 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md`，带 `xanthil-generated-extraction-tool-skill` 标记；只更新带生成标记的文件，遇到用户手写同路径 skill 不覆盖。skill 只描述 MCP 工具契约与 clean_data 限制，不承担安全校验。
+- **工作流活跃前端路径唯一化**：legacy `ExecutionPane` / `AgentFlowPane` / `FlowChatPane` / `FlowWorkflowPane` / `FlowEditorPane` 已删除；新功能只接入 `MultiAgentExecutionPane` 真路径。`execute_flow` WebSocket client message 已从 web types 移除，不得为兼容旧组件重新引入。
+- **WorkflowNode.onBlock 权威契约**：唯一口径见 `docs/工作流-onblock契约.md`。仅 `kind:"gate"` 生效；blocked 时红线硬停优先于预算、预算优先于重试；可重试时回跳 `[retryFromNodeId, gate]` 闭区间，feedback 写入独立 blackboard key 并跨轮保留，loop 体节点 blackboard 需清理。
+- **onBlock trace 兼容原则**：不配 `onBlock` 的 workflow 行为零变化，普通 gate 仍只写 `gates/<id>.json`。只有配置 `onBlock` 的 loop 体节点写 `runDir/<nodeId>/iter-<n>/`，gate 额外写 `gates/<id>-iter<n>.json`；`gates/<id>.json` 始终是最终轮。
+- **onBlock 预算守卫边界**：runner 只消费 T-C4 `cache.ts evaluateRunBudget(workspaceId, runId, limits)`，不自造 token/cost 统计；生产预算是否启用取决于接缝层传入 `runBudget`。预算停止当前写 `blackboard["__run_budget_stop"]` 并调用 `onBlackboardUpdate`，通过既有 blackboard trace/WS 链路可见；gate blocked 时预算原因也写入 gate verdict reasons。
+- **onBlock 前端接缝边界**：T-E3 按任务约束未改 `web/src/types.ts` / `server/src/types.ts` / WS 消息契约；`WorkflowDagEditor` 和 `MultiAgentExecutionPane` 用局部扩展类型读写 `node.onBlock`。执行面板轮次展示当前以本 run 内 `agent_gate` 事件计数推导，不能等同于刷新后可恢复的权威 trace 字段；若要精确恢复，需要后续接缝层显式携带 iter 或读取 run artifact。
+- **SQL loop gate 边界**：`sql_gate` 是 deterministic gate，不启动 pi turn，不读取模型自报；只从 `run_sql` 结构化 JSON 判定 `code===0`、`success===true`、`rowCount>0`、`requiredFields ⊆ columns`。模板字段当前约定为 `input.sql_connection_id`、`input.required_fields`、`input.schema_context`、`input.task`。
+- **SQL tool 节点失败语义**：内置 `run-sql-query` 的 SQL 执行失败必须保留为 tool output 内部失败，而不是 workflow node 非零退出；否则 runner 会在 tool 节点处直接停止，`sql_gate.onBlock` 无法拿到错误反馈并回跳修复。
+- **AnaX 与工作流主栈前端解耦**：AnaX 定位独立产品/后台系统（白皮书 type-B）。不要为了消除重复把 AnaXPane 的 WS 订阅/恢复逻辑抽到主栈共享 hook；`web/src/components/multi-agent/useMultiAgentRun.ts` 是 MultiAgentExecutionPane 私有 hook，不对 AnaX 承诺复用。
 
 ---
 
@@ -69,6 +75,15 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 
 **工作流**
 - Flow `kind: single|multi`（DB 自动迁移 ALTER+DEFAULT）→ 后删单智能体，只留 multi；**更名仅改 label，内部 id `multi`/DB kind 不动**（零迁移）。
+- 2026-06-13 前端清理确认：server 与 web 各有独立 `types.ts`，两侧解耦、可各自独立变绿；`execute_flow` 删除不需要与 server 同批。删 legacy 前端时先做精确引用扫描，确认每个文件除自身定义外引用链只指向同样无人渲染的组件。
+- 2026-06-13 T-E1：onBlock 在 runner 内做成**可选 runner 能力**，未改 `routes/engine.ts` 接线；`runBudget` 也作为 `MultiAgentRunOptions` 可选项接入，避免本卡越界修改路由骨架。生产预算硬停是否启用取决于后续总控接线。
+- 2026-06-13 T-E2：预算检查从 gate blocked 分支扩展到每个非 gate 节点成功后和 gate 裁决后；红线硬停优先级最高，不检查预算、不回跳。maxIterations 耗尽会追加明确 reason 到最终 gate verdict，以便失败上限通过现有 `agent_gate` trace 可见。
+- 2026-06-13 T-E3：gate onBlock UI 同时接入 DAG overlay 与执行面板表单视图，避免“字段只能在一处配置”的双入口不一致；`retryFromNodeId` 选项按 topo 序限当前 gate 之前节点，删除/重命名回跳目标时同步清理/更新引用。
+- 2026-06-13 T-E4：SQL loop 选择 runner 内置 `run-sql-query`，而不是注册到 `server/tools` 的 Python extraction tool。原因是 SQL 查询需要直接复用本地 `sql-connections.ts` 的连接存储、安全校验和查询执行；外部 extraction tool 无法自然访问该连接契约，且会把“工具进程执行失败”和“SQL 可修复失败”混在一起。
+- 2026-06-13 T-E4：`sql_gate` 复用 `anax-verdict` 输出格式和既有 gate 文件/trace 链路，但 verdict 由 `evaluateSqlGate()` 确定性生成。这样不扩展 WS/types 接缝，也能让 `onBlock` 使用同一套 feedbackVar 回流。
+- 2026-06-13 T-E5：SQL loop 的“真实实跑”不等于真 pi；T-E5 只要求真实 SQL tool 与真实数据收敛。因此测试允许 fake `runTurn` 生成两轮 SQL，但 `run_sql` 必须走真实 `run-sql-query`、真实 `sql-connections`、真实 SQLite 数据表。为避免 `sql-connections.ts` 模块级 `SQL_CONNECTIONS_PATH` 固定到默认数据目录，实跑测试用子进程传临时 `XANTHIL_DATA_DIR`。
+- 2026-06-13 T-E6：拆 `MultiAgentExecutionPane` 时优先做“搬迁式拆分”，先抽私有 hook、纯工具、执行控制面板和 tool 配置；保留节点编辑主体在原文件，避免低优先卡引入大范围 JSX 行为变动。`useMultiAgentRun` 明确放在 `components/multi-agent/`，不是全局 `hooks/`，用于防止后续误解为跨 AnaX 共享能力。
+- 2026-06-13 预算生产接线（总控补，闭合 T-E1/T-E2 遗留的“取决于后续总控接线”）：`config.ts` `RUN_BUDGET_LIMITS` 读 env `XANTHIL_RUN_MAX_TOKENS`/`XANTHIL_RUN_MAX_COST_USD`（>0 生效，未设=null 即不限、行为不变），`routes/engine.ts` handleExecuteMultiAgent 传 `runBudget`。决策：env 可选 > 硬编码魔法上限（误伤大 run）> DB 配置（过重）；per-workspace 限额 + UI 留待按需。接缝细节见 `notes-infra.md §六`。
 - 画布**纯预览只读**（`nodesDraggable=false` 等），所有变更经「pi 对话」自然语言完成。
 - `workflow.json` 不存在时从**目录树自动推断节点**（数字前缀排序/单目录包裹展开，标 `inferred:true`）。
 - 创建视图三区（架构+进度+对话）；黑板**正名融合**——把唯一真实价值（`{{id}}` 传递关系）显示在执行流节点卡，删重复输出汇总。
@@ -109,6 +124,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **skill distillation frontmatter 提取不能取第一个 `---`**：真实 LLM 可能在 `<think>` 中输出自查清单、fenced YAML 示例和最终 SKILL.md。`extractSkillMarkdown()` 应优先找最后一个 `--- + name:` frontmatter；否则保存后 `listSkills()` 会识别为 project source 但 `available:false`（缺 description）。
 - **工具事件重复显示风险**：pi 可能先流式透传 `tool_call/tool_result`，最终 `message_end` 又带完整 `tool_use/tool_result` content。ChatPane 必须按 `id/tool_use_id` 去重，否则用户会看到两套工具卡。
 - **ExtractionTool skill 不是红线本体**：skill 文字只能引导模型选择 clean_data；真正防泄漏必须依赖后端 `POST /api/extraction-tools/:id/run` 的 `source=ai`、`workspaceId` 和已登记 `clean_data` 校验。不要在前端或 skill 文案里把软约束误认为安全边界。
+- **SQL loop 不能让 tool 节点非零退出**：普通 tool node 失败会在 runner 中立即 `return { code }`，下游 gate 不会执行。SQL loop 的可修复失败必须编码进 `run_sql` JSON 的 `code/success/error`，workflow 层保持 `code:0`，由 `sql_gate` block 并写入 `sql_error`。
+- **SQL 关键字段校验依赖结果 columns，不依赖首行 row key**：空结果时 rows 无法提供字段信息；后续若要支持“空结果但 schema 字段完整”的场景，需要总控明确是否允许 `rowCount=0` pass。目前 T-E4 验收要求结果非空，所以 `rowCount=0` 一律 block。
 - `scope` 对象字面量每次渲染新引用 → `useCallback([scope])` 重建 → effect 清空画布。根治：Pane 内提取稳定原始值（scopeType/scopeSessionId/scopeFlowId）作 deps，不改 App.tsx 内联写法（项目惯例）。
 - 流式响应中断（`Stream ended without finish_reason`）：建议切 MiniMax-M3 重试，长报告分块写文件。
 - **onto-extract 文档抽取的两层硬上限**（2026-06-11 hotfix 已调）：①`CONTENT_LIMIT`（字符截断，原 6000 → 现 24000）是真正决定"能不能看到文档后半段"的开关；②prompt 配额（实体/关系/逻辑/动作 ≤N）是次级限制，长文档若超配额会被模型自行裁掉。**所有抽取调优必须双层一起看**，只调一层都不够。

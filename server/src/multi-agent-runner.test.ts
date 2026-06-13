@@ -1,12 +1,16 @@
 import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
+import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import test from "node:test";
 import { makeFakePiAdapter } from "./multi-agent-runner.test-helpers.ts";
 import { extractMarkerArray, readWorkflow, runMultiAgent, validateWorkflow, type WorkflowDef } from "./multi-agent-runner.ts";
+import { trackUsageEvent } from "./cache.ts";
+import { createWorkspace } from "./db.ts";
 import type { GateVerdict } from "./anax-gate.ts";
-import type { PiEvent } from "./types.ts";
+import { buildSqlLoopWorkflow, RUN_SQL_QUERY_TOOL_ID } from "./sql-loop-template.ts";
+import type { PiEvent, PiUsage } from "./types.ts";
 import type { RegisteredExtractionTool } from "../tools/registry.ts";
 
 function makeRunDir(): string {
@@ -38,6 +42,44 @@ function fakeExtractionTool(): RegisteredExtractionTool {
     output: ["json"],
     rootPath: "/tmp/fake-tool",
     entryPath: "/tmp/fake-tool/fake.py",
+  };
+}
+
+function verdictText(input: Partial<GateVerdict> & { verdict?: "pass" | "blocked" }): string {
+  return [
+    "```anax-verdict",
+    JSON.stringify({
+      stage: input.stage ?? "quality_gate",
+      verdict: input.verdict ?? "pass",
+      blockers: input.blockers ?? 0,
+      reasons: input.reasons ?? [],
+      redLines: input.redLines ?? [],
+      stages: input.stages ?? [{ stage: input.stage ?? "quality_gate", confidence: "high", evidence: 3 }],
+      summary: input.summary ?? "ok",
+    }),
+    "```",
+  ].join("\n");
+}
+
+function messageEnd(text: string, usage?: PiUsage): PiEvent {
+  return {
+    type: "message_end",
+    message: {
+      role: "assistant",
+      content: [{ type: "text", text }],
+      usage,
+    },
+  } as unknown as PiEvent;
+}
+
+function usage(totalTokens: number, totalCost = 0): PiUsage {
+  return {
+    input: totalTokens,
+    output: 0,
+    cacheRead: 0,
+    cacheWrite: 0,
+    totalTokens,
+    cost: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, total: totalCost },
   };
 }
 
@@ -467,6 +509,606 @@ test("runMultiAgent blocks downstream nodes when a gate verdict is blocked", asy
   const persisted = JSON.parse(readFileSync(gateFile, "utf8")) as GateVerdict;
   assert.equal(persisted.verdict, "blocked");
   assert.deepEqual(persisted.reasons, ["[RL-1] missing source evidence"]);
+});
+
+test("runMultiAgent succeeds when an onBlock gate passes", async () => {
+  const runDir = makeRunDir();
+  const started: string[] = [];
+  const gates: GateVerdict[] = [];
+  const adapter = makeFakePiAdapter(
+    {
+      draft: { text: "draft output" },
+      quality_gate: { text: verdictText({ stage: "quality_gate", verdict: "pass", summary: "passed" }) },
+      downstream: { text: "done" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      { id: "draft", label: "Draft", prompt: "Write draft" },
+      {
+        id: "quality_gate",
+        label: "Quality Gate",
+        prompt: "Review {{draft}}",
+        kind: "gate",
+        onBlock: { retryFromNodeId: "draft", maxIterations: 2 },
+      },
+      { id: "downstream", label: "Downstream", prompt: "Continue after {{quality_gate}}" },
+    ],
+    edges: [
+      { id: "draft-gate", source: "draft", target: "quality_gate" },
+      { id: "gate-downstream", source: "quality_gate", target: "downstream" },
+    ],
+  };
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    onStepStart: (nodeId) => started.push(nodeId),
+    onStepGate: (_nodeId, verdict) => gates.push(verdict),
+  });
+
+  assert.equal(result.code, 0);
+  assert.deepEqual(started, ["draft", "quality_gate", "downstream"]);
+  assert.equal(gates.length, 1);
+  assert.equal(gates[0]?.verdict, "pass");
+  assert.equal(existsSync(join(runDir, "gates", "quality_gate-iter1.json")), true);
+});
+
+test("runMultiAgent stops on maxIterations exhaustion and records the stop reason in the gate verdict", async () => {
+  const runDir = makeRunDir();
+  const started: string[] = [];
+  const gates: GateVerdict[] = [];
+  let draftTurn = 0;
+  const adapter = makeFakePiAdapter(
+    {
+      draft: {
+        build: () => {
+          draftTurn += 1;
+          return { text: `draft output ${draftTurn}` };
+        },
+      },
+      quality_gate: {
+        text: verdictText({
+          stage: "quality_gate",
+          verdict: "blocked",
+          blockers: 1,
+          reasons: ["missing evidence"],
+          redLines: [{ id: "RL-1", desc: "missing evidence" }],
+          summary: "blocked",
+        }),
+      },
+      downstream: { text: "should not run" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      { id: "draft", label: "Draft", prompt: "Write draft {{quality_gate__feedback}}" },
+      {
+        id: "quality_gate",
+        label: "Quality Gate",
+        prompt: "Review {{draft}}",
+        kind: "gate",
+        onBlock: { retryFromNodeId: "draft", maxIterations: 2 },
+      },
+      { id: "downstream", label: "Downstream", prompt: "Continue" },
+    ],
+    edges: [
+      { id: "draft-gate", source: "draft", target: "quality_gate" },
+      { id: "gate-downstream", source: "quality_gate", target: "downstream" },
+    ],
+  };
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    onStepStart: (nodeId) => started.push(nodeId),
+    onStepGate: (_nodeId, verdict) => gates.push(verdict),
+  });
+
+  assert.equal(result.code, 1);
+  assert.deepEqual(started, ["draft", "quality_gate", "draft", "quality_gate"]);
+  assert.equal(adapter.calls.some((call) => call.piSessionId === "test-run-downstream"), false);
+  assert.equal(gates.length, 2);
+  assert.equal(gates[1]?.verdict, "blocked");
+  assert.ok(gates[1]?.reasons.some((reason) => reason.includes("重试轮次已耗尽")));
+  assert.equal(existsSync(join(runDir, "draft", "iter-1")), true);
+  assert.equal(existsSync(join(runDir, "draft", "iter-2")), true);
+  assert.equal(existsSync(join(runDir, "gates", "quality_gate-iter2.json")), true);
+  const persisted = JSON.parse(readFileSync(join(runDir, "gates", "quality_gate.json"), "utf8")) as GateVerdict;
+  assert.ok(persisted.reasons.some((reason) => reason.includes("重试轮次已耗尽")));
+});
+
+test("runMultiAgent stops on run budget after a node and records a traceable blackboard update", async () => {
+  const runDir = makeRunDir();
+  const workspace = createWorkspace("runner budget stop");
+  const started: string[] = [];
+  const updates: Record<string, string> = {};
+  const adapter = makeFakePiAdapter(
+    {
+      first: { events: [messageEnd("first output", usage(10))] },
+      second: { text: "should not run" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      { id: "first", label: "First", prompt: "Run first" },
+      { id: "second", label: "Second", prompt: "Run second after {{first}}" },
+    ],
+    edges: [{ id: "first-second", source: "first", target: "second" }],
+  };
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    runBudget: { workspaceId: workspace.id, limits: { maxTotalTokens: 5 } },
+    onStepStart: (nodeId) => started.push(nodeId),
+    onStepEvent: (_nodeId, event) => {
+      trackUsageEvent({
+        workspaceId: workspace.id,
+        targetKind: "flow_run",
+        targetId: "test-run",
+        title: "runner budget stop",
+      }, event);
+    },
+    onBlackboardUpdate: (key, value) => {
+      updates[key] = value;
+    },
+  });
+
+  assert.equal(result.code, 1);
+  assert.deepEqual(started, ["first"]);
+  assert.equal(adapter.calls.some((call) => call.piSessionId === "test-run-second"), false);
+  assert.match(result.blackboard.__run_budget_stop ?? "", /token 用量 10 超过本 run 上限 5/);
+  assert.match(updates.__run_budget_stop ?? "", /token 用量 10 超过本 run 上限 5/);
+});
+
+test("runMultiAgent hard-stops on deterministic red-line violations without entering the retry loop", async () => {
+  const runDir = makeRunDir();
+  const started: string[] = [];
+  const gates: GateVerdict[] = [];
+  const adapter = makeFakePiAdapter(
+    {
+      data: { text: "数据质量报告\n综合评分: 4.2/10\n样本不足" },
+      data_gate: { text: verdictText({ stage: "data_gate", verdict: "pass", summary: "model says pass" }) },
+      downstream: { text: "should not run" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      { id: "data", label: "Data", prompt: "Score data" },
+      {
+        id: "data_gate",
+        label: "Data Gate",
+        prompt: "Review {{data}}",
+        kind: "gate",
+        onBlock: { retryFromNodeId: "data", maxIterations: 3 },
+      },
+      { id: "downstream", label: "Downstream", prompt: "Continue" },
+    ],
+    edges: [
+      { id: "data-gate", source: "data", target: "data_gate" },
+      { id: "gate-downstream", source: "data_gate", target: "downstream" },
+    ],
+  };
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    onStepStart: (nodeId) => started.push(nodeId),
+    onStepGate: (_nodeId, verdict) => gates.push(verdict),
+  });
+
+  assert.equal(result.code, 1);
+  assert.deepEqual(started, ["data", "data_gate"]);
+  assert.equal(adapter.calls.filter((call) => call.piSessionId === "test-run-data").length, 1);
+  assert.equal(adapter.calls.some((call) => call.piSessionId === "test-run-downstream"), false);
+  assert.equal(gates.length, 1);
+  assert.equal(gates[0]?.verdict, "blocked");
+  assert.ok(gates[0]?.reasons.some((reason) => reason.includes("RL03")));
+  assert.equal(result.blackboard.data_gate__feedback, undefined);
+});
+
+test("buildSqlLoopWorkflow produces a valid onBlock SQL loop template", () => {
+  const workflow = buildSqlLoopWorkflow();
+
+  assert.doesNotThrow(() => validateWorkflow(workflow));
+  assert.deepEqual(workflow.nodes.map((node) => node.id), ["plan", "sql", "run_sql", "sql_gate"]);
+  const runSql = workflow.nodes.find((node) => node.id === "run_sql");
+  const sqlGate = workflow.nodes.find((node) => node.id === "sql_gate");
+  assert.equal(runSql?.kind, "tool");
+  assert.equal(runSql?.toolId, RUN_SQL_QUERY_TOOL_ID);
+  assert.equal(sqlGate?.kind, "gate");
+  assert.deepEqual(sqlGate?.onBlock, { retryFromNodeId: "sql", maxIterations: 5, feedbackVar: "sql_error" });
+});
+
+test("runMultiAgent routes SQL tool failures through sql_gate and retries with sql_error feedback", async () => {
+  const runDir = makeRunDir();
+  const started: string[] = [];
+  const gates: GateVerdict[] = [];
+  const sqlPrompts: string[] = [];
+  let sqlTurn = 0;
+  const adapter = makeFakePiAdapter(
+    {
+      plan: { text: "query customers" },
+      sql: {
+        build: (opts) => {
+          sqlPrompts.push(opts.text);
+          sqlTurn += 1;
+          return { text: ["```sql", `SELECT customer_id, gmv FROM missing_table LIMIT ${sqlTurn}`, "```"].join("\n") };
+        },
+      },
+      downstream: { text: "should not run" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      { id: "plan", label: "Plan", prompt: "Plan" },
+      { id: "sql", label: "SQL", prompt: "Generate SQL\n{{sql_error}}", inputs: ["plan"] },
+      {
+        id: "run_sql",
+        label: "Run SQL",
+        prompt: "Run",
+        kind: "tool",
+        toolId: RUN_SQL_QUERY_TOOL_ID,
+        inputPath: "{{sql}}",
+        inputs: ["sql"],
+      },
+      {
+        id: "sql_gate",
+        label: "SQL Gate",
+        prompt: "Gate {{run_sql}}",
+        kind: "gate",
+        inputs: ["run_sql"],
+        onBlock: { retryFromNodeId: "sql", maxIterations: 2, feedbackVar: "sql_error" },
+      },
+      { id: "downstream", label: "Downstream", prompt: "Continue" },
+    ],
+    edges: [
+      { id: "plan-sql", source: "plan", target: "sql" },
+      { id: "sql-run", source: "sql", target: "run_sql" },
+      { id: "run-gate", source: "run_sql", target: "sql_gate" },
+      { id: "gate-downstream", source: "sql_gate", target: "downstream" },
+    ],
+  };
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    inputs: { required_fields: "customer_id,gmv" },
+    onStepStart: (nodeId) => started.push(nodeId),
+    onStepGate: (_nodeId, verdict) => gates.push(verdict),
+  });
+
+  assert.equal(result.code, 1);
+  assert.deepEqual(started, ["plan", "sql", "run_sql", "sql_gate", "sql", "run_sql", "sql_gate"]);
+  assert.equal(adapter.calls.some((call) => call.piSessionId === "test-run-sql_gate"), false);
+  assert.equal(adapter.calls.some((call) => call.piSessionId === "test-run-downstream"), false);
+  assert.equal(sqlPrompts.length, 2);
+  assert.match(sqlPrompts[1] ?? "", /上一轮门禁未通过/);
+  assert.match(sqlPrompts[1] ?? "", /missing input\.sql_connection_id/);
+  assert.equal(gates.length, 2);
+  assert.equal(gates[0]?.verdict, "blocked");
+  assert.equal(gates[1]?.verdict, "blocked");
+  assert.ok(gates[1]?.reasons.some((reason) => reason.includes("重试轮次已耗尽")));
+  const runSqlOutput = JSON.parse(result.blackboard.run_sql ?? "{}") as { kind?: string; success?: boolean; code?: number; error?: string };
+  assert.equal(runSqlOutput.kind, "sql_tool");
+  assert.equal(runSqlOutput.success, false);
+  assert.equal(runSqlOutput.code, 1);
+  assert.match(runSqlOutput.error ?? "", /missing input\.sql_connection_id/);
+});
+
+test("T-E5 MVP SQL loop converges with real SQLite data and the real run-sql-query tool", () => {
+  const dataRoot = makeRunDir();
+  const script = String.raw`
+    import { mkdirSync } from "node:fs";
+    import { join } from "node:path";
+    import { pathToFileURL } from "node:url";
+    import { DatabaseSync } from "node:sqlite";
+
+    const cwd = process.cwd();
+    const moduleUrl = (relativePath) => pathToFileURL(join(cwd, relativePath)).href;
+    const dataRoot = process.env.XANTHIL_DATA_DIR;
+    if (!dataRoot) throw new Error("XANTHIL_DATA_DIR required");
+    mkdirSync(dataRoot, { recursive: true });
+
+    const sqlitePath = join(dataRoot, "aggregate.sqlite");
+    const db = new DatabaseSync(sqlitePath);
+    db.exec("CREATE TABLE agg_sales (customer_id TEXT NOT NULL, gmv REAL NOT NULL)");
+    db.prepare("INSERT INTO agg_sales (customer_id, gmv) VALUES (?, ?)").run("C001", 120.5);
+    db.prepare("INSERT INTO agg_sales (customer_id, gmv) VALUES (?, ?)").run("C002", 88.25);
+    db.close();
+
+    const { upsertConnection } = await import(moduleUrl("server/src/sql-connections.ts"));
+    const { runMultiAgent } = await import(moduleUrl("server/src/multi-agent-runner.ts"));
+    const { buildSqlLoopWorkflow } = await import(moduleUrl("server/src/sql-loop-template.ts"));
+    const { makeFakePiAdapter } = await import(moduleUrl("server/src/multi-agent-runner.test-helpers.ts"));
+
+    const connection = upsertConnection({
+      name: "T-E5 SQLite aggregate",
+      type: "sqlite",
+      filePath: sqlitePath,
+    });
+    const runDir = join(dataRoot, "sql-loop-run");
+    mkdirSync(runDir, { recursive: true });
+
+    const sqlPrompts = [];
+    let sqlTurn = 0;
+    const adapter = makeFakePiAdapter({
+      plan: { text: "Query customer GMV from agg_sales." },
+      sql: {
+        build: (opts) => {
+          sqlPrompts.push(opts.text);
+          sqlTurn += 1;
+          return {
+            text: sqlTurn === 1
+              ? ["\`\`\`sql", "SELECT customer_id, gmv FROM missing_table LIMIT 10", "\`\`\`"].join("\n")
+              : ["\`\`\`sql", "SELECT customer_id, gmv FROM agg_sales ORDER BY gmv DESC LIMIT 10", "\`\`\`"].join("\n"),
+          };
+        },
+      },
+    }, "sql-e2e");
+
+    const started = [];
+    const gates = [];
+    const result = await runMultiAgent(buildSqlLoopWorkflow(), {
+      flowRoot: runDir,
+      runId: "sql-e2e",
+      runDir,
+      runTurn: adapter.runTurn,
+      inputs: {
+        task: "Return customer GMV rows.",
+        sql_connection_id: connection.id,
+        required_fields: "customer_id,gmv",
+        schema_context: "table agg_sales(customer_id TEXT, gmv REAL)",
+      },
+      onStepStart: (nodeId) => started.push(nodeId),
+      onStepEvent: () => undefined,
+      onStepEnd: () => undefined,
+      onBlackboardUpdate: () => undefined,
+      onStepGate: (_nodeId, verdict) => gates.push(verdict),
+    });
+
+    console.log(JSON.stringify({
+      code: result.code,
+      started,
+      gates,
+      sqlPromptCount: sqlPrompts.length,
+      secondPrompt: sqlPrompts[1] ?? "",
+      runSql: JSON.parse(result.blackboard.run_sql ?? "{}"),
+      adapterCalls: adapter.calls.map((call) => call.piSessionId),
+    }));
+  `;
+
+  const stdout = execFileSync(
+    process.execPath,
+    ["--experimental-strip-types", "--input-type=module", "-e", script],
+    {
+      cwd: process.cwd(),
+      env: { ...process.env, XANTHIL_DATA_DIR: dataRoot },
+      encoding: "utf8",
+      maxBuffer: 1024 * 1024,
+    },
+  );
+  const parsed = JSON.parse(stdout.trim()) as {
+    code?: number | null;
+    started?: string[];
+    gates?: GateVerdict[];
+    sqlPromptCount?: number;
+    secondPrompt?: string;
+    runSql?: { kind?: string; success?: boolean; code?: number; rowCount?: number; columns?: string[] };
+    adapterCalls?: string[];
+  };
+
+  assert.equal(parsed.code, 0);
+  assert.deepEqual(parsed.started, ["plan", "sql", "run_sql", "sql_gate", "sql", "run_sql", "sql_gate"]);
+  assert.equal(parsed.sqlPromptCount, 2);
+  assert.match(parsed.secondPrompt ?? "", /上一轮门禁未通过/);
+  assert.match(parsed.secondPrompt ?? "", /missing_table/);
+  assert.equal(parsed.gates?.length, 2);
+  assert.equal(parsed.gates?.[0]?.verdict, "blocked");
+  assert.equal(parsed.gates?.[1]?.verdict, "pass");
+  assert.equal(parsed.runSql?.kind, "sql_tool");
+  assert.equal(parsed.runSql?.success, true);
+  assert.equal(parsed.runSql?.code, 0);
+  assert.equal(parsed.runSql?.rowCount, 2);
+  assert.deepEqual(parsed.runSql?.columns, ["customer_id", "gmv"]);
+  assert.deepEqual(parsed.adapterCalls, ["sql-e2e-plan", "sql-e2e-sql", "sql-e2e-sql"]);
+});
+
+test("T-E5 deterministic loop: blocked tool result retries and second iteration passes", async () => {
+  const runDir = makeRunDir();
+  const inputPath = join(runDir, "input.txt");
+  writeFileSync(inputPath, "source", "utf8");
+  const started: string[] = [];
+  const gateVerdicts: GateVerdict[] = [];
+  const gatePrompts: string[] = [];
+  let toolRuns = 0;
+  let gateRuns = 0;
+  const adapter = makeFakePiAdapter(
+    {
+      quality_gate: {
+        build: (opts) => {
+          gatePrompts.push(opts.text);
+          gateRuns += 1;
+          return {
+            text: gateRuns === 1
+              ? verdictText({
+                stage: "quality_gate",
+                verdict: "blocked",
+                blockers: 1,
+                redLines: [{ id: "RL-TOOL", desc: "tool result failed" }],
+                summary: "blocked",
+              })
+              : verdictText({ stage: "quality_gate", verdict: "pass", summary: "passed" }),
+          };
+        },
+      },
+      downstream: { text: "done" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      {
+        id: "extract",
+        label: "Extract",
+        prompt: "Run extraction {{quality_gate__feedback}}",
+        kind: "tool",
+        toolId: "fake-tool",
+        inputPath,
+      },
+      {
+        id: "quality_gate",
+        label: "Quality Gate",
+        prompt: "Review {{extract}}",
+        kind: "gate",
+        onBlock: { retryFromNodeId: "extract", maxIterations: 3 },
+      },
+      { id: "downstream", label: "Downstream", prompt: "Continue after {{quality_gate}}" },
+    ],
+    edges: [
+      { id: "extract-gate", source: "extract", target: "quality_gate" },
+      { id: "gate-downstream", source: "quality_gate", target: "downstream" },
+    ],
+  };
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    getTool: () => fakeExtractionTool(),
+    runTool: async (opts) => {
+      toolRuns += 1;
+      mkdirSync(opts.outputPath, { recursive: true });
+      writeFileSync(opts.summaryPath, JSON.stringify({ success: 1, failed: 0, toolRuns }), "utf8");
+      return { code: 0, stdout: `tool run ${toolRuns}`, stderr: "" };
+    },
+    onStepStart: (nodeId) => started.push(nodeId),
+    onStepGate: (_nodeId, verdict) => gateVerdicts.push(verdict),
+  });
+
+  assert.equal(result.code, 0);
+  assert.deepEqual(started, ["extract", "quality_gate", "extract", "quality_gate", "downstream"]);
+  assert.equal(toolRuns, 2);
+  assert.equal(gateVerdicts.length, 2);
+  assert.equal(gateVerdicts[0]?.verdict, "blocked");
+  assert.equal(gateVerdicts[1]?.verdict, "pass");
+  assert.match(gatePrompts[1] ?? "", /tool run 2/);
+  assert.equal(result.blackboard.downstream, "done");
+});
+
+test("T-E5 deterministic loop: maxIterations exhaustion interrupts downstream after tool retries", async () => {
+  const runDir = makeRunDir();
+  const inputPath = join(runDir, "input.txt");
+  writeFileSync(inputPath, "source", "utf8");
+  const started: string[] = [];
+  const gates: GateVerdict[] = [];
+  let toolRuns = 0;
+  const adapter = makeFakePiAdapter(
+    {
+      quality_gate: {
+        text: verdictText({
+          stage: "quality_gate",
+          verdict: "blocked",
+          blockers: 1,
+          redLines: [{ id: "RL-TOOL", desc: "still failing" }],
+          summary: "blocked",
+        }),
+      },
+      downstream: { text: "should not run" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      { id: "extract", label: "Extract", prompt: "Run extraction", kind: "tool", toolId: "fake-tool", inputPath },
+      {
+        id: "quality_gate",
+        label: "Quality Gate",
+        prompt: "Review {{extract}}",
+        kind: "gate",
+        onBlock: { retryFromNodeId: "extract", maxIterations: 2 },
+      },
+      { id: "downstream", label: "Downstream", prompt: "Continue" },
+    ],
+    edges: [
+      { id: "extract-gate", source: "extract", target: "quality_gate" },
+      { id: "gate-downstream", source: "quality_gate", target: "downstream" },
+    ],
+  };
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    getTool: () => fakeExtractionTool(),
+    runTool: async (opts) => {
+      toolRuns += 1;
+      mkdirSync(opts.outputPath, { recursive: true });
+      writeFileSync(opts.summaryPath, JSON.stringify({ success: 1, failed: 0, toolRuns }), "utf8");
+      return { code: 0, stdout: `tool run ${toolRuns}`, stderr: "" };
+    },
+    onStepStart: (nodeId) => started.push(nodeId),
+    onStepGate: (_nodeId, verdict) => gates.push(verdict),
+  });
+
+  assert.equal(result.code, 1);
+  assert.deepEqual(started, ["extract", "quality_gate", "extract", "quality_gate"]);
+  assert.equal(toolRuns, 2);
+  assert.equal(adapter.calls.some((call) => call.piSessionId === "test-run-downstream"), false);
+  assert.equal(gates.length, 2);
+  assert.ok(gates[1]?.reasons.some((reason) => reason.includes("重试轮次已耗尽")));
+});
+
+test("T-E5 deterministic loop: deterministic red line hard-stops without retrying", async () => {
+  const runDir = makeRunDir();
+  const started: string[] = [];
+  const gates: GateVerdict[] = [];
+  let dataRuns = 0;
+  const adapter = makeFakePiAdapter(
+    {
+      data_gate: { text: verdictText({ stage: "data_gate", verdict: "pass", summary: "model says pass" }) },
+      downstream: { text: "should not run" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      { id: "data", label: "Data", prompt: "Assess data", kind: "tool", toolId: "fake-tool", inputPath: "{{input.source_path}}" },
+      {
+        id: "data_gate",
+        label: "Data Gate",
+        prompt: "Review {{data}}",
+        kind: "gate",
+        onBlock: { retryFromNodeId: "data", maxIterations: 3 },
+      },
+      { id: "downstream", label: "Downstream", prompt: "Continue" },
+    ],
+    edges: [
+      { id: "data-gate", source: "data", target: "data_gate" },
+      { id: "gate-downstream", source: "data_gate", target: "downstream" },
+    ],
+  };
+  const inputPath = join(runDir, "source.txt");
+  writeFileSync(inputPath, "source", "utf8");
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    inputs: { source_path: inputPath },
+    getTool: () => fakeExtractionTool(),
+    runTool: async (opts) => {
+      dataRuns += 1;
+      mkdirSync(opts.outputPath, { recursive: true });
+      writeFileSync(opts.summaryPath, JSON.stringify({ success: 1, failed: 0, note: "综合评分: 4.2/10" }), "utf8");
+      return { code: 0, stdout: "数据质量报告\n综合评分: 4.2/10", stderr: "" };
+    },
+    onStepStart: (nodeId) => started.push(nodeId),
+    onStepGate: (_nodeId, verdict) => gates.push(verdict),
+  });
+
+  assert.equal(result.code, 1);
+  assert.deepEqual(started, ["data", "data_gate"]);
+  assert.equal(dataRuns, 1);
+  assert.equal(adapter.calls.some((call) => call.piSessionId === "test-run-downstream"), false);
+  assert.equal(gates.length, 1);
+  assert.ok(gates[0]?.reasons.some((reason) => reason.includes("RL03")));
+  assert.equal(result.blackboard.data_gate__feedback, undefined);
 });
 
 // ---- fan-out (P1a: insight parallel hypotheses) ----

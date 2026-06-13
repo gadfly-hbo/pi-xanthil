@@ -202,7 +202,16 @@
       "Bash(npm test *)",
       "Bash(grep -nE \"<ChatPane|ChatPane$|workspaceId=|activeWorkspaceId\" web/src/App.tsx)",
       "Bash(pi list *)",
-      "Bash(pi install *)"
+      "Bash(pi install *)",
+      "Bash(awk -F: '$1>3400 && $1<3750')",
+      "Bash(break)",
+      "Bash(grep -cE 'app\\\\.\\(get|post|put|delete|patch\\)\\\\\\(\"/api/\\(workspaces/:id/flows|flows/:id$|flows/:id/skills|workspaces/:id/anax/instantiate|workflow-favorites|flows/:id/favorite\\)' server/src/index.ts)",
+      "Bash(awk 'NR>793 && /^\\(function |const |async function |interface |type |app\\\\.|export \\)/{print NR\": \"$0; exit}' server/src/index.ts)",
+      "Bash(awk 'NR>5300 && /^\\(function |const |async function |interface |type |app\\\\.\\)/{print NR\": \"$0}' server/src/index.ts)",
+      "Bash(awk '{print $NF}')",
+      "Bash(awk '/^function evaluateSqlGate/,/^}/' server/src/multi-agent-runner.ts)",
+      "Bash(grep -E \"tests [0-9]+$|pass [0-9]+$|fail [0-9]+$\")",
+      "Bash(grep -E \"pass [0-9]+$|fail [0-9]+$\")"
     ]
   }
 }

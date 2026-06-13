@@ -1,11 +1,21 @@
 import { existsSync, mkdirSync, readFileSync, readdirSync, statSync, writeFileSync } from "node:fs";
 import { isAbsolute, join } from "node:path";
 import { runPiTurn as defaultRunPiTurn, type PiRun, type RunPiOptions } from "./pi-adapter.ts";
-import { deterministicRedLineCheck, evaluateGate, type GateThresholds, type GateVerdict } from "./anax-gate.ts";
+import {
+  deterministicRedLineCheck,
+  evaluateGate,
+  evaluateSqlGate,
+  formatSqlGateOutput,
+  type GateThresholds,
+  type GateVerdict,
+} from "./anax-gate.ts";
+import { evaluateRunBudget, type RunBudgetLimits, type RunBudgetStatus } from "./cache.ts";
 import type { PiEvent } from "./types.ts";
 import type { ChildProcessListener } from "./child-processes.ts";
 import { getExtractionTool, validateExtractionInput, type RegisteredExtractionTool } from "../tools/registry.ts";
 import { runExtractionToolProcess, type ToolEvalToolRun } from "./tool-evaluation-runner.ts";
+import { executeQuery, getConnection, validateSql } from "./sql-connections.ts";
+import { RUN_SQL_QUERY_TOOL_ID } from "./sql-loop-template.ts";
 
 /**
  * Pluggable pi-turn launcher. Defaults to the real `runPiTurn` from
@@ -47,6 +57,15 @@ export interface FanOutSpec {
   itemVar?: string;
 }
 
+export interface GateOnBlock {
+  /** Upstream node id to rerun when the gate blocks. Must appear before this gate in topo order. */
+  retryFromNodeId: string;
+  /** Total loop-body executions including the first pass. Default: 3. */
+  maxIterations?: number;
+  /** Blackboard key used to inject the previous failed verdict into the loop body. */
+  feedbackVar?: string;
+}
+
 export interface WorkflowNode {
   id: string;
   label: string;
@@ -70,10 +89,14 @@ export interface WorkflowNode {
   timeoutMs?: number;
   /** AnaX: when set, the node fans out into one concurrent turn per upstream item. */
   fanOut?: FanOutSpec;
+  /** Gate-only controlled retry loop. See docs/工作流-onblock契约.md. */
+  onBlock?: GateOnBlock;
 }
 
 const DEFAULT_FANOUT_CONCURRENCY = 3;
 const DEFAULT_FANOUT_MAX_ITEMS = 8;
+const DEFAULT_GATE_MAX_ITERATIONS = 3;
+const RUN_BUDGET_BLACKBOARD_KEY = "__run_budget_stop";
 
 export interface WorkflowEdge {
   id: string;
@@ -130,6 +153,8 @@ export interface MultiAgentRunOptions {
   runTool?: WorkflowToolRunFn;
   /** Optional override for resolving a registered extraction tool. Tests inject a fake. */
   getTool?: WorkflowGetToolFn;
+  /** Optional run-level budget guard. When absent, budget checks are disabled. */
+  runBudget?: { workspaceId: string; limits: RunBudgetLimits };
 }
 
 export interface MultiAgentRunResult {
@@ -230,6 +255,23 @@ export function validateWorkflow(value: unknown): asserts value is WorkflowDef {
         throw new Error(`workflow.nodes[${index}].fanOut.itemVar must be a string when provided`);
       }
     }
+    if (n.onBlock !== undefined) {
+      const onBlock = n.onBlock as Partial<GateOnBlock>;
+      if (typeof onBlock !== "object" || onBlock === null) throw new Error(`workflow.nodes[${index}].onBlock must be an object`);
+      if (n.kind !== "gate") throw new Error(`workflow.nodes[${index}].onBlock is only allowed for gate nodes`);
+      if (typeof onBlock.retryFromNodeId !== "string" || !onBlock.retryFromNodeId.trim()) {
+        throw new Error(`workflow.nodes[${index}].onBlock.retryFromNodeId is required`);
+      }
+      if (
+        onBlock.maxIterations !== undefined
+        && (!Number.isInteger(onBlock.maxIterations) || onBlock.maxIterations < 1)
+      ) {
+        throw new Error(`workflow.nodes[${index}].onBlock.maxIterations must be an integer >= 1 when provided`);
+      }
+      if (onBlock.feedbackVar !== undefined && (typeof onBlock.feedbackVar !== "string" || !onBlock.feedbackVar.trim())) {
+        throw new Error(`workflow.nodes[${index}].onBlock.feedbackVar must be a non-empty string when provided`);
+      }
+    }
   }
 
   for (const node of workflow.nodes as WorkflowNode[]) {
@@ -250,6 +292,20 @@ export function validateWorkflow(value: unknown): asserts value is WorkflowDef {
     if (!target) throw new Error(`workflow.edges[${index}].target is required`);
     if (!ids.has(source)) throw new Error(`workflow.edges[${index}].source references missing node: ${source}`);
     if (!ids.has(target)) throw new Error(`workflow.edges[${index}].target references missing node: ${target}`);
+  }
+
+  const order = topoOrder(workflow as WorkflowDef);
+  const topoIndex = new Map(order.map((node, index) => [node.id, index] as const));
+  for (const node of workflow.nodes as WorkflowNode[]) {
+    if (!node.onBlock) continue;
+    const gateIndex = topoIndex.get(node.id);
+    const retryIndex = topoIndex.get(node.onBlock.retryFromNodeId);
+    if (retryIndex === undefined) {
+      throw new Error(`workflow node ${node.id} onBlock.retryFromNodeId references missing node: ${node.onBlock.retryFromNodeId}`);
+    }
+    if (gateIndex === undefined || retryIndex >= gateIndex) {
+      throw new Error(`workflow node ${node.id} onBlock.retryFromNodeId must appear before the gate in topo order`);
+    }
   }
 }
 
@@ -354,6 +410,8 @@ export async function runMultiAgent(
   const blackboard: Record<string, string> = { ...opts.initialBlackboard };
   const inputs = opts.inputs ?? {};
   const order = topoOrder(workflow);
+  const topoIndex = new Map(order.map((n, index) => [n.id, index] as const));
+  const gateIterations = new Map<string, number>();
   const fallbackModel = opts.defaultModel || workflow.defaultModel || "";
   const fallbackSkillPaths = workflow.defaultSkillPaths;
 
@@ -361,11 +419,16 @@ export async function runMultiAgent(
     ? Math.max(0, order.findIndex((n) => n.id === opts.resumeFromNodeId))
     : 0;
 
-  for (const node of order.slice(resumeIdx)) {
+  let cursor = resumeIdx;
+  while (cursor < order.length) {
     if (opts.isAborted?.()) return { code: null, blackboard };
+    const node = order[cursor]!;
     opts.onStepStart(node.id);
 
-    const nodeDir = join(opts.runDir, sanitizeId(node.id));
+    const trace = activeLoopTrace(order, cursor, gateIterations);
+    const nodeDir = trace
+      ? join(opts.runDir, sanitizeId(node.id), `iter-${trace.iteration}`)
+      : join(opts.runDir, sanitizeId(node.id));
     mkdirSync(nodeDir, { recursive: true });
 
     const model = node.model || fallbackModel || undefined;
@@ -384,6 +447,10 @@ export async function runMultiAgent(
     let assistantText: string;
     if (node.kind === "tool") {
       ({ code, text: assistantText } = await executeToolNode(node, blackboard, inputs, nodeDir, opts));
+    } else if (isDeterministicSqlGateNode(node)) {
+      const verdict = evaluateSqlGate(blackboard);
+      code = 0;
+      assistantText = formatSqlGateOutput(verdict);
     } else if (node.fanOut && fanItems && fanItems.length > 0) {
       ({ code, text: assistantText } = await runFanOut(node, node.fanOut, fanItems, blackboard, inputs, nodeDir, turnBase, opts));
     } else {
@@ -410,10 +477,20 @@ export async function runMultiAgent(
       return { code, blackboard };
     }
 
+    if (node.kind !== "gate") {
+      const budgetStatus = evaluateRunBudgetForRun(opts);
+      if (budgetStatus.exceeded) {
+        recordRunBudgetStop(blackboard, opts, budgetStatus);
+        return { code: 1, blackboard };
+      }
+    }
+
     // AnaX: a gate node re-derives a pass/block decision from its structured
     // verdict. A blocked gate halts the flow (equivalent to anax `gate` != 0).
     if (node.kind === "gate") {
-      const verdict = evaluateGate(assistantText, node.id, opts.gateThresholds);
+      const verdict = isDeterministicSqlGateNode(node)
+        ? evaluateSqlGate(blackboard)
+        : evaluateGate(assistantText, node.id, opts.gateThresholds);
       // Layer on top: deterministic checks that don't rely on the LLM reporting
       // its own violations (guards against RL03/RL06/RL07 being silently missed).
       const extraReasons = deterministicRedLineCheck(blackboard, node.id, opts.gateThresholds);
@@ -422,17 +499,122 @@ export async function runMultiAgent(
         verdict.blockers += extraReasons.length;
         verdict.verdict = "blocked";
       }
+      const budgetStatus = extraReasons.length === 0 ? evaluateRunBudgetForRun(opts) : { exceeded: false, reason: null, totalTokens: 0, totalCost: 0 };
+      if (budgetStatus.exceeded) {
+        verdict.reasons.push(budgetStatus.reason ?? "run budget exceeded");
+        verdict.blockers += 1;
+        verdict.verdict = "blocked";
+      }
+      const gateIteration = currentGateIteration(node, gateIterations);
+      const maxIterations = node.onBlock?.maxIterations ?? DEFAULT_GATE_MAX_ITERATIONS;
+      const retryIndex = node.onBlock ? topoIndex.get(node.onBlock.retryFromNodeId) : undefined;
+      const canRetry = verdict.verdict === "blocked"
+        && extraReasons.length === 0
+        && !budgetStatus.exceeded
+        && node.onBlock
+        && retryIndex !== undefined
+        && gateIteration < maxIterations;
+      if (
+        verdict.verdict === "blocked"
+        && extraReasons.length === 0
+        && !budgetStatus.exceeded
+        && node.onBlock
+        && !canRetry
+      ) {
+        verdict.reasons.push(`重试轮次已耗尽：第 ${gateIteration} 轮 / 共 ${maxIterations} 轮`);
+        verdict.blockers += 1;
+      }
       const gatesDir = join(opts.runDir, "gates");
       mkdirSync(gatesDir, { recursive: true });
+      if (node.onBlock) {
+        writeFileSync(join(gatesDir, `${sanitizeId(node.id)}-iter${gateIteration}.json`), JSON.stringify(verdict, null, 2), "utf8");
+      }
       writeFileSync(join(gatesDir, `${sanitizeId(node.id)}.json`), JSON.stringify(verdict, null, 2), "utf8");
       opts.onStepGate?.(node.id, verdict);
       if (verdict.verdict === "blocked") {
+        if (extraReasons.length > 0) {
+          return { code: 1, blackboard };
+        }
+        if (budgetStatus.exceeded) {
+          recordRunBudgetStop(blackboard, opts, budgetStatus);
+          return { code: 1, blackboard };
+        }
+        if (canRetry) {
+          const feedbackVar = feedbackVarForGate(node);
+          blackboard[feedbackVar] = formatGateFeedback(verdict, gateIteration, maxIterations);
+          resetLoopBlackboard(blackboard, order, retryIndex!, cursor);
+          opts.onBlackboardUpdate(feedbackVar, blackboard[feedbackVar]);
+          gateIterations.set(node.id, gateIteration + 1);
+          cursor = retryIndex;
+          continue;
+        }
         return { code: 1, blackboard };
       }
     }
+    cursor += 1;
   }
 
   return { code: 0, blackboard };
+}
+
+interface LoopTrace {
+  iteration: number;
+}
+
+function activeLoopTrace(order: WorkflowNode[], nodeIndex: number, gateIterations: Map<string, number>): LoopTrace | null {
+  for (let gateIndex = nodeIndex; gateIndex < order.length; gateIndex += 1) {
+    const gate = order[gateIndex]!;
+    if (gate.kind !== "gate" || !gate.onBlock) continue;
+    const retryIndex = order.findIndex((node) => node.id === gate.onBlock?.retryFromNodeId);
+    if (retryIndex >= 0 && retryIndex <= nodeIndex && nodeIndex <= gateIndex) {
+      return { iteration: currentGateIteration(gate, gateIterations) };
+    }
+  }
+  return null;
+}
+
+function currentGateIteration(node: WorkflowNode, gateIterations: Map<string, number>): number {
+  return gateIterations.get(node.id) ?? 1;
+}
+
+function evaluateRunBudgetForRun(opts: MultiAgentRunOptions): RunBudgetStatus {
+  if (!opts.runBudget) return { totalTokens: 0, totalCost: 0, exceeded: false, reason: null };
+  return evaluateRunBudget(opts.runBudget.workspaceId, opts.runId, opts.runBudget.limits);
+}
+
+function recordRunBudgetStop(
+  blackboard: Record<string, string>,
+  opts: MultiAgentRunOptions,
+  status: RunBudgetStatus,
+): void {
+  const text = status.reason ?? "run budget exceeded";
+  blackboard[RUN_BUDGET_BLACKBOARD_KEY] = text;
+  opts.onBlackboardUpdate(RUN_BUDGET_BLACKBOARD_KEY, text);
+}
+
+function feedbackVarForGate(node: WorkflowNode): string {
+  const configured = node.onBlock?.feedbackVar?.trim();
+  return configured || `${node.id}__feedback`;
+}
+
+function formatGateFeedback(verdict: GateVerdict, iteration: number, maxIterations: number): string {
+  const reasons = verdict.reasons.length > 0 ? verdict.reasons : ["门禁未通过，但未返回具体原因。"];
+  return [
+    `## 上一轮门禁未通过（第 ${iteration} 轮 / 共 ${maxIterations} 轮）`,
+    ...reasons.map((reason) => `- ${reason}`),
+    "请仅针对以上问题修正，不要改动其他无关部分。",
+  ].join("\n");
+}
+
+function resetLoopBlackboard(
+  blackboard: Record<string, string>,
+  order: WorkflowNode[],
+  retryIndex: number,
+  gateIndex: number,
+): void {
+  for (let i = retryIndex; i <= gateIndex; i += 1) {
+    delete blackboard[order[i]!.id];
+  }
 }
 
 interface WorkflowToolOutput {
@@ -458,6 +640,9 @@ async function executeToolNode(
 ): Promise<{ code: number | null; text: string }> {
   try {
     const toolId = String(node.toolId ?? "").trim();
+    if (toolId === RUN_SQL_QUERY_TOOL_ID) {
+      return await executeSqlQueryToolNode(node, blackboard, inputs);
+    }
     const tool = (opts.getTool ?? getExtractionTool)(toolId);
     if (!tool) throw new Error(`registered extraction tool not found: ${toolId}`);
     const inputPath = resolveWorkflowPath(renderPrompt(String(node.inputPath ?? ""), blackboard, inputs), opts.flowRoot);
@@ -504,6 +689,113 @@ async function executeToolNode(
       }),
     };
   }
+}
+
+interface WorkflowSqlToolOutput {
+  kind: "sql_tool";
+  toolId: typeof RUN_SQL_QUERY_TOOL_ID;
+  connectionId: string;
+  sql: string;
+  code: number;
+  success: boolean;
+  columns: string[];
+  rows: Record<string, unknown>[];
+  rowCount: number;
+  executionMs: number;
+  capped: boolean;
+  requiredFields: string[];
+  error?: string;
+  validation?: unknown;
+}
+
+async function executeSqlQueryToolNode(
+  node: WorkflowNode,
+  blackboard: Record<string, string>,
+  inputs: Record<string, string>,
+): Promise<{ code: number | null; text: string }> {
+  const connectionId = String(inputs.sql_connection_id ?? inputs.connection_id ?? "").trim();
+  const requiredFields = parseRequiredFields(inputs.required_fields ?? inputs.requiredFields ?? "");
+  const sqlSource = renderPrompt(String(node.inputPath ?? ""), blackboard, inputs);
+  const sql = extractSqlFromText(sqlSource);
+
+  const base = {
+    kind: "sql_tool" as const,
+    toolId: RUN_SQL_QUERY_TOOL_ID,
+    connectionId,
+    sql,
+    columns: [] as string[],
+    rows: [] as Record<string, unknown>[],
+    rowCount: 0,
+    executionMs: 0,
+    capped: false,
+    requiredFields,
+  };
+
+  if (!connectionId) {
+    return { code: 0, text: serializeSqlToolOutput({ ...base, code: 1, success: false, error: "missing input.sql_connection_id" }) };
+  }
+  if (!sql) {
+    return { code: 0, text: serializeSqlToolOutput({ ...base, code: 1, success: false, error: "missing SQL block or SQL text" }) };
+  }
+
+  const validation = validateSql(sql);
+  if (!validation.safe) {
+    return { code: 0, text: serializeSqlToolOutput({ ...base, code: 1, success: false, validation, error: validation.risks.join("; ") }) };
+  }
+
+  const connection = getConnection(connectionId);
+  if (!connection) {
+    return { code: 0, text: serializeSqlToolOutput({ ...base, code: 1, success: false, validation, error: `SQL connection not found: ${connectionId}` }) };
+  }
+
+  try {
+    const result = await executeQuery(connection, sql, 500);
+    return {
+      code: 0,
+      text: serializeSqlToolOutput({
+        ...base,
+        code: 0,
+        success: true,
+        validation,
+        columns: result.columns,
+        rows: result.rows,
+        rowCount: result.rowCount,
+        executionMs: result.executionMs,
+        capped: result.capped,
+      }),
+    };
+  } catch (err) {
+    return { code: 0, text: serializeSqlToolOutput({ ...base, code: 1, success: false, validation, error: String(err) }) };
+  }
+}
+
+function parseRequiredFields(value: string): string[] {
+  const trimmed = value.trim();
+  if (!trimmed) return [];
+  try {
+    const parsed = JSON.parse(trimmed) as unknown;
+    if (Array.isArray(parsed)) return parsed.map((item) => String(item).trim()).filter(Boolean);
+  } catch {
+    // Fall through to comma/newline parsing.
+  }
+  return trimmed.split(/[,，\n]/).map((item) => item.trim()).filter(Boolean);
+}
+
+function extractSqlFromText(text: string): string {
+  const blocks = text.matchAll(/```sql(?:[ \t]*\r?\n|[ \t]*)?([\s\S]+?)```/gi);
+  let latest = "";
+  for (const match of blocks) {
+    if (match[1]?.trim()) latest = match[1].trim();
+  }
+  return latest || text.trim();
+}
+
+function serializeSqlToolOutput(output: WorkflowSqlToolOutput): string {
+  return JSON.stringify(output, null, 2);
+}
+
+function isDeterministicSqlGateNode(node: WorkflowNode): boolean {
+  return node.kind === "gate" && node.id === "sql_gate";
 }
 
 interface TurnArgs {

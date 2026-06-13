@@ -25,7 +25,7 @@ import multer from "multer";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import { WebSocketServer, type WebSocket } from "ws";
-import { BI_DATASETS_ROOT, DIRECT_LLM_ROOT, EXTRACTION_RUNS_ROOT, FAVORITES_ROOT, PORT, UPLOAD_TMP_ROOT, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
+import { BI_DATASETS_ROOT, DIRECT_LLM_ROOT, EXTRACTION_RUNS_ROOT, PORT, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
 import {
   addFlowMessage,
   addMessage,
@@ -53,22 +53,17 @@ import {
   createHypothesis,
   updateHypothesisEnabled,
   deleteHypothesis,
-  upsertHypothesisFromArchive,
-  buildHypothesisLibraryContext,
   approveMemoryProposal,
   createMemoryFailureAttribution,
   createFlow,
-  createFlowRun,
   createMemoryEvaluation,
   createRuleMemoryProposal,
   createRuleMemory,
   createSession,
   createSkillEvalSet,
   createToolCaseSet,
-  createWorkflowFavorite,
   createWorkflowEvaluation,
   createWorkspace,
-  deleteFlow,
   deleteRuleMemory,
   deleteSession,
   deleteSkillEvalSet,
@@ -81,8 +76,6 @@ import {
   getFlowRun,
   getSession,
   getSessionRuntime,
-  getWorkflowFavorite,
-  getWorkflowFavoriteBySourceFlowId,
   getWorkflowEvaluation,
   getMemoryEvaluation,
   getMemoryProposal,
@@ -92,7 +85,6 @@ import {
   getToolCaseSet,
   getWorkspace,
   getWorkspacePath,
-  listFlowMessages,
   listFlowRuns,
   listFlows,
   listMessages,
@@ -106,7 +98,6 @@ import {
   listMemoryInjectionRecords,
   listTraceRecentEvents,
   listSessions,
-  listWorkflowFavorites,
   listWorkflowEvaluations,
   listMemoryEvaluations,
   listMemoryProposals,
@@ -122,8 +113,6 @@ import {
   recordMemoryFeedback,
   recordMemoryInjectionUsage,
   removeWorkspacePath,
-  removeWorkflowFavorite,
-  renameFlow,
   renameSession,
   renameWorkspace,
   setFileAnalysis,
@@ -134,17 +123,13 @@ import {
   updateSessionRuntime,
   updateSkillEvalSet,
   updateToolCaseSet,
-  updateWorkflowFavorite,
   updateRuleMemory,
   updateWorkspacePathHash,
   createChangeProposal,
-  getAnaxGateConfig,
-  upsertAnaxGateConfig,
   listChangeProposals,
   updateChangeProposal,
   deleteChangeProposal,
   markNodesStale,
-  getStaleNodes,
   clearStaleNodes,
   createModelLabRun,
   getModelLabRun,
@@ -183,21 +168,26 @@ import { applySkillCurationProposals, autoTriggerCuration, curateSkillEvaluation
 import { runToolEvaluation } from "./tool-evaluation-runner.ts";
 import { parseToolEvaluationCases, parseToolEvaluationRunRequest, resolveToolEvaluationCasePaths } from "./tool-evaluation-api.ts";
 import { DEFAULT_REVIEW_PROMPT, buildReviewPrompt, buildAutoFixPrompt, AUTO_FIX_SYSTEM_PROMPT, parseReviewScore, type ReviewAnnotation, type ReviewHistoryEntry } from "./report-review.ts";
-import { copyFlowSnapshot, copyLocalFolderIntoFlow, inferWorkflow, moveAllFiles, readFlowFile, readTree, safeResolve, writeFlowFile } from "./flow-fs.ts";
+import { readFlowFile, readTree, safeResolve, writeFlowFile } from "./flow-fs.ts";
 import { compactPiSession, getPiSessionStats, runPiPrompt, runPiTurn, type PiRun } from "./pi-adapter.ts";
+import { send, activeSessionRuns, activeSessionControls, activeFlowRuns, activeMultiAgentRuns, type ActiveMultiAgentRun } from "./runtime.ts";
+import { listConfiguredModelIds, resolveConfiguredModelId, normalizeWorkflowModels, type WorkflowLike } from "./workflow-config.ts";
+import { withWorkspacePathStatuses } from "./workspace-path-status.ts";
+import { traceFlowEvent } from "./flow-trace.ts";
+import { getActiveChatRun, abortChatRun } from "./runtime.ts";
+import { flowMessageText } from "./message-text.ts";
+import { handleSendFlow, handleExecuteMultiAgent, handleAnaxPrecheck, abortAnaxPrecheck } from "./routes/engine.ts";
 
-import { readWorkflow, renderPrompt, runMultiAgent, topoOrder } from "./multi-agent-runner.ts";
-import { buildAnaxQuickWorkflow, buildAnaxWorkflow } from "./anax-template.ts";
 import { buildModelLabPrompt, SUPPORTED_MODELS, type ModelLabId } from "./model-lab.ts";
 import { buildRegisteredPathContext, resolveOutputTarget } from "./output-paths.ts";
 import { listSkills, validateSkillPaths } from "./skills.ts";
 import { retrieveSkills } from "./skill-retrieval.ts";
 import { buildSkillDistillationPrompt, extractSkillMarkdown, parseSkillName, SKILL_DISTILL_SYSTEM_PROMPT, slugifySkillName } from "./skill-distillation.ts";
 import { runAutonomousTask } from "./autonomous-runner.ts";
-import { getSessionTokenStats, getWorkspaceTodayTokenStats, getWorkspaceTokenStats, listWorkspaceTokenUsageStats, trackSessionWorkspaceUsage, trackWorkspaceUsage } from "./cache.ts";
+import { getSessionTokenStats, getWorkspaceTodayTokenStats, getWorkspaceTokenStats, listWorkspaceTokenUsageStats, trackSessionWorkspaceUsage, trackUsageEvent } from "./cache.ts";
 import { buildKgPrompt, extractKgEntitiesFromReports, syncKnowledgeGraph } from "./knowledge-graph.ts";
 import { deleteKgEdge, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHidden } from "./db.ts";
-import { buildMemoryInjectionSnapshot, buildMemoryPrompt } from "./memory-injection.ts";
+import { buildMemoryInjectionSnapshot, withRulesPrompt } from "./memory-injection.ts";
 import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
@@ -233,12 +223,6 @@ const WORKFLOW_SYSTEM_PROMPTS: Record<string, string> = {
   text: "你是一个文本分析专家。从文本数据中提取特征、分析情感倾向、识别关键词与主题。请等待用户提供文本数据。",
 };
 
-function withRulesPrompt(workspaceId: string, targetScope: "chat" | "workflow", systemPrompt?: string): string | undefined {
-  const memoryPrompt = buildMemoryPrompt(workspaceId, targetScope);
-  if (!memoryPrompt) return systemPrompt;
-  return [memoryPrompt, systemPrompt].filter(Boolean).join("\n\n");
-}
-
 const app = express();
 app.use(cors());
 app.use(express.json({ limit: "8mb" }));
@@ -248,75 +232,6 @@ const DEFAULT_PRESENTATION_VERSION_MODEL = "minimax-cn/MiniMax-M3";
 const DEFAULT_GOLDEN_STRATEGY_MODEL = "minimax-cn/MiniMax-M3";
 const DEFAULT_BUSINESS_REQUIREMENT_MODEL = "minimax-cn/MiniMax-M3";
 const MAX_GOLDEN_STRATEGY_BATCH_MODELS = 3;
-
-type WorkflowLike = {
-  defaultModel?: unknown;
-  defaultSkillPaths?: unknown;
-  nodes?: Array<{ id?: unknown; model?: unknown; skillPaths?: unknown }>;
-};
-
-function listConfiguredModelIds(): string[] {
-  try {
-    const settingsPath = join(homedir(), ".pi", "agent", "settings.json");
-    const settings = JSON.parse(readFileSync(settingsPath, "utf8")) as { enabledModels?: unknown };
-    return Array.isArray(settings.enabledModels) ? settings.enabledModels.filter((id): id is string => typeof id === "string") : [];
-  } catch {
-    return [];
-  }
-}
-
-function resolveConfiguredModelId(model: string, configured: string[]): string | null {
-  const trimmed = model.trim();
-  if (!trimmed) return "";
-  if (configured.includes(trimmed)) return trimmed;
-
-  const rawModel = trimmed.includes("/") ? trimmed.slice(trimmed.lastIndexOf("/") + 1) : trimmed;
-  const matches = configured.filter((id) => id.slice(id.lastIndexOf("/") + 1) === rawModel);
-  return matches.length === 1 ? matches[0]! : null;
-}
-
-function normalizeWorkflowModels<T extends WorkflowLike>(workflow: T): T {
-  const configured = listConfiguredModelIds();
-  if (configured.length === 0) return workflow;
-
-  const normalize = (value: unknown, label: string): string | undefined => {
-    if (value == null) return undefined;
-    if (typeof value !== "string") throw new Error(`${label} must be a string`);
-    const resolved = resolveConfiguredModelId(value, configured);
-    if (resolved == null) {
-      throw new Error(`${label} is not enabled in pi CLI: ${value}. Allowed models: ${configured.join(", ")}`);
-    }
-    return resolved || undefined;
-  };
-
-  const defaultModel = normalize(workflow.defaultModel, "defaultModel");
-  if (defaultModel !== undefined) workflow.defaultModel = defaultModel;
-  for (const node of workflow.nodes ?? []) {
-    const nodeId = typeof node.id === "string" ? node.id : "unknown";
-    const model = normalize(node.model, `nodes.${nodeId}.model`);
-    if (model !== undefined) node.model = model;
-  }
-  return workflow;
-}
-
-function normalizeWorkflowSkills<T extends WorkflowLike>(flowRoot: string, workflow: T): T {
-  if (workflow.defaultSkillPaths !== undefined) {
-    workflow.defaultSkillPaths = validateWorkflowSkillList(flowRoot, workflow.defaultSkillPaths, "defaultSkillPaths");
-  }
-  for (const node of workflow.nodes ?? []) {
-    if (node.skillPaths === undefined) continue;
-    const nodeId = typeof node.id === "string" ? node.id : "unknown";
-    node.skillPaths = validateWorkflowSkillList(flowRoot, node.skillPaths, `nodes.${nodeId}.skillPaths`);
-  }
-  return workflow;
-}
-
-function validateWorkflowSkillList(flowRoot: string, value: unknown, label: string): string[] {
-  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
-    throw new Error(`${label} must be a string array`);
-  }
-  return validateSkillPaths(flowRoot, value, { mode: "lenient" }) ?? [];
-}
 
 type PromoteScope = "latest_task" | "full_conversation";
 
@@ -545,16 +460,6 @@ async function repairJsonObject(
     onEvent: (event) => trackUsageEvent(usageTarget ?? null, event),
   });
   return extractJsonObject(repaired);
-}
-
-function trackUsageEvent(
-  target: { workspaceId: string; targetKind: TokenUsageTargetKind; targetId: string; title: string } | null,
-  event: PiEvent,
-): void {
-  if (!target || event.type !== "message_end") return;
-  const { message } = event as Extract<PiEvent, { type: "message_end" }>;
-  if (message.role !== "assistant" || !message.usage) return;
-  trackWorkspaceUsage(target, message.usage);
 }
 
 function buildTocPrompt(reportName: string, content: string): string {
@@ -869,47 +774,10 @@ function validatePromotedWorkflow(flowRoot: string): void {
 }
 
 // 从一段文本解析出合法 workflow（nodes 非空 + edges 为数组），失败返回 null。
-function parseWorkflowCandidate(raw: string): WorkflowLike | null {
-  let obj: unknown;
-  try { obj = JSON.parse(raw); } catch { return null; }
-  if (typeof obj !== "object" || obj === null) return null;
-  const wf = obj as { nodes?: unknown; edges?: unknown };
-  if (!Array.isArray(wf.nodes) || wf.nodes.length === 0) return null;
-  if (!Array.isArray(wf.edges)) return null;
-  try { return normalizeWorkflowModels(obj as WorkflowLike); } catch { return null; }
-}
-
-// 创建链路兜底：pi 可能因用户的输出目录约束把 workflow.json 写到别处、或只在对话里给出 JSON。
-// 从本轮 assistant 输出捕获 workflow：① fenced 代码块 ② pi 自报的 .../workflow.json 绝对路径文件 ③ 整段裸 JSON。
-function captureWorkflowFromText(text: string): WorkflowLike | null {
-  if (!text || !text.trim()) return null;
-  const candidates: string[] = [];
-  const fence = /```(?:json|workflow|JSON)?\s*([\s\S]*?)```/g;
-  let fm: RegExpExecArray | null;
-  while ((fm = fence.exec(text))) { if (fm[1]) candidates.push(fm[1].trim()); }
-  const pathRe = /(\/[^\s"'`)]+?workflow\.json)/g;
-  let pm: RegExpExecArray | null;
-  while ((pm = pathRe.exec(text))) {
-    const p = pm[1];
-    try { if (p && existsSync(p) && statSync(p).isFile()) candidates.push(readFileSync(p, "utf8")); } catch { /* ignore unreadable path */ }
-  }
-  const trimmed = text.trim();
-  if (trimmed.startsWith("{")) candidates.push(trimmed);
-  for (const raw of candidates) {
-    const wf = parseWorkflowCandidate(raw);
-    if (wf) return wf;
-  }
-  return null;
-}
+// parseWorkflowCandidate / captureWorkflowFromText 已随 flow handler 迁至 routes/engine.ts（T-C2b）。
 
 // 取 pi 消息内容里的文本部分用于捕获。
-function flowMessageText(content: unknown): string {
-  if (!Array.isArray(content)) return "";
-  return content
-    .filter((c): c is { type: string; text: string } => !!c && typeof c === "object" && (c as { type?: unknown }).type === "text" && typeof (c as { text?: unknown }).text === "string")
-    .map((c) => c.text)
-    .join("\n");
-}
+// flowMessageText 已上移至 message-text.ts（接缝层，T-C2b）。
 
 async function compileSessionWorkflow(
   flowId: string,
@@ -1051,11 +919,7 @@ app.get("/api/workspaces/:id/skills", (req, res) => {
   res.json(listSkills(workspace.rootPath));
 });
 
-app.get("/api/flows/:id/skills", (req, res) => {
-  const flow = getFlow(String(req.params.id ?? ""));
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  res.json(listSkills(flow.folderPath));
-});
+// GET /api/flows/:id/skills 已迁至 routes/engine.ts（T-C2a）。
 
 app.post("/api/workspaces/:id/skills/retrieve", (req, res) => {
   const workspace = getWorkspace(String(req.params.id ?? ""));
@@ -1434,36 +1298,9 @@ app.delete("/api/change-proposals/:id", (req, res) => {
 });
 
 // Stale nodes: read and cascade-trigger endpoints.
-app.get("/api/runs/:runId/stale-nodes", (req, res) => {
-  res.json(getStaleNodes(req.params.runId));
-});
+// runs/:runId/stale-nodes · cascade 已迁至 routes/engine.ts（T-C2a）。
 
-// Manually mark downstream nodes stale from a given node (manual_edit cascade).
-app.post("/api/runs/:runId/cascade", (req, res) => {
-  const fromNodeId = String(req.body?.fromNodeId ?? "").trim();
-  if (!fromNodeId) return res.status(400).json({ error: "fromNodeId required" });
-  const downstream = getDownstreamNodeIds(fromNodeId);
-  if (downstream.length === 0) return res.status(400).json({ error: "no downstream nodes" });
-  markNodesStale(req.params.runId, downstream, "manual_edit");
-  res.json({ ok: true, markedNodes: downstream });
-});
-
-// ---- AnaX gate config ----
-
-app.get("/api/workspaces/:id/anax-gate-config", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  res.json(getAnaxGateConfig(req.params.id));
-});
-
-app.put("/api/workspaces/:id/anax-gate-config", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const b = (req.body ?? {}) as Record<string, unknown>;
-  const CONFIDENCES = ["low", "medium", "high"];
-  const minConfidence = typeof b.minConfidence === "string" && CONFIDENCES.includes(b.minConfidence) ? b.minConfidence : undefined;
-  const minEvidenceCount = typeof b.minEvidenceCount === "number" && b.minEvidenceCount >= 0 ? b.minEvidenceCount : undefined;
-  const minDataQualityScore = typeof b.minDataQualityScore === "number" && b.minDataQualityScore >= 0 && b.minDataQualityScore <= 10 ? b.minDataQualityScore : undefined;
-  res.json(upsertAnaxGateConfig(req.params.id, { minConfidence, minEvidenceCount, minDataQualityScore }));
-});
+// AnaX gate config 路由已迁至 routes/engine.ts。
 
 // ---- business context (业务环境) ----
 
@@ -1899,33 +1736,7 @@ function readArtifactTree(rootPath: string): ReturnType<typeof readTree> {
   return filter(readTree(rootPath));
 }
 
-function withWorkspacePathStatus(path: WorkspacePath): WorkspacePath {
-  try {
-    const stat = statSync(path.path);
-    const currentKind = stat.isDirectory() ? "dir" : stat.isFile() ? "file" : null;
-    return {
-      ...path,
-      exists: true,
-      currentKind,
-      size: stat.isFile() ? stat.size : null,
-      mtime: stat.mtimeMs,
-      status: currentKind === path.kind ? "ok" : "kind_mismatch",
-    };
-  } catch {
-    return {
-      ...path,
-      exists: false,
-      currentKind: null,
-      size: null,
-      mtime: null,
-      status: "missing",
-    };
-  }
-}
-
-function withWorkspacePathStatuses(paths: WorkspacePath[]): WorkspacePath[] {
-  return paths.map(withWorkspacePathStatus);
-}
+// withWorkspacePathStatus(es) 已上移至 workspace-path-status.ts（接缝层，T-C2a）。
 
 function validateArtifactPath(path: string, source: string): void {
   const segments = path.split(/[\\/]/).filter(Boolean);
@@ -3505,262 +3316,9 @@ app.post("/api/sessions/:id/save-skill", (req, res) => {
 });
 
 // ---- REST: flows ----
-app.get("/api/workspaces/:id/flows", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  res.json(listFlows(req.params.id));
-});
-app.get("/api/flows/:id", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  res.json(flow);
-});
-app.post("/api/workspaces/:id/flows", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const name = String(req.body?.name ?? "新工作流").trim() || "新工作流";
-  const kind = req.body?.kind === "multi" ? "multi" : "single";
-  res.json(createFlow(req.params.id, name, null, kind));
-});
-// Materialise the built-in AnaX商业分析 methodology as a runnable multi-agent flow.
-app.post("/api/workspaces/:id/anax/instantiate", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const name = String(req.body?.name ?? "AnaX 商业分析").trim() || "AnaX 商业分析";
-  const flow = createFlow(req.params.id, name, "AnaX v3.0", "multi", null, "ready");
-  writeFlowFile(flow.folderPath, "workflow.json", JSON.stringify(buildAnaxWorkflow(), null, 2));
-  res.json(flow);
-});
-app.post("/api/workspaces/:id/anax/instantiate-quick", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const name = String(req.body?.name ?? "AnaX 快速分析").trim() || "AnaX 快速分析";
-  const flow = createFlow(req.params.id, name, "AnaX v3.0 Quick", "multi", null, "ready");
-  writeFlowFile(flow.folderPath, "workflow.json", JSON.stringify(buildAnaxQuickWorkflow(), null, 2));
-  res.json(flow);
-});
-app.patch("/api/flows/:id", (req, res) => {
-  if (!getFlow(req.params.id)) return res.status(404).json({ error: "flow not found" });
-  const name = String(req.body?.name ?? "").trim();
-  if (!name) return res.status(400).json({ error: "name required" });
-  renameFlow(req.params.id, name);
-  res.json({ ok: true });
-});
-app.delete("/api/flows/:id", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  if (req.query.deleteFiles === "true") {
-    try { moveManagedDirToTrash(flow.folderPath); }
-    catch (err) { return res.status(500).json({ error: String(err) }); }
-  }
-  deleteFlow(req.params.id);
-  res.json({ ok: true });
-});
+// flow CRUD / list / create / 删除 / AnaX 实例化 / workflow-favorites 路由已迁至 routes/engine.ts（T-C2a）。
 
-// ---- REST: workflow favorites ----
-function assertFavoriteSnapshotPath(snapshotPath: string): string {
-  const root = resolve(FAVORITES_ROOT);
-  const absolutePath = resolve(snapshotPath);
-  if (!absolutePath.startsWith(`${root}${sep}`)) throw new Error("invalid favorite snapshot path");
-  return absolutePath;
-}
-
-function replaceFavoriteSnapshot(sourcePath: string, snapshotPath: string): void {
-  const target = assertFavoriteSnapshotPath(snapshotPath);
-  rmSync(target, { recursive: true, force: true });
-  copyFlowSnapshot(sourcePath, target);
-}
-
-app.get("/api/workflow-favorites", (_req, res) => {
-  res.json(listWorkflowFavorites());
-});
-
-app.post("/api/flows/:id/favorite", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const workspace = getWorkspace(flow.workspaceId);
-  if (!workspace) return res.status(404).json({ error: "workspace not found" });
-  const existing = getWorkflowFavoriteBySourceFlowId(flow.id);
-  try {
-    if (existing) {
-      replaceFavoriteSnapshot(flow.folderPath, existing.snapshotPath);
-      updateWorkflowFavorite(existing.id, flow, workspace);
-      return res.json(getWorkflowFavorite(existing.id));
-    }
-    const snapshotPath = join(FAVORITES_ROOT, randomUUID());
-    replaceFavoriteSnapshot(flow.folderPath, snapshotPath);
-    try {
-      return res.json(createWorkflowFavorite(flow, workspace, snapshotPath));
-    } catch (err) {
-      rmSync(snapshotPath, { recursive: true, force: true });
-      throw err;
-    }
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.delete("/api/workflow-favorites/:id", (req, res) => {
-  const favorite = getWorkflowFavorite(req.params.id);
-  if (!favorite) return res.status(404).json({ error: "favorite not found" });
-  try {
-    rmSync(assertFavoriteSnapshotPath(favorite.snapshotPath), { recursive: true, force: true });
-    removeWorkflowFavorite(favorite.id);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.post("/api/workflow-favorites/:id/reuse", (req, res) => {
-  const favorite = getWorkflowFavorite(req.params.id);
-  if (!favorite) return res.status(404).json({ error: "favorite not found" });
-  const workspaceId = String(req.body?.workspaceId ?? "").trim();
-  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
-  const name = String(req.body?.name ?? `${favorite.name} 副本`).trim() || `${favorite.name} 副本`;
-  let flow;
-  try {
-    const snapshotPath = assertFavoriteSnapshotPath(favorite.snapshotPath);
-    if (!statSync(snapshotPath).isDirectory()) throw new Error("favorite snapshot is not a directory");
-    flow = createFlow(workspaceId, name, favorite.name, favorite.kind);
-    copyFlowSnapshot(snapshotPath, flow.folderPath);
-    res.json(flow);
-  } catch (err) {
-    if (flow) {
-      deleteFlow(flow.id);
-      rmSync(flow.folderPath, { recursive: true, force: true });
-    }
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.get("/api/flows/:id/messages", (req, res) => {
-  if (!getFlow(req.params.id)) return res.status(404).json({ error: "flow not found" });
-  res.json(listFlowMessages(req.params.id));
-});
-
-app.get("/api/flows/:id/tree", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  try {
-    res.json(readTree(flow.folderPath));
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-app.get("/api/flows/:id/file", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const path = String(req.query.path ?? "");
-  if (!path) return res.status(400).json({ error: "path required" });
-  try {
-    res.json(readFlowFile(flow.folderPath, path));
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.put("/api/flows/:id/file", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const path = String(req.body?.path ?? "");
-  const content = typeof req.body?.content === "string" ? req.body.content : null;
-  if (!path || content === null) return res.status(400).json({ error: "path & content required" });
-  try {
-    writeFlowFile(flow.folderPath, path, content);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.post("/api/flows/:id/import-local", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const sourcePath = String(req.body?.path ?? "").trim();
-  if (!sourcePath) return res.status(400).json({ error: "path required" });
-  try {
-    const result = copyLocalFolderIntoFlow(sourcePath, flow.folderPath);
-    updateFlowSourceName(flow.id, result.sourceName);
-    res.json({ ok: true, ...result });
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-// Read workflow.json — auto-infer from directory structure if not present
-app.get("/api/flows/:id/workflow", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  try {
-    const content = readFlowFile(flow.folderPath, "workflow.json").content;
-    if (content === null) {
-      res.json({ workflow: inferWorkflow(flow.folderPath), inferred: true });
-    } else {
-      res.json({ workflow: normalizeWorkflowModels(JSON.parse(content) as WorkflowLike), inferred: false });
-    }
-  } catch {
-    res.json({ workflow: inferWorkflow(flow.folderPath), inferred: true });
-  }
-});
-
-// Write workflow.json
-app.put("/api/flows/:id/workflow", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  try {
-    const workflow = normalizeWorkflowModels(req.body as WorkflowLike);
-    writeFlowFile(flow.folderPath, "workflow.json", JSON.stringify(workflow, null, 2));
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.get("/api/flows/:id/runs", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  res.json(listFlowRuns(flow.id));
-});
-
-app.get("/api/flows/:id/runs/:runId/tree", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const run = getFlowRun(req.params.runId);
-  if (!run || run.flowId !== flow.id) return res.status(404).json({ error: "run not found" });
-  try {
-    res.json(readTree(run.outputDir));
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-app.get("/api/flows/:id/runs/:runId/file", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const run = getFlowRun(req.params.runId);
-  if (!run || run.flowId !== flow.id) return res.status(404).json({ error: "run not found" });
-  const path = String(req.query.path ?? "");
-  if (!path) return res.status(400).json({ error: "path required" });
-  try {
-    res.json(readFlowFile(run.outputDir, path));
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.put("/api/flows/:id/runs/:runId/file", (req, res) => {
-  const flow = getFlow(req.params.id);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const run = getFlowRun(req.params.runId);
-  if (!run || run.flowId !== flow.id) return res.status(404).json({ error: "run not found" });
-  const path = String(req.body?.path ?? "");
-  const content = typeof req.body?.content === "string" ? req.body.content : null;
-  if (!path || content === null) return res.status(400).json({ error: "path & content required" });
-  try {
-    writeFlowFile(run.outputDir, path, content);
-    res.json({ ok: true });
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
+// flow CRUD / 文件 / run 只读路由已迁至 routes/engine.ts（T-C2a）。
 
 // ---- REST: workflow evaluations ----
 app.get("/api/workspaces/:id/evaluations", (req, res) => {
@@ -4229,32 +3787,7 @@ app.delete("/api/sessions/:id/paths/:pathId", (req, res) => {
 });
 
 // ---- REST: flow paths ----
-app.get("/api/flows/:id/paths", (req, res) => {
-  const flow = getFlow(String(req.params.id ?? ""));
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const folder = String(req.query.folder ?? "") || undefined;
-  res.json(withWorkspacePathStatuses(listWorkspacePaths(flow.workspaceId, folder, undefined, flow.id)));
-});
-
-app.post("/api/flows/:id/paths", async (req, res) => {
-  const flow = getFlow(String(req.params.id ?? ""));
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-  const folder = String(req.body?.folder ?? "").trim();
-  const path = String(req.body?.path ?? "").trim();
-  const kind = String(req.body?.kind ?? "").trim();
-  if (!folder || !path || !kind) return res.status(400).json({ error: "folder, path and kind required" });
-  try {
-    const fileHash = kind === "file" ? await computeFileHash(path) : null;
-    res.json(addWorkspacePath(flow.workspaceId, folder, path, kind, null, flow.id, fileHash));
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.delete("/api/flows/:id/paths/:pathId", (req, res) => {
-  removeWorkspacePath(Number(req.params.pathId));
-  res.json({ ok: true });
-});
+// flows/:id/paths(GET/POST/DELETE) 已迁至 routes/engine.ts（T-C2a）。
 
 // ---- REST: file analysis cache ----
 
@@ -5153,68 +4686,7 @@ app.get("/api/extraction-tools/preview", (req, res) => {
   }
 });
 
-// ---- flow import (webkitdirectory upload) ----
-// Each part name carries the original relative path (as posted from the browser).
-// We stash files in a tmp dir keyed by a random upload id, then move them into
-// the flow's folder root preserving the layout.
-const uploadDirs = new Map<string, string>();
-const upload = multer({
-  limits: { fileSize: 50 * 1024 * 1024 },
-  storage: multer.diskStorage({
-    destination: (req, _file, cb) => {
-      let id = (req as express.Request & { _uploadId?: string })._uploadId;
-      if (!id) {
-        id = randomUUID();
-        (req as express.Request & { _uploadId?: string })._uploadId = id;
-        const dir = join(UPLOAD_TMP_ROOT, id);
-        uploadDirs.set(id, dir);
-        try {
-          mkdirSync(dir, { recursive: true });
-        } catch {
-          // ignore — moveAllFiles will recreate as needed
-        }
-      }
-      cb(null, uploadDirs.get(id)!);
-    },
-    filename: (_req, _file, cb) => cb(null, randomUUID()),
-  }),
-});
-
-app.post("/api/flows/:id/import", upload.any(), (req, res) => {
-  const flowId = String(req.params.id ?? "");
-  const flow = getFlow(flowId);
-  if (!flow) return res.status(404).json({ error: "flow not found" });
-
-  const files = (req.files ?? []) as Express.Multer.File[];
-  if (files.length === 0) return res.status(400).json({ error: "no files" });
-
-  // The browser sends each file's original `webkitRelativePath` in a parallel
-  // text field (`paths[]`). multer with `.any()` collects everything into req.body.
-  const paths = req.body?.paths;
-  const pathList: string[] = Array.isArray(paths) ? paths.map(String) : paths ? [String(paths)] : [];
-
-  const items = files.map((f, i) => ({
-    tmpPath: f.path,
-    relPath: pathList[i] ?? f.originalname,
-  }));
-
-  // Derive a readable source name from the top-level folder of the first item.
-  const firstRel = items[0]?.relPath ?? "";
-  const topFolder = firstRel.split(/[\\/]/)[0] ?? "imported";
-
-  const uploadId = (req as express.Request & { _uploadId?: string })._uploadId;
-  const tmpRoot = uploadId ? uploadDirs.get(uploadId)! : UPLOAD_TMP_ROOT;
-  try {
-    moveAllFiles(tmpRoot, flow.folderPath, items);
-  } catch (err) {
-    return res.status(500).json({ error: String(err) });
-  } finally {
-    if (uploadId) uploadDirs.delete(uploadId);
-  }
-
-  updateFlowSourceName(flow.id, topFolder);
-  res.json({ ok: true, sourceName: topFolder, count: items.length });
-});
+// flow import (multer upload) 已迁至 routes/engine.ts（multer 基建仅该路由用，随路由一起搬）。
 
 // ---- domain route slots (绞杀者接缝层; legacy 路由仍在本文件) ----
 registerDomainRoutes(app);
@@ -5228,32 +4700,9 @@ const server = app.listen(PORT, () => {
 });
 
 // ---- WebSocket gateway ----
+// 运行时状态（send / active-run maps / 类型）已上移至 runtime.ts（接缝层，T-C1）。
+// wss 依赖 http server 且仅本文件 bootstrap 使用，故留在此处。
 const wss = new WebSocketServer({ server, path: "/ws" });
-
-function send(ws: WebSocket, msg: ServerMessage): void {
-  if (ws.readyState === ws.OPEN) ws.send(JSON.stringify(msg));
-}
-
-interface ActiveChatRun {
-  run: PiRun;
-  aborted: boolean;
-  startedAt: number;
-}
-
-interface ActiveMultiAgentRun {
-  // A Set (not a single ref) so fan-out nodes — which launch several concurrent
-  // pi turns under one node — can all be killed on abort.
-  currentRuns: Set<PiRun>;
-  aborted: boolean;
-  dbRunId: string;
-  flowId: string;
-  ws: WebSocket;
-}
-
-const activeSessionRuns = new Map<string, ActiveChatRun>();
-const activeSessionControls = new Set<string>();
-const activeFlowRuns = new Map<string, ActiveChatRun>();
-const activeMultiAgentRuns = new Map<string, ActiveMultiAgentRun>();
 
 function traceSessionEvent(sessionId: string, type: string, status: string, detail?: string | null, payload?: unknown): void {
   const session = getSession(sessionId);
@@ -5268,38 +4717,6 @@ function traceSessionEvent(sessionId: string, type: string, status: string, deta
     detail,
     payload,
   });
-}
-
-function traceFlowEvent(flowId: string, type: string, status: string, detail?: string | null, payload?: unknown, runId?: string): void {
-  const flow = getFlow(flowId);
-  if (!flow) return;
-  addTraceEvent({
-    workspaceId: flow.workspaceId,
-    targetKind: runId ? "flow_run" : "flow",
-    targetId: runId ?? flow.id,
-    type,
-    target: flow.name,
-    status,
-    detail,
-    payload,
-  });
-}
-
-function getActiveChatRun(runs: Map<string, ActiveChatRun>, id: string): ActiveChatRun | undefined {
-  const active = runs.get(id);
-  if (!active) return undefined;
-  if (active.run.isRunning()) return active;
-  runs.delete(id);
-  return undefined;
-}
-
-function abortChatRun(runs: Map<string, ActiveChatRun>, id: string): boolean {
-  const active = getActiveChatRun(runs, id);
-  if (!active) return false;
-  runs.delete(id);
-  active.aborted = true;
-  active.run.kill();
-  return true;
 }
 
 function extractFieldDicts(text: string): Array<{ path: string; content: string }> {
@@ -5322,57 +4739,7 @@ function backfillAnalysisFromMessage(workspacePaths: WorkspacePath[], messageTex
   }
 }
 
-// AnaX flywheel: extract validated hypotheses from the archive node's structured
-// block and persist them into the workspace hypothesis library.
-function backfillHypothesesFromArchive(workspaceId: string, archiveText: string): void {
-  const match = archiveText.match(/```anax-hypotheses\s*\n([\s\S]+?)```/);
-  if (!match?.[1]) return;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[1].trim());
-  } catch {
-    return;
-  }
-  if (!Array.isArray(parsed)) return;
-  const verdicts = new Set(["confirmed", "rejected", "partial"]);
-  for (const raw of parsed) {
-    const e = (raw ?? {}) as Record<string, unknown>;
-    const scene = String(e.scene ?? "").trim();
-    const hypothesis = String(e.hypothesis ?? "").trim();
-    if (!scene || !hypothesis) continue;
-    const verdict = verdicts.has(e.verdict as string) ? (e.verdict as "confirmed" | "rejected" | "partial") : "partial";
-    upsertHypothesisFromArchive(
-      workspaceId,
-      { scene, hypothesis, verdict, evidence: String(e.evidence ?? "").trim(), impact: String(e.impact ?? "").trim() },
-    );
-  }
-}
-
-// AnaX P3 V2: extract actionable recommendations from the recommend node's
-// structured block and auto-create draft change proposals in the workspace.
-function backfillProposalsFromRecommend(workspaceId: string, runId: string, recommendText: string): void {
-  const match = recommendText.match(/```anax-recommendations\s*\n([\s\S]+?)```/);
-  if (!match?.[1]) return;
-  let parsed: unknown;
-  try {
-    parsed = JSON.parse(match[1].trim());
-  } catch {
-    return;
-  }
-  if (!Array.isArray(parsed)) return;
-  for (const raw of parsed) {
-    const e = (raw ?? {}) as Record<string, unknown>;
-    const title = String(e.title ?? "").trim();
-    if (!title) continue;
-    createChangeProposal(workspaceId, {
-      runId,
-      sourceNodeId: "recommend",
-      title,
-      description: String(e.description ?? "").trim(),
-      expectedImpact: String(e.expectedImpact ?? "").trim(),
-    });
-  }
-}
+// backfillHypothesesFromArchive / backfillProposalsFromRecommend 已随 flow handler 迁至 routes/engine.ts（T-C2b）。
 
 function observeSessionEvent(session: Session, event: PiEvent): void {
   if (event.type === "compaction_start") {
@@ -5455,12 +4822,10 @@ wss.on("connection", (ws) => {
       traceFlowEvent(msg.flowId, "run_end", "aborted", "aborted by user", { code: null, aborted: true });
       send(ws, { type: "run_end", flowId: msg.flowId, code: null, aborted: true });
     }
-    else if (msg.type === "execute_flow") void handleExecuteFlow(ws, msg);
     else if (msg.type === "execute_multi_agent") void handleExecuteMultiAgent(ws, msg);
     else if (msg.type === "execute_anax_precheck") void handleAnaxPrecheck(ws, msg);
     else if (msg.type === "abort_anax_precheck") {
-      const active = activePrechecks.get(msg.precheckId);
-      if (active) { active.run?.kill(); activePrechecks.delete(msg.precheckId); }
+      abortAnaxPrecheck(msg.precheckId);
     }
     else if (msg.type === "abort_multi_agent") {
       const active = activeMultiAgentRuns.get(msg.runId);
@@ -5585,430 +4950,7 @@ async function handleSend(
   }
 }
 
-async function handleSendFlow(
-  ws: WebSocket,
-  msg: Extract<ClientMessage, { type: "send_flow" }>,
-): Promise<void> {
-  const flow = getFlow(msg.flowId);
-  if (!flow) return send(ws, { type: "error", flowId: msg.flowId, message: "flow not found" });
-  if (getActiveChatRun(activeFlowRuns, flow.id)) {
-    send(ws, { type: "run_start", flowId: flow.id });
-    return send(ws, { type: "error", flowId: flow.id, message: "flow already has a running turn; stop it before sending another message" });
-  }
-  let skillPaths: string[] | undefined;
-  try {
-    skillPaths = validateSkillPaths(flow.folderPath, msg.skillPaths);
-  } catch (err) {
-    return send(ws, { type: "error", flowId: flow.id, message: String(err) });
-  }
-
-  const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow");
-  recordMemoryInjectionUsage(flow.workspaceId, memoryInjection);
-
-  addFlowMessage(flow.id, "user", [{ type: "text", text: msg.text }]);
-  traceFlowEvent(flow.id, "run_start", "running", msg.text.slice(0, 240), { model: msg.model, memoryInjection });
-  send(ws, { type: "run_start", flowId: flow.id });
-  const flowChatPaths = listWorkspacePaths(flow.workspaceId);
-  const flowChatAnalyses = getFileAnalysesByPathIds(
-    flowChatPaths.filter((p) => p.folder === "clean_data" && p.kind === "file").map((p) => p.id),
-  );
-  const contextPrefix = buildRegisteredPathContext(flowChatPaths, {
-    workspaceId: flow.workspaceId,
-    flowId: flow.id,
-    fallbackOutputDir: standardDirIn(flow.folderPath, "report"),
-  }, flowChatAnalyses);
-
-  let capturedText = "";
-  const run = runPiTurn({
-    // pi runs *inside* the flow folder so its file tools see the workflow as cwd.
-    workspaceRoot: flow.folderPath,
-    piSessionId: flow.id,
-    text: `${contextPrefix}${msg.text}`,
-    model: msg.model,
-    systemPrompt: msg.injectRulesPrompt ? withRulesPrompt(flow.workspaceId, "workflow", msg.systemPrompt) : msg.systemPrompt,
-    skillPaths,
-    onEvent: (event: PiEvent) => {
-      trackUsageEvent({
-        workspaceId: flow.workspaceId,
-        targetKind: "flow",
-        targetId: flow.id,
-        title: `工作流聊天：${flow.name}`,
-      }, event);
-      send(ws, { type: "flow_event", flowId: flow.id, event });
-      if (event.type === "message_end") {
-        const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
-        if (m.role !== "user") addFlowMessage(flow.id, m.role, m.content, m.usage ?? null);
-        if (m.role === "assistant") capturedText += "\n" + flowMessageText(m.content);
-        if (m.errorMessage) traceFlowEvent(flow.id, "message_error", "failed", m.errorMessage, { role: m.role, stopReason: m.stopReason });
-      }
-    },
-  });
-  const active = { run, aborted: false, startedAt: Date.now() };
-  activeFlowRuns.set(flow.id, active);
-  try {
-    const code = await run.done;
-    // 兜底：若 flow 目录仍无合法 workflow.json（pi 写错目录/只在对话给出 JSON），从本轮输出捕获并回填。
-    // pi 中途提问停住的情形捕获不到（无 workflow 产出），交由前端 CreationPane 提示用户应答。
-    if (code === 0 && !active.aborted && !readWorkflow(flow.folderPath)) {
-      try {
-        const captured = captureWorkflowFromText(capturedText);
-        if (captured) {
-          writeFlowFile(flow.folderPath, "workflow.json", JSON.stringify(captured, null, 2));
-          traceFlowEvent(flow.id, "workflow_captured", "success", "创建链路：从 pi 输出捕获并回填 workflow.json 到 flow 目录", {});
-        }
-      } catch (err) {
-        traceFlowEvent(flow.id, "workflow_capture_failed", "failed", String(err), {});
-      }
-    }
-    traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : code === 0 ? "success" : "failed", code === 0 ? null : `pi exited with code ${String(code)}`, { code, aborted: active.aborted });
-    send(ws, { type: "run_end", flowId: flow.id, code, aborted: active.aborted });
-  } finally {
-    if (activeFlowRuns.get(flow.id) === active) activeFlowRuns.delete(flow.id);
-  }
-}
-
-async function handleExecuteFlow(
-  ws: WebSocket,
-  msg: Extract<ClientMessage, { type: "execute_flow" }>,
-): Promise<void> {
-  const flow = getFlow(msg.flowId);
-  if (!flow) return send(ws, { type: "error", flowId: msg.flowId, runId: msg.runId, message: "flow not found" });
-
-  const runsRoot = join(flow.folderPath, "runs");
-  const runDir = join(runsRoot, msg.runId);
-  mkdirSync(runsRoot, { recursive: true });
-  mkdirSync(runDir, { recursive: true });
-  copyFlowSnapshot(flow.folderPath, runDir);
-
-  const runRow = createFlowRun(flow.id, { text: msg.text }, runDir);
-  const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow");
-  recordMemoryInjectionUsage(flow.workspaceId, memoryInjection);
-  traceFlowEvent(flow.id, "run_start", "running", msg.text.slice(0, 240), { model: msg.model, memoryInjection }, runRow.id);
-  send(ws, { type: "run_start", flowId: flow.id, runId: runRow.id });
-
-  const userTask = msg.text.trim();
-  const execFlowPaths = listWorkspacePaths(flow.workspaceId);
-  const execFlowAnalyses = getFileAnalysesByPathIds(
-    execFlowPaths.filter((p) => p.folder === "clean_data" && p.kind === "file").map((p) => p.id),
-  );
-  const contextPrefix = buildRegisteredPathContext(execFlowPaths, {
-    workspaceId: flow.workspaceId,
-    flowId: flow.id,
-    fallbackOutputDir: runDir,
-  }, execFlowAnalyses);
-  const workflow = readWorkflow(flow.folderPath);
-  try {
-    if (workflow) normalizeWorkflowModels(workflow as WorkflowLike);
-  } catch (err) {
-    finishFlowRun(runRow.id, "failed");
-    traceFlowEvent(flow.id, "error", "failed", String(err), { phase: "normalize_workflow_models" }, runRow.id);
-    send(ws, { type: "error", flowId: flow.id, runId: runRow.id, message: String(err) });
-    traceFlowEvent(flow.id, "run_end", "failed", String(err), { code: null }, runRow.id);
-    send(ws, { type: "run_end", flowId: flow.id, runId: runRow.id, code: null });
-    return;
-  }
-
-  if (workflow && workflow.nodes.length > 0) {
-    // Node-by-node execution: all nodes share the same pi session so context accumulates.
-    const piSessionId = runRow.id;
-    const inputs = { task: userTask, prompt: userTask, query: userTask };
-    const systemPrompt = msg.injectRulesPrompt
-      ? withRulesPrompt(flow.workspaceId, "workflow", "你是一个单智能体工作流执行者。当前工作目录包含工作流所需的全部文件。请严格按照每步说明完成任务，直接行动，不要中途停下来提问。")
-      : "你是一个单智能体工作流执行者。当前工作目录包含工作流所需的全部文件。请严格按照每步说明完成任务，直接行动，不要中途停下来提问。";
-    const order = topoOrder(workflow);
-    let failed = false;
-
-    for (const node of order) {
-      traceFlowEvent(flow.id, "agent_step_start", "running", node.id, { nodeId: node.id, label: node.label }, runRow.id);
-      send(ws, { type: "agent_step_start", flowId: flow.id, runId: runRow.id, nodeId: node.id });
-      const nodePrompt = renderPrompt(node.prompt || node.label, {}, inputs);
-      const run = runPiTurn({
-        workspaceRoot: runDir,
-        piSessionId,
-        text: `${contextPrefix}${nodePrompt}`,
-        model: msg.model || node.model || undefined,
-        systemPrompt,
-        onEvent: (event: PiEvent) => {
-          trackUsageEvent({
-            workspaceId: flow.workspaceId,
-            targetKind: "flow_run",
-            targetId: runRow.id,
-            title: `单智能体执行：${flow.name}`,
-          }, event);
-          if (event.type === "message_end") {
-            const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
-            if (m.errorMessage) traceFlowEvent(flow.id, "message_error", "failed", m.errorMessage, { role: m.role, stopReason: m.stopReason }, runRow.id);
-          }
-          send(ws, { type: "flow_run_event", flowId: flow.id, runId: runRow.id, event });
-        },
-      });
-      const code = await run.done;
-      traceFlowEvent(flow.id, "agent_step_end", code === 0 ? "success" : "failed", node.id, { nodeId: node.id, code }, runRow.id);
-      send(ws, { type: "agent_step_end", flowId: flow.id, runId: runRow.id, nodeId: node.id, code });
-      if (code !== 0) { failed = true; break; }
-    }
-
-    finishFlowRun(runRow.id, failed ? "failed" : "success");
-    traceFlowEvent(flow.id, "run_end", failed ? "failed" : "success", failed ? "one or more agent steps failed" : null, { code: failed ? 1 : 0 }, runRow.id);
-    send(ws, { type: "run_end", flowId: flow.id, runId: runRow.id, code: failed ? 1 : 0 });
-  } else {
-    // No workflow.json: single pi turn.
-    const run = runPiTurn({
-      workspaceRoot: runDir,
-      piSessionId: runRow.id,
-      text: `${contextPrefix}${userTask || "run"}`,
-      model: msg.model,
-      systemPrompt: msg.injectRulesPrompt ? withRulesPrompt(flow.workspaceId, "workflow") : undefined,
-      onEvent: (event: PiEvent) => {
-        trackUsageEvent({
-          workspaceId: flow.workspaceId,
-          targetKind: "flow_run",
-          targetId: runRow.id,
-          title: `工作流执行：${flow.name}`,
-        }, event);
-        if (event.type === "message_end") {
-          const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
-          if (m.errorMessage) traceFlowEvent(flow.id, "message_error", "failed", m.errorMessage, { role: m.role, stopReason: m.stopReason }, runRow.id);
-        }
-        send(ws, { type: "flow_run_event", flowId: flow.id, runId: runRow.id, event });
-      },
-    });
-    const code = await run.done;
-    finishFlowRun(runRow.id, code === 0 ? "success" : "failed");
-    traceFlowEvent(flow.id, "run_end", code === 0 ? "success" : "failed", code === 0 ? null : `pi exited with code ${String(code)}`, { code }, runRow.id);
-    send(ws, { type: "run_end", flowId: flow.id, runId: runRow.id, code });
-  }
-}
-
-async function handleExecuteMultiAgent(
-  ws: WebSocket,
-  msg: Extract<ClientMessage, { type: "execute_multi_agent" }>,
-): Promise<void> {
-  const flow = getFlow(msg.flowId);
-  if (!flow) return send(ws, { type: "error", flowId: msg.flowId, runId: msg.runId, message: "flow not found" });
-
-  const workflow = readWorkflow(flow.folderPath);
-  if (!workflow) {
-    traceFlowEvent(flow.id, "error", "failed", "workflow.json not found or invalid. Ask pi to generate one first.", { phase: "load_workflow", runId: msg.runId });
-    return send(ws, {
-      type: "error",
-      flowId: flow.id,
-      runId: msg.runId,
-      message: "workflow.json not found or invalid. Ask pi to generate one first.",
-    });
-  }
-
-  try {
-    normalizeWorkflowModels(workflow as WorkflowLike);
-    normalizeWorkflowSkills(flow.folderPath, workflow);
-  } catch (err) {
-    traceFlowEvent(flow.id, "error", "failed", String(err), { phase: "normalize_workflow_models", runId: msg.runId });
-    return send(ws, { type: "error", flowId: flow.id, runId: msg.runId, message: String(err) });
-  }
-
-  const runsRoot = join(flow.folderPath, "runs");
-  const runDir = join(runsRoot, msg.runId);
-  mkdirSync(runsRoot, { recursive: true });
-  mkdirSync(runDir, { recursive: true });
-  copyFlowSnapshot(flow.folderPath, runDir);
-
-  const runRow = createFlowRun(flow.id, { inputs: msg.inputs ?? {} }, runDir);
-  const multiAgentPaths = listWorkspacePaths(flow.workspaceId);
-  const multiAgentAnalyses = getFileAnalysesByPathIds(
-    multiAgentPaths.filter((p) => p.folder === "clean_data" && p.kind === "file").map((p) => p.id),
-  );
-  const registeredContext = buildRegisteredPathContext(multiAgentPaths, {
-    workspaceId: flow.workspaceId,
-    flowId: flow.id,
-    fallbackOutputDir: runDir,
-  }, multiAgentAnalyses);
-  // AnaX runs additionally see the workspace hypothesis library (flywheel read half).
-  // Both full (v3.0) and quick (v3.0 Quick) flows participate in the flywheel.
-  const isAnaxFlow = flow.sourceName === "AnaX v3.0" || flow.sourceName === "AnaX v3.0 Quick";
-  const hypothesisContext = isAnaxFlow ? buildHypothesisLibraryContext(flow.workspaceId, msg.inputs?.task) : "";
-  const contextPrefix = hypothesisContext ? `${hypothesisContext}\n\n${registeredContext}` : registeredContext;
-  // If resuming from a mid-flow node, pre-populate the blackboard from the
-  // previous run's spec deliverables so upstream outputs are available for
-  // prompt rendering without re-executing those nodes.
-  const initialBlackboard: Record<string, string> = {};
-  if (msg.resumeFromNodeId && msg.previousRunId) {
-    const prevRun = getFlowRun(msg.previousRunId);
-    if (prevRun) {
-      const order = topoOrder(workflow);
-      const resumeIdx = order.findIndex((n) => n.id === msg.resumeFromNodeId);
-      for (const node of order.slice(0, Math.max(0, resumeIdx))) {
-        if (node.spec) {
-          try {
-            initialBlackboard[node.id] = readFileSync(join(prevRun.outputDir, "specs", node.spec), "utf8");
-          } catch { /* spec not written yet — skip */ }
-        }
-      }
-    }
-  }
-
-  const clientRunId = msg.runId;
-  const active: ActiveMultiAgentRun = { currentRuns: new Set(), aborted: false, dbRunId: runRow.id, flowId: flow.id, ws };
-  activeMultiAgentRuns.set(clientRunId, active);
-  const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow");
-  recordMemoryInjectionUsage(flow.workspaceId, memoryInjection);
-  traceFlowEvent(flow.id, "run_start", "running", "multi-agent execution", { model: msg.model, inputs: msg.inputs, memoryInjection, resumeFromNodeId: msg.resumeFromNodeId }, runRow.id);
-  send(ws, { type: "run_start", flowId: flow.id, runId: clientRunId });
-
-  try {
-    const result = await runMultiAgent(workflow, {
-      flowRoot: flow.folderPath,
-      runId: runRow.id,
-      runDir,
-      inputs: msg.inputs,
-      defaultModel: msg.model,
-      contextPrefix,
-      systemPromptPrefix: msg.injectRulesPrompt ? (buildMemoryPrompt(flow.workspaceId, "workflow") || undefined) : undefined,
-      onStepStart: (nodeId) => {
-        traceFlowEvent(flow.id, "agent_step_start", "running", nodeId, { nodeId }, runRow.id);
-        send(ws, { type: "agent_step_start", flowId: flow.id, runId: clientRunId, nodeId });
-      },
-      onStepRun: (_nodeId, run) => {
-        active.currentRuns.add(run);
-        void run.done.finally(() => active.currentRuns.delete(run));
-      },
-      onStepEvent: (nodeId, event) => {
-        trackUsageEvent({
-          workspaceId: flow.workspaceId,
-          targetKind: "flow_run",
-          targetId: runRow.id,
-          title: `多智能体执行：${flow.name}`,
-        }, event);
-        if (event.type === "message_end") {
-          const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
-          if (m.errorMessage) traceFlowEvent(flow.id, "message_error", "failed", m.errorMessage, { nodeId, role: m.role, stopReason: m.stopReason }, runRow.id);
-        }
-        send(ws, { type: "agent_event", flowId: flow.id, runId: clientRunId, nodeId, event });
-      },
-      onStepEnd: (nodeId, code) => {
-        traceFlowEvent(flow.id, "agent_step_end", code === 0 ? "success" : "failed", nodeId, { nodeId, code }, runRow.id);
-        send(ws, { type: "agent_step_end", flowId: flow.id, runId: clientRunId, nodeId, code });
-      },
-      onBlackboardUpdate: (key, value) => {
-        traceFlowEvent(flow.id, "blackboard_update", "success", key, { key, value: value.slice(0, 1000) }, runRow.id);
-        send(ws, { type: "blackboard_update", flowId: flow.id, runId: clientRunId, key, value });
-        // AnaX flywheel write half: archive node emits validated hypotheses → library.
-        if (isAnaxFlow && key === "archive") backfillHypothesesFromArchive(flow.workspaceId, value);
-        // AnaX P3 V2: recommend node emits actionable recommendations → change proposals.
-        if (isAnaxFlow && key === "recommend") backfillProposalsFromRecommend(flow.workspaceId, runRow.id, value);
-      },
-      onStepGate: (nodeId, verdict) => {
-        traceFlowEvent(flow.id, "agent_gate", verdict.verdict === "pass" ? "success" : "failed", nodeId, { nodeId, verdict }, runRow.id);
-        send(ws, { type: "agent_gate", flowId: flow.id, runId: clientRunId, nodeId, verdict });
-      },
-      isAborted: () => active.aborted,
-      initialBlackboard,
-      resumeFromNodeId: msg.resumeFromNodeId,
-      gateThresholds: isAnaxFlow ? (() => { const c = getAnaxGateConfig(flow.workspaceId); return { minConfidence: c.minConfidence, minEvidenceCount: c.minEvidenceCount, minDataQualityScore: c.minDataQualityScore }; })() : undefined,
-    });
-    if (activeMultiAgentRuns.get(clientRunId) === active) activeMultiAgentRuns.delete(clientRunId);
-    finishFlowRun(runRow.id, active.aborted ? "aborted" : result.code === 0 ? "success" : "failed");
-    traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : result.code === 0 ? "success" : "failed", result.code === 0 ? null : `multi-agent exited with code ${String(result.code)}`, { code: result.code, aborted: active.aborted }, runRow.id);
-    send(ws, { type: "run_end", flowId: flow.id, runId: clientRunId, code: result.code, aborted: active.aborted });
-  } catch (err) {
-    if (activeMultiAgentRuns.get(clientRunId) === active) activeMultiAgentRuns.delete(clientRunId);
-    finishFlowRun(runRow.id, active.aborted ? "aborted" : "failed");
-    traceFlowEvent(flow.id, "error", "failed", String(err), { phase: "multi_agent" }, runRow.id);
-    send(ws, { type: "error", flowId: flow.id, runId: clientRunId, message: String(err) });
-    traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : "failed", String(err), { code: null, aborted: active.aborted }, runRow.id);
-    send(ws, { type: "run_end", flowId: flow.id, runId: clientRunId, code: null, aborted: active.aborted });
-  }
-}
-
-// ---- AnaX data quality precheck ----
-
-const PRECHECK_PROMPT = [
-  "你是数据质量快速评估官。请快速评估以下聚合数据文件是否具备 AnaX 商业分析的就绪条件。",
-  "",
-  "本次分析指定的聚合数据文件：",
-  "{{DATA_FILES}}",
-  "",
-  "重要：只能读取和评估已登记的聚合(clean_data)文件，禁止读取原始明细数据。",
-  "请用 Read 工具逐一读取上述文件，然后完成以下评估：",
-  "",
-  "1. 对每个文件给出 6 维度评分：完整性(25%) / 准确性(25%) / 时效性(20%) / 一致性(15%) / 有效性(10%) / 唯一性(5%)。",
-  "2. 计算加权综合评分（0-10），**必须在输出中包含一行 `综合评分: X.X/10`**。",
-  "3. 给出是否能通过 AnaX 数据门禁（阈值 ≥ 7）的预判，以及关键风险项（如有）。",
-  "4. 给出 1-2 句改善建议（若评分 < 9）。",
-  "输出保持简洁，重点突出评分和预判。",
-].join("\n");
-
-interface ActivePrecheck {
-  run: ReturnType<typeof runPiTurn> | null;
-}
-const activePrechecks = new Map<string, ActivePrecheck>();
-
-async function handleAnaxPrecheck(
-  ws: WebSocket,
-  msg: Extract<ClientMessage, { type: "execute_anax_precheck" }>,
-): Promise<void> {
-  const { precheckId, workspaceId, data_files, model } = msg;
-
-  const paths = listWorkspacePaths(workspaceId);
-  const analyses = getFileAnalysesByPathIds(
-    paths.filter((p) => p.folder === "clean_data" && p.kind === "file").map((p) => p.id),
-  );
-  const contextPrefix = buildRegisteredPathContext(paths, { workspaceId, fallbackOutputDir: tmpdir() }, analyses);
-  const prompt = PRECHECK_PROMPT.replace("{{DATA_FILES}}", data_files || "（未指定）");
-
-  const sessionDir = join(tmpdir(), `pi-xanthil-precheck-${precheckId}`);
-  mkdirSync(sessionDir, { recursive: true });
-
-  const active: ActivePrecheck = { run: null };
-  activePrechecks.set(precheckId, active);
-
-  let assistantText = "";
-  try {
-    const run = runPiTurn({
-      workspaceRoot: sessionDir,
-      piSessionId: `precheck-${precheckId}`,
-      text: `${contextPrefix}${prompt}`,
-      model: model || undefined,
-      onEvent: (event: PiEvent) => {
-        send(ws, { type: "anax_precheck_event", precheckId, event });
-        if (event.type === "message_end") {
-          const m = (event as { message?: { role?: string; content?: unknown } }).message;
-          if (m?.role === "assistant") {
-            const parts = Array.isArray(m.content)
-              ? (m.content as Array<{ type?: string; text?: string }>)
-                  .filter((b) => b.type === "text")
-                  .map((b) => b.text ?? "")
-                  .join("\n")
-                  .trim()
-              : "";
-            if (parts) assistantText = parts;
-          }
-        }
-      },
-    });
-    active.run = run;
-    await run.done;
-  } catch (err) {
-    activePrechecks.delete(precheckId);
-    send(ws, { type: "anax_precheck_error", precheckId, message: String(err) });
-    return;
-  }
-
-  activePrechecks.delete(precheckId);
-
-  const scoreMatch = assistantText.match(/综合评分[：:]\s*(\d+(?:\.\d+)?)/);
-  const score = scoreMatch?.[1] != null ? parseFloat(scoreMatch[1]) : null;
-  const pass = score !== null && score >= 7;
-
-  // Extract a one-line summary (first line that mentions 门禁/预判/pass/fail or first non-empty line).
-  const summaryLine = assistantText
-    .split("\n")
-    .map((l) => l.trim())
-    .find((l) => l.length > 10 && /门禁|预判|通过|阻断|建议|评分|风险/.test(l))
-    ?? assistantText.split("\n").find((l) => l.trim().length > 10)
-    ?? "";
-
-  send(ws, { type: "anax_precheck_done", precheckId, score, pass, summary: summaryLine });
-}
+// handleExecuteMultiAgent / handleAnaxPrecheck (+ PRECHECK_PROMPT / activePrechecks) 已迁至 routes/engine.ts（T-C2b）。
 
 // ---- Knowledge Graph API ----
 

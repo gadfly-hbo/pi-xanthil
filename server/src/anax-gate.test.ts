@@ -1,6 +1,6 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import { deterministicRedLineCheck, evaluateGate, enforceGate, extractVerdict } from "./anax-gate.ts";
+import { deterministicRedLineCheck, evaluateGate, evaluateSqlGate, enforceGate, extractVerdict } from "./anax-gate.ts";
 
 function block(json: unknown): string {
   return "审查说明……\n\n```anax-verdict\n" + JSON.stringify(json) + "\n```";
@@ -182,4 +182,42 @@ test("deterministic RL07: missing required elements in recommend", () => {
   // missing 负责人, 成功标准, 验证方案
   assert.ok(extra.some((r) => r.includes("RL07")));
   assert.ok(extra.some((r) => r.includes("负责人")));
+});
+
+test("sql_gate passes only when execution succeeds with rows and required fields", () => {
+  const v = evaluateSqlGate({
+    run_sql: JSON.stringify({
+      kind: "sql_tool",
+      code: 0,
+      success: true,
+      columns: ["customer_id", "gmv"],
+      rows: [{ customer_id: "C1", gmv: 100 }],
+      rowCount: 1,
+      requiredFields: ["customer_id", "gmv"],
+    }),
+  });
+
+  assert.equal(v.verdict, "pass");
+  assert.equal(v.blockers, 0);
+});
+
+test("sql_gate blocks on failed execution, empty result, and missing required fields", () => {
+  const v = evaluateSqlGate({
+    run_sql: JSON.stringify({
+      kind: "sql_tool",
+      code: 1,
+      success: false,
+      error: "no such column: gmv",
+      columns: ["customer_id"],
+      rows: [],
+      rowCount: 0,
+      requiredFields: ["customer_id", "gmv"],
+    }),
+  });
+
+  assert.equal(v.verdict, "blocked");
+  assert.equal(v.blockers, 3);
+  assert.ok(v.reasons.some((reason) => reason.includes("code=1")));
+  assert.ok(v.reasons.some((reason) => reason.includes("rowCount=0")));
+  assert.ok(v.reasons.some((reason) => reason.includes("gmv")));
 });

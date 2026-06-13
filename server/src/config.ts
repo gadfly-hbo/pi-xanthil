@@ -16,6 +16,22 @@ export const PORT = Number(process.env.XANTHIL_PORT ?? 8787);
 export const PI_BIN = process.env.XANTHIL_PI_BIN ?? "pi";
 export const ANTIGRAVITY_BIN = process.env.XANTHIL_ANTIGRAVITY_BIN ?? (existsSync(join(homedir(), ".local", "bin", "agy")) ? join(homedir(), ".local", "bin", "agy") : "antigravity");
 
+// 可选 run 级预算上限（成本停止条件，T-E2 接线）。
+// 默认不设 → 工作流执行不传 runBudget，预算停止不触发（保持原行为，无意外中断）。
+// 设置任一 env(>0) → handleExecuteMultiAgent 传入 runMultiAgent，预算超限即中断升级人工。
+function positiveNumberEnv(name: string): number | undefined {
+  const raw = process.env[name];
+  if (raw == null || raw.trim() === "") return undefined;
+  const n = Number(raw);
+  return Number.isFinite(n) && n > 0 ? n : undefined;
+}
+const RUN_MAX_TOKENS = positiveNumberEnv("XANTHIL_RUN_MAX_TOKENS");
+const RUN_MAX_COST_USD = positiveNumberEnv("XANTHIL_RUN_MAX_COST_USD");
+export const RUN_BUDGET_LIMITS: { maxTotalTokens?: number; maxCostUsd?: number } | null =
+  RUN_MAX_TOKENS === undefined && RUN_MAX_COST_USD === undefined
+    ? null
+    : { maxTotalTokens: RUN_MAX_TOKENS, maxCostUsd: RUN_MAX_COST_USD };
+
 export const DIRECT_LLM_ROOT = join(DATA_ROOT, "direct-llm");
 export const SQL_CONNECTIONS_PATH = join(DATA_ROOT, "sql-connections.json");
 export const BI_DATASETS_ROOT = join(DATA_ROOT, "bi-datasets");

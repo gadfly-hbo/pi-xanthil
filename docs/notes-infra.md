@@ -8,34 +8,22 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-- 最近更新：2026-06-13 · Codex（infra 收尾：ManualAnalysisToolCard 输入放开 + report 输出目录固定当前 session；详见 §五.9）
-- 进度：
-  - ✅ 用户红线政策已更新：仅放开“AI 可调工具读取 `draw_data`”这一条；`draw_data` 原始行级内容/明细仍禁止直接进 LLM，经注册工具处理后的聚合/衍生产物（不含原始行）允许回流 LLM。
-  - ✅ `server/src/index.ts` 的 `/api/extraction-tools/:id/run` 已移除 `source=ai` clean_data 白名单 403 守卫；`source` 仅作为 AI/MCP 来源标记保留并进入 trace payload；`validateExtractionInput()` 仍执行工具输入格式校验。
-  - ✅ `server/src/mcp/extraction-tools-mcp.ts` 已同步红线注释和 MCP tool schema/提示：输入可为本工作区已登记且工具接受的数据路径；工具产物不得包含原始行级明细；`callTool` 仍带 `source: "ai"`。
-  - ✅ `AGENTS.md` §一已按新安全契约更新；“数据探索模块硬约束”整节未改，`DataExplorationPane` 及子树纯前端零 LLM 红线不变。
-  - ✅ `docs/notes-infra.md` §五.7 已记录 I4 决策反转：原“接缝层单点拦 draw_data”作废，当前红线转为“禁原始行直进 LLM、工具聚合/衍生产物可进 LLM”。
-  - ✅ 接口 smoke 已完成：隔离 server 下 `seasonal-forecast /run` 使用 `source=ai` + `/tmp/.../draw_data/sample.csv` 返回 `HTTP 200`，证明不再触发旧 403。
-  - ✅ `ManualAnalysisToolCard` 已与新红线政策对齐：输入选择从 clean_data-only 改为 workspace 已登记 `draw_data + clean_data` 文件，analysis 工具筛选仍只保留 `category === "analysis"`。
-  - ✅ `ManualAnalysisToolCard` 的 `report 输出目录` 已去掉多选下拉，改为固定使用当前任务 session 的 `report` 目录；前端复用现有 `api.listSessionPaths(sessionId, "report")`，无需新增 session-reports 端点。
-  - ✅ `ChatPane` 已向 `ManualAnalysisToolCard` 传入 `activeSessionId`，工具运行结果仍按 `onBackflow` 作为可编辑普通消息回流当前对话。
-  - ✅ 本次收尾校验：`npm run typecheck` 通过；`npm run build` 通过（仅既有 Vite dynamic import / chunk size warning）。目标域为 infra，未跑 data 专属数据探索 LLM 隔离 grep。
-- 下一步：
-  - 补浏览器实跑：在真实 workspace/session 中确认 `@工具` 输入下拉同时出现已登记 `draw_data` 与 `clean_data` 文件，输出目录只读显示当前 session `060_reports`，无 report 多选下拉。
-  - 补真实运行点检：选 draw_data 输入运行一个 analysis 工具，确认 `source=ai` 请求成功、产物写入当前 session `060_reports`，结果仍能编辑后 `onBackflow` 入对话。
-  - 补 pi↔MCP 活体点检：用已登记 `draw_data` 路径经 MCP `tools/call` 调 analysis 工具，确认工具发现、`source=ai` 运行、结果回流三段都正常。
-  - 继续确认“不重启服务”的 registry 刷新链路：新增/删除 `server/tools/<id>/` 后，tool-use 控制台刷新和 MCP `tools/list` 应立即反映最新工具与分类。
-  - 后续新增 AI 可调 analysis 工具时，必须在 `tool.json` 标 `category: "analysis"`，并在工具实现/summary 层保证输出为聚合/衍生产物，不回灌原始行/明细。
-  - D 卡若增加 `enabled` 管理开关，MCP 暴露条件扩为 `category === "analysis" && enabled`，只改 `server/src/mcp/extraction-tools-mcp.ts:isAiExposed()`。
-- 阻塞：
-  - 无代码阻塞；本轮未做浏览器实跑、真实 draw_data 工具运行点检或 pi↔MCP 活体点检。
-- 开放问题：
-  - 总控需拍板：是否要求 analysis 工具 manifest 增加“输出不含原始行/明细”的机器可校验字段，或继续用文档/工具实现约束。
-  - 总控是否要求为 `/run source=ai` + draw_data 放行补自动化 API 测试，避免未来误把 clean_data 守卫加回。
-  - 总控是否要求为 `ManualAnalysisToolCard` 增加前端组件测试或 API mock 测试，覆盖 draw_data/clean_data 输入、无 analysis 工具、无 session report 目录、运行成功回流四态。
-  - 总控是否要求在 `ManualAnalysisToolCard` UI 增加显式红线提示（工具产物不得包含原始行/明细），或保持现有轻量表单。
-  - 总控是否要求为 `isAiExposed()` 增加独立单元测试/stdio MCP 冒烟 fixture，还是等 D 卡 `enabled` 一并补。
-  - 红线硬化独立议题仍待总控拍板：数据分析 session 内建 read/bash 与全局 filesystem MCP 的文件系统可达性是否通过 pi-sandbox / 移目录 / exclude-tools 收紧。
+- 最近更新：2026-06-13 · 总控（工作流改造接缝层**彻底收官**：抽 6 共享模块 + 全部 flow/anax 路由及 3 流式 handler 迁出 index.ts + run 预算接线；详见 §六）
+- 进度（接缝层 / infra 侧，本会话；工作流闭环全貌见 `notes-engine.md §0`）：
+  - ✅ **新建 6 个接缝/infra 模块**(从 index.ts 上移，只搬不改)：`runtime.ts`(WS 运行时句柄 send/active-run maps/getActiveChatRun/abortChatRun) · `flow-trace.ts`(traceFlowEvent) · `message-text.ts`(flowMessageText) · `workflow-config.ts`(normalizeWorkflow*/listConfiguredModelIds) · `workspace-path-status.ts`(withWorkspacePathStatus*) · `cache.ts` 加 run 级预算原语(getRunTokenUsage/evaluateRunBudget) + trackUsageEvent 上移。
+  - ✅ **全部 flow/anax 业务路由(REST CRUD/文件/run/paths/favorites/skills/stale-cascade/import-multer/anax-gate-config) + 3 个流式 WS handler 从 index.ts 迁入 `routes/engine.ts`**：wss.on("connection") 派发分支留 index.ts、反向 import handler；engineRouter 经 registerDomainRoutes 挂载。**index.ts 已无任何 flow/anax 业务路由**。import 的 multer 基建(upload/uploadDirs)经核查仅该路由用→随路由整块搬，无需抽共享；端到端上传冒烟通过。
+  - ✅ **run 预算生产接线**：`config.ts` RUN_BUDGET_LIMITS(env XANTHIL_RUN_MAX_TOKENS / XANTHIL_RUN_MAX_COST_USD，>0 才生效，未设=null 即不限/行为不变)；engine.ts handler 传 `runBudget: limits ? {workspaceId,limits} : undefined`。
+  - ✅ 校验：`npm run typecheck`(server+web) · `npm run build` · 全量 108 测试 全绿；多轮隔离端口 + WS + fake-adapter + 真实 SQLite + 真实上传 + anax-gate-config 烟测全通过。
+- 下一步（接缝层残留，非阻塞）：
+  - 预算限额来源：当前仅 env 全局；若要 per-workspace/flow 限额，需后续接缝层加配置(参 AnaX gate config 范式)。
+- 阻塞：无代码阻塞。
+- 开放问题（接缝层待总控/后续）：
+  - run 预算是否需要 per-workspace 配置 + UI，还是 env 全局足够。
+  - 是否为预算停止新增专门 `run_budget_stop` trace/WS 事件（当前借 `__run_budget_stop` blackboard update 落 trace）。
+- 【上轮 tool-use 遗留·待核实是否仍开】以下为上一 infra session(ManualAnalysisToolCard/红线放开)未结项，本会话未触碰，保留待核：
+  - 浏览器实跑：`@工具` 输入下拉同现 draw_data+clean_data、输出目录只读当前 session 060_reports；真实 draw_data analysis 工具 source=ai 运行 + onBackflow 回流；pi↔MCP `tools/call` 活体点检。
+  - 新增 AI 可调 analysis 工具须 `tool.json` 标 `category:"analysis"` 且输出不含原始行/明细；D 卡若加 `enabled`，MCP 暴露条件扩为 `category==="analysis" && enabled`(改 `isAiExposed()`)。
+  - 待总控拍板：analysis manifest 是否加机器可校验"无原始行"字段；`/run source=ai`+draw_data 是否补自动化测试；ManualAnalysisToolCard 是否加组件测试 / 显式红线提示；read/bash + filesystem MCP 文件可达性是否经 pi-sandbox/移目录/exclude-tools 收紧。
 
 ---
 
@@ -174,3 +162,29 @@
 - **输入路径决策（2026-06-13 红线政策同步）**：输入选择不再 clean_data-only；`ManualAnalysisToolCard` 读取 workspace 已登记路径并只展示 `draw_data` / `clean_data` 文件，analysis 工具筛选仍不变。
 - **输出路径决策**：`outputPath` 固定取当前任务 session 的 `report` 目录（标准 060_reports），UI 只读显示，不再提供多选下拉。复用现有 `api.listSessionPaths(sessionId, "report")`，无需新增后端 output-dir/session-reports 端点，不自动创建 `tool_runs`。
 - **回流决策**：先做文本 summary + outputs 路径，可编辑后“发送到对话”；暂不做结构化结果卡、JSON viewer 或产物预览。pi 后续负责解释、整合、写作、下一步规划，不重复工具的确定性计算。
+
+---
+
+## 六、工作流改造接缝层（0→1→2，2026-06-13 总控）
+
+**背景**：把工作流模块从「三套重叠执行栈 + 孤儿代码」收敛为「单引擎 + 闭环」。方案 `docs/工作流模块改造方案.md`、派发书 `docs/工作流改造-任务派发.md`、闭环契约 `docs/工作流-onblock契约.md`、backlog `docs/backlog/agent-loop-工作流闭环.md`。闭环全貌见 `notes-engine.md §0`。
+
+**核心铁律（迁路由时必守，已被本轮验证）**：`routes/<域>.ts` **只 import 共享模块**（db/flow-fs/cache/…），**绝不 import index.ts 本地 helper**。否则与 index.ts→engineRouter 形成循环依赖。故迁 flow handler 前，先把它依赖的 index.ts 本地 helper 按"跨域 vs flow-only"分流：
+- **跨域 helper**（留下的代码 + 迁走的 handler 都用）→ **抽到共享模块**：`runtime.ts`(send/active-run maps/getActiveChatRun/abortChatRun) · `cache.ts`(trackUsageEvent) · `flow-trace.ts`(traceFlowEvent) · `message-text.ts`(flowMessageText) · `memory-injection.ts`(withRulesPrompt) · `workflow-config.ts`(normalizeWorkflow*) · `workspace-path-status.ts`。
+- **flow-only helper**（仅 handler 用）→ 随 handler **搬进 engine.ts**（captureWorkflowFromText/parseWorkflowCandidate/backfill*）。
+
+**接缝模块清单（本轮新建，server/src/）**：
+- `runtime.ts` — WS 运行时句柄；**`wss` 不上移**（依赖 http server、仅 index.ts bootstrap 用，YAGNI）。
+- `flow-trace.ts` / `message-text.ts` / `workflow-config.ts` / `workspace-path-status.ts` — 纯函数共享。
+- `cache.ts` 加 `getRunTokenUsage`/`evaluateRunBudget`/`RunBudgetLimits`（run 级预算原语，读既有 flow_run token 统计，不改累计口径）。
+- `sql-loop-template.ts` — SQL 修复 loop 预置模板（E 域内容，但 toolId 常量 `RUN_SQL_QUERY_TOOL_ID` 被 runner 引用）。
+
+**flow 路由/handler 归位**：全部 flow REST + 3 个流式 WS handler 迁入 `routes/engine.ts`；`wss.on("connection")` 派发分支留 index.ts、反向 `import { handleSendFlow, handleExecuteMultiAgent, handleAnaxPrecheck, abortAnaxPrecheck } from "./routes/engine.ts"`。**engine.ts 不 import index.ts → 无循环依赖**。
+
+**execute_flow 双侧解耦发现**：server 与 web 各有独立 `types.ts`，`execute_flow`(死单 agent 路径)的消费(server)与发送(web 孤儿文件)分处两侧 → 删除无需原子同批，各自独立可绿。
+
+**run 预算接线（成本停止条件落地）**：`config.ts` `RUN_BUDGET_LIMITS` 读 env `XANTHIL_RUN_MAX_TOKENS`/`XANTHIL_RUN_MAX_COST_USD`（>0 生效，未设=null 即不限、行为不变）；`routes/engine.ts` handleExecuteMultiAgent 传 `runBudget`。**决策**：env 可选优于硬编码魔法上限（避免误伤大 run）优于 DB 配置（过重）；per-workspace 限额 + UI 留待按需。
+
+**flows/:id/import(multer) 迁移（2026-06-13 完成）**：原以为 multer 基建多路由共用、需先抽共享；核查发现 `upload`/`uploadDirs`/`_uploadId` **仅该路由用**（`/api/bi-datasets/upload` 用自己内联的 `multer({...}).single`）→ 直接随路由整块搬进 `routes/engine.ts`（engine.ts 加 `import express, { Router }` + `import multer` + UPLOAD_TMP_ROOT/moveAllFiles）。端到端上传冒烟通过。**教训：迁移前先 grep 确认"基建是否真共用"，别想当然。**
+
+**收官（2026-06-13）**：`anax-gate-config`(GET/PUT) 也已迁入 routes/engine.ts。**至此 index.ts 已无任何 flow/anax 业务路由**——工作流改造接缝迁移彻底完成。index.ts 仅余 legacy 非工作流路由(session/workspace/onto/bi/eval 等)与 wss.on bootstrap。

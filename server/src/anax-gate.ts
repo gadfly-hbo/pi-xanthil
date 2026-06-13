@@ -103,6 +103,18 @@ export interface GateThresholds {
   minDataQualityScore: number;
 }
 
+interface SqlToolOutput {
+  kind?: string;
+  code?: number | null;
+  success?: boolean;
+  columns?: unknown;
+  rows?: unknown;
+  rowCount?: unknown;
+  error?: unknown;
+  sql?: unknown;
+  requiredFields?: unknown;
+}
+
 /**
  * Re-derive blockers from the raw verdict against hard thresholds.
  * The model's own `modelVerdict` is advisory only — thresholds win.
@@ -175,6 +187,67 @@ export function evaluateGate(text: string, stageId: string, thresholds?: GateThr
     };
   }
   return enforceGate(raw, stageId, thresholds);
+}
+
+export function evaluateSqlGate(blackboard: Record<string, string>): GateVerdict {
+  const reasons: string[] = [];
+  const rawOutput = blackboard["run_sql"] ?? "";
+  const output = parseSqlToolOutput(rawOutput);
+
+  if (!output) {
+    reasons.push("run_sql 未产出可解析的结构化 JSON 输出");
+  } else {
+    if (output.code !== 0 || output.success !== true) {
+      const error = typeof output.error === "string" && output.error.trim() ? `：${output.error.trim()}` : "";
+      reasons.push(`SQL 执行失败，code=${String(output.code)}${error}`);
+    }
+
+    const rowCount = typeof output.rowCount === "number" ? output.rowCount : Array.isArray(output.rows) ? output.rows.length : 0;
+    if (rowCount <= 0) {
+      reasons.push("SQL 查询结果为空，rowCount=0");
+    }
+
+    const columns = Array.isArray(output.columns) ? output.columns.map((item) => String(item)) : [];
+    const requiredFields = Array.isArray(output.requiredFields) ? output.requiredFields.map((item) => String(item).trim()).filter(Boolean) : [];
+    const missingFields = requiredFields.filter((field) => !columns.includes(field));
+    if (missingFields.length > 0) {
+      reasons.push(`SQL 结果缺少关键字段：${missingFields.join("、")}`);
+    }
+  }
+
+  const verdict = reasons.length > 0 ? "blocked" : "pass";
+  return {
+    stage: "sql_gate",
+    verdict,
+    blockers: reasons.length,
+    reasons,
+    redLines: reasons.map((reason, index) => ({ id: `SQL${String(index + 1).padStart(2, "0")}`, desc: reason })),
+    stages: [{ stage: "run_sql", confidence: "high", evidence: output ? 3 : 0 }],
+    summary: verdict === "pass" ? "SQL 执行成功，结果非空且关键字段完整" : "SQL 门禁未通过",
+  };
+}
+
+export function formatSqlGateOutput(verdict: GateVerdict): string {
+  return [
+    "```anax-verdict",
+    JSON.stringify({
+      stage: verdict.stage,
+      redLines: verdict.redLines,
+      stages: verdict.stages,
+      summary: verdict.summary,
+      modelVerdict: verdict.verdict,
+    }, null, 2),
+    "```",
+  ].join("\n");
+}
+
+function parseSqlToolOutput(text: string): SqlToolOutput | null {
+  try {
+    const parsed = JSON.parse(text) as unknown;
+    return typeof parsed === "object" && parsed !== null ? parsed as SqlToolOutput : null;
+  } catch {
+    return null;
+  }
 }
 
 /**
