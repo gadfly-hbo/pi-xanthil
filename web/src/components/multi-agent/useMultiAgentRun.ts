@@ -27,9 +27,17 @@ export function useMultiAgentRun({ flow, workflow, model, rulesPromptEnabled }: 
   const runIdRef = useRef<string | null>(null);
   runIdRef.current = runId;
 
+  // 待映射的恢复目录：由①写入，②消费后清空。把「网络拉取」与「依赖 workflow 的纯映射」解耦，
+  // 避免恢复 effect 因 workflow 每次编辑换引用而反复重跑、反复打 listFlowRuns/flowRunTree。
+  const [restoreDirs, setRestoreDirs] = useState<Set<string> | null>(null);
+
+  // ① 每个 flow 只拉一次运行历史 + 判活跃 run（网络），活跃则取其目录树备映射。
   useEffect(() => {
     if (!flowId) return;
+    let cancelled = false;
+    setRestoreDirs(null);
     api.listFlowRuns(flowId).then((rows) => {
+      if (cancelled) return;
       setRuns(rows);
       const active = rows.find((r) => r.status === "running");
       if (!active) return;
@@ -37,22 +45,29 @@ export function useMultiAgentRun({ flow, workflow, model, rulesPromptEnabled }: 
       setRunId(restoredRunId);
       setRunning(true);
       setLogs((cur) => cur.length > 0 ? cur : [`─ 已从历史恢复运行状态 ${restoredRunId}`]);
-      api.flowRunTree(flowId, active.id).then((tree) => {
-        const dirs = collectTreeDirs(tree);
-        setStepStates((cur) => {
-          const next = { ...cur };
-          const created = (workflow?.nodes ?? []).filter((node) => dirs.has(node.id));
-          created.forEach((node, idx) => {
-            const isLastCreated = idx === created.length - 1;
-            next[node.id] = next[node.id] ?? { status: isLastCreated ? "running" : "done", output: "", events: [] };
-          });
-          return next;
-        });
-        const activeNode = [...(workflow?.nodes ?? [])].reverse().find((node) => dirs.has(node.id));
-        if (activeNode) setActiveNodeId(activeNode.id);
-      }).catch(() => undefined);
-    }).catch(() => setRuns([]));
-  }, [flowId, workflow]);
+      api.flowRunTree(flowId, active.id)
+        .then((tree) => { if (!cancelled) setRestoreDirs(collectTreeDirs(tree)); })
+        .catch(() => undefined);
+    }).catch(() => { if (!cancelled) setRuns([]); });
+    return () => { cancelled = true; };
+  }, [flowId]);
+
+  // ② workflow 就绪后把恢复目录映射成 step 状态（纯计算，映射一次即清空，不随后续编辑重跑）。
+  useEffect(() => {
+    if (!restoreDirs || !workflow) return;
+    const created = workflow.nodes.filter((node) => restoreDirs.has(node.id));
+    setStepStates((cur) => {
+      const next = { ...cur };
+      created.forEach((node, idx) => {
+        const isLastCreated = idx === created.length - 1;
+        next[node.id] = next[node.id] ?? { status: isLastCreated ? "running" : "done", output: "", events: [] };
+      });
+      return next;
+    });
+    const activeNode = [...workflow.nodes].reverse().find((node) => restoreDirs.has(node.id));
+    if (activeNode) setActiveNodeId(activeNode.id);
+    setRestoreDirs(null);
+  }, [restoreDirs, workflow]);
 
   useEffect(() => {
     if (!flowId) return;
