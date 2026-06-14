@@ -1,4 +1,4 @@
-import { Database, Store, CircleX, Tags, Workflow } from "lucide-react";
+import { Database, Store, CircleX, Workflow, Webhook, Sparkles, SquareTerminal, Puzzle, Bot, BrainCircuit } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { DataExplorationPane } from "@/components/DataExplorationPane";
@@ -48,6 +48,24 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "aggregate" && activeSubTab === "tool_use" && (
         <ToolUsePane scope={ctx.folderScope} workspaceId={ctx.activeWorkspaceId} />
       )}
+      {activeTab === "aggregate" && activeSubTab === "hooks_mgmt" && (
+        <Placeholder icon={Webhook} title="hooks管理" hint="管理 hooks 配置，即将推出" />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "skills_mgmt" && (
+        <Placeholder icon={Sparkles} title="skills管理" hint="管理 skills 配置，即将推出" />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "command_mgmt" && (
+        <Placeholder icon={SquareTerminal} title="command管理" hint="管理 command 配置，即将推出" />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "plugin_mgmt" && (
+        <Placeholder icon={Puzzle} title="插件管理" hint="管理插件配置，即将推出" />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "subagents_mgmt" && (
+        <Placeholder icon={Bot} title="subagents管理" hint="管理 subagents 配置，即将推出" />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "llm_mgmt" && (
+        <Placeholder icon={BrainCircuit} title="LLM管理" hint="管理 LLM provider 与模型配置，即将推出" />
+      )}
       {activeTab === "aggregate" && activeSubTab === "readme" && (
         <AggregateReadmePane />
       )}
@@ -67,11 +85,8 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "rule_memory" && activeSubTab === "failure_memory" && (
         <Placeholder icon={CircleX} title="失败记忆" hint="记录分析失败案例与教训，即将推出" />
       )}
-      {activeTab === "rule_memory" && activeSubTab === "field_memory" && (
-        <Placeholder icon={Tags} title="字段记忆" hint="沉淀字段口径与语义，即将推出" />
-      )}
       {activeTab === "rule_memory" && activeSubTab === "process_memory" && (
-        <Placeholder icon={Workflow} title="流程记忆" hint="沉淀分析流程与方法论，即将推出" />
+        <Placeholder icon={Workflow} title="思维模式" hint="沉淀分析思维模式与方法论，即将推出" />
       )}
 
       {activeTab === "xan_db" && activeSubTab === "the-crowd" && (

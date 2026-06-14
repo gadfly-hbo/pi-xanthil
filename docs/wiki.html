@@ -922,6 +922,16 @@ P3(onto + KG)：
    status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
    字段: { status, title, brief }（无 dom —— 不指定域）。 */
 const HOTFIX = [
+  { status: "done", title: "快修2.1：聚合数据文档层级树+路径复制 · 规则记忆模块重命名 · 计算工具新增6管理子页", brief:
+`✅ 总控自做并终审通过（2026-06-14，含红线域，总控亲做最稳）。三组改造，typecheck + build + 数据探索隔离 grep 全绿。
+
+【1 · 探索→数据分析 左侧「聚合数据文档」竖栏改造（⚠️ 触红线 clean_data，按 /px-hotfix SOP §1 由总控亲做）】web/src/components/CleanDataDocsColumn.tsx。原组件把目录拍平成扁平文件列表(丢层级、无路径复制)。改为：层级与「聚合数据」(FolderPathsPane)一致 —— 顶层=已登记文件/文件夹，文件夹逐级可折叠(懒加载 workspacePathTree)；文件夹与文件 hover 均出「一键复制绝对路径」(文件 p.path、目录子节点 p.path+node.path 拼接)，可直接贴进 pi 对话框供 agent 读取。保留只读预览。红线守护：全程仅 listPaths/workspacePathTree/workspacePathFileGet，零 LLM；隔离 grep 空匹配。
+
+【2 · 规则记忆模块二级 tab 重命名/删减】web/src/lib/constants.ts(RULE_MEMORY_SUB_TABS) + web/src/tabs/DataTabs.tsx。偏好记忆→Persona、指标记忆→Knowhow、流程记忆→思维模式；删除字段记忆。最终 8 项：Persona / Knowhow / 项目记忆 / 失败记忆 / 思维模式 / 业务环境 / trace / 知识图谱(Knowhow 沿用 indicators 原位第2，用户确认保留)。SubTab 联合同步删 field_memory。注：IndicatorsPane/RulesPane 内部标题仍旧名(本次只改 tab 标签，最小改动)，如需内外一致另议。
+
+【3 · 计算工具(aggregate)新增 6 管理子页】constants.ts(AGGREGATE_SUB_TABS)+SubTab 联合+DataTabs.tsx。tool-use 与 readme 之间新增 hooks管理/skills管理/command管理/插件管理/subagents管理/LLM管理，均为 Placeholder「即将推出」(沿用失败记忆等占位惯例)。
+
+【自检】web typecheck ✅ + build ✅ + 隔离 grep(DataExplorationPane/CleanDataDocsColumn/data-exploration 子树) 空匹配 ✅。集成核查：field_memory 全仓无残留、rule_memory 默认子 tab rules(Persona) 仍有效。未碰 git，待用户提交。` },
   { status: "done", title: "探索 tab：工作视图改名「数据分析」+ subtab 重排", brief:
 `✅ 总控自做并自检通过（2026-06-12，接缝层 constants.ts 仅总控写，非红线，直改最稳）。需求：探索 tab「工作视图」改名「数据分析」并调整二级 tab 顺序为 业务需求-原始数据-聚合数据-数据探索-数据分析-报告输出-汇报版本-报告审核-黄金策-行动。
 做法（仅 web/src/lib/constants.ts）：因 explore 与 multi 共用 SUB_TABS 但 view 在两 tab 渲染不同（explore=聚合数据文档列；multi=工作流列表竖栏），用户决策「只改探索」→ 新增 EXPLORE_SUB_TABS（view 改名「数据分析」并移至 data_exploration 之后）+ getSubTabsForTab 加 if(tab==='explore') return EXPLORE_SUB_TABS；multi/工作流 仍用 SUB_TABS（工作视图保持首位不变）。App.tsx 零改（handleTabChange 探索默认子 tab 仍为 view='数据分析'）。
