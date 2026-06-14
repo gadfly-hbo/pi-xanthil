@@ -13,6 +13,7 @@
   - **WorkflowDesignPane（454 行）逐行审 = 无 bug**：WS 通道 `send_flow`/`abort_flow`/`run_start`/`run_end`/`error`/`flow_event(message_end)` 在 web/server 两侧 `types.ts` 均已定义，属复用既有契约、非新增接缝；运行态恢复(1.5s 轮询 + flowIdRef 防重订阅 + 乐观用户消息 + role==="user" 早返回防重)自洽，守卫完整。
   - **3 个 readme pane 审完**：`ExploreReadmePane`/`AggregateReadmePane` 是 `Markdown + ?raw` 同构壳，零风险；内容在 `web/src/docs/*.md`，红线表述准确（数据探索永久无 LLM、原始行禁入 LLM）。`WorkflowReadmePane` 修了 2 处 doc drift（见改动清单）。
   - **文档双份隐患已消除**：`explore-readme.md`/`aggregate-readme.md` 曾在 `web/src/docs/`(被 `@/docs/?raw` 真消费) 与根 `docs/`(无人引用) 各存逐字相同一份；删除根 `docs/` 那两份，留单一真源。
+  - **`onApplyToEditor` 接线审 + 修 2 处**：链路正确（设计页生成 workflow.json → `applyToEditor` 切 execute + bump `workflowRefreshKey` → 加载 effect 重新 `flowWorkflowGet` 拉新图），与顶部「执行」tab 同行为无分叉。修了路径上两处缺陷（`MultiAgentExecutionPane.tsx`）：**A** 加载 effect 缺 `.catch` → 拉取失败永久 spinner，已补兜底；**B** 进 execute 必 reload 会静默丢弃执行侧未保存节点修改，已给 `applyToEditor` 加 `workflowDirty` 守卫(`window.confirm`)，并让「执行」tab 复用它消除重复内联逻辑。
 - 校验：`npm run typecheck` ✅；`npm run build` ✅（仅既有 chunk size warning）。本次纯 engine 域文档/pane，未触发 data 探索子树 LLM 隔离 grep。
 - 下一步（非阻塞，承接上轮，建议优先级）：
   - ① 做一次浏览器交互 smoke：模板库实例化 3 个模板 → 设计表单生成写作 workflow → 迭代修改插入/回跳节点 → 执行页保存并打开 DAG。（sql-loop 用户已单点手测通过，其余链路尚未端到端跑）
@@ -141,6 +142,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **设计页运行态恢复不是跨进程恢复**：`chat-runtime` 只反映当前 server 进程里的 `activeFlowRuns`。如果 server 重启或 pi 已异常退出，前端只能看到历史消息/已落盘 workflow，不能继续上一轮生成。不要把该能力描述成“断点续跑”。
 - **设计/执行切换不应重复展示同一张图**：设计页去掉上半流程节点预览，避免和执行页 DAG/执行流重复。设计页承担“结构化输入 + 局部 patch + 生成状态”，执行页承担“查看/编辑节点配置 + DAG + 运行”。
 - **readme 内容会随 UI 收敛漂移，改入口必须同步**：`WorkflowReadmePane` 是手写 JSX，里面写死了 tab 命名与生成入口口径。2026-06-14 修过两处漂移——把已收敛掉的「对话」生成入口改成表单式「设计 + 迭代修改」，把「聚合数据 → SQL连接」修正为「计算工具 → SQL连接」(`sql_connect` 实际挂在顶层 `aggregate`/计算工具 tab，见 `constants.ts AGGREGATE_SUB_TABS`，不在 `clean_data`/聚合数据 子 tab 下)。凡收敛 tab/入口/归属，必须回头扫 readme。
+- **执行侧 workflow 加载与设计↔执行切换的两个雷**（2026-06-14 已修，列此防回归）：① `MultiAgentExecutionPane` 加载 effect 的 `flowWorkflowGet` 必须带 `.catch` 兜底 `setLoading(false)`，否则拉取失败会卡死无限 spinner（设计页自己的 refresh 有 try/catch，执行侧曾漏）。② 进入 execute 视图会按 `workflowRefreshKey` 从 server 重新加载并 `setWorkflowDirty(false)`，这会丢弃执行侧未保存的节点手改；任何触发「切到 execute + bump refreshKey」的入口（`applyToEditor` / 顶部「执行」tab）都应走带 `workflowDirty` 守卫的同一函数，不要各写内联 `setView+refreshKey`。「设计」tab 不 reload，无需守卫。
 - **readme markdown 单一真源在 `web/src/docs/`**：`ExploreReadmePane`/`AggregateReadmePane` 用 `@/docs/*.md?raw` 导入，`@` 解析到 `web/src/`。不要在根 `docs/` 再放同名副本——`?raw` 只消费 `web/src/docs/` 那份，根目录副本无人引用且必然漂移（2026-06-14 已删根 `docs/explore-readme.md`/`aggregate-readme.md`）。
 - `scope` 对象字面量每次渲染新引用 → `useCallback([scope])` 重建 → effect 清空画布。根治：Pane 内提取稳定原始值（scopeType/scopeSessionId/scopeFlowId）作 deps，不改 App.tsx 内联写法（项目惯例）。
 - 流式响应中断（`Stream ended without finish_reason`）：建议切 MiniMax-M3 重试，长报告分块写文件。

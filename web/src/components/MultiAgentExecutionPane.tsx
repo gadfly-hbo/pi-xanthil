@@ -188,6 +188,10 @@ export function MultiAgentExecutionPane(p: Props) {
       setWorkflowSaveError(null);
       setWorkflowSaveMessage(null);
       setLoading(false);
+    }).catch((err) => {
+      if (cancelled) return;
+      setWorkflowSaveError(err instanceof Error ? err.message : "加载 workflow 失败");
+      setLoading(false);
     });
     return () => {
       cancelled = true;
@@ -214,9 +218,10 @@ export function MultiAgentExecutionPane(p: Props) {
 
   // ---- apply to editor ----
   const applyToEditor = useCallback(() => {
+    if (workflowDirty && !window.confirm("执行视图有未保存的节点修改，切换会从服务器重新加载并丢弃这些修改。是否继续？")) return;
     setView("execute");
     setWorkflowRefreshKey((k) => k + 1);
-  }, []);
+  }, [workflowDirty]);
 
   const updateWorkflowNode = useCallback((nodeId: string, patch: Partial<EditableWorkflowNode>) => {
     setWorkflow((cur) => {
@@ -413,7 +418,7 @@ export function MultiAgentExecutionPane(p: Props) {
           设计
         </button>
         <button
-          onClick={() => { setView("execute"); setWorkflowRefreshKey((k) => k + 1); }}
+          onClick={applyToEditor}
           className={cn(
             "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px]",
             view === "execute"
