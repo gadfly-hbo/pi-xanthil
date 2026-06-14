@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from "react";
-import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Sparkles, Square, Workflow, Wrench } from "lucide-react";
+import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Sparkles, Square, Workflow, Wrench, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
@@ -13,6 +13,10 @@ type FolderScope =
   | { type: "workspace"; workspaceId: string }
   | { type: "session"; sessionId: string }
   | { type: "flow"; flowId: string };
+
+const DRAWER_MIN = 360;
+const DRAWER_DEFAULT = 460;
+const DRAWER_WIDTH_KEY = "chatpane.assistDrawerWidth";
 
 interface Props {
   messages: UiMessage[];
@@ -62,10 +66,22 @@ function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: st
   );
 }
 
+function clampDrawerWidth(width: number, containerWidth: number): number {
+  const max = Math.max(DRAWER_MIN, containerWidth * 0.6);
+  return Math.min(Math.max(width, DRAWER_MIN), max);
+}
+
 export function ChatPane(p: Props) {
   const [input, setInput] = useState("");
   const [selectedSkillPaths, setSelectedSkillPaths] = useState<string[]>([]);
   const [activeAssistPanel, setActiveAssistPanel] = useState<"fork" | "delegate" | "tool" | null>(null);
+  const [drawerWidth, setDrawerWidth] = useState(() => {
+    if (typeof window === "undefined") return DRAWER_DEFAULT;
+    const raw = window.localStorage.getItem(DRAWER_WIDTH_KEY);
+    if (!raw) return DRAWER_DEFAULT;
+    const stored = Number(raw);
+    return Number.isFinite(stored) ? stored : DRAWER_DEFAULT;
+  });
   const {
     contexts: businessRequirementContexts,
     selectedId: selectedBusinessRequirementId,
@@ -73,6 +89,7 @@ export function ChatPane(p: Props) {
     selectedContext: selectedBusinessRequirement,
   } = useBusinessRequirementContexts(p.folderScope);
   const [showTrace, setShowTrace] = useState(false);
+  const rootRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
   const activeSessionId = p.folderScope?.type === "session" ? p.folderScope.sessionId : "";
@@ -85,6 +102,52 @@ export function ChatPane(p: Props) {
   useEffect(() => {
     if (!canUseSessionTools) setActiveAssistPanel(null);
   }, [canUseSessionTools]);
+
+  useEffect(() => {
+    if (typeof window === "undefined") return;
+
+    const clampToContainer = () => {
+      const containerWidth = rootRef.current?.clientWidth;
+      if (!containerWidth) return;
+      setDrawerWidth((current) => {
+        const next = clampDrawerWidth(current, containerWidth);
+        window.localStorage.setItem(DRAWER_WIDTH_KEY, String(next));
+        return next;
+      });
+    };
+
+    clampToContainer();
+    window.addEventListener("resize", clampToContainer);
+    return () => window.removeEventListener("resize", clampToContainer);
+  }, []);
+
+  function startDrawerResize(event: ReactMouseEvent<HTMLDivElement>) {
+    event.preventDefault();
+    const root = rootRef.current;
+    if (!root) return;
+
+    const previousCursor = document.body.style.cursor;
+    const previousUserSelect = document.body.style.userSelect;
+    document.body.style.cursor = "col-resize";
+    document.body.style.userSelect = "none";
+
+    const onMove = (moveEvent: MouseEvent) => {
+      const rect = root.getBoundingClientRect();
+      const nextWidth = clampDrawerWidth(rect.right - moveEvent.clientX, root.clientWidth);
+      setDrawerWidth(nextWidth);
+      window.localStorage.setItem(DRAWER_WIDTH_KEY, String(nextWidth));
+    };
+
+    const onEnd = () => {
+      document.body.style.cursor = previousCursor;
+      document.body.style.userSelect = previousUserSelect;
+      window.removeEventListener("mousemove", onMove);
+      window.removeEventListener("mouseup", onEnd);
+    };
+
+    window.addEventListener("mousemove", onMove);
+    window.addEventListener("mouseup", onEnd);
+  }
 
   function autosize() {
     const ta = taRef.current;
@@ -133,9 +196,15 @@ export function ChatPane(p: Props) {
     : contextPercent == null
       ? "上下文待刷新"
       : `上下文 ${contextPercent.toFixed(0)}%`;
+  const drawerTitle =
+    activeAssistPanel === "fork" ? "Fork 分支" :
+    activeAssistPanel === "tool" ? "@工具" :
+    activeAssistPanel === "delegate" ? "委派子 agent" :
+    "";
 
   return (
-    <div className="flex min-h-0 min-w-0 flex-1 flex-col">
+    <div ref={rootRef} className="flex min-h-0 min-w-0 flex-1">
+      <div className="flex min-h-0 min-w-0 flex-1 flex-col">
       <div className="flex h-10 shrink-0 items-center gap-2 border-b border-neutral-200 px-4 dark:border-neutral-800">
         <div className={`flex items-center gap-1.5 text-[11.5px] ${contextTone}`} title={p.runtime?.lastError ?? "当前会话上下文占用，不是累计 token 消耗"}>
           <Gauge className="h-3.5 w-3.5" strokeWidth={1.75} />
@@ -265,36 +334,6 @@ export function ChatPane(p: Props) {
             </button>
           </div>
 
-          {activeSessionId && activeAssistPanel === "fork" && (
-            <div className="mb-3">
-              <ForkBranchPanel
-                parentSessionId={activeSessionId}
-                model={p.model}
-                onBackflow={(text) => p.onSend(text)}
-              />
-            </div>
-          )}
-          {activeSessionId && activeAssistPanel === "tool" && (
-            <div className="mb-3">
-              <ManualAnalysisToolCard
-                sessionId={activeSessionId}
-                workspaceId={p.workspaceId}
-                onBackflow={(text) => p.onSend(text)}
-              />
-            </div>
-          )}
-          {activeSessionId && activeAssistPanel === "delegate" && (
-            <div className="mb-3">
-              <DelegateSubAgentCard
-                sessionId={activeSessionId}
-                workspaceId={p.workspaceId}
-                model={p.model}
-                models={p.models}
-                onBackflow={(text) => p.onSend(text)}
-              />
-            </div>
-          )}
-
           <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
             <textarea
               ref={taRef}
@@ -372,6 +411,60 @@ export function ChatPane(p: Props) {
           </div>
         </div>
       </div>
+      </div>
+
+      {activeSessionId && activeAssistPanel && (
+        <aside
+          className="relative flex h-full min-h-0 shrink-0 flex-col border-l border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950"
+          style={{ width: drawerWidth }}
+        >
+          <div
+            onMouseDown={startDrawerResize}
+            className="absolute inset-y-0 left-0 z-10 w-1 cursor-col-resize hover:bg-neutral-300 dark:hover:bg-neutral-700"
+            title="拖动调整宽度"
+          />
+          <div className="flex h-10 shrink-0 items-center gap-2 border-b border-neutral-200 px-3 dark:border-neutral-800">
+            <div className="min-w-0 flex-1 truncate text-[13px] font-medium text-neutral-800 dark:text-neutral-100">{drawerTitle}</div>
+            <button
+              onClick={() => setActiveAssistPanel(null)}
+              title="关闭"
+              className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            >
+              <X className="h-3.5 w-3.5" strokeWidth={1.75} />
+            </button>
+          </div>
+          <div className={cn(
+            "min-h-0 flex-1 p-3",
+            activeAssistPanel === "fork" ? "flex flex-col" : "overflow-y-auto",
+          )}>
+            {activeAssistPanel === "fork" && (
+              <ForkBranchPanel
+                parentSessionId={activeSessionId}
+                model={p.model}
+                onBackflow={(text) => p.onSend(text)}
+              />
+            )}
+            {activeAssistPanel === "tool" && (
+              <ManualAnalysisToolCard
+                sessionId={activeSessionId}
+                workspaceId={p.workspaceId}
+                onBackflow={(text) => p.onSend(text)}
+                embedded
+              />
+            )}
+            {activeAssistPanel === "delegate" && (
+              <DelegateSubAgentCard
+                sessionId={activeSessionId}
+                workspaceId={p.workspaceId}
+                model={p.model}
+                models={p.models}
+                onBackflow={(text) => p.onSend(text)}
+                embedded
+              />
+            )}
+          </div>
+        </aside>
+      )}
     </div>
   );
 }

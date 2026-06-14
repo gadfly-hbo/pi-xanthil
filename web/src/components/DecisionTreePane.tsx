@@ -18,14 +18,14 @@ import type { DecisionTreeNode, Flow, FlowTreeNode, PiModel } from "@/types";
 
 type Scope =
   | { type: "session"; sessionId: string | null }
-  | { type: "flow"; flow: Flow | null };
+  | { type: "flow"; flow: Flow | null }
+  | { type: "workspace"; workspaceId: string };
 
 interface ReportOption {
   id: string;
   label: string;
-  source: "session" | "flow-run";
-  path: string;
-  runId?: string;
+  pathId: number;
+  relPath: string;
 }
 
 type NodeData = Pick<DecisionTreeNode, "title" | "body" | "kind">;
@@ -44,10 +44,10 @@ function flattenFiles(node: FlowTreeNode | null): FlowTreeNode[] {
   return out;
 }
 
-function isReportFile(node: FlowTreeNode): boolean {
-  return /\.(md|markdown|txt)$/i.test(node.name)
-    && (/report|summary|result|insight|分析|报告|结论|洞察|建议/i.test(node.name)
-      || /\.(md|markdown)$/i.test(node.name));
+function isReportFile(name: string): boolean {
+  return /\.(md|markdown|txt)$/i.test(name)
+    && (/report|summary|result|insight|分析|报告|结论|洞察|建议/i.test(name)
+      || /\.(md|markdown)$/i.test(name));
 }
 
 function toFlowNodes(tree: DecisionTreeNode[]): { nodes: Node[]; edges: Edge[] } {
@@ -239,9 +239,10 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
   const scopeType = scope.type;
   const scopeSessionId = scope.type === "session" ? scope.sessionId : null;
   const scopeFlowId = scope.type === "flow" ? scope.flow?.id ?? null : null;
+  const scopeWorkspaceId = scope.type === "workspace" ? scope.workspaceId : null;
 
   const taskKey = selectedReport
-    ? "dtree:" + (scopeSessionId ?? scopeFlowId ?? "") + ":" + (selectedReport.runId ?? "") + ":" + selectedReport.path
+    ? "dtree:" + (scopeSessionId ?? scopeFlowId ?? scopeWorkspaceId ?? "") + ":" + selectedReport.pathId + ":" + selectedReport.relPath
     : "dtree:__inactive__";
   const task = useResumableTask<{ nodes: DecisionTreeNode[]; model: string }>(taskKey);
   const generating = task.status === "running";
@@ -261,37 +262,27 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
     setSelectedReportId("");
     setContent("");
     try {
-      if (sc.type === "session") {
-        if (!sc.sessionId) return;
-        const artifacts = await api.sessionArtifactTree(sc.sessionId);
-        const next = flattenFiles(artifacts.tree)
-          .filter(isReportFile)
-          .map((f) => ({
-            id: `session:${f.path}`,
-            label: f.path,
-            source: "session" as const,
-            path: f.path,
+      const paths = sc.type === "session"
+        ? sc.sessionId ? await api.listSessionPaths(sc.sessionId, "report") : []
+        : sc.type === "workspace"
+          ? sc.workspaceId ? await api.listWorkspacePaths(sc.workspaceId, "report") : []
+          : sc.flow ? await api.listFlowPaths(sc.flow.id, "report") : [];
+      const found = await Promise.all(paths.map(async (path) => {
+        if (path.kind === "file") {
+          return isReportFile(basenamePath(path.path))
+            ? [{ id: `${path.id}:`, label: basenamePath(path.path), pathId: path.id, relPath: "" }]
+            : [];
+        }
+        const tree = await api.workspacePathTree(path.id);
+        return flattenFiles(tree)
+          .filter((file) => isReportFile(file.name))
+          .map((file) => ({
+            id: `${path.id}:${file.path}`,
+            label: file.path,
+            pathId: path.id,
+            relPath: file.path,
           }));
-        setReports(next);
-        setSelectedReportId(next[0]?.id ?? "");
-        return;
-      }
-      if (!sc.flow) return;
-      const runs = await api.listFlowRuns(sc.flow.id);
-      const found = await Promise.all(
-        runs.map(async (run) => {
-          const runTree = await api.flowRunTree(sc.flow!.id, run.id);
-          return flattenFiles(runTree)
-            .filter(isReportFile)
-            .map((f) => ({
-              id: `flow:${run.id}:${f.path}`,
-              label: `${basenamePath(run.outputDir)} / ${f.path}`,
-              source: "flow-run" as const,
-              path: f.path,
-              runId: run.id,
-            }));
-        }),
-      );
+      }));
       const next = found.flat();
       setReports(next);
       setSelectedReportId(next[0]?.id ?? "");
@@ -301,7 +292,7 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
       setLoadingReports(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeType, scopeSessionId, scopeFlowId]);
+  }, [scopeType, scopeSessionId, scopeFlowId, scopeWorkspaceId]);
 
   useEffect(() => {
     void loadReports();
@@ -310,33 +301,23 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
   useEffect(() => {
     setContent("");
     if (!selectedReport) return;
-    const sc = scopeRef.current;
     setLoadingContent(true);
     setError("");
-    const req =
-      selectedReport.source === "session"
-        ? sc.type === "session" && sc.sessionId
-          ? api.sessionArtifactFileGet(sc.sessionId, selectedReport.path).then((r) => r.content ?? "")
-          : Promise.resolve("")
-        : sc.type === "flow" && sc.flow && selectedReport.runId
-          ? api.flowRunFileGet(sc.flow.id, selectedReport.runId, selectedReport.path).then((r) => r.content)
-          : Promise.resolve("");
-    req.then(setContent).catch((err) => setError(String(err))).finally(() => setLoadingContent(false));
+    api.workspacePathFileGet(selectedReport.pathId, selectedReport.relPath)
+      .then((r) => setContent(r.content ?? ""))
+      .catch((err) => setError(String(err)))
+      .finally(() => setLoadingContent(false));
   // selectedReport identity is stable (new object only when id changes via select)
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedReport?.id]);
 
   const generate = useCallback(async () => {
-    const sc = scopeRef.current;
     if (!selectedReport || !content.trim() || generating) return;
     setError("");
     await task.start(async () => {
       const result = await api.generateDecisionTree({
-        source: selectedReport.source,
-        sessionId: sc.type === "session" ? sc.sessionId ?? undefined : undefined,
-        flowId: sc.type === "flow" ? sc.flow?.id : undefined,
-        runId: selectedReport.runId,
-        path: selectedReport.path,
+        pathId: selectedReport.pathId,
+        relPath: selectedReport.relPath,
         model: selectedModel || DEFAULT_MODEL,
       });
       return { nodes: result.nodes, model: result.model };
@@ -367,7 +348,7 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
         return;
       }
       const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-      const base = selectedReport ? basenamePath(selectedReport.path).replace(/\.[^.]+$/, "") : "report";
+      const base = selectedReport ? basenamePath(selectedReport.label).replace(/\.[^.]+$/, "") : "report";
       const relPath = `graphs/decision_tree_${base}_${ts}.html`;
       const html = generateDecisionTreeHtml(tree);
       const result = await api.workspacePathFilePut(dir.id, relPath, html);
@@ -379,10 +360,7 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
     }
   }, [tree, selectedReport]);
 
-  const emptyHint =
-    scope.type === "session"
-      ? "当前探索任务尚未发现报告文件"
-      : "当前工作流尚未发现 run 报告文件";
+  const emptyHint = "请先在「报告输出」tab 添加报告输出文件夹或文件";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">

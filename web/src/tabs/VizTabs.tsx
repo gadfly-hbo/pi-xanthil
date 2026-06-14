@@ -34,16 +34,16 @@ export function VizTabs({ ctx }: { ctx: TabContext }) {
         <ReportReviewPane scope={ctx.folderScope} model={ctx.model} models={ctx.models} onGenerated={bump} />
       )}
       {activeTab === "explore" && activeSubTab === "golden_strategy" && (
-        <GoldenStrategyPane scope={{ type: "session", sessionId: ctx.activeSessionId }} models={ctx.models} onGenerated={bump} onNavigateToActions={() => ctx.setActiveSubTab("actions")} />
+        <GoldenStrategyPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : ctx.folderScope?.type === "session" ? ctx.folderScope : { type: "session", sessionId: ctx.activeSessionId }} models={ctx.models} onGenerated={bump} onNavigateToActions={() => ctx.setActiveSubTab("actions")} />
       )}
       {activeTab === "multi" && activeSubTab === "golden_strategy" && (
-        <GoldenStrategyPane scope={{ type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} onGenerated={bump} onNavigateToActions={() => ctx.setActiveSubTab("actions")} />
+        <GoldenStrategyPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : { type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} onGenerated={bump} onNavigateToActions={() => ctx.setActiveSubTab("actions")} />
       )}
       {activeTab === "explore" && activeSubTab === "actions" && (
-        <ActionsPane scope={{ type: "session", sessionId: ctx.activeSessionId }} models={ctx.models} />
+        <ActionsPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : ctx.folderScope?.type === "session" ? ctx.folderScope : { type: "session", sessionId: ctx.activeSessionId }} models={ctx.models} />
       )}
       {activeTab === "multi" && activeSubTab === "actions" && (
-        <ActionsPane scope={{ type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} />
+        <ActionsPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : { type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} />
       )}
 
       {activeTab === "rule_memory" && activeSubTab === "trace" && (

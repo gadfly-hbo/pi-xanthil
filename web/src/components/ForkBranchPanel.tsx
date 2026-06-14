@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeftRight, ArrowUp, GitBranch, Loader2, Plus, RefreshCw, Square } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, Loader2, Plus, RefreshCw, Square } from "lucide-react";
 import { MessageRow, type UiMessage } from "@/components/MessageRow";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -189,10 +189,8 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
   }
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950">
-      <div className="flex items-center gap-2">
-        <GitBranch className="h-4 w-4 text-neutral-500" strokeWidth={1.75} />
-        <div className="min-w-0 flex-1 text-[13px] font-medium text-neutral-800 dark:text-neutral-100">Fork 分支</div>
+    <div className="flex h-full min-h-0 flex-col">
+      <div className="flex shrink-0 items-center justify-end gap-2">
         <button
           onClick={() => void refreshBranches()}
           title="刷新分支"
@@ -211,7 +209,7 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
       </div>
 
       {branches.length > 0 && (
-        <div className="mt-3 flex gap-2 overflow-x-auto pb-1">
+        <div className="mt-3 flex shrink-0 gap-2 overflow-x-auto pb-1">
           {branches.map((branch) => (
             <button
               key={branch.id}
@@ -230,11 +228,11 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
         </div>
       )}
 
-      {error && <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
+      {error && <div className="mt-3 shrink-0 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
 
       {activeBranch ? (
-        <div className="mt-3 rounded-md border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="flex items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
+        <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-md border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
             <div className="min-w-0 text-[12px] text-neutral-500 dark:text-neutral-400">
               <span className="font-medium text-neutral-700 dark:text-neutral-200">{activeBranch.title}</span>
               <span className="ml-2">隔离分支</span>
@@ -248,7 +246,7 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
               回流结果
             </button>
           </div>
-          <div className="max-h-[360px] overflow-y-auto px-4 py-4">
+          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
             <div className="space-y-4">
               {loading && <div className="text-[12px] text-neutral-400">正在加载分支消息…</div>}
               {!loading && messages.length === 0 && <div className="text-[12px] text-neutral-400">在分支里发起第一轮深挖。</div>}
@@ -262,7 +260,7 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
               <div ref={bottomRef} />
             </div>
           </div>
-          <div className="border-t border-neutral-200 p-2 dark:border-neutral-800">
+          <div className="shrink-0 border-t border-neutral-200 p-2 dark:border-neutral-800">
             <div className="flex items-end gap-2">
               <textarea
                 value={input}
@@ -294,13 +292,13 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
           </div>
         </div>
       ) : (
-        <div className="mt-3 rounded-md border border-dashed border-neutral-200 px-3 py-5 text-center text-[12px] text-neutral-400 dark:border-neutral-800">
+        <div className="mt-3 shrink-0 rounded-md border border-dashed border-neutral-200 px-3 py-5 text-center text-[12px] text-neutral-400 dark:border-neutral-800">
           尚无分支，创建后可隔离深挖。
         </div>
       )}
 
       {backflowOpen && (
-        <div className="mt-3 rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="mt-3 shrink-0 rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
           <div className="text-[12px] font-medium text-neutral-700 dark:text-neutral-200">回流到主对话</div>
           <textarea
             value={backflowText}

@@ -8,14 +8,14 @@ import type { Flow, FlowTreeNode, PiModel } from "@/types";
 
 type Scope =
   | { type: "session"; sessionId: string | null }
-  | { type: "flow"; flow: Flow | null };
+  | { type: "flow"; flow: Flow | null }
+  | { type: "workspace"; workspaceId: string };
 
 interface ReportOption {
   id: string;
   label: string;
-  source: "session" | "flow-run";
-  path: string;
-  runId?: string;
+  pathId: number;
+  relPath: string;
 }
 
 function basenamePath(path: string): string {
@@ -32,10 +32,10 @@ function flattenFiles(node: FlowTreeNode | null): FlowTreeNode[] {
   return out;
 }
 
-function isReportFile(node: FlowTreeNode): boolean {
-  return /\.(md|markdown|txt)$/i.test(node.name)
-    && (/report|summary|result|insight|分析|报告|结论|洞察|建议/i.test(node.name)
-      || /\.(md|markdown)$/i.test(node.name));
+function isReportFile(name: string): boolean {
+  return /\.(md|markdown|txt)$/i.test(name)
+    && (/report|summary|result|insight|分析|报告|结论|洞察|建议/i.test(name)
+      || /\.(md|markdown)$/i.test(name));
 }
 
 const DEFAULT_MODEL = "minimax-cn/MiniMax-M3";
@@ -67,16 +67,20 @@ export function ActionsPane({
   const scopeType = scope.type;
   const scopeSessionId = scope.type === "session" ? scope.sessionId : null;
   const scopeFlowId = scope.type === "flow" ? scope.flow?.id ?? null : null;
+  const scopeWorkspaceId = scope.type === "workspace" ? scope.workspaceId : null;
 
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
-  const currentScopeId = scopeSessionId || scopeFlowId || "";
+  const currentScopeId = scopeSessionId || scopeFlowId || (scopeWorkspaceId ? String(scopeWorkspaceId) : "");
+  // 统一报告身份 key（pathId:relPath）：action-items 按它关联、去重；旧 artifact-path key 的历史 items 向前失联（已决策）。
+  const reportPathKey = selectedReport ? `${selectedReport.pathId}:${selectedReport.relPath}` : "";
+  const sourceKind: "session" | "flow-run" = scope.type === "flow" ? "flow-run" : "session";
 
   const taskKey = useMemo(
     () =>
       selectedReport
-        ? "actions:" + currentScopeId + ":" + (selectedReport.runId ?? "") + ":" + selectedReport.path
+        ? "actions:" + currentScopeId + ":" + reportPathKey
         : "actions:__inactive__",
-    [currentScopeId, selectedReport],
+    [currentScopeId, reportPathKey, selectedReport],
   );
 
   const extractTask = useResumableTask<ActionItemDraft[]>(taskKey);
@@ -95,37 +99,28 @@ export function ActionsPane({
     setReports([]);
     setSelectedReportId("");
     try {
-      if (sc.type === "session") {
-        if (!sc.sessionId) return;
-        const artifacts = await api.sessionArtifactTree(sc.sessionId);
-        const next = flattenFiles(artifacts.tree)
-          .filter(isReportFile)
+      // 统一数据源：扫「报告输出」登记路径（与汇报版本/报告审核一致），不再扫 session/flow 原生 artifact tree。
+      const paths = sc.type === "session"
+        ? sc.sessionId ? await api.listSessionPaths(sc.sessionId, "report") : []
+        : sc.type === "workspace"
+          ? sc.workspaceId ? await api.listWorkspacePaths(sc.workspaceId, "report") : []
+          : sc.flow ? await api.listFlowPaths(sc.flow.id, "report") : [];
+      const found = await Promise.all(paths.map(async (path) => {
+        if (path.kind === "file") {
+          return isReportFile(basenamePath(path.path))
+            ? [{ id: `${path.id}:`, label: basenamePath(path.path), pathId: path.id, relPath: "" }]
+            : [];
+        }
+        const tree = await api.workspacePathTree(path.id);
+        return flattenFiles(tree)
+          .filter((file) => isReportFile(file.name))
           .map((file) => ({
-            id: `session:${file.path}`,
+            id: `${path.id}:${file.path}`,
             label: file.path,
-            source: "session" as const,
-            path: file.path,
+            pathId: path.id,
+            relPath: file.path,
           }));
-        setReports(next);
-        setSelectedReportId(next[0]?.id ?? "");
-        return;
-      }
-      if (!sc.flow) return;
-      const runs = await api.listFlowRuns(sc.flow.id);
-      const found = await Promise.all(
-        runs.map(async (run) => {
-          const runTree = await api.flowRunTree(sc.flow!.id, run.id);
-          return flattenFiles(runTree)
-            .filter(isReportFile)
-            .map((file) => ({
-              id: `flow:${run.id}:${file.path}`,
-              label: `${basenamePath(run.outputDir)} / ${file.path}`,
-              source: "flow-run" as const,
-              path: file.path,
-              runId: run.id,
-            }));
-        }),
-      );
+      }));
       const next = found.flat();
       setReports(next);
       setSelectedReportId(next[0]?.id ?? "");
@@ -134,7 +129,7 @@ export function ActionsPane({
     } finally {
       setLoadingReports(false);
     }
-  }, [scopeType, scopeSessionId, scopeFlowId]);
+  }, [scopeType, scopeSessionId, scopeFlowId, scopeWorkspaceId]);
 
   useEffect(() => {
     void loadReports();
@@ -143,7 +138,7 @@ export function ActionsPane({
   const loadData = useCallback(async () => {
     if (!currentScopeId) return;
     try {
-      const fetchedItems = await vizApi.listActionItems(currentScopeId, selectedReport?.path);
+      const fetchedItems = await vizApi.listActionItems(currentScopeId, reportPathKey || undefined);
       setItems(fetchedItems);
       const fetchedTasks = await vizApi.listActionTasks({ scopeId: currentScopeId });
       setTasks(fetchedTasks);
@@ -162,7 +157,7 @@ export function ActionsPane({
     } catch (err) {
       console.error("Failed to load actions data", err);
     }
-  }, [currentScopeId, selectedReport]);
+  }, [currentScopeId, reportPathKey, selectedReport]);
 
   useEffect(() => {
     void loadData();
@@ -174,16 +169,12 @@ export function ActionsPane({
   }, [model, models]);
 
   const extract = useCallback(async () => {
-    const sc = scopeRef.current;
     if (!selectedReport || generating) return;
     setError("");
     await extractTask.start(async () => {
       const res = await vizApi.extractActions({
-        source: selectedReport.source,
-        sessionId: sc.type === "session" ? sc.sessionId ?? undefined : undefined,
-        flowId: sc.type === "flow" ? sc.flow?.id : undefined,
-        runId: selectedReport.runId,
-        path: selectedReport.path,
+        pathId: selectedReport.pathId,
+        relPath: selectedReport.relPath,
         prompt,
         model,
       });
@@ -195,10 +186,9 @@ export function ActionsPane({
     if (!selectedReport) return;
     try {
       const newItem = await vizApi.createActionItem({
-        sourceKind: selectedReport.source,
+        sourceKind,
         scopeId: currentScopeId,
-        runId: selectedReport.runId,
-        reportPath: selectedReport.path,
+        reportPath: reportPathKey,
         title: draft.title,
         rationale: draft.rationale,
         scene: draft.scene,
@@ -230,10 +220,9 @@ export function ActionsPane({
     if (!selectedReport) return;
     try {
       const newItem = await vizApi.createActionItem({
-        sourceKind: selectedReport.source,
+        sourceKind,
         scopeId: currentScopeId,
-        runId: selectedReport.runId,
-        reportPath: selectedReport.path,
+        reportPath: reportPathKey,
         title: draft.title,
         rationale: draft.rationale,
         scene: draft.scene,
@@ -278,9 +267,9 @@ export function ActionsPane({
     }
   };
 
-  const emptyHint = scope.type === "session" ? "当前探索任务尚未发现报告文件" : "当前工作流尚未发现 run 报告文件";
+  const emptyHint = "请先在「报告输出」tab 添加报告输出文件夹或文件";
 
-  const pendingDrafts = drafts.filter(d => !items.some(i => i.title === d.title && i.reportPath === selectedReport?.path));
+  const pendingDrafts = drafts.filter(d => !items.some(i => i.title === d.title && i.reportPath === reportPathKey));
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">

@@ -343,7 +343,7 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
 
   const emptyHint = paths.length === 0
     ? "请先在「报告输出」tab 添加报告输出文件夹或文件"
-    : "报告输出路径中尚未发现 Markdown、HTML 或文本报告";
+    : "报告输出路径中尚未发现 Markdown、HTML 或文本报告（请先在「报告输出」tab 添加文件夹或文件）";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">

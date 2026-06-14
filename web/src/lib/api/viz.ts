@@ -154,7 +154,7 @@ export const vizApi = {
     fetch(`/api/onto-prompts/${encodeURIComponent(promptId)}`, jsonBody("DELETE")).then(json<{ success: boolean }>),
 
   // ---- Actions（行动闭环）----
-  extractActions: (data: { source: "session" | "flow-run"; sessionId?: string; flowId?: string; runId?: string; path: string; prompt?: string; model?: string }) =>
+  extractActions: (data: { pathId: number; relPath?: string; prompt?: string; model?: string }) =>
     fetch(`/api/actions/extract`, jsonBody("POST", data)).then(json<ActionItemDraft[]>),
   
   listActionItems: (scopeId: string, reportPath?: string) =>

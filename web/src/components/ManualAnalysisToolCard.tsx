@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { ArrowLeftRight, FileText, Loader2, Play, RefreshCw, Wrench } from "lucide-react";
+import { ArrowLeftRight, FileText, Loader2, Play, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { ExtractionRun, ExtractionTool, ToolParameter, WorkspacePath } from "@/types";
@@ -11,6 +11,7 @@ interface Props {
   sessionId: string | null;
   workspaceId: string | null;
   onBackflow: (text: string) => void;
+  embedded?: boolean;
 }
 
 function categoryOf(tool: ExtractionTool): "ingestion" | "analysis" {
@@ -136,7 +137,7 @@ function isToolInputPath(path: WorkspacePath): boolean {
     && path.status !== "missing";
 }
 
-export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow }: Props) {
+export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, embedded = false }: Props) {
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [inputFiles, setInputFiles] = useState<WorkspacePath[]>([]);
   const [reportDir, setReportDir] = useState<WorkspacePath | null>(null);
@@ -252,10 +253,10 @@ export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow }: P
           : "";
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950">
-      <div className="flex items-center gap-2">
-        <Wrench className="h-4 w-4 text-neutral-500" strokeWidth={1.75} />
-        <div className="min-w-0 flex-1 text-[13px] font-medium text-neutral-800 dark:text-neutral-100">@工具 · 手动分析</div>
+    <div className={cn(
+      embedded ? "h-full" : "rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950",
+    )}>
+      <div className="flex items-center justify-end gap-2">
         <button
           onClick={() => void reload()}
           disabled={loading || running}

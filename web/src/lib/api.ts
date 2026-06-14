@@ -549,19 +549,19 @@ const legacyApi = {
       body: JSON.stringify({ path, content }),
     }).then(json<{ ok: true }>),
 
-  generateDecisionTree: (payload: { source: "session" | "flow-run"; sessionId?: string; flowId?: string; runId?: string; path: string; model: string }) =>
+  generateDecisionTree: (payload: { pathId: number; relPath?: string; prompt?: string; model: string; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }) =>
     fetch("/api/decision-tree/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     }).then(json<DecisionTreeResult>),
-  generateGoldenStrategy: (payload: { source: "session" | "flow-run"; sessionId?: string; flowId?: string; runId?: string; path: string; analysisModel: GoldenStrategyModelId; prompt?: string; model: string; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }) =>
+  generateGoldenStrategy: (payload: { pathId: number; relPath?: string; analysisModel: GoldenStrategyModelId; prompt?: string; model: string; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }) =>
     fetch("/api/golden-strategy/generate", {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify(payload),
     }).then(json<GoldenStrategyResult>),
-  generateGoldenStrategyBatch: (payload: { source: "session" | "flow-run"; sessionId?: string; flowId?: string; runId?: string; path: string; analysisModels: GoldenStrategyModelId[]; prompt?: string; model: string; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }) =>
+  generateGoldenStrategyBatch: (payload: { pathId: number; relPath?: string; analysisModels: GoldenStrategyModelId[]; prompt?: string; model: string; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }) =>
     fetch("/api/golden-strategy/generate-batch", {
       method: "POST",
       headers: { "content-type": "application/json" },

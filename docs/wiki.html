@@ -1145,6 +1145,144 @@ P3(onto + KG)：
    status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
    字段: { status, title, brief }（无 dom —— 不指定域）。 */
 const HOTFIX = [
+  { status: "done", title: "【探索·黄金策/行动】报告统一化收尾 — workspace 维度 + DecisionTree 同源 + 空态文案", brief:
+`✅ 总控回流终审通过（2026-06-15）。门禁亲验：server+web typecheck ✅ / build ✅ / 数据探索隔离 grep 空 ✅ / types.ts 未动（diff 空）✅。三项逐项核实：
+① workspace 维度：GoldenStrategyPane/ActionsPane/DecisionTreePane 的 Scope 均加 workspace 分支，loadReports 加 listWorkspacePaths(...,"report")，taskKey/currentScopeId 适配；VizTabs 透传 folderScope.type==="workspace"。**ActionItem.sourceKind 用 fallback**（workspace→"session"，仅元数据标记、不动 ActionSourceKind 类型，遵守卡片"动 types 停下"约束）；GoldenStrategy 的 businessRequirementScope 已支持 workspace（useBusinessRequirementContexts 接受）。后端零改（端点已 scope 无关）。
+② DecisionTree 同源：照黄金策范式完成 FE+BE+API——前端 ReportOption→{pathId,relPath}、loadReports 扫登记路径、读 workspacePathFileGet、generate 传 pathId/relPath；后端 /api/decision-tree/generate 改 getWorkspacePath→outputDir/sourceRelPath→readFlowFile（index.ts:3148）；client generateDecisionTree→{pathId,relPath}。仅动该端点，未扩散。
+③ 空态文案：五个报告消费面板（黄金策/行动/汇报版本/报告审核/Toc）emptyHint 统一为"请先在「报告输出」tab 添加…"，指向登记入口；纯文本。
+
+【终审 nit（非阻塞）】ReportReviewPane 空态文案从"Markdown、HTML 或文本报告"改为"Markdown 或文本报告"，少列了 HTML（审核支持 HTML 报告，文案略 understate）；纯提示文字、不影响功能，可后续补回 HTML。
+
+【范围说明】本卡 diff 同时含前序未提交改动（抽屉化/报告主卡）——本次新增仅 DecisionTreePane/VizTabs/三面板 emptyHint + decision-tree 后端 + generateDecisionTree client。**待用户浏览器实跑**：workspace scope 下三个面板列报告；决策树在登记报告（含标准目录外）能列+生成；空下拉文案指向「报告输出」。全程未做 git。
+
+— 原派发 brief（保留备查）—
+🆕 待领取。承接「报告下拉为空（方向 A 单一数据源）」终审的 3 项遗留，合并一张收尾卡。前置卡已 done。总控判红线=安全（非数据探索子树、零 LLM）。三项独立，可分别领取或一次顺序做完。
+
+【1 · 黄金策/行动 加 workspace 维度（FE 为主）】当前 GoldenStrategyPane/ActionsPane 的 Scope 联合只有 session/flow，与汇报版本/报告审核（已支持 workspace）不齐。改：Scope 加 \`{ type:"workspace"; workspaceId }\` 分支；loadReports 加 \`api.listWorkspacePaths(workspaceId,"report")\`；currentScopeId/businessRequirementScope 适配。**后端无需改**（端点已是 pathId/relPath，与 scope 无关）。细节：ActionItem.sourceKind 现为 "session"|"flow-run"，workspace 维度无对应值——最小做法给个 fallback（如沿用 "session"）或与 V 商量是否扩 ActionSourceKind；动 types 则停下报总控。调用方（EngineTabs/VizTabs 传 scope 处）一并适配。
+
+【2 · DecisionTreePane 同源统一（FE+BE+API，照黄金策范式）】DecisionTreePane 仍走旧 artifact/run tree 扫描 + 后端 /api/decision-tree/generate 收 {source,path,runId}，同类 bug（登记在标准目录外的报告扫不到）。改：照已完成的黄金策范式——前端 ReportOption→{pathId,relPath}、loadReports 扫登记路径、读 workspacePathFileGet；后端 decision-tree generate 端点改 getWorkspacePath→outputDir/sourceRelPath→readFlowFile；api client generateDecisionTree 签名 →{pathId,relPath}。**注意**：此项动后端端点（接缝近邻），改前确认仅限该端点、不扩散。
+
+【3 · 空态文案对齐（纯 FE polish）】GoldenStrategyPane/ActionsPane 的 emptyHint（如"当前工作流尚未发现 run 报告文件"）措辞偏旧、暗示扫 run tree；对齐 PresentationVersionPane 文案"请先在「报告输出」tab 添加报告输出文件夹或文件"，引导用户去登记。
+
+【红线/边界】非数据探索子树、零 LLM；①③纯前端，②动 decision-tree 后端端点（仅该端点）。改 types（ActionSourceKind）需停下报总控。
+
+【总控执行建议】属 V/探索报告域前端 + 后端端点。建议派 V（或熟悉黄金策改造范式的 agent）。②可直接复用本轮黄金策的 diff 作模板。
+
+【自检/验收】1. server+web typecheck + build 绿。2. 数据探索隔离 grep 空。3. 实跑：①workspace scope 下黄金策/行动能列登记报告；②决策树在登记报告（含标准目录外）能列+生成；③空下拉文案指向「报告输出」登记。
+
+【收尾】不执行任何 git。改完列改动清单回流总控终审；新约束/踩坑在回报中列出交总控补 notes-viz。按 /px-hotfix SOP 执行。` },
+  { status: "done", title: "【探索·黄金策/行动】报告下拉为空 — 数据源与「汇报版本/报告审核」不一致", brief:
+`✅ 总控承接、决策方案 A（单一数据源）并亲做+自检通过（2026-06-14）。门禁：server+web typecheck ✅ / build ✅ / 数据探索隔离 grep 空 ✅。
+
+【纠正卡片前提】原录入称"纯前端·接缝大概率不动"——经查**不成立**：后端黄金策/行动端点不是被动收 content，而是按 source+path 自己 readFlowFile 并(黄金策)把产物回写 outputDir，且 validateArtifactPath 拒收标准目录外路径；故方向 A 必须改后端。另发现 action-items 用 reportPath 字符串当持久化 key，切换会使旧 items 失联。
+
+【方案 A · 已落地】黄金策/行动改与汇报版本/报告审核同源：扫「报告输出」登记路径（listSessionPaths/listFlowPaths(...,"report") + workspacePathTree），按 pathId/relPath 读文件，复用 generatePresentationVersion 的 getWorkspacePath→outputDir/sourceRelPath→readFlowFile 解析范式。**数据口径决策（用户拍板）**：reportPath key 改 \`pathId:relPath\`，旧 action items 向前失联、不迁移、不删（与 requirementInput backfill 决策一致）。
+
+【改动清单（FE+BE+API 跨层）】
+- BE server/src/index.ts：generateGoldenStrategyArtifact 改签名 {pathId,relPath,...}，按登记路径读 + 产物落 outputDir/golden_strategy/；/api/golden-strategy/generate 与 /generate-batch 改读 pathId/relPath。
+- BE server/src/routes/viz.ts：/api/actions/extract 改按 pathId/relPath 读登记报告；清理因此变未用的 import（getSession/getFlow/getFlowRun/resolveOutputTarget/standardDirIn/sessionDir），补 node:path。
+- API web/src/lib/api.ts：generateGoldenStrategy(Batch) 签名 → {pathId,relPath}；web/src/lib/api/viz.ts：extractActions → {pathId,relPath}。
+- FE web/src/components/GoldenStrategyPane.tsx + ActionsPane.tsx：ReportOption→{pathId,relPath}；loadReports 改扫登记路径；读 content 走 workspacePathFileGet；isReportFile 改收 name;string；taskKey/recommendations/generate/extract/createActionItem/pendingDrafts 全部切 pathId/relPath + reportPath key。
+
+【范围说明 / 未做】① 仍只 session/flow 两 scope，未加 workspace 维度（卡里开放点，非必须，留后续）。② DecisionTreePane 同样走 artifact-tree 老模型、同类潜在问题，但不在本卡范围，未动。③ 空态文案("未发现 run 报告文件"等)偏旧，可后续对齐"请先在报告输出登记"，纯文案 polish。
+
+【待用户浏览器实跑】探索→黄金策/行动：在「报告输出」登记含 .md/.html 的报告（含标准目录外路径）→ 下拉能全列；选中预览/生成/提取行动链路正常；与汇报版本/报告审核一致。**全程未做 git。**
+
+— 原录入（保留备查）—
+🆕 待领取（2026-06-14 录入）。总控判红线=安全(纯前端·非红线·零 LLM·不碰数据探索子树)；但本卡**不是一行正则修复**，会牵动两个面板的 loadReports 数据流改造，且涉及 session/flow/workspace 三种 scope 的 paths API 适配，需总控决策方案后再派发。
+
+【现象】探索 tab 下：
+- ✅ 「汇报版本」「报告审核」能正常显示报告文件下拉。
+- ❌ 「黄金策」「行动」恒显示「当前探索任务尚未发现报告文件」/「当前工作流尚未发现 run 报告文件」，即便目录里实际存在 .md / .html 等多种类型的报告。
+
+【已诊断 · 根因 = 底层数据源分裂】
+- 能显示的 PresentationVersionPane.tsx:105–126 / ReportReviewPane.tsx 走「报告输出」登记路径：listSessionPaths(id, "report") / listFlowPaths(id, "report") / listWorkspacePaths(id, "report") → workspacePathTree → flattenFiles → isReportFile（**仅按扩展名 .md/.markdown/.txt[/.html]**）。
+- 不显示的 GoldenStrategyPane.tsx:285–334 / ActionsPane.tsx:91–137 走 session artifact tree / flow run tree 直接扫描：sessionArtifactTree(sessionId) / flowRunTree(flowId, runId) → flattenFiles → isReportFile（**扩展名 + 文件名关键词正则**，看似宽松但与登记路径不同源）。
+- 用户的报告文件登记在「报告输出」面板的 report 类路径下，session artifact tree / flow run tree 里不存在 → 行动/黄金策永远扫不到，与 isReportFile 正则无关（已用 .md 兜底验证）。
+
+【建议方案 · 由总控定夺】
+- 方向 A（推荐 · 单一数据源）：行动/黄金策也切到 listSessionPaths/listFlowPaths/listWorkspacePaths(..., "report") + workspacePathTree，与汇报版本/报告审核统一，「报告输出」面板成为唯一登记入口，行为一致可预期。
+- 方向 B（双源合并）：保留原 artifact/flow tree 扫描，再追加 report 登记路径合并去重——好处兼容旧逻辑，坏处永久维护两条数据流。
+- 方向 C（最小但脏）：仅当 artifact/flow tree 为空时回退扫 report 路径——治标不治本。
+- 同时需考虑黄金策/行动是否需要 workspace 维度（汇报版本/报告审核已支持），现仅 session/flow 双分支。
+
+【涉及文件（**非快修执行清单**，方案定下后由域 owner 改）】
+- web/src/components/GoldenStrategyPane.tsx（loadReports / ReportOption / 调用链）
+- web/src/components/ActionsPane.tsx（loadReports / ReportOption / 调用链）
+- 后续读取报告内容的 sessionArtifactFileGet / flowRunFileGet 也需切到 workspacePathFileGet（pathId + relPath）；selectedReport 字段(source/path/runId) → (pathId/relPath)
+- 参照实现：PresentationVersionPane.tsx:90–135 / ReportReviewPane.tsx 的 loadReports 模式（含 path.kind === "file" 的单文件登记 vs 文件夹登记两分支）
+
+【红线/边界】纯前端读取层；零 LLM；不碰 DataExplorationPane / data-exploration 子树、不碰 draw_data/clean_data 读写逻辑；接缝层(types/api/constants/App) 大概率不动（listSessionPaths/listFlowPaths/listWorkspacePaths/workspacePathTree/workspacePathFileGet 已存在，参考 PresentationVersionPane 即可），若发现必须扩 API 则停下报总控。
+
+【总控执行建议】属探索域(V) 前端，建议派 V 执行最熟；规模介于典型快修与小型重构之间，顺序单改无并发冲突。也可先做"诊断卡 → 方案文档 → 派单"三步，避免快修执行者在方案选型上纠结。
+
+【自检/验收】
+1. cd web && npm run typecheck → 绿；npm run build → 绿。
+2. 数据探索隔离 grep(应空)：grep -rE "(generate|chat|extract|clarify|sink|distill).*api\\." web/src/components/DataExplorationPane.tsx web/src/components/data-exploration/
+3. 实跑(npm run dev)：探索 → 黄金策 / 行动 在已登记 report 路径含 .md/.html 报告时，下拉能列出全部报告；选中后预览/生成功能链路正常；与汇报版本/报告审核显示一致。
+
+【收尾】不执行任何 git。改完列改动文件清单，回流总控终审；新踩坑/约束在回报中列出交总控补 notes-探索。按 /px-hotfix SOP 执行。
+
+【建议总控补进 notes 的内容】探索模块四个报告消费面板（行动/黄金策/汇报版本/报告审核）当前数据源分裂：前两者扫 session/flow 原生 tree，后两者扫「报告输出」登记路径。统一前用户登记到非 artifact/run 路径的目录时，行动/黄金策永远扫不到 → 是常见误判源。统一后，「报告输出」即唯一登记入口。` },
+  { status: "done", title: "【探索·数据分析】抽屉化收尾 polish — 窄屏 clamp + 去双标题 + 去边框套边框(前端·非红线)", brief:
+`✅ 总控回流终审通过（2026-06-15）。E 交付。门禁亲验：web typecheck ✅ / build ✅ / 数据探索隔离 grep 空 ✅；scope 仅 4 前端文件（ChatPane/ForkBranchPanel/ManualAnalysisToolCard/DelegateSubAgentCard），未碰 App/types/api/constants/后端、零新依赖。三项逐项核实：① 窄屏 clamp：clampDrawerWidth([360, 容器*0.6]) 抽成模块级函数，拖拽 + mount + window resize 共用，已存大宽度切窄屏自动回收并持久化——我上轮提的核心发现已修实。② 去双标题：ForkBranchPanel 内层标题文字删除、刷新/新分支动作保留，aside 头 drawerTitle 成唯一标题位；tool/delegate 同理。③ 去边框套边框：两卡片加 embedded prop，嵌入态走 h-full 去掉自身 border/rounded/bg/padding，默认非嵌入样式不变。
+
+【终审 nit（非阻塞）】fork 抽屉内容区 wrapper 有 p-3，ForkBranchPanel 根也带 p-3+bg-neutral-50 → fork 面板内边距略偏厚（tool/delegate 因 embedded 去内距则单层，正常）。纯视觉、可后续去其一，不影响功能。
+
+【台账漂移说明】E 在 notes-engine §0 报：接任务时其工作副本缺抽屉实现（drawerTitle/rootRef/drawerWidth），与 notes/wiki 记前置卡 done 不符，遂在当前工作区补齐。总控核：**当前工作树抽屉+polish 完整且门禁绿**，前置「抽屉化改造」卡的 done 是基于本工作树 diff 终审的、依然成立；E 见到的"缺失"应为其侧 checkout/分支漂移，非台账错误。无需回滚。
+
+【待用户浏览器实跑】开 Fork/@工具/委派→主对话不被下顶；拖宽后缩窄窗口 drawer 自动 ≤60% 不压没主列；抽屉头无重复标题；tool/delegate 无双层边框。**全程未做 git。**
+
+— 原派发 brief（保留备查）—
+🆕 待领取。总控判红线=安全(纯前端、不碰数据探索子树、零 LLM)。承接「三助手面板抽屉化改造」终审的 3 项非阻塞发现，合并一张 polish 卡。前置卡已 done，无依赖。
+
+【1 · 窄屏 clamp 补全(唯一有体感)】web/src/components/ChatPane.tsx。现状 clampWidth 只在拖拽 onMove 里跑；已存大 drawerWidth 后切窄屏不会被收，drawer(shrink-0)会把左主列(flex-1 min-w-0)压到极窄甚至横向溢出。改：加一个 useEffect 监听 window resize(+ mount 时跑一次)，用与拖拽同一套 clamp([360, 容器宽*0.6]，container 取 rootRef.current.clientWidth) 对 drawerWidth 收一次。复用现有 DRAWER_MIN/clamp 逻辑，勿重造。
+
+【2 · 去双标题冗余】ChatPane.tsx + ForkBranchPanel.tsx(及两卡片)。aside 头已显示 drawerTitle("Fork 分支"/"@工具"/"委派子 agent")，而 ForkBranchPanel 自身(:193 区)与 ManualAnalysisToolCard/DelegateSubAgentCard 内部各自又带标题 → 标题重复两次。最小改动：删子组件的内层标题文字，把刷新/新分支等动作保留(或并入 aside 头)。
+
+【3 · 去边框套边框】ManualAnalysisToolCard/DelegateSubAgentCard 在抽屉内自带 border/rounded/bg，与抽屉外层形成双层边框。给两卡片加 embedded 态(variant 或 className 覆盖)，嵌入抽屉时去自身外层 border/rounded/bg(抽屉包裹层已有 p-3)。
+
+【红线/边界】纯前端，零 LLM import；不碰 DataExplorationPane/data-exploration 子树、不碰后端/接缝(App/types/api/constants)；改完跑数据探索隔离 grep 应空。
+
+【总控执行建议】属智能引擎(E)域前端，建议派 E(codex)。三项独立、可一次顺序做完；① 最该做(有实际体感)，②③ 纯视觉 polish。
+
+【自检/验收】1. web typecheck + build 绿。2. 数据探索隔离 grep 空。3. 实跑：拖宽 drawer 到很宽 → 缩小浏览器窗口 → drawer 自动收到 ≤60% 不压没主对话；抽屉头无重复标题；tool/delegate 卡无双层边框。
+
+【收尾】不执行任何 git。改完列改动清单回流总控终审；新踩坑/约束在回报中列出交总控补 notes-engine。按 /px-hotfix SOP 执行。` },
+  { status: "done", title: "【探索·数据分析】三助手面板(@工具/Fork/委派)抽屉化改造 — 右侧可调宽抽屉(前端·非红线)", brief:
+`✅ 总控回流终审通过（2026-06-14）。E(codex) 交付。门禁亲验：web+server typecheck ✅ / build ✅ / 数据探索隔离 grep 空 ✅ / ChatPane·ForkBranchPanel 无 LLM import ✅。scope 守住：仅 ChatPane.tsx + ForkBranchPanel.tsx，未碰 App/types/api/constants/后端。代码复核：根容器横向 flex + 左主列(flex-1 flex-col) + 右抽屉(aside shrink-0)；height chain 用 min-h-0/flex-1 打通；resize 方向正确(rect.right - clientX，拖把手向左变宽)、clamp[360, 容器60%]、localStorage 持久化 + SSR guard、body cursor/userSelect 兜底；ForkBranchPanel 会话区 max-h-[360px]→flex-1 overflow-y-auto 满高滚动(痛点解除)。均正确、无功能 bug。
+
+【终审发现(非阻塞，建议后续小迭代)】① 窄屏 clamp 实际只在拖拽时生效，不在 mount/window-resize 时跑——若已存大宽度后切窄屏，drawer(shrink-0)会把左主列(flex-1 min-w-0)压到极窄甚至横向溢出；建议加 mount+window resize 时对 drawerWidth 做一次 clamp（notes-engine §0 验收项"窄屏 clamp 生效"措辞偏乐观，按此修正）。② 双标题冗余：aside 头已显示 drawerTitle("Fork 分支"/"@工具"/"委派子 agent")，而 ForkBranchPanel/两卡片自身又各带标题 → 标题重复两次，可去其一。③ tool/delegate 卡自带 border 在抽屉内形成"边框套边框"(E 已记 notes 开放问题)。均 polish，不影响功能。
+
+【待用户浏览器实跑】开 Fork/@工具/委派 任一→主对话不被下顶、抽屉在右；拖左缘调宽 + 刷新后宽度保留；Fork 分支会话满高滚动；× 关闭后主对话收复全宽。
+
+— 原派发 brief（保留备查）—
+🆕 待领取。总控已判红线=安全(纯前端、不碰数据探索子树、零 LLM)。用户决策(2026-06-14)：三面板一起抽屉化 + Phase 1+2+3 一次做完。
+
+【痛点(已定位)】探索→数据分析里 @工具/Fork/委派 三个助手面板被内联渲染在输入框正上方的 max-w-[760px] 居中列(ChatPane.tsx:268–296，由 activeAssistPanel 控制)，一展开就把主对话+输入框往下顶；其中 ForkBranchPanel 的会话区又被钳在 max-h-[360px](ForkBranchPanel.tsx:251)。结果：面板不能移动/不能调大、只能开关，且遮挡主对话——体验差。
+
+【方案 · 右侧可调宽抽屉(用户已选)】把三个助手面板从 composer 列移出，改为 ChatPane 内部右侧抽屉。ChatPane 根容器由竖向 flex 改横向 flex：[主对话(flex-1) | 抽屉(可调宽)]。抽屉位于 App 级「成果」右栏左侧，三者水平排列；不动 App 布局、不动成果面板、不动后端。
+
+【文件边界(前端)】
+- web/src/components/ChatPane.tsx：根容器横向 flex 化；把 268–296 三个内联块(ForkBranchPanel/ManualAnalysisToolCard/DelegateSubAgentCard)移进右抽屉，按 activeAssistPanel 切换内容；工具栏三按钮(223–266)保留，作用改为切换抽屉内容/开关；抽屉头加标题+×关闭(setActiveAssistPanel(null))；activeAssistPanel===null 不渲染抽屉、主对话独占。
+- web/src/components/ForkBranchPanel.tsx：去掉会话区 max-h-[360px] 硬钳(:251)，改满高 flex 列(分支 tabs shrink-0 → 会话 flex-1 min-h-0 overflow-auto → 输入 shrink-0)。
+- 顺带让 ManualAnalysisToolCard / DelegateSubAgentCard 在抽屉内也满高自适应(若有类似高度钳制一并放开)。
+
+【分期(一次性交付 1+2+3)】
+P1 核心：ChatPane 横向 flex + 右抽屉托管三面板 + 关闭按钮 + 高度链打通(h-full min-h-0，确保消息滚动区/composer/抽屉各拿对高度——主要风险点，重点测)。
+P2 可调宽：抽屉左缘 drag handle，原生 mousedown→mousemove→mouseup 调宽 state，clamp [360px, 容器 60%]，宽度存 localStorage(刷新沿用)。禁止引入新依赖。
+P3 满高化：ForkBranchPanel(及另两面板)去高度钳制、分支 tabs 吸顶、回流编辑器作底部内联区不撑长。
+
+【红线/边界】纯前端，零 LLM import；不碰 DataExplorationPane / data-exploration 子树、不碰 draw_data/clean_data 读写逻辑；改完跑数据探索隔离 grep 应空。无后端、无接缝层(types/api/constants/App)改动——若发现必须动接缝则停下报总控。
+
+【总控执行建议】ChatPane/ForkBranchPanel 属智能引擎(E)域前端，建议派 E(codex)执行最熟；任一前端能力 agent 亦可(本卡不指定域)。规模略大于典型快修(布局重构)，但顺序单改、无并发冲突，按 hotfix 流程可一次性落地。
+
+【自检/验收】
+1. cd web && npm run typecheck → 绿；npm run build → 绿。
+2. 数据探索隔离 grep(应空)：grep -rE "(generate|chat|extract|clarify|sink|distill).*api\\." web/src/components/DataExplorationPane.tsx web/src/components/data-exploration/
+3. 实跑(npm run dev)：开 Fork/@工具/委派 任一→主对话不被下顶、抽屉在右侧；拖左缘可调宽、刷新后宽度保留；Fork 分支会话可用满高度滚动；× 关闭后主对话收复全宽；窄屏抽屉不把主对话压没(clamp 生效)。
+
+【收尾】不执行任何 git。改完列改动文件清单，回流总控终审；新踩坑/约束在回报中列出交总控补 notes-engine。按 /px-hotfix SOP 执行。` },
   { status: "done", title: "快修2.1：聚合数据文档层级树+路径复制 · 规则记忆模块重命名 · 计算工具新增6管理子页", brief:
 `✅ 总控自做并终审通过（2026-06-14，含红线域，总控亲做最稳）。三组改造，typecheck + build + 数据探索隔离 grep 全绿。
 

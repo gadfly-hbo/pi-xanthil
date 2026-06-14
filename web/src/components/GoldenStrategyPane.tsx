@@ -24,14 +24,14 @@ interface GoldenStrategyBatchResult {
 
 type Scope =
   | { type: "session"; sessionId: string | null }
-  | { type: "flow"; flow: Flow | null };
+  | { type: "flow"; flow: Flow | null }
+  | { type: "workspace"; workspaceId: string };
 
 interface ReportOption {
   id: string;
   label: string;
-  source: "session" | "flow-run";
-  path: string;
-  runId?: string;
+  pathId: number;
+  relPath: string;
 }
 
 interface AnalysisModelOption {
@@ -74,10 +74,10 @@ function flattenFiles(node: FlowTreeNode | null): FlowTreeNode[] {
   return out;
 }
 
-function isReportFile(node: FlowTreeNode): boolean {
-  return /\.(md|markdown|txt)$/i.test(node.name)
-    && (/report|summary|result|insight|分析|报告|结论|洞察|建议/i.test(node.name)
-      || /\.(md|markdown)$/i.test(node.name));
+function isReportFile(name: string): boolean {
+  return /\.(md|markdown|txt)$/i.test(name)
+    && (/report|summary|result|insight|分析|报告|结论|洞察|建议/i.test(name)
+      || /\.(md|markdown)$/i.test(name));
 }
 
 interface ModelRecommendation {
@@ -236,14 +236,15 @@ export function GoldenStrategyPane({
   const scopeType = scope.type;
   const scopeSessionId = scope.type === "session" ? scope.sessionId : null;
   const scopeFlowId = scope.type === "flow" ? scope.flow?.id ?? null : null;
+  const scopeWorkspaceId = scope.type === "workspace" ? scope.workspaceId : null;
 
   const selectedReport = reports.find((report) => report.id === selectedReportId) ?? null;
   const taskKey = useMemo(
     () =>
       selectedReport
-        ? "golden:" + (scopeSessionId ?? scopeFlowId ?? "") + ":" + (selectedReport.runId ?? "") + ":" + selectedReport.path
+        ? "golden:" + (scopeSessionId ?? scopeFlowId ?? scopeWorkspaceId ?? "") + ":" + selectedReport.pathId + ":" + selectedReport.relPath
         : "golden:__inactive__",
-    [scopeSessionId, scopeFlowId, selectedReport],
+    [scopeSessionId, scopeFlowId, scopeWorkspaceId, selectedReport],
   );
   const task = useResumableTask<GoldenStrategyBatchResult>(taskKey);
   const generating = task.status === "running";
@@ -261,14 +262,15 @@ export function GoldenStrategyPane({
 
   const primarySelectedAnalysis = ANALYSIS_MODELS.find((item) => item.id === selectedAnalysisModels[0]) ?? DEFAULT_ANALYSIS_MODEL;
   const recommendations = useMemo(
-    () => selectedReport && content.trim() ? recommendAnalysisModels(basenamePath(selectedReport.path), content) : [],
+    () => selectedReport && content.trim() ? recommendAnalysisModels(basenamePath(selectedReport.label), content) : [],
     [content, selectedReport],
   );
   const activeResult = results.find((item) => item.analysisModel === activeResultModel) ?? results[0] ?? null;
   const businessRequirementScope = useMemo<BusinessRequirementContextScope | null>(() => {
     if (scopeType === "session") return scopeSessionId ? { type: "session", sessionId: scopeSessionId } : null;
+    if (scopeType === "workspace") return scopeWorkspaceId ? { type: "workspace", workspaceId: scopeWorkspaceId } : null;
     return scopeFlowId ? { type: "flow", flowId: scopeFlowId } : null;
-  }, [scopeFlowId, scopeSessionId, scopeType]);
+  }, [scopeFlowId, scopeSessionId, scopeType, scopeWorkspaceId]);
   const {
     contexts: businessRequirementContexts,
     selectedId: selectedBusinessRequirementId,
@@ -291,37 +293,28 @@ export function GoldenStrategyPane({
     setContent("");
     setActiveResultModel(null);
     try {
-      if (sc.type === "session") {
-        if (!sc.sessionId) return;
-        const artifacts = await api.sessionArtifactTree(sc.sessionId);
-        const next = flattenFiles(artifacts.tree)
-          .filter(isReportFile)
+      // 统一数据源：扫「报告输出」登记路径（与汇报版本/报告审核一致），不再扫 session/flow 原生 artifact tree。
+      const paths = sc.type === "session"
+        ? sc.sessionId ? await api.listSessionPaths(sc.sessionId, "report") : []
+        : sc.type === "workspace"
+          ? sc.workspaceId ? await api.listWorkspacePaths(sc.workspaceId, "report") : []
+          : sc.flow ? await api.listFlowPaths(sc.flow.id, "report") : [];
+      const found = await Promise.all(paths.map(async (path) => {
+        if (path.kind === "file") {
+          return isReportFile(basenamePath(path.path))
+            ? [{ id: `${path.id}:`, label: basenamePath(path.path), pathId: path.id, relPath: "" }]
+            : [];
+        }
+        const tree = await api.workspacePathTree(path.id);
+        return flattenFiles(tree)
+          .filter((file) => isReportFile(file.name))
           .map((file) => ({
-            id: `session:${file.path}`,
+            id: `${path.id}:${file.path}`,
             label: file.path,
-            source: "session" as const,
-            path: file.path,
+            pathId: path.id,
+            relPath: file.path,
           }));
-        setReports(next);
-        setSelectedReportId(next[0]?.id ?? "");
-        return;
-      }
-      if (!sc.flow) return;
-      const runs = await api.listFlowRuns(sc.flow.id);
-      const found = await Promise.all(
-        runs.map(async (run) => {
-          const runTree = await api.flowRunTree(sc.flow!.id, run.id);
-          return flattenFiles(runTree)
-            .filter(isReportFile)
-            .map((file) => ({
-              id: `flow:${run.id}:${file.path}`,
-              label: `${basenamePath(run.outputDir)} / ${file.path}`,
-              source: "flow-run" as const,
-              path: file.path,
-              runId: run.id,
-            }));
-        }),
-      );
+      }));
       const next = found.flat();
       setReports(next);
       setSelectedReportId(next[0]?.id ?? "");
@@ -331,7 +324,7 @@ export function GoldenStrategyPane({
       setLoadingReports(false);
     }
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [scopeType, scopeSessionId, scopeFlowId]);
+  }, [scopeType, scopeSessionId, scopeFlowId, scopeWorkspaceId]);
 
   useEffect(() => {
     void loadReports();
@@ -341,24 +334,18 @@ export function GoldenStrategyPane({
     setContent("");
     setActiveResultModel(null);
     if (!selectedReport) return;
-    const sc = scopeRef.current;
     setLoadingContent(true);
     setError("");
-    const req =
-      selectedReport.source === "session"
-        ? sc.type === "session" && sc.sessionId
-          ? api.sessionArtifactFileGet(sc.sessionId, selectedReport.path).then((result) => result.content ?? "")
-          : Promise.resolve("")
-        : sc.type === "flow" && sc.flow && selectedReport.runId
-          ? api.flowRunFileGet(sc.flow.id, selectedReport.runId, selectedReport.path).then((result) => result.content)
-          : Promise.resolve("");
-    req.then(setContent).catch((err) => setError(String(err))).finally(() => setLoadingContent(false));
+    api.workspacePathFileGet(selectedReport.pathId, selectedReport.relPath)
+      .then((result) => setContent(result.content ?? ""))
+      .catch((err) => setError(String(err)))
+      .finally(() => setLoadingContent(false));
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [selectedReport?.id]);
 
   useEffect(() => {
     if (!selectedReport || !content.trim()) return;
-    const next = recommendAnalysisModels(basenamePath(selectedReport.path), content).map((item) => item.model.id);
+    const next = recommendAnalysisModels(basenamePath(selectedReport.label), content).map((item) => item.model.id);
     if (next.length > 0) setSelectedAnalysisModels(next);
   }, [content, selectedReport]);
 
@@ -372,17 +359,13 @@ export function GoldenStrategyPane({
   }, []);
 
   const generate = useCallback(async () => {
-    const sc = scopeRef.current;
     if (!selectedReport || !content.trim() || generating || selectedAnalysisModels.length === 0) return;
     setError("");
     setActiveResultModel(null);
     await task.start(async () => {
       const result = await api.generateGoldenStrategyBatch({
-        source: selectedReport.source,
-        sessionId: sc.type === "session" ? sc.sessionId ?? undefined : undefined,
-        flowId: sc.type === "flow" ? sc.flow?.id : undefined,
-        runId: selectedReport.runId,
-        path: selectedReport.path,
+        pathId: selectedReport.pathId,
+        relPath: selectedReport.relPath,
         analysisModels: selectedAnalysisModels,
         prompt,
         model: model || DEFAULT_MODEL,
@@ -400,10 +383,7 @@ export function GoldenStrategyPane({
     });
   }, [content, generating, model, onGenerated, prompt, selectedAnalysisModels, selectedBusinessRequirement, selectedReport, task]);
 
-  const emptyHint =
-    scope.type === "session"
-      ? "当前探索任务尚未发现报告文件"
-      : "当前工作流尚未发现 run 报告文件";
+  const emptyHint = "请先在「报告输出」tab 添加报告输出文件夹或文件";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">

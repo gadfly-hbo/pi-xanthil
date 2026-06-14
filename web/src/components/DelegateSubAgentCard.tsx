@@ -41,9 +41,10 @@ interface Props {
   model: string;
   models: PiModel[];
   onBackflow: (text: string) => void;
+  embedded?: boolean;
 }
 
-export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, onBackflow }: Props) {
+export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, onBackflow, embedded = false }: Props) {
   const [brief, setBrief] = useState("");
   const [selectedModel, setSelectedModel] = useState(model);
   const [cleanFiles, setCleanFiles] = useState<WorkspacePath[]>([]);
@@ -176,10 +177,10 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   }
 
   return (
-    <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950">
-      <div className="flex items-center gap-2">
-        <Bot className="h-4 w-4 text-neutral-500" strokeWidth={1.75} />
-        <div className="min-w-0 flex-1 text-[13px] font-medium text-neutral-800 dark:text-neutral-100">委派子 agent</div>
+    <div className={cn(
+      embedded ? "h-full" : "rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950",
+    )}>
+      <div className="flex items-center justify-end gap-2">
         <button
           onClick={() => void refreshTasks()}
           title="刷新任务"

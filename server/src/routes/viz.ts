@@ -1,5 +1,6 @@
 import { Router } from "express";
 import { readFileSync } from "node:fs";
+import { resolve, dirname, basename } from "node:path";
 import {
   listDashboards,
   createDashboard,
@@ -52,13 +53,11 @@ import {
   getExtractJob,
   updateExtractJob,
 } from "../db/viz.ts";
-import { getWorkspacePath, getSession, getWorkspace, getFlow, getFlowRun } from "../db.ts";
+import { getWorkspacePath, getWorkspace } from "../db.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { extractOntologyFromText, runChunkedExtraction } from "../onto-extract.ts";
 import { exportOntology, type ExportFormat } from "../onto-export.ts";
 import { readFlowFile } from "../flow-fs.ts";
-import { resolveOutputTarget } from "../output-paths.ts";
-import { standardDirIn, sessionDir } from "../workspace-dirs.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind } from "../types.ts";
 
@@ -544,38 +543,27 @@ vizRouter.delete("/api/actions/:actionId", (req, res) => {
 // ============================================================================
 
 vizRouter.post("/api/actions/extract", async (req, res) => {
-  const { source, sessionId, flowId, runId, path, prompt, model } = req.body ?? {};
-  if (!path) { res.status(400).json({ error: "path required" }); return; }
-  
+  const { prompt, model } = req.body ?? {};
+  const pathId = Number(req.body?.pathId);
+  const relPath = String(req.body?.relPath ?? "");
+  if (!Number.isFinite(pathId)) { res.status(400).json({ error: "pathId required" }); return; }
+
+  // Unified data source: read from the registered「报告输出」path (same as 黄金策/汇报版本/报告审核).
   let reportContent = "";
   let workspaceRoot = "";
   try {
-    if (source === "session") {
-      const session = getSession(String(sessionId ?? ""));
-      if (!session) { res.status(404).json({ error: "session not found" }); return; }
-      const workspace = getWorkspace(session.workspaceId);
-      if (!workspace) { res.status(404).json({ error: "workspace not found" }); return; }
-      workspaceRoot = workspace.rootPath;
-      const target = resolveOutputTarget([], {
-        workspaceId: session.workspaceId,
-        sessionId: session.id,
-        fallbackOutputDir: standardDirIn(sessionDir(workspace.rootPath, session.id), "report"),
-      });
-      validateArtifactPath(path, target.source);
-      reportContent = readFlowFile(target.outputDir, path).content;
-    } else if (source === "flow-run") {
-      const flow = getFlow(String(flowId ?? ""));
-      if (!flow) { res.status(404).json({ error: "flow not found" }); return; }
-      const workspace = getWorkspace(flow.workspaceId);
-      if (workspace) workspaceRoot = workspace.rootPath;
-      const run = getFlowRun(String(runId ?? ""));
-      if (!run || run.flowId !== flow.id) { res.status(404).json({ error: "run not found" }); return; }
-      validateArtifactPath(path, "工作流 run 输出目录");
-      reportContent = readFlowFile(run.outputDir, path).content;
-    } else {
-      res.status(400).json({ error: "source must be session or flow-run" });
-      return;
-    }
+    const entry = getWorkspacePath(pathId);
+    if (!entry) { res.status(404).json({ error: "path not found" }); return; }
+    if (entry.folder !== "report") { res.status(400).json({ error: "only report output paths supported" }); return; }
+    const workspace = getWorkspace(entry.workspaceId);
+    if (!workspace) { res.status(404).json({ error: "workspace not found" }); return; }
+    workspaceRoot = workspace.rootPath;
+    const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+    const sourceRelPath = entry.kind === "dir" ? relPath : basename(entry.path);
+    if (entry.kind === "dir" && !sourceRelPath) { res.status(400).json({ error: "relPath required for directory report paths" }); return; }
+    if (entry.kind === "file" && relPath) { res.status(400).json({ error: "file report paths do not accept relPath" }); return; }
+    validateArtifactPath(sourceRelPath, "报告 tab 登记路径");
+    reportContent = readFlowFile(outputDir, sourceRelPath).content;
   } catch (err) {
     res.status(500).json({ error: `failed to read report: ${String(err)}` });
     return;

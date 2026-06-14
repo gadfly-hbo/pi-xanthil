@@ -710,66 +710,39 @@ async function generateGoldenStrategyWithLlm(
 }
 
 async function generateGoldenStrategyArtifact(params: {
-  source: string;
-  path: string;
-  sessionId?: string;
-  flowId?: string;
-  runId?: string;
+  pathId: number;
+  relPath: string;
   definition: GoldenStrategyModelDefinition;
   model: string;
   prompt: string;
   businessRequirementContext: string;
 }): Promise<{ analysisModel: GoldenStrategyModelId; nodes: GoldenStrategyNode[]; model: string; path: string; html: string }> {
-  const { source, path, sessionId, flowId, runId, definition, model, prompt, businessRequirementContext } = params;
-
-  if (source === "session") {
-    const session = getSession(String(sessionId ?? ""));
-    if (!session) throw new Error("session not found");
-    const workspace = getWorkspace(session.workspaceId);
-    if (!workspace) throw new Error("workspace not found");
-    const target = resolveOutputTarget(listWorkspacePaths(session.workspaceId), {
-      workspaceId: session.workspaceId,
-      sessionId: session.id,
-      fallbackOutputDir: standardDirIn(sessionDir(workspace.rootPath, session.id), "report"),
-    });
-    validateArtifactPath(path, target.source);
-    const report = readFlowFile(target.outputDir, path).content;
-    const reportName = basename(path);
-    const nodes = await generateGoldenStrategyWithLlm(definition, reportName, report, prompt, businessRequirementContext, workspace.rootPath, model, {
-      workspaceId: workspace.id,
-      targetKind: "golden_strategy",
-      targetId: `${session.id}:${definition.id}:${path}`,
-      title: `黄金策：${definition.label}：${reportName}`,
-    });
-    const title = `黄金策 - ${definition.label} - ${reportName}`;
-    const html = generateGoldenStrategyHtml(title, nodes);
-    const outputRelPath = `golden_strategy/${sanitizeFilenamePart(reportName)}-${definition.id}-${timestampForFilename()}.html`;
-    writeFlowFile(target.outputDir, outputRelPath, html.endsWith("\n") ? html : `${html}\n`);
-    return { analysisModel: definition.id, nodes, model, path: outputRelPath, html };
-  }
-
-  if (source === "flow-run") {
-    const flow = getFlow(String(flowId ?? ""));
-    if (!flow) throw new Error("flow not found");
-    const run = getFlowRun(String(runId ?? ""));
-    if (!run || run.flowId !== flow.id) throw new Error("run not found");
-    validateArtifactPath(path, "工作流 run 输出目录");
-    const report = readFlowFile(run.outputDir, path).content;
-    const reportName = basename(path);
-    const nodes = await generateGoldenStrategyWithLlm(definition, reportName, report, prompt, businessRequirementContext, flow.folderPath, model, {
-      workspaceId: flow.workspaceId,
-      targetKind: "golden_strategy",
-      targetId: `${run.id}:${definition.id}:${path}`,
-      title: `黄金策：${definition.label}：${reportName}`,
-    });
-    const title = `黄金策 - ${definition.label} - ${reportName}`;
-    const html = generateGoldenStrategyHtml(title, nodes);
-    const outputRelPath = `golden_strategy/${sanitizeFilenamePart(reportName)}-${definition.id}-${timestampForFilename()}.html`;
-    writeFlowFile(run.outputDir, outputRelPath, html.endsWith("\n") ? html : `${html}\n`);
-    return { analysisModel: definition.id, nodes, model, path: outputRelPath, html };
-  }
-
-  throw new Error("source must be session or flow-run");
+  const { pathId, relPath, definition, model, prompt, businessRequirementContext } = params;
+  // Unified data source: read from the registered「报告输出」path (same as 汇报版本/报告审核),
+  // so reports登记在标准目录外的位置也能消费。产物落该登记路径下的 golden_strategy 子目录。
+  const entry = getWorkspacePath(pathId);
+  if (!entry) throw new Error("path not found");
+  if (entry.folder !== "report") throw new Error("only report output paths can generate golden strategy");
+  const workspace = getWorkspace(entry.workspaceId);
+  if (!workspace) throw new Error("workspace not found");
+  const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+  const sourceRelPath = entry.kind === "dir" ? relPath : basename(entry.path);
+  if (entry.kind === "dir" && !sourceRelPath) throw new Error("relPath required for directory report paths");
+  if (entry.kind === "file" && relPath) throw new Error("file report paths do not accept relPath");
+  validateArtifactPath(sourceRelPath, "报告 tab 登记路径");
+  const report = readFlowFile(outputDir, sourceRelPath).content;
+  const reportName = basename(sourceRelPath);
+  const nodes = await generateGoldenStrategyWithLlm(definition, reportName, report, prompt, businessRequirementContext, workspace.rootPath, model, {
+    workspaceId: workspace.id,
+    targetKind: "golden_strategy",
+    targetId: `${pathId}:${sourceRelPath}:${definition.id}`,
+    title: `黄金策：${definition.label}：${reportName}`,
+  });
+  const title = `黄金策 - ${definition.label} - ${reportName}`;
+  const html = generateGoldenStrategyHtml(title, nodes);
+  const outputRelPath = `golden_strategy/${sanitizeFilenamePart(reportName)}-${definition.id}-${timestampForFilename()}.html`;
+  writeFlowFile(outputDir, outputRelPath, html.endsWith("\n") ? html : `${html}\n`);
+  return { analysisModel: definition.id, nodes, model, path: outputRelPath, html };
 }
 
 function buildPromoteTranscript(sessionId: string, scope: PromoteScope): string {
@@ -3173,66 +3146,50 @@ ${sanitizeReportForLlm(reportContent).slice(0, 40_000)}`;
 }
 
 app.post("/api/decision-tree/generate", async (req, res) => {
-  const source = String(req.body?.source ?? "");
-  const path = String(req.body?.path ?? "");
-  if (!path) return res.status(400).json({ error: "path required" });
+  const pathId = Number(req.body?.pathId);
+  const relPath = String(req.body?.relPath ?? "");
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
   try {
     const model = resolveRequestedModel(req.body?.model, DEFAULT_DECISION_TREE_MODEL);
-    if (source === "session") {
-      const session = getSession(String(req.body?.sessionId ?? ""));
-      if (!session) return res.status(404).json({ error: "session not found" });
-      const workspace = getWorkspace(session.workspaceId);
-      if (!workspace) return res.status(404).json({ error: "workspace not found" });
-      const target = resolveOutputTarget(listWorkspacePaths(session.workspaceId), {
-        workspaceId: session.workspaceId,
-        sessionId: session.id,
-        fallbackOutputDir: standardDirIn(sessionDir(workspace.rootPath, session.id), "report"),
-      });
-      validateArtifactPath(path, target.source);
-      const report = readFlowFile(target.outputDir, path).content;
-      const nodes = await generateDecisionTreeWithLlm(basename(path), report, workspace.rootPath, model, {
-        workspaceId: workspace.id,
-        targetKind: "decision_tree",
-        targetId: session.id,
-        title: `决策树：${basename(path)}`,
-      });
-      return res.json({ nodes, model });
-    }
-    if (source === "flow-run") {
-      const flow = getFlow(String(req.body?.flowId ?? ""));
-      if (!flow) return res.status(404).json({ error: "flow not found" });
-      const run = getFlowRun(String(req.body?.runId ?? ""));
-      if (!run || run.flowId !== flow.id) return res.status(404).json({ error: "run not found" });
-      const report = readFlowFile(run.outputDir, path).content;
-      const nodes = await generateDecisionTreeWithLlm(basename(path), report, flow.folderPath, model, {
-        workspaceId: flow.workspaceId,
-        targetKind: "decision_tree",
-        targetId: run.id,
-        title: `决策树：${basename(path)}`,
-      });
-      return res.json({ nodes, model });
-    }
-    return res.status(400).json({ error: "source must be session or flow-run" });
+    const entry = getWorkspacePath(pathId);
+    if (!entry) return res.status(404).json({ error: "path not found" });
+    if (entry.folder !== "report") return res.status(400).json({ error: "only report output paths can generate decision tree" });
+    const workspace = getWorkspace(entry.workspaceId);
+    if (!workspace) return res.status(404).json({ error: "workspace not found" });
+    
+    const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+    const sourceRelPath = entry.kind === "dir" ? relPath : basename(entry.path);
+    if (entry.kind === "dir" && !sourceRelPath) return res.status(400).json({ error: "relPath required for directory report paths" });
+    if (entry.kind === "file" && relPath) return res.status(400).json({ error: "file report paths do not accept relPath" });
+    
+    validateArtifactPath(sourceRelPath, "报告 tab 登记路径");
+    const report = readFlowFile(outputDir, sourceRelPath).content;
+    const reportName = basename(sourceRelPath);
+    
+    const nodes = await generateDecisionTreeWithLlm(reportName, report, workspace.rootPath, model, {
+      workspaceId: workspace.id,
+      targetKind: "decision_tree",
+      targetId: `${pathId}:${sourceRelPath}`,
+      title: `决策树：${reportName}`,
+    });
+    return res.json({ nodes, model });
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
 });
 
 app.post("/api/golden-strategy/generate", async (req, res) => {
-  const source = String(req.body?.source ?? "");
-  const path = String(req.body?.path ?? "");
-  if (!path) return res.status(400).json({ error: "path required" });
+  const pathId = Number(req.body?.pathId);
+  const relPath = String(req.body?.relPath ?? "");
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
   try {
     const definition = resolveGoldenStrategyModel(req.body?.analysisModel);
     const model = resolveRequestedModel(req.body?.model, DEFAULT_GOLDEN_STRATEGY_MODEL);
     const prompt = String(req.body?.prompt ?? "").trim();
     const businessRequirementContext = loadBusinessRequirementContextForChat(req.body?.businessRequirementContext);
     const result = await generateGoldenStrategyArtifact({
-      source,
-      path,
-      sessionId: String(req.body?.sessionId ?? ""),
-      flowId: String(req.body?.flowId ?? ""),
-      runId: String(req.body?.runId ?? ""),
+      pathId,
+      relPath,
       definition,
       model,
       prompt,
@@ -3245,9 +3202,9 @@ app.post("/api/golden-strategy/generate", async (req, res) => {
 });
 
 app.post("/api/golden-strategy/generate-batch", async (req, res) => {
-  const source = String(req.body?.source ?? "");
-  const path = String(req.body?.path ?? "");
-  if (!path) return res.status(400).json({ error: "path required" });
+  const pathId = Number(req.body?.pathId);
+  const relPath = String(req.body?.relPath ?? "");
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
   try {
     const uniqueIds = parseGoldenStrategyModelIds(req.body?.analysisModels);
     if (uniqueIds.length === 0) return res.status(400).json({ error: "analysisModels required" });
@@ -3260,11 +3217,8 @@ app.post("/api/golden-strategy/generate-batch", async (req, res) => {
     const settled = await Promise.allSettled(uniqueIds.map((id) => {
       const definition = GOLDEN_STRATEGY_MODELS[id];
       return generateGoldenStrategyArtifact({
-        source,
-        path,
-        sessionId: String(req.body?.sessionId ?? ""),
-        flowId: String(req.body?.flowId ?? ""),
-        runId: String(req.body?.runId ?? ""),
+        pathId,
+        relPath,
         definition,
         model,
         prompt,
@@ -4925,13 +4879,17 @@ async function handleSend(
   send(ws, { type: "run_start", sessionId: session.id });
 
   const sessionPaths = listWorkspacePaths(session.workspaceId);
+  // Fork 分支是独立 session，名下无注册路径。输出/数据路径作用域回退到父任务 session，
+  // 否则 selectOutputPath 会逐级回退、坍缩到 workspace 级最近 clean_data 源目录（见 output-paths.ts）。
+  const forkBranch = getForkBranchByBranchSession(session.id);
+  const pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id;
   const sessionAnalyses = getFileAnalysesByPathIds(
     sessionPaths.filter((p) => p.folder === "clean_data" && p.kind === "file").map((p) => p.id),
   );
   const contextPrefix = buildRegisteredPathContext(sessionPaths, {
     workspaceId: session.workspaceId,
-    sessionId: session.id,
-    fallbackOutputDir: standardDirIn(sessionDir(ws_.rootPath, session.id), "report"),
+    sessionId: pathScopeSessionId,
+    fallbackOutputDir: standardDirIn(sessionDir(ws_.rootPath, pathScopeSessionId), "report"),
   }, sessionAnalyses);
   let businessRequirementContext = "";
   try {
@@ -4946,7 +4904,6 @@ async function handleSend(
     : session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined;
 
   // Fork 分支：若本 session 是未播种的分支，首轮用 --fork 从父 session 播种历史。
-  const forkBranch = getForkBranchByBranchSession(session.id);
   const forkFrom = forkBranch && !forkBranch.seeded ? forkBranch.parentSessionId : undefined;
   if (forkBranch) setForkBranchStatus(session.id, "running");
 

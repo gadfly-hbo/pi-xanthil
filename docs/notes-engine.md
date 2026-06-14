@@ -7,31 +7,26 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-14 · skill 管理 P1 A/B/C 合流收尾 + 业务需求版本恢复归属核实。
+- 最近更新：2026-06-15 · ChatPane 三助手抽屉化收尾 polish（窄屏 clamp + 去双标题 + 去双层边框）。
 - 进度：
-  - **P1 A 后端已落地**：skill registry 评测回写时 `candidate + score >= 0.6` 自动转 `draft`（达标待人审采纳）；`distilled/curated` 置 `active` 必须 PATCH 带 `confirmed=true`；新增 `/api/workspaces/:id/skill-registry/conflicts?slug=&content=`，复用 BM25 返回疑似重复/建议归档结果，不自动归档。
-  - **P1 B 前端已落地（D slot 跨域调 E）**：skill 管理页采纳/弃用按钮覆盖 candidate + draft；`AdoptConfirmModal` 信任门与 A 域 `confirmed=true` 契约对齐；同 slug 新建/版本更新有二次确认；冲突展示接入采纳前预查与 modal 手动检测；code-review 的 Critical/Important 已修。
-  - **P1 C workflow skill 子集已打通**：`GET/PUT /api/flows/:id/workflow` 对 `defaultSkillPaths/node.skillPaths` 做 `normalizeWorkflowSkills()`；`MultiAgentExecutionPane` 表单视图支持 workflow 默认 skill 与节点三态配置（继承 / 禁用 / 指定子集）；runner 继续使用既有 `node.skillPaths ?? workflow.defaultSkillPaths` 注入逻辑。
-  - **业务需求版本恢复已认领**：`BusinessRequirementPane` 左侧 draft 业务背景持久化恢复属 E 域有效改动，不回滚。完整性已核实：后端生成版本写 `structured.version.requirementInput = requirement`；手动编辑 markdown 后保留已有 `requirementInput`，缺失时补 fallback；前端 `openVersion()` 与一次性 auto-restore 读取字段不是 no-op。
-  - **focused 测试覆盖**：`server/src/skill-registry.test.ts` 覆盖 registry CRUD/归档、metrics/usage、candidate→draft、confirmed 信任门、conflicts API、workflow skillPaths 规范化。
+  - **抽屉实现已补齐并收尾**：当前 `ChatPane.tsx` 已是左主列 + 右侧 `<aside>` 可调宽抽屉形态；三助手入口仍在 composer 工具栏，点击后在右抽屉切换 Fork / @工具 / 委派内容，关闭后主对话恢复全宽。
+  - **窄屏 clamp 已补**：`drawerWidth` 持久化到 `localStorage` key `chatpane.assistDrawerWidth`，拖拽与 mount/window resize 共用 `clampDrawerWidth([360, containerWidth*0.6])`；已存大宽度后缩窄窗口会自动回收，避免抽屉把主列压到极窄。
+  - **重复标题已去**：抽屉头统一显示 `drawerTitle`；`ForkBranchPanel` / `ManualAnalysisToolCard` / `DelegateSubAgentCard` 内层标题文字已移除，刷新/新分支/开始委派等动作保留在各组件内部。
+  - **双层边框已去**：`ManualAnalysisToolCard` 与 `DelegateSubAgentCard` 增加可选 `embedded` prop；抽屉内传 `embedded` 去掉组件自身外层 border/rounded/bg/padding，默认非嵌入用法保持原 card 样式。
+  - **Fork 满高链路保持**：`ForkBranchPanel` 根为 `flex h-full min-h-0 flex-col`，活跃分支卡片 `flex-1`，消息区 `min-h-0 flex-1 overflow-y-auto`；抽屉内容区对 Fork 使用 flex 容器，对 tool/delegate 使用外层 overflow。
 - 校验：
-  - `node --experimental-strip-types --test server/src/skill-registry.test.ts` ✅（本 session focused）
-  - `npm run typecheck` ✅（server + web）
+  - `npm run typecheck` ✅
   - `npm run build` ✅（仅既有 Vite chunk size / dynamic import warning）
-  - 本次目标域为 engine，未触发 data 探索子树 LLM 隔离 grep。
-- 下一步（非阻塞，建议优先级）：
-  - ① **运行态 UI 验证**（需浏览器人工跑）：skill 管理页采纳信任门、同 slug confirm、冲突展示、draft 采纳/弃用、连续切换 entry 的 race 防护；workflow 表单中 workflow/default 与 node skill 子集保存后执行注入。
-  - ② **冲突 API 建议升级 POST**：当前 `/skill-registry/conflicts?content=` 为 GET，前端已截断 4KB 防 URL 414；POST body 可保留完整 content，提高 BM25 准确度。
-  - ③ **业务需求版本恢复 smoke**：生成业务需求版本 → 刷新/重启 → 重新进入同 report path，确认左侧 draft 与框架预览自动恢复；当前已做代码链路核实与全量门禁。
-  - ④ **生产真实激活埋点**：usageCount 仍是“注入次数”，不含 retrievalMode 动态检索和真实激活；如需治理报表，需要在 retrieval/runner 回调追加区分字段。
-  - ⑤ **DAG 内 skill 编辑**：当前 node skillPaths 只在 `MultiAgentExecutionPane` 表单视图编辑；若用户强依赖 DAG overlay，可再抽同一 selector 给 `WorkflowDagEditor`。
+  - 数据探索隔离 grep：本次收尾目标域为 engine，SOP 未要求；本任务开发阶段已跑过且无匹配。
+  - 未改 App/types/api/constants/后端；零新依赖；未执行 git。
+- 下一步：
+  - **浏览器实跑终审**：开 Fork/@工具/委派 任一，确认右抽屉不下顶主对话；拖宽后缩窄浏览器窗口，drawer 自动收到不超过容器 60%；抽屉头无重复标题；tool/delegate 无双层外框。
+  - **状态台账同步**：总控如继续维护 `docs/wiki.html` HOTFIX 队列，需要把本 polish 卡从 todo 改 done；本次按用户边界未改 `docs/wiki.html`。
+  - **可选性能小修**：拖拽 mousemove 仍每帧写 localStorage，当前量级可接受；若后续要复用到更多 drawer，可抽 `useResizableDrawer` 并加 `requestAnimationFrame` 节流。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/用户拍板）：
-  - **冲突 API 是否升级为 POST**：影响 A/E 端点契约，前端已有截断兜底，是否值得下个迭代修。
-  - **信任门范围是否扩展到 manual/imported**：当前仅 distilled/curated 强制 `confirmed=true`；若扩展，后端与前端需同步。
-  - **archived 同 slug 是否允许覆盖 SKILL.md**：当前明确 confirm 后允许；产品是否改为禁止或强制走 rollback 链路，待定。
-  - **workflow skillPaths 保存无效路径的策略**：当前 lenient 过滤并静默剔除；是否改为 strict 400，需产品体验取舍。
-  - **业务需求历史版本 backfill**：旧 JSON 若没有 `version.requirementInput`，只能恢复框架预览，无法恢复左侧 draft。是否需要离线 backfill 历史版本，由总控/用户决定。
+  - **前置卡代码缺失与 notes 不一致**：接任务时本地 `ChatPane.tsx` 没有 `drawerTitle/rootRef/DRAWER_MIN/drawerWidth`，但 `notes-engine`/`docs/wiki.html` 记录前置卡已 done；本次已在当前工作区补齐抽屉实现并完成 polish，需总控确认是否存在漏同步分支或台账状态漂移。
+  - **浏览器实跑仍需人工确认**：命令校验已绿，但未在真实浏览器手动拖拽/缩窗验证交互体感。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -68,7 +63,9 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **skill registry 启用与 usage 口径**：创建 registry entry 后调用 `enableForOrigin(workspaceId, "skill", id)`，归档调用 `setMemoryEnablement(... false)`。`usageCount` 当前表示“被注入路径使用过”，不是模型真实激活；flow chat 显式 `skillPaths` 与 workflow `defaultSkillPaths/node.skillPaths` 会按 registry path 匹配后累加。
 - **skill registry 去重/冲突边界（2026-06-14 P1 A）**：`/api/workspaces/:id/skill-registry/conflicts` 只做即时 BM25 相似度计算，过滤 archived，不自动归档、不落冲突表。返回结构按 RuleConflict 风格给 B/D 展示“疑似重复/建议归档”，最终处理仍走人审。
 - **workflow skill 子集配置（2026-06-14 P1 C）**：`WorkflowDef.defaultSkillPaths` 是 workflow 级 fallback；`node.skillPaths === undefined` 继承 workflow 默认，`node.skillPaths = []` 明确禁用默认 skill，非空数组则只注入该节点专属子集。runner 的权威逻辑是 `node.skillPaths ?? workflow.defaultSkillPaths`。
+- **ChatPane 抽屉化布局契约（2026-06-14，2026-06-15 polish）**：三个助手面板（Fork/@工具/委派）不再内联在 composer 列，改为 ChatPane 内部右侧可调宽抽屉。ChatPane 根容器横向 flex（左主列 flex-1 + 右抽屉 shrink-0），不动 App 布局、不动成果面板、不动后端。抽屉宽度 clamp [360px, 容器 60%]，localStorage 持久化（key `chatpane.assistDrawerWidth`），零新依赖；拖拽和 mount/window resize 必须共用同一 clamp 逻辑，避免已存大宽度在窄屏把主列压没。ForkBranchPanel 满高 flex 列（去 max-h-[360px]），分支 tabs/输入 shrink-0，会话区 flex-1 overflow-y-auto。抽屉头是三助手标题唯一显示位置，子组件内不再重复标题；ManualAnalysisToolCard / DelegateSubAgentCard 在抽屉内通过 `embedded` 态去自身外层 border/rounded/bg/padding，避免边框套边框，默认非嵌入 card 样式保持不变。
 - **ChatPane fork/delegate 前端边界**：ChatPane 不能为此改 `App.tsx` 接线；从 `folderScope.type === "session"` 取活跃 session。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
+- **Fork 分支路径作用域回退父 session（2026-06-14 快修2.3）**：fork 分支是独立 session、名下无注册路径。`handleSend` 解析输出/数据路径时必须把作用域回退到父任务 session：`pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id`，用于 `buildRegisteredPathContext` 的 `sessionId` 与 `fallbackOutputDir`。否则 `output-paths.selectOutputPath` 逐级回退（scoped report→scoped clean_data→workspace report→workspace clean_data）会坍缩到 workspace 级最近 clean_data 源目录，导致分支产物写到数据源目录而非任务 `060_reports`。数据安全不受影响：fork 继承的是父 clean_data，`draw_data` 仍被 `buildRegisteredPathContext` 排除且永不作为输出目标。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
 - **ChatPane ExtractionTool 展示边界**：前端只展示 X 透传的 tool event / pi content block，不直接触发工具执行；`tool_call` 映射为 running `tool_use`，`tool_result` 回填同 id 卡片，最终 `message_end` 再带同一 tool block 时按 `id/tool_use_id` 去重。真实红线仍在后端 `source=ai` 守卫，前端不得把 `draw_data` 内容或样本送入 LLM。
 - **ExtractionTool skill 桥落盘策略**：生成到 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md`，带 `xanthil-generated-extraction-tool-skill` 标记；只更新带生成标记的文件，遇到用户手写同路径 skill 不覆盖。skill 只描述 MCP 工具契约与 clean_data 限制，不承担安全校验。

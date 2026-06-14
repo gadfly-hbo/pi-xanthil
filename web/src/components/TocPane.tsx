@@ -387,8 +387,8 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
 
   const emptyHint =
     scope.type === "session"
-      ? "当前探索任务尚未发现报告文件"
-      : "当前工作流尚未发现 run 报告文件";
+      ? "当前探索任务尚未发现报告文件（请先在「报告输出」tab 添加文件夹或文件）"
+      : "当前工作流尚未发现 run 报告文件（请先在「报告输出」tab 添加文件夹或文件）";
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">

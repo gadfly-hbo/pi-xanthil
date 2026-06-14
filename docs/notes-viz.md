@@ -7,25 +7,21 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-12 · onto-xanthil 大文档分批抽取 **功能已全量落地**
+- 最近更新：2026-06-15 · 报告输出下拉框收尾（黄金策、行动、决策树统一步伐）
 - 进度：
-  - **分批抽取全链路已落地**：`chunkDocument`（纯函数，CSV 重带表头 / md-txt 字符窗口 ~8000 + overlap ~400）→ `runChunkedExtraction`（异步 runner，逐批调 `extractOntologyFromText`，每批检查 abort，累加计数写 DB）→ 3 个 REST 端点（`POST extract-chunked` fire-and-forget / `GET extract-jobs/:jobId` / `POST abort`）→ 前端 `ImportSection` polling UI（进度条 i/N + 累计计数 + 中止 + sessionStorage 切 tab 不丢 + 终态自动停止轮询）。
-  - **`extract_jobs` 表 + CRUD 已落地**：`db/viz.ts:initOntoTables` 新增 `extract_jobs` 表 DDL + `createExtractJob` / `getExtractJob` / `updateExtractJob` 三个 CRUD；`ValidationIssue` 直接从 `onto-validator.ts` import（types.ts 仅 `import type` 未 export）。
-  - **前端从同步 `useResumableTask` 切换到异步 job 轮询**：`OntologyPane.tsx` 移除了 `useResumableTask` / `OntoExtractResult` 依赖，改为 jobId state + `setInterval` 2s 轮询 + sessionStorage 持久化。
-  - **保留旧同步入口**：`POST /api/ontologies/:oid/extract` 与 `extractOntologyFromText` 单批入口保留不动，向后兼容。
-  - **未碰红线**：未读取/处理 `draw_data`，未改 `types.ts`、`index.ts`、`db.ts`、`App.tsx`、`api.ts`、`constants.ts`、`pi-adapter.ts`，未执行 git 操作。
+  - **黄金策/行动补充 Workspace 维度**：`Scope` 增加 `workspace` 分支，前端基于 `api.listWorkspacePaths` / `workspacePathTree` 实现独立工作区维度的报告拉取与展平。
+  - **DecisionTreePane 范式统一**：决策树底层 API 从繁冗的五参数简化为 `pathId / relPath` 两参数；后端重构端点 `/api/decision-tree/generate` 采用 `getWorkspacePath` 进行读文件；前端改造对齐黄金策标准，完成长任务缓存键值的刷新。
+  - **前端空状态强引导**：`PresentationVersionPane`、`ReportReviewPane`、`TocPane` 等全系相关面板的 `emptyHint` 已加上后缀 `（请先在「报告输出」tab 添加文件夹或文件）`，确保引导闭环。
 - 校验：
   - `npm run typecheck`：✅ server + web 全绿。
-  - `npm run build`：✅ 全绿；仅 Vite 既有 chunk size 警告。
+  - `npm run build`：✅ 全绿；无数据探索/底层骨架篡改。
 - 下一步：
-  - ① **端到端验收**：上传 197 行 metrics.csv → 确认分批 ≥2 chunks、实体总数突破 40、跨批关系正确连边、进度条走完、切 tab 不丢进度、可中止。
-  - ② **质检 issues 汇总**：分批模式下同一 issue 可能重复累计，可考虑后端 dedup 或前端按 code+message 归并。
-  - ③ **abort 后清理**：当前 abort 保留已落库的前序 chunk 结果（不可逆），如需回滚需总控明确产品口径。
+  - ① 确认 `DecisionTreePane` 的界面入口：核心组件已改造就绪，需在 `VizTabs` 或 `EngineTabs` 中选取合适时机与入口进行挂载。
+  - ② KICKOFF P0-B 看板画布持续推进。
 - 阻塞 / 待总控：
   - 无代码阻塞。
 - 开放问题：
-  - abort job 后已落库的前序 chunk 抽取结果保留还是回滚？当前实现=保留（跨批顺序落库不可逆），需总控明确。
-  - 分批模式下质检 issues 可能跨批重复（如同名实体 warning），是否需要 dedup？
+  - `DecisionTreePane` 当前未被导入到任何 Tab (`VizTabs` / `EngineTabs`) 中进行挂载，需要总控确认它的上层展现逻辑及优先级。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -52,6 +48,8 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - 报告审核**涉及 LLM 是预期行为**（审核/修改本就需要 LLM），不受数据探索零-LLM 约束。
 - `NewMemberRetentionPane.tsx` / `OldMemberRecallPane.tsx` 是**一次性授权**改过的文件，AGENTS.md 未更新 → 仍按"他人成果"对待，改前确认。
 - **onto 大文档抽取必须异步 job 化**：单批抽取同时受 prompt 数量上限、`CONTENT_LIMIT` 截断、300s 超时三重限制；V 后续实现必须用 `ExtractJob` + `extract_jobs` 表 + REST 轮询，不要再把大文档抽取做成单次同步 API。
+- **报告消费面板统一走「报告输出」登记路径（2026-06-15）**：报告消费与推理面板（汇报版本/报告审核/黄金策/行动/决策树）一律以 `listSessionPaths/listFlowPaths/listWorkspacePaths(...,"report")` + `workspacePathTree` 为数据源，按 `pathId/relPath` 经 `workspacePathFileGet` 读取、经端点 `getWorkspacePath→outputDir(=dir? entry.path : dirname)/sourceRelPath→readFlowFile` 解析（范式见 `generatePresentationVersion`）。**禁止再扫 session/flow 原生 artifact/run tree**（那样会漏掉登记在标准目录外的报告——黄金策/行动/决策树的旧 bug 根因）。对应的后端端点（如 golden-strategy、actions/extract、decision-tree/generate）已全部从旧的 `{source,path,runId}` 强参数形态切换为 `{pathId,relPath}` 的标准规范。
+- **ActionItem.reportPath 口径（2026-06-14）**：action-items 以 `reportPath = \`${pathId}:${relPath}\`` 作为报告关联/去重 key。2026-06-14 从旧 artifact-relative path 切换为该格式，**向前生效不迁移**，旧 action items 失联但不删（与业务需求 requirementInput backfill 决策一致）。
 
 ---
 

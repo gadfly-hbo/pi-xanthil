@@ -4,21 +4,17 @@
     "type": "split",
     "children": [
       {
-        "id": "8efeb9089044ea17",
+        "id": "dd92c970af965301",
         "type": "tabs",
         "children": [
           {
-            "id": "6d6ba93273ff25fa",
+            "id": "a7c9b17065d3b10e",
             "type": "leaf",
             "state": {
-              "type": "markdown",
-              "state": {
-                "file": "Orchestration.md",
-                "mode": "source",
-                "source": false
-              },
+              "type": "empty",
+              "state": {},
               "icon": "lucide-file",
-              "title": "Orchestration"
+              "title": "新标签页"
             }
           }
         ]
@@ -183,8 +179,9 @@
       "bases:新建数据库": false
     }
   },
-  "active": "6d6ba93273ff25fa",
+  "active": "a7c9b17065d3b10e",
   "lastOpenFiles": [
+    "Orchestration.md",
     "KICKOFF-P0.md",
     "AGENTS.md",
     "docs/工作流模块改造方案.md",
