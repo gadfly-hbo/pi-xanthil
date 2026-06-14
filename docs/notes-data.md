@@ -8,42 +8,41 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-13 · **D-v3 进阶算法工具（4 工具 + code review 修复）**
+- 最近更新：2026-06-14 · **skill 管理前端卡（D slot UI + 跨域调 E，含 code review 修复）**
 - 进度：
-  - **新增 4 个 analysis 工具**（纯 numpy/scipy/pandas，未引入新依赖）：
-    - `market-basket`：Apriori 频繁项集 + 关联规则（support/confidence/lift），支持长表（order×item）与宽表（order + items 分隔符串）双格式
-    - `churn-risk`：Kaplan-Meier 群体存活估计 + 特征劣势分位综合打分 → 4 层风险分层（低/中/高/极高），含 KM 拟合 fallback
-    - `clustering`：纯 numpy K-means++ 多重启 + 肘部+轮廓综合选 k，输出各群标准化与原始空间均值画像
-    - `aarrr-flow`：阶段人数时序 → 阶段间转化率 + 整段关系加深率 + 环比变化 + 趋势探测（improving/stable/declining）
-  - 4 工具均含 `tool.json`（全字段：riskLevel/allowedUse/forbiddenUse/failureHandling/parameters/resultColumns）+ `tests/cases.json`（各 4-5 个 case：field-presence + must-fail×3-4）+ `tests/fixtures/`
-  - **code review 修复（2026-06-13）**：
-    - 删除 `clustering.py` 死代码 `ids` 变量
-    - 两处裸 `except Exception` → `except (ValueError, RuntimeError) as e` + 记录 fallback 原因（`clustering.py` / `churn_risk.py`）
-    - `clustering.py` 距离矩阵从 `(n,k,f)` 一次性分配 → 逐中心分批计算（消除大样本 OOM 风险）
-    - `market_basket.py` 修复 `find_col` 子串匹配导致 `items` 列被同时匹配为 `item` 和 `items_list` 的 bug，增加 `_is_wide_column` 自动检测分隔符判断格式
-    - 新增 2 个测试 fixture：`market-basket/wide.csv`（宽表格式）、`churn-risk/no-monetary.csv`（无 monetary 可选列）
-  - **工具总数**：13（9 analysis + 4 ingestion），全部被 registry 自动加载
+  - **skill 管理模块**（aggregate tab → `skills_mgmt` 子 tab）：
+    - **类型契约**（`types.ts`）：`SkillRegistryEntry` / `SkillRegistryInput` / `SkillStatus` / `SkillSource` / `SkillRegistryCreateBody` / `SkillRegistryEvaluateBody` / `SkillRegistryEvaluateResult`
+    - **前端 client**（`web/src/lib/api/engine.ts` D slot 跨域调 E）：`listSkillRegistry` / `createSkillRegistry` / `patchSkillRegistry` / `archiveSkillRegistry` / `evaluateSkillRegistry`（5 个方法，类型从 types.ts 导入）
+    - **主 UI**（`web/src/components/SkillManagementPane.tsx` ~430 行）：漏斗看板（候选/草稿/采纳/归档 4 列徽章 + 点击筛选）+ skill 池表格（启用勾选/名称/slug/版本/状态/来源/score/activationRate/usageCount/出处/操作）+ 低分高亮（score<0.6 或 activationRate<0.5）+ "建议归档"提示 + 列表分页（每页 20 条）
+    - **子组件**：`CreateSkillModal.tsx`（创建/版本更新，变更原因注释追加到 SKILL.md 末尾）+ `EvalSkillModal.tsx`（送评测，选 eval set + repeat + variantSummaries 对比，结果从 lastEvaluation.metrics 读取）
+    - **SkillSelector 增强**（`web/src/components/SkillSelector.tsx`）：workspace scope 下并行拉 skill_registry + memory-enablements，按"启用 → 池内 → 文件系统"分组排序，启用徽标(Sparkles) + 版本号 + 归档项灰禁
+    - **挂接**（`web/src/tabs/DataTabs.tsx`）：aggregate → skills_mgmt 替换 Placeholder
+    - **code review 修复（本轮）**：
+      - `beginUpdate` 保留 `entry.source` 而非硬编码 `"curated"`
+      - 低分提示文案「评测分/激活率偏低」→「评测分或激活率偏低」
+      - `evalSetId` useEffect 改用函数式 setState，去掉自身依赖
+      - 评测结果从 `lastEvaluation.metrics` 读取，不再读可能过时的 `entries`
+      - 拆出 `CreateSkillModal` + `EvalSkillModal` 子组件
+      - `DEFAULT_EVAL_TASK` prompt 更具体
+      - 列表分页（每页 20 条）
+  - **hooks 管理 v2**（前次 session，见下方 v2 增量）
 - 校验：
   - `npm run typecheck`：✅ server + web 全绿
   - `npm run build`：✅ 全绿
   - 数据探索 LLM 隔离 grep：✅ 空匹配
-  - 4 工具主路径全部用合成数据跑通（market-basket: beer→chips lift 5.0；churn-risk: KM 365 天降至 7%；clustering: 自动选 k=3 silhouette 0.84；aarrr-flow: 整段加深率 2.48% improving）
-  - 4 工具错误路径全部验证（缺列/数据过少/非法扩展名）
-  - 未引入 sklearn / mlxtend / lifelines 等未装依赖
 - 下一步（接续优先级）：
-  - ① **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）：aggregate → tool-use 确认 13 工具列表 / 筛选 / 详情 / cases 查看正常
-  - ② **pi-agent 经 MCP 端到端验证**（D-v2 遗留）：pi-agent 通过 MCP 调 analysis 工具，看输出能否被 LLM 正确解读
-  - ③ **cohort 数据可用性确认**（D-v2 遗留）：确认是否有事件级订单流水可用
-  - ④ **D-v3 工具生产数据验证**：用真实 clean_data 跑 4 工具，确认参数默认值合理、输出可解读
-  - ⑤ （可选增强）暴露 `select_k` 权重（0.6/0.4）与 churn 混合权重（0.7/0.3）为 tool.json 参数
+  - ① **workflow 节点级 skill 集**（P1，下一卡）：允许 workflow 节点指定 skill 子集，覆盖全局/工作区启用
+  - ② **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
+  - ③ **pi-agent 经 MCP 端到端验证**（D-v2 遗留）
+  - ④ **cohort 数据可用性确认**（D-v2 遗留）
+  - ⑤ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截、外发动作（带强告警）；`readTriggers` 改 stream 读取
 - 阻塞 / 待总控：
-  - **clean_data 路径白名单**：Python 端无 `draw_data` 路径检查，纵深防御仅靠 server 端 `source=ai` 守卫
-  - **cohort 数据源**：见下一步 ③
+  - **跨 tab 跳实验室**：受接缝骨架约束（TabContext 仅有 `setActiveSubTab`，无 `setActiveTab`），本卡改为内联评测（在本页调 `/api/skill-registry/:id/evaluate`），结果回写后刷新表格
 - 开放问题：
   - clean_data 路径白名单（Python 端纵深防御是否补强）
   - cohort-retention 在生产数据上能否实际产出（依赖事件级订单表）
-  - `select_k` 与 churn 混合权重是否暴露为参数（当前硬编码，见下一步 ⑤）
-  - `api.ts`（接缝层）legacy `listExtractionTools` / `runExtractionTool` 与 D 域 `dataApi` 同名方法并存（待总控收敛入口）
+  - hooks PUT 端点无认证（本地单用户工具可接受，已加注释；若未来 bind 非 localhost 需加 auth 中间件）
+  - hooks-triggers.jsonl 大文件全量读（P1 改 stream）
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -57,6 +56,7 @@
 | 计算工具·提取 | `ExtractionPane.tsx` | `server/tools/registry.ts` + `server/tools/*`（含 `_tool_utils.py` 共享模块） |
 | 计算工具·tool-use | `ToolUsePane.tsx` | 复用 `server/tools/registry.ts` + `index.ts` `/api/extraction-tools*` |
 | 计算工具·SQL | `SqlConnectPane.tsx` | `sql-connections.ts` |
+| 计算工具·skill 管理 | `SkillManagementPane.tsx` + `CreateSkillModal.tsx` + `EvalSkillModal.tsx` · `SkillSelector.tsx`(增强) | `routes/engine.ts`(E 域端点，D 跨域调) |
 | 数据探索 | `DataExplorationPane.tsx` + `data-exploration/*` · `lib/{duckdb,profiling,insights,joins}.ts` | 仅二进制文件流，**零 LLM** |
 | 指标/业务环境/rules/案例 | `IndicatorsPane` `BusinessContextPane` `RulesPane` `CasesPane` | `db/data.ts`(新) · `memory-injection.ts` |
 | Xan数据库 | `WeatherPane`(前端直连) · `IndustryPane`/`CompetitorPane`(经后端 pi) + 待建[商圈/the-crowd] | 天气=外部 API 前端直连；行业/竞品=`routes/data.ts` 的 `*/analyze` 经 `runPiPrompt` |
@@ -65,7 +65,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 
 > **导航变更（2026-06-10 快修，脚手架）**：
 > - **规则记忆 6 大模块**：`rules`→偏好记忆 / `indicators`→指标记忆 / `cases`→项目记忆（仅 label 改，id 与后端不动）；新增 `failure_memory`失败记忆 / `field_memory`字段记忆 / `process_memory`流程记忆（**占位 Placeholder**，后端 db/路由/api/pane + 记忆注入待补，参照 rules/indicators/cases 并接入 `App.tsx refreshRulesPromptInfo` 合计）。业务环境/trace/知识图谱保留并列。
-> - **计算工具**新增二级 `tool_use`（tool-use，2026-06-12 Phase 1 落地，见 §0）。
+> - **计算工具**新增二级 `tool_use`（tool-use，2026-06-12 Phase 1 落地，见 §0）；新增二级 `skills_mgmt`（skill 管理，2026-06-14 落地，见 §0）。
 > - **探索·工作视图红线只读栏**：新增 `components/CleanDataDocsColumn.tsx`，在 explore+view 左侧列 `clean_data` 文档并支持预览 + 一键复制内容。**红线范式：展示聚合数据仅走只读路径 API**（`list*Paths`/`workspacePathTree`/`workspacePathFileGet`），零 LLM、无写入、无删除——可作后续"只读展示 clean_data"的安全模板。导航接缝细节见 `notes-infra §四`。
 
 ---
@@ -109,6 +109,26 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **共享工具模块 `_tool_utils.py`（2026-06-13）**：提取 `find_col` / `run_tool` / `main_tool` 三个在 rfm/clv/cohort 中完全重复的函数。`main_tool` 统一 argparse + 参数解析 + 异常兜底，各工具只需提供 `process_fn` / `format_fn` / `report_suffix`。新 analysis 工具应复用此模块，不再复制样板代码。
 - **D-v3 进阶算法工具设计原则（2026-06-13）**：4 工具（market-basket/churn-risk/clustering/aarrr-flow）全部纯 numpy/scipy/pandas 实现，不引入 sklearn/mlxtend/lifelines 等未装依赖。算法选型优先"已装依赖可实现"而非"最省代码"——Apriori 纯 numpy 而非 mlxtend、KM 纯 numpy 而非 lifelines、K-means 纯 numpy 而非 sklearn。每个工具声明并校验期望列，缺列清晰报错；产物均为聚合/衍生（频繁项集、分层统计、群均值、转化率），不含原始行。输入按红线新政策可读 draw_data 明细，输出只含聚合产物。
 
+**hooks 管理（D-v4, 2026-06-14）**
+- **server 端白名单校验是唯一安全门**：`coerceHook` 用 `SUPPORTED_HOOK_EVENTS`（11 种 event）和 `SUPPORTED_HOOK_ACTIONS`（仅 command|log）做 Set 白名单，外发动作（http/webhook 等）类型层不暴露 + server 拒收双重防护。前端 UI 的灰显/红线提示是 UX 层防御，不能替代 server 校验。
+- **PUT /api/hooks 无认证**：本地单用户工具 bind localhost 可接受，已加注释标注。若未来 bind 非 localhost，必须在此加 auth 中间件（command 类 hook 可执行任意 shell 命令，是远程代码执行向量）。
+- **hooks.json 与 px-hook-runner 兼容**：`readHooksFile` / `writeHooksFile` 兼容顶层数组和 `{hooks:[]}` 两种格式，统一写顶层数组。`px-hook-runner/index.ts` 的 `loadHooks` 已支持两种格式。
+- **trigger 流水倒序扫描**：`readTriggers` 全量读文件后倒序扫描取最近 N 条（limit 上限 5000）。P1 应改 stream 逐行倒读（`readline` + `fs.createReadStream` 反向 seek），避免大文件撑爆内存。
+- **HookExtensionInfo 类型未上提 types.ts**：因接缝层 types.ts 由卡 1 拥有，此类型仅在 `web/src/lib/api/data.ts` 内置导出。server 端 `LoadedExtensionInfo` 同结构但独立定义。若后续多模块消费需考虑上提。
+
+**skill 管理（D-v5, 2026-06-14）**
+- **跨域调用模式**：skill registry 端点归属 E（engine），前端 client 写在 `api/engine.ts`（注释标明 D 跨域调用）。`SkillManagementPane` 在 D slot 渲染但调 E 端点——这是项目首个 D→E 跨域 UI 模式。
+- **全局池 + 按工作区启用**：复用 `RulesPane` 范式——`sharedApi.memory-enablements` (kind="skill")。SkillSelector 在 workspace scope 下并行拉 registry + enablements，按"启用 → 池内 → 文件系统"分组排序。
+- **创建/版本更新统一走 POST**：`POST /api/workspaces/:id/skill-registry`，变更原因作为 `<!-- 变更原因 (vN): ... -->` 注释追加到 SKILL.md 末尾（便于回滚溯源）。
+- **归档 = DELETE 端点**：文件保留可回滚，UI 二次确认（`window.confirm`）。
+- **内联评测替代跨 tab 跳转**：受接缝骨架约束（TabContext 无 `setActiveTab`），改为在本页内联调 `/api/skill-registry/:id/evaluate`，结果回写 score/activationRate 后刷新表格。UI 内提示 "可前往实验室 → skill_eval 查看 evaluationId=..."。
+- **SkillSelector 增强**：workspace scope 下叠加 registry 信息——启用项置顶 + 版本号徽章 + 归档项灰禁 + 启用徽标(Sparkles)。非 workspace scope（flow）保持原逻辑。
+- **skill 文件路径形态**：`<workspace>/.pi/skills/<slug>/SKILL.md`；用正则 `/\.pi\/skills\/([^/]+)\/SKILL\.md$/` 从 `PiSkill.path` 反查 slug 关联 registry。
+- **评测回写**：server 端 `recordSkillRegistryUsageForPaths`（注入埋点累计 `usageCount`）和 `skillRegistryMetricsFromEvaluation`（评测回写 score/activationRate）。
+- **code review 关键修复**：`beginUpdate` 保留 `entry.source` 而非硬编码 `"curated"`；低分提示文案用"或"而非"/"；`evalSetId` useEffect 用函数式 setState 避免循环依赖；评测结果从 `lastEvaluation.metrics` 读取而非可能过时的 `entries`。
+- **组件拆分**：`CreateSkillModal` + `EvalSkillModal` 独立文件，主 Pane 从 795 行降至 ~430 行。
+- **列表分页**：每页 20 条，含翻页控件（`ChevronLeft`/`ChevronRight`），`totalPages` / `paged` 均 `useMemo` 缓存。
+
 **数据探索**
 - 跨表 JOIN **物化成真实 duckdb 表**(`__joined_<ts>`)而非泛化 SQL → 出图/剖析/洞察管线**零改动复用**；DROP joined 表与源表独立。
 - Layer 2 自动洞察**纯算法**：`computeCorrelationMatrix`(duckdb 原生 `corr()` 单查询)、`computeCategoryNumericAssociation`(η²)、`detectDataQualityFlags`(纯 JS)。**绝不用 LLM 生成文案**。
@@ -148,6 +168,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **opencode write 工具 input arg 大小限制（2026-06-13 再次确认）**：单次 `write` 约 16K char 上限，超大会被 JSON parser 截断报 `Unterminated string`。**workaround**：① 用 `write` 写前半 + `cat >> file <<'PYEOF'` heredoc append 后半 ② 或分多个小 `write`。本次三工具均用此法。
 - **`find_col` 子串匹配导致列歧义（2026-06-13）**：`_tool_utils.find_col` 的 fallback 逻辑用 `if alias.lower() in col.lower()` 做子串匹配，导致 `items` 列被同时匹配为 `item`（ITEM_ALIASES 含 `item`）和 `items_list`（ITEMS_LIST_ALIASES 含 `items`）。**修复**：在 `build_transactions` 中检测两别名是否指向同一列 + 用 `_is_wide_column` 采样前 20 行判断是否含分隔符（`,;；|\s`），含分隔符走宽表路径，否则走长表路径。**通用教训**：任何依赖 `find_col` 且别名间有子串包含关系的工具，都应在业务逻辑层做二次消歧，不能假设别名匹配唯一。
 - **裸 `except Exception` 吞异常信息（2026-06-13）**：`clustering.py` 和 `churn_risk.py` 的 fallback 路径用裸 `except Exception`，不记录任何诊断信息，用户只能看到 `fallback=true` 但不知道原因。**修复**：改为 `except (ValueError, RuntimeError) as e` + 记录 `fallback_reasons` / `fallback_reason` 到输出。**通用约定**：工具 fallback 路径必须记录失败原因，方便用户和后续维护者排查。
+- **opencode write 工具大小限制（2026-06-14 第三次触发）**：单次 `write` / `edit` 约 16K char 上限，超大 TSX 会被 JSON parser 截断报 `Unterminated string`。本次 HooksManagementPane（676 行）用分 5 个片段 `write` + `cat` 拼接落地。**通用 workaround**：① 分多个小 `write` 写片段 ② `cat` 拼接 ③ 或用 `bash` heredoc 追加。
 
 ---
 

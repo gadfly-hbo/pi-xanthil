@@ -1,10 +1,25 @@
 import { Router } from "express";
-import { readFileSync } from "node:fs";
-import { extname } from "node:path";
+import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
+import { extname, dirname, join, resolve } from "node:path";
+import { homedir } from "node:os";
 import { listWorkspacePaths, getWorkspacePath, getWorkspace } from "../db.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
-import type { BiAggregationDataset, BiAggregationData, IndustryIntel, CompetitorIntel, IndustryForce, CompetitorProfile } from "../types.ts";
+import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
+import type {
+  BiAggregationDataset,
+  BiAggregationData,
+  IndustryIntel,
+  CompetitorIntel,
+  IndustryForce,
+  CompetitorProfile,
+  Hook,
+  HookAction,
+  HookEvent,
+  HookActionKind,
+  HookMatch,
+  HookTriggerRecord,
+} from "../types.ts";
 
 /**
  * 【Agent-D · 数据基座域】HTTP 路由 slot —— owner: opencode(deepseek/glm)
@@ -325,6 +340,291 @@ dataRouter.post("/api/workspaces/:id/competitor/analyze", async (req, res) => {
       timeoutMs: 180_000,
     });
     res.json(coerceCompetitor(extractJson(output), brand));
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ── 计算工具·hooks 管理 + 插件管理 ──
+//
+// 数据安全（AGENTS.md §一 等同红线对待）：
+//   - hook 动作类型层只暴露 command|log|block|mutate|notify，server 侧再做白名单校验，外发(HTTP)动作绝不受理。
+//     block/mutate 为护栏（拦截/改参），仅 tool_call 事件有效；其余为传感器/旁路。
+//   - trigger 流水读 px-hook-runner 已脱敏的 JSONL，server 不增加任何对话原文回灌。
+//   - 插件清单仅返回包名/路径/来源，不读扩展实现内容。
+//
+// 设计：hooks.json / hooks-triggers.jsonl 路径直接复用 config.ts 常量，与 px-hook-runner 端
+// PX_HOOKS_CONFIG / PX_HOOKS_LOG 注入值同源（pi-adapter.ts 已注入），UI 改写后扩展下次触发即生效。
+//
+// 插件管理（GET /api/plugins）= 列 pi 已加载扩展/包（原 hooks/extensions，按职责拆到插件管理模块）。
+
+type PluginSource = "package" | "global" | "project" | "local";
+
+interface PluginInfo {
+  id: string;
+  name: string;
+  source: PluginSource;
+  enabled: boolean;
+  path?: string;
+}
+
+const PI_AGENT_DIR = join(homedir(), ".pi", "agent");
+const PI_GLOBAL_EXT_DIR = join(PI_AGENT_DIR, "extensions");
+const PI_PROJECT_EXT_DIR = join(process.cwd(), ".pi", "extensions");
+
+function readDirSafe(dir: string): string[] {
+  try {
+    if (!existsSync(dir)) return [];
+    return readdirSync(dir).filter((name) => {
+      try {
+        return statSync(join(dir, name)).isDirectory();
+      } catch {
+        return false;
+      }
+    });
+  } catch {
+    return [];
+  }
+}
+
+function readSettingsExtensions(): { packages: string[]; extensions: string[] } {
+  const settingsPath = join(PI_AGENT_DIR, "settings.json");
+  try {
+    const raw = readFileSync(settingsPath, "utf8");
+    const parsed = JSON.parse(raw) as { packages?: unknown; extensions?: unknown };
+    const packages = Array.isArray(parsed.packages)
+      ? parsed.packages.filter((x): x is string => typeof x === "string")
+      : [];
+    const extensions = Array.isArray(parsed.extensions)
+      ? parsed.extensions.filter((x): x is string => typeof x === "string")
+      : [];
+    return { packages, extensions };
+  } catch {
+    return { packages: [], extensions: [] };
+  }
+}
+
+dataRouter.get("/api/plugins", (_req, res) => {
+  try {
+    const { packages, extensions } = readSettingsExtensions();
+    const items: PluginInfo[] = [];
+
+    for (const pkg of packages) {
+      items.push({ id: `pkg:${pkg}`, name: pkg, source: "package", enabled: true, path: pkg });
+    }
+    for (const dir of readDirSafe(PI_GLOBAL_EXT_DIR)) {
+      items.push({
+        id: `global:${dir}`,
+        name: dir,
+        source: "global",
+        enabled: true,
+        path: join(PI_GLOBAL_EXT_DIR, dir),
+      });
+    }
+    for (const dir of readDirSafe(PI_PROJECT_EXT_DIR)) {
+      items.push({
+        id: `project:${dir}`,
+        name: dir,
+        source: "project",
+        enabled: true,
+        path: join(PI_PROJECT_EXT_DIR, dir),
+      });
+    }
+    for (const local of extensions) {
+      const abs = resolve(local);
+      items.push({ id: `local:${abs}`, name: local, source: "local", enabled: true, path: abs });
+    }
+
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+const SUPPORTED_HOOK_EVENTS: ReadonlySet<HookEvent> = new Set<HookEvent>([
+  "session_start", "session_shutdown",
+  "before_agent_start", "agent_start", "agent_end",
+  "turn_start", "turn_end",
+  "tool_execution_start", "tool_execution_end", "tool_call",
+  "message_end",
+]);
+
+const SUPPORTED_HOOK_ACTIONS: ReadonlySet<HookActionKind> = new Set<HookActionKind>([
+  "command", "log", "block", "mutate", "notify",
+]);
+
+function coerceHook(input: unknown): Hook | null {
+  const o = asRecord(input);
+  const id = asStr(o.id).trim();
+  const name = asStr(o.name).trim();
+  const rawEvent = asStr(o.event);
+  const event = SUPPORTED_HOOK_EVENTS.has(rawEvent as HookEvent) ? (rawEvent as HookEvent) : null;
+  if (!id || !name || !event) return null;
+
+  const actionRaw = asRecord(o.action);
+  const kind = asStr(actionRaw.kind) as HookActionKind;
+  // 类型层不暴露的外发动作（http/webhook 等）走到这里会被白名单拒绝。
+  if (!SUPPORTED_HOOK_ACTIONS.has(kind)) return null;
+  // 护栏 block/mutate 仅 tool_call 事件有效（pi 的拦截/改参点）。
+  if ((kind === "block" || kind === "mutate") && event !== "tool_call") return null;
+
+  let action: HookAction;
+  if (kind === "command") {
+    const command = asStr(actionRaw.command).trim();
+    if (!command) return null;
+    action = { kind, command };
+  } else if (kind === "block" || kind === "notify") {
+    const reason = asStr(actionRaw.reason).trim();
+    action = reason ? { kind, reason } : { kind };
+  } else if (kind === "mutate") {
+    const setRaw = asRecord(actionRaw.set);
+    const set: Record<string, string> = {};
+    for (const [k, v] of Object.entries(setRaw)) {
+      const key = k.trim();
+      if (key) set[key] = asStr(v);
+    }
+    if (Object.keys(set).length === 0) return null;
+    action = { kind, set };
+  } else {
+    action = { kind: "log" };
+  }
+
+  let match: HookMatch | undefined;
+  if (o.match && typeof o.match === "object") {
+    const m = asRecord(o.match);
+    const toolName = asStr(m.toolName).trim();
+    const pattern = asStr(m.pattern).trim();
+    if (toolName || pattern) {
+      match = {};
+      if (toolName) match.toolName = toolName;
+      if (pattern) match.pattern = pattern;
+    }
+  }
+
+  return {
+    id,
+    name,
+    enabled: o.enabled !== false,
+    event,
+    ...(match ? { match } : {}),
+    action,
+  };
+}
+
+function readHooksFile(): Hook[] {
+  if (!existsSync(HOOKS_CONFIG_PATH)) return [];
+  try {
+    const raw = readFileSync(HOOKS_CONFIG_PATH, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    const arr: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { hooks?: unknown })?.hooks)
+        ? (parsed as { hooks: unknown[] }).hooks
+        : [];
+    return arr.map((it) => coerceHook(it)).filter((h): h is Hook => h !== null);
+  } catch {
+    return [];
+  }
+}
+
+function writeHooksFile(hooks: Hook[]): void {
+  mkdirSync(dirname(HOOKS_CONFIG_PATH), { recursive: true });
+  // 与 px-hook-runner 兼容：统一写顶层数组。
+  writeFileSync(HOOKS_CONFIG_PATH, JSON.stringify(hooks, null, 2), "utf8");
+}
+
+dataRouter.get("/api/hooks", (_req, res) => {
+  try {
+    res.json(readHooksFile());
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// 安全提示：本端点无认证（本地单用户工具，仅 bind localhost）。
+// 若未来 bind 非 localhost，必须在此加 auth 中间件，否则存在远程代码执行风险（command 类 hook）。
+dataRouter.put("/api/hooks", (req, res) => {
+  try {
+    const body = req.body as unknown;
+    const list: unknown[] = Array.isArray(body)
+      ? body
+      : Array.isArray((body as { hooks?: unknown })?.hooks)
+        ? (body as { hooks: unknown[] }).hooks
+        : [];
+    const cleaned: Hook[] = [];
+    const seen = new Set<string>();
+    for (const it of list) {
+      const h = coerceHook(it);
+      if (!h) continue;
+      if (seen.has(h.id)) continue;
+      seen.add(h.id);
+      cleaned.push(h);
+    }
+    writeHooksFile(cleaned);
+    res.json(cleaned);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+const TRIGGER_DEFAULT_LIMIT = 200;
+const TRIGGER_MAX_LIMIT = 5000;
+
+function readTriggers(limit: number, hookId: string | null, event: string | null): HookTriggerRecord[] {
+  if (!existsSync(HOOKS_LOG_PATH)) return [];
+  let raw: string;
+  try {
+    // P1 TODO: 大文件改用 stream 逐行倒读（readline + fs.createReadStream 反向 seek），
+    // 避免全量 readFileSync 撑爆内存。当前倒序扫描 + limit 上限 5000 可兜底。
+    raw = readFileSync(HOOKS_LOG_PATH, "utf8");
+  } catch {
+    return [];
+  }
+  const lines = raw.split(/\r?\n/);
+  const out: HookTriggerRecord[] = [];
+  // 倒序扫描取最近 N 条（避免大文件全量解析）。
+  for (let i = lines.length - 1; i >= 0 && out.length < limit; i--) {
+    const line = lines[i]?.trim();
+    if (!line) continue;
+    let rec: unknown;
+    try {
+      rec = JSON.parse(line);
+    } catch {
+      continue;
+    }
+    const r = asRecord(rec);
+    const ev = asStr(r.event);
+    const hid = asStr(r.hookId);
+    if (hookId && hid !== hookId) continue;
+    if (event && ev !== event) continue;
+    out.push({
+      ts: asNum(r.ts),
+      hookId: hid,
+      event: ev as HookEvent,
+      matched: r.matched !== false,
+      actionKind: (asStr(r.actionKind) as HookActionKind) || "log",
+      ok: r.ok !== false,
+      ...(typeof r.exitCode === "number" ? { exitCode: r.exitCode } : {}),
+      durationMs: asNum(r.durationMs),
+      ...(asStr(r.sessionId) ? { sessionId: asStr(r.sessionId) } : {}),
+      ...(asStr(r.argsPreview) ? { argsPreview: asStr(r.argsPreview) } : {}),
+      ...(asStr(r.reason) ? { reason: asStr(r.reason) } : {}),
+      ...(r.blocked === true ? { blocked: true } : {}),
+    });
+  }
+  return out;
+}
+
+dataRouter.get("/api/hooks/triggers", (req, res) => {
+  try {
+    const rawLimit = Number(req.query.limit);
+    const limit = Math.max(
+      1,
+      Math.min(Number.isFinite(rawLimit) && rawLimit > 0 ? rawLimit : TRIGGER_DEFAULT_LIMIT, TRIGGER_MAX_LIMIT),
+    );
+    const hookId = typeof req.query.hookId === "string" && req.query.hookId ? req.query.hookId : null;
+    const event = typeof req.query.event === "string" && req.query.event ? req.query.event : null;
+    res.json(readTriggers(limit, hookId, event));
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }

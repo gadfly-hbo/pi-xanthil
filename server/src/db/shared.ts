@@ -51,6 +51,31 @@ export function initSharedTables(): void {
   db.exec("CREATE INDEX IF NOT EXISTS idx_fork_branches_parent ON fork_branches(parent_session_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_fork_branches_branch ON fork_branches(branch_session_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent ON subagent_tasks(parent_session_id)");
+
+  // 计算工具·skill 管理：项目级 skill 生命周期注册表（卡1/3 交付）。
+  // 内容真源 = <workspace>/.pi/skills/<slug>/SKILL.md；本表存元数据/生命周期态。
+  // 启用关系走 workspace_memory_enablements(item_kind='skill')，全局池 + 按工作区启用。
+  // CRUD/生命周期/评测回写由 E 卡2 实现（routes/engine.ts + db/engine.ts）。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_registry (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL,
+      slug              TEXT NOT NULL,
+      name              TEXT NOT NULL,
+      status            TEXT NOT NULL DEFAULT 'draft',
+      version           INTEGER NOT NULL DEFAULT 1,
+      supersedes_id     TEXT,
+      source            TEXT NOT NULL DEFAULT 'manual',
+      score             REAL,
+      activation_rate   REAL,
+      usage_count       INTEGER NOT NULL DEFAULT 0,
+      origin_session_id TEXT,
+      created_at        INTEGER NOT NULL,
+      updated_at        INTEGER NOT NULL,
+      UNIQUE(workspace_id, slug, version)
+    );
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_skill_registry_ws ON skill_registry(workspace_id, status, updated_at DESC)");
 }
 
 // ---- Fork 分支 CRUD ----
@@ -188,6 +213,13 @@ export function setMemoryEnablement(
 /** 新池定义被创建时调用：origin 工作区默认启用（其余工作区不启用 = 无关系行）。 */
 export function enableForOrigin(workspaceId: string, itemKind: MemoryItemKind, itemId: string): void {
   setMemoryEnablement(workspaceId, itemKind, itemId, true);
+}
+
+/** 全局淘汰：关闭**所有**工作区对某池条目的启用（skill 归档=全局停用，详见 wiki「skill 管理 P1·D」卡）。 */
+export function disableItemEverywhere(itemKind: MemoryItemKind, itemId: string): void {
+  db.prepare(
+    "UPDATE workspace_memory_enablements SET enabled = 0 WHERE item_kind = ? AND item_id = ?",
+  ).run(itemKind, itemId);
 }
 
 /** 列出某工作区某类已启用的池条目 id —— 供注入/列举管线 join 用。 */

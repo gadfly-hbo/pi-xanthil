@@ -217,6 +217,224 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "E", status: "done", title: "【E 核实·归属】BusinessRequirementPane version.requirementInput 持久化改动（skill 终审旁路发现）", brief:
+`✅ E 认领 + 总控回流终审通过（2026-06-14）。E 认领该改动为 E 域有效成果(业务需求 version 持久化恢复)，并补全完整性：后端 index.ts:2655 生成版本写 requirementInput=requirement、2722 手动编辑保留已有/缺失补 fallback(不臆造)、types index.ts:1858 加字段——前端 openVersion/auto-restore 读的字段后端确实写，**半成品风险消除、闭环成立**。notes-engine §0/§一/§约束已记。门禁 server+web typecheck ✅ build ✅。
+【总控裁决】① 完整性闭环 OK，认领不回滚。② 治理：E 改了 index.ts(接缝/总控持有)写 requirementInput——业务需求生成逻辑仍在 index.ts legacy、足迹小、完整性必需→**追认**(同 repairLooseJson/模板库范式)，后续接缝改动仍应先报总控。③ backfill 开放问题(旧 JSON 无 requirementInput 只恢复框架)→**不强制离线 backfill**，向前生效即可、旧版本降级无害，如需再单议 P2。
+
+— 原始通知 —
+总控在 skill 管理 P1·B 卡终审时发现工作树里 BusinessRequirementPane.tsx 有一处与 skill 无关、属 E 域的改动，转 E 核实认领。
+
+【改动内容(已读)】业务需求 version 的"左侧 draft 业务背景"持久化恢复：① 类型加 BusinessRequirementStructuredOutput.version.requirementInput?: Partial<RequirementDraft>；② 新增 draftFromRequirementInput() helper；③ openVersion 改 useCallback 并在打开版本时 setDraft(draftFromRequirementInput(version.requirementInput))；④ 新增一次性 auto-restore useEffect(autoRestoredPathRef，每个 report path 首次自动开最新版本，刷新/重启后恢复左侧背景与框架预览，不覆盖进行中的 generate/手动切版)。前端自洽、已接线、typecheck/build 绿。
+
+【E 需确认(关键)】① 这是否你域有意改动(认领 or 回滚)？② **完整性**：后端(E 域)保存版本时是否真的把 requirementInput 写进 version 结构化输出？若后端没写，前端读的是永不存在的字段=半成品(恢复永远 no-op)——请补后端写入或说明。③ 跑 E 域门禁；④ 认领则记 notes-engine §0，回滚则清理。
+
+【边界】纯前端改动在 E 域 pane；与 skill 管理无关(仅因同处工作树被 skill 终审带出)。总控仅通知，不代为认领/回滚。不碰 git。` },
+  { dom: "E", status: "done", title: "【skill 管理 P1·A】自进化飞轮后端 + 信任门 + 去重冲突检测 API（c+h+g 后端）", brief:
+`✅ 总控回流终审通过（2026-06-14）。E 交付：① c 候选流转：db/engine.ts updateSkillRegistryMetrics 在 score≥阈值(默认0.6)时把 candidate→draft(待采纳)，**绝不自动 active**(守人审门)；② h 信任门：routes/engine.ts PATCH→active 且 source∈{distilled,curated} 时要求 confirmed=true(hasConfirmedReview)，否则 400；③ g 冲突 API：GET /api/workspaces/:id/skill-registry/conflicts 用 rankSkillSimilarity(BM25 复用 skill-retrieval) 返回相似未归档 skill，SkillRegistryConflict 为 routes 本地类型(未污染接缝)。门禁 server+web typecheck ✅ build ✅；测试覆盖 c(promote candidate→draft)/h(requires confirmed)/g(conflict similar non-archived) 全绿。
+复核：候选只升 draft 不自动 active、信任门拦截、冲突过滤归档——均符合卡设计与红线(人审门)。待 B(D)接 UI(人审队列/信任确认/冲突展示)；B 接冲突 API 时需把 SkillRegistryConflict 形状落 client(routes 本地类型不导出)。
+
+— 原始契约 —
+skill 管理 P1 拆解卡 A（E 域）。配套 B(D 前端)依赖本卡。来源：P1 池 c/h/g。
+
+【1 · 自进化飞轮·阈值流转(c)】候选(source=distilled/curated 或新建 status=candidate)→送评测→达标自动置 status='待采纳'(沿用 draft 或新增态，与卡1 SkillStatus 'draft|candidate|active|archived' 对齐：candidate=待评测/评测中、draft=达标待人审采纳)→人审采纳转 active(B 卡 UI 触发 PATCH)。E 做：评测回写后按阈值(score≥阈值)自动把 candidate→draft(待采纳)；不达标保持 candidate 或标低分。阈值可常量化(如 score≥0.6)。**禁全自动落 active**(人审门，见 h)。
+【2 · 信任门(h)】distilled/curated 自动产物**采纳前需人审**：E 不提供"自动 active"路径；采纳一律经 B 卡显式 PATCH status=active(人触发)。可加一个轻校验：source∈{distilled,curated} 且 status 直接置 active 时要求请求带 confirmed=true 标记(B 卡人审后带上)，否则 400。
+【3 · 去重/冲突检测 API(g)】复用 skill-retrieval.ts 的 BM25 相似度：新增 GET /api/workspaces/:id/skill-registry/conflicts?slug=&content= 或采纳前调用，返回与现有未归档 skill 的相似条目(疑似重复)，供 B 卡展示"疑似重复/建议归档"。复用 RuleConflict 范式表达，不自动归档(人审)。
+
+【文件边界(E slot)】routes/engine.ts(端点) · db/engine.ts(状态流转/查询) · skill-retrieval.ts(相似度复用)。不碰接缝(表/类型/api 归总控/卡1；如需新 SkillStatus 流转语义字段先报总控)。
+【约束】回流总控终审；不碰 git；不碰数据探索子树。门禁 server typecheck/build + 补 focused test。` },
+  { dom: "D", status: "done", title: "【skill 管理 P1·B】skill 采纳/治理 UI：人审队列 + 信任确认 + 同slug确认 + 冲突展示（c+h+b+g 前端）", brief:
+`✅ 总控回流终审通过（2026-06-14）。D 交付：① c 人审队列：候选/草稿条目「采纳」(beginAdopt)/「弃用」(归档) 动作；② h 信任确认：新建 AdoptConfirmModal——采纳 source∈{distilled,curated} 必须勾「已审阅 SKILL.md」(canSubmit 门 + confirmAdopt handler 双重校验)，confirmed 仅对 distilled/curated 带(其他来源不虚构已审阅语义)，与 A 端 hasConfirmedReview 对齐；③ b 同 slug 确认：submit 撞 slug→window.confirm"已存在，继续将创建 v+1 覆盖 SKILL.md(旧版可回滚)"(落实卡3 终审 P1-b 裁决)；④ g 冲突展示：采纳弹窗调 listSkillConflicts 展示 BM25 相似+severity"建议归档/合并"(不阻断)，token ref 防陈旧结果污染。新增 web/src/lib/skillConflict.ts(truncateConflictContent 防 414 + severity 标签)。门禁 server+web typecheck ✅ build ✅ + skill 测试 8 全绿 + 隔离 grep 空。
+【终审发现 → 裁决】
+1 接缝触碰追认：D 在 web/types.ts 加 SkillRegistryConflict + SkillRegistryConflictsResult、api/engine.ts patchSkillRegistry 加 confirmed 参数——内容正确→追认。**[P1 清理] SkillRegistryConflict 双源**：server routes/engine.ts:629 本地 + web/types.ts 各一份(当前 12 字段完全一致、无即时不一致)，建议提到 server+web types.ts 统一 + routes import，消漂移风险。
+2 [非本卡] web/src/components/BusinessRequirementPane.tsx 改动(version requirementInput 持久化)与 skill 无关、属 E 域业务需求 working-tree 改动→不在 B 终审范围，交 E 自审归属。
+
+— 原始契约 —
+依赖 A(E 后端)。来源：P1 池 c/h/b/g。
+
+【1 · 人审队列(c)】漏斗看板已有壳(候选/草稿/采纳/归档)；补"待采纳"队列的审批动作：达标(draft/待采纳)条目显式「采纳」按钮→PATCH status=active(带 confirmed 标记，配合 A 信任门)；「弃用」→归档。
+【2 · 信任确认(h)】采纳 source∈{distilled,curated} 的自动产物时，弹确认框提示"该 skill 由蒸馏/策展自动生成、可能含可执行指令，请审阅 SKILL.md 后确认采纳"，确认后才 PATCH。
+【3 · 同 slug 二次确认(b)】CreateSkillModal 新建路径：提交前查该 workspace 是否已有同 slug(用 listSkillRegistry 结果)，若有则二次确认"将作为『X』的新版本覆盖 SKILL.md 内容，确认？"(因后端会算成新版本覆盖文件)。
+【4 · 冲突展示(g)】采纳/新建时调 A 的冲突 API，命中则展示"疑似重复：与『Y』相似 N%，建议改归档或合并"，供人决策(不阻断)。
+
+【文件边界(D slot)】web/src/components/SkillManagementPane.tsx · CreateSkillModal.tsx · web/src/lib/api/engine.ts(client，跨域调 A 端点)。不碰接缝骨架。
+【约束】不碰数据探索子树(改完跑隔离 grep)；回流总控终审；不碰 git；门禁 web typecheck/build。` },
+  { dom: "E", status: "done", title: "【skill 管理 P1·C】workflow 节点级 skill 集（d，E 后端 + D 前端边界）", brief:
+`✅ 总控回流终审通过（2026-06-14）。E 交付：① 后端复用既有 workflow-config.ts normalizeWorkflowSkills/validateWorkflowSkillList(GET/PUT workflow 已透传校验 defaultSkillPaths + node.skillPaths)——按卡约定"先 grep 勿重造"，后端零新增；② 前端 MultiAgentExecutionPane(E 域前端)加 WorkflowSkillSelect + buildWorkflowSkillOptions：从 registry 拉、**过滤不可用/已归档**、workflow 级 + node 级(继承/禁用语义)选 skill；usage 埋点(卡2)已覆盖 default/node skillPaths。门禁 server+web typecheck ✅ build ✅ + 测试"workflow endpoints preserve valid skillPaths and filter unavailable ones" ✅ + 隔离 grep 空。
+复核：节点 skill 子集覆盖工作区启用链路打通(配置→workflow.json→执行注入)；前端正确过滤归档 skill。全落 E 域(MultiAgentExecutionPane 属 E 前端)，未碰 D slot/接缝。
+
+— 原始契约 —
+skill 管理 P1 拆解卡 C（主 E 域）。来源：P1 池 d。
+
+【目标】允许 workflow 节点指定 skill 子集，覆盖工作区级启用——loop 体/特定节点用专属 skill(如 SQL 修复 loop 配 SQL 调试 skill)。
+
+【E 部分(主)】复用已有机制：WorkflowDef 节点已有 node.skillPaths + workflow 级 defaultSkillPaths(types 已有、multi-agent-runner 已消费、卡2 usage 埋点已覆盖)。E 需补：① 工作流配置端点支持读写 node.skillPaths(若现有 PUT workflow 已透传则仅验证)；② 校验 skillPaths 指向本 workspace registry 未归档 skill(可选)。多数机制已在，重在打通"管理页/编辑器配置 → 落 workflow.json → 执行注入"链路。
+【D 部分(边界)】工作流编辑器(WorkflowDagEditor/MultiAgentExecutionPane，E 域前端)或 skill 管理页提供"为节点/工作流选 skill 集"UI；从 registry 拉可选 skill。**注**：WorkflowDagEditor 属 E 前端，节点 skill 配置 UI 归 E 自己接；若放 skill 管理页则 D 接。owner 按落点定。
+【文件边界】routes/engine.ts · multi-agent-runner.ts(验证) · workflow 编辑器前端(E)。先 grep 确认 node.skillPaths 现有透传程度再动，避免重造。
+【约束】回流总控终审；不碰 git；门禁全绿。` },
+  { dom: "X", status: "done", title: "【skill 管理 P1·D】全局池归档语义 + 统一评分口径（f+e，总控自做+自检，不代笔）", brief:
+`✅ 总控自做并自检通过（2026-06-14，用户指定总控直接完成、不代笔）。交付：① f 归档=全局淘汰：db/shared.ts 加 disableItemEverywhere(itemKind,itemId)(UPDATE 所有 ws 该 item enabled=0)；db/engine.ts updateSkillRegistryEntry 改为 status→archived 时 disableItemEverywhere("skill",id)、非归档仅恢复 origin 启用，修了"只关 origin、他区仍 enabled"的矛盾。② e 统一评分：routes/engine.ts skillRegistryMetricsFromEvaluation 改为 score = pairwise 有(win+tie+loss>0) 用 winRate=win/(win+tie+loss)、否则 successRate；activationRate 单列不再混入 score(去掉旧 0.5+Δ/20 与 success·activation 各半)。前端已分列展示，无需改。③ 新增 skill-registry-archive.test.ts(归档后所有 ws enablement 关闭 + 非归档不波及他区，2 用例)。门禁：server+web typecheck ✅ + build ✅ + skill 全测试 14 通过(含本卡 2 + 既有回归)。
+边界：db/shared.ts(disableItemEverywhere) 总控接缝自加；db/engine.ts + routes/engine.ts 评分/归档逻辑总控直改(非代笔)。口径与拍板一致。
+
+— 原始口径(已落实) —
+口径已由总控+用户拍板(2026-06-14)，下方写死。
+
+【f · 归档=全局淘汰(口径已定)】现状 bug：archiveSkillRegistryEntry 改全局 status=archived 但只关 origin workspace(existing.workspaceId)的 enablement → 全局池其他工作区仍 enabled 但 status=archived，自相矛盾。**口径：归档是全局动作**——status=archived 时**关闭所有工作区**对该 skill id 的 enablement。实现：X 在 db/shared.ts 加 helper disableItemEverywhere(itemKind,itemId)(查 workspace_memory_enablements 该 item 所有行置 enabled=0，或 DELETE)；E 改 db/engine.ts archive/update 路径：status→archived 时调 disableItemEverywhere("skill",id)，取代当前只关 origin 的逻辑。"只在本工作区停用"走 enablement 勾选取消(已有，非归档)。**db/shared.ts 属总控接缝→该 helper 由总控加**，E 调用。
+【e · 统一评分(口径已定)】现状 skillRegistryMetricsFromEvaluation 把 activationRate 混进 score。**口径：score = 有 pairwise 用 winRate=win/(win+tie+loss)；否则用 successRate；activationRate 始终单列、不混入 score**(语义独立：激活率=是否被用，score=用了效果好不好)。实现：E 改 routes/engine.ts skillRegistryMetricsFromEvaluation 按此算 score、activationRate 仍单独回写。前端 D 卡3 表格已分列展示 score 与 activationRate，无需改前端。
+
+【文件边界】db/shared.ts(disableItemEverywhere，**总控加**) + db/engine.ts/routes/engine.ts(E 改 archive 逻辑 + 评分公式)。
+【约束】口径写死不可改；归档全局语义改动需 focused test 覆盖(归档后所有 ws enablement 关闭)；回流总控终审；不碰 git；门禁全绿。` },
+  { dom: "X", status: "done", title: "【计算工具·skill 管理 · P1 总览】✅ a–h 八项全部完成（a 总控 + 拆解卡 A/B/C/D 均 done）", brief:
+`✅ skill 管理 P1 全收口（2026-06-14）。逐项核对：a 回滚快照=总控自做✅；b 同slug确认=卡B✅；c 自进化飞轮(后端流转+人审队列)=卡A+B✅；d 节点skill=卡C✅；e 评分口径=卡D✅；f 池语义(归档全局淘汰)=卡D✅；g 去重冲突(API+UI)=卡A+B✅；h 信任门(后端+确认UI)=卡A+B✅。本池卡为总览索引，4 张拆解卡(A/B/C/D)+a 均已终审 done。
+【收口后新增小遗留】① ✅已清理(总控 2026-06-14)：SkillRegistryConflict/SkillRegistryConflictsResult 已上移 server+web types.ts 单源、routes/engine.ts 删本地定义改 import，typecheck/build/冲突测试绿；② ✅已闭环(2026-06-14)：BusinessRequirementPane version requirementInput 持久化——E 已认领为 E 域有效改动并补全后端写入(index.ts)完整性，总控终审通过(见上方「E 核实·归属」卡)。
+原始来源：卡3 终审发现 + 卡2 开放问题裁决。
+
+【P1-a · ✅ 已完成(总控 2026-06-14)｜版本内容快照(回滚真可用)】选方案①(文件快照，保持"SKILL.md 为内容真源"、零 migration)。交付：routes/engine.ts 加 registryVersionPath/writeVersionSnapshot/readVersionSnapshot(快照存 <workspace>/.pi/skill-versions/<slug>/v<n>.md —— **不在 .pi/skills 下，pi 不扫描**，含 startsWith 路径围栏)；create 端点每版本写快照；新增 GET /api/skill-registry/:id/content(读版本快照)与 POST /api/skill-registry/:id/rollback(以目标版本快照创建新版本、写回 SKILL.md、supersedesId=目标 id)；types 双份加 SkillVersionContent；api/engine.ts 加 getSkillVersionContent/rollbackSkillRegistry；SkillManagementPane 旧版本行加「回滚」按钮(二次确认)。门禁 server+web typecheck ✅ build ✅ 隔离 grep 空 ✅ + skill-registry 回归 ✅ + 回滚链 smoke ✅(v1→v2→v3 supersedes=v1、快照读写并存)。注：存量(P1-a 前)skill 无快照，回滚端点对无快照版本返回明确报错；自本次起新建/更新/回滚均留快照。
+
+【P1-b · 同 slug 二次确认】D。新建若 slug 撞已有→后端静默算成该 slug 新版本覆盖文件。D 在 CreateSkillModal 新建路径查 slug 是否已存在→二次确认("将作为 X 的新版本覆盖内容，确认？")。低风险(采纳前已预览)但补齐总控卡2 裁决。
+
+【P1-c · 自进化飞轮人审队列】E+D。蒸馏/策展候选(source=distilled/curated, status=candidate)→评测→达标置"待采纳"→人审 active / 不达标弃。E 做自动阈值流转(达标→待采纳态)+ D 做人审队列 UI(候选漏斗已有壳，补审批动作)。门=人审(已定，禁全自动落可执行 skill)。
+
+【P1-d · workflow 节点级 skill 集】E+D。允许 workflow 节点指定 skill 子集覆盖工作区启用(复用已有 node.skillPaths + workflow fallback)；D 在工作流编辑器/skill 管理页配"本工作流默认 skill 集"。
+
+【P1-e · 评分口径统一】E/实验室域。registry.score 当前启发式(pairwise 0.5+Δ/20 / 否则 success·activation 各半)与实验室评测口径未统一；与实验室域对齐一套权威评分。
+
+【P1-f · 全局池跨工作区归档语义】X 定义 + E 实现。当前归档只动 origin workspace 的 enablement；全局池被多工作区启用时，一个工作区归档是否影响全局定义/他区启用，需总控定义池语义再实现。
+
+【P1-g · 去重/冲突 API】E+D。采纳新 skill 时检测与现有 skill 相似/冲突(复用 skill-retrieval.ts BM25 相似度 + RuleConflict 范式)，返回"疑似重复/建议归档"供人审。
+
+【P1-h · 可执行脚本信任门】X+E。skill 可含可执行脚本(pi 文档明警)；distilled/curated 自动产物采纳前加 trust/审阅门(类比 project_trust)。与 P1-c 人审队列合并做。
+
+【其它·非本特性】hooks 管理 P1(trace-kernel 趋势/按工作区分组/tool_call 拦截/外发动作/triggers stream 读)——另见 hooks 卡，不在此池。
+【约束】各项开工前先确认是否动接缝(表/类型/api 归总控)，再拆域 brief；不碰 git。` },
+  { dom: "X", status: "done", title: "【计算工具·skill 管理 · 卡1/3】skill_registry 表 + 类型契约 + 启用关系扩 skill（接缝/migration，总控持有）", brief:
+`✅ 总控自做并自检通过（2026-06-14）。交付：① 新表 skill_registry 落 server/src/db/shared.ts initSharedTables()(按其"跨域基础表仅总控写"约定，非 db.ts 主块)：id/workspace_id/slug/name/status/version/supersedes_id/source/score/activation_rate/usage_count/origin_session_id/created_at/updated_at + UNIQUE(workspace_id,slug,version) + idx(workspace_id,status,updated_at)；② 类型契约 types.ts 双份(server+web)：SkillStatus('draft'|'candidate'|'active'|'archived') / SkillSource('manual'|'distilled'|'curated'|'imported') / SkillRegistryEntry / SkillRegistryInput；③ MemoryItemKind 双份加 'skill'。门禁：server+web typecheck ✅ + web build ✅。临时库 smoke ✅(建表成功 / 增删读通 / setMemoryEnablement+listEnabledItemIds 经 'skill' itemKind 返回正确)。
+落地说明(比原卡更省)：启用关系**无需 migration**——workspace_memory_enablements.item_kind 本就是自由 TEXT、setMemoryEnablement/listEnabledItemIds 已泛型，仅加 'skill' 到类型即可；故卡1 未碰 db 启用函数。表归 db/shared.ts(initSharedTables 已在 db.ts:736 调用)。
+待 E 卡2：registry CRUD/生命周期/版本归档/评测回写/usage 埋点(routes/engine.ts + db/engine.ts)。待 D 卡3：SkillManagementPane + SkillSelector 增强。
+
+— 原始契约(供 E/D 对接) —
+整特性按域拆 3 卡：本卡=X 契约+migration(总控持有，先行)；卡2=E 后端逻辑；卡3=D 前端控制台。
+
+【核心认知】skill 基建已大半就位，本模块=编排成项目级生命周期控制台，非从零造。已有：物理存储 <workspace>/.pi/skills/<slug>/SKILL.md(项目级天然成立)；激活控制 runPiTurn --no-skills + 逐个 --skill(前端 skillPaths 精确控制)；蒸馏 skill-distillation.ts(对话→SKILL.md)；策展 skill-curator.ts；检索 skill-retrieval.ts；激活检测 skill-activation.ts；评测 实验室 SkillLabPane + skill-evaluation-runner(变体/pairwise)。
+
+【本卡(X)交付物】
+1 新表 skill_registry(db.ts migration，总控审批；内容真源=SKILL.md，本表=元数据/生命周期态)：slug / name / status('draft'|'candidate'|'active'|'archived') / version / supersedesId / source('manual'|'distilled'|'curated'|'imported') / score / activationRate / usageCount / originSessionId / workspaceId / createdAt / updatedAt。
+2 类型契约 types.ts(双份 server+web)：SkillRegistryEntry / SkillStatus / SkillSource(+ 输入型)。
+3 启用关系：MemoryItemKind 增 'skill'(types.ts 已留预留位思路)，复用 WorkspaceMemoryEnablement 做"全局池 + 按工作区启用"(同规则记忆范式)，相关 db 启用读写若需新函数由总控加。
+4 契约写死供 E/D 接：lifecycle 状态机(draft/candidate→active→archived，version+supersedes 复用 RuleMemory 范式)；评测回写字段(score/activationRate)；usage 埋点字段(usageCount)。
+
+【约束】接缝层(types/db migration/constants)仅总控写权；先于 E/D 落地；不碰 git；不碰数据探索子树。` },
+  { dom: "E", status: "done", title: "【计算工具·skill 管理 · 卡2/3】skill registry 后端 + 生命周期 + 评测联动 + 自进化飞轮(P1)", brief:
+`✅ 总控回流终审通过（2026-06-14）。E 交付：① db/engine.ts registry CRUD(list/get/getBySlug/create/update/archive + updateMetrics + incrementUsage)，create→enableForOrigin('skill')、archive=status=archived+禁用 enablement**不删 SKILL.md**、auto-version；② routes/engine.ts 5 端点(GET/POST /api/workspaces/:id/skill-registry · PATCH/DELETE /api/skill-registry/:id · POST .../evaluate)；③ 评测联动=自动构 baseline+skill variant 复用 runSkillEvaluation/saveSkillEvaluation→回写 score/activationRate→触发 autoTriggerCuration；④ usage 埋点挂 flow chat skillPaths + workflow default/node skillPaths(按 registry path 匹配未归档、去重 +1)；⑤ skill-registry.test.ts。
+**安全复核(重点·写磁盘+skill 可含脚本)**：sanitizeSkillSlug 正则 ^[a-z0-9][a-z0-9_-]*$ + 拒 ..//\\；registrySkillPath resolve 后 startsWith(root+sep) 围栏抛错→**无任意写/路径穿越**。门禁独立复跑全绿：server+web typecheck ✅ + build ✅ + skill-registry.test(2 用例) ✅ + 数据探索隔离 grep 空 ✅ + engineRouter 已挂载(routes/index.ts:18)。边界：E 未碰接缝(types/db/shared 增量=卡1 量)、client 留卡3。
+
+【总控对 E 抛的开放问题裁决】
+1 采纳 POST 覆盖同 slug 无确认 + 信任门：P0 接受(采纳是 UI 显式动作)；**D 卡3 须在 UI 加"采纳前预览 + 同 slug 已存在二次确认"**；curated/distilled 候选采纳走人审飞轮(已定)；可执行脚本 trust gate 列 P1。
+2 registry client 进 web：归 D 卡3(client 写 api slot)，已在卡3 范围。
+3 score 口径统一实验室：P1，与实验室域协调；当前启发式(pairwise 0.5+Δ/20 / 否则 success·activation 各半)P0 可接受。
+4 归档影响全局池语义：当前只动 origin workspace enablement；跨工作区归档语义 P1 随全局池体验定。
+5 usageCount 注入 vs 真实激活：P0 用"注入计数 + 评测激活率"足够；生产真实激活埋点 P1。
+
+待 D 卡3：SkillManagementPane + SkillSelector 增强 + client(含采纳预览/二次确认)。
+
+— 原始契约 —
+依赖卡1(X)的 skill_registry 表 + 类型契约 + 启用关系。
+
+【文件边界(E slot)】routes/engine.ts(skill registry 端点) + db/engine.ts(registry CRUD) + 复用 skill-distillation/curator/retrieval/activation.ts + skill-evaluation-runner.ts。
+
+【P0 后端】
+- registry CRUD：GET/POST/PATCH/DELETE skill（POST 采纳=写 SKILL.md 到 <workspace>/.pi/skills/<slug>/ + 落 registry；PATCH 改 status/version；归档=status=archived 不删文件）。
+- 版本/归档：version + supersedesId(复用 RuleMemory 范式)；归档移出默认注入集但留档可回滚。
+- 评测联动：暴露"以某 skill 建 variant 跑评测"的接线 + 评测完回写 registry.score/activationRate(复用 skill-evaluation-runner + skill-activation)。
+- usage 埋点：注入 skill 时记一笔 usageCount(轻量，可挂注入路径)。
+
+【P1 自进化飞轮(门=人审采纳)】运行→蒸馏候选(skill-distillation 产 source='distilled' 的 candidate)→评测→达标置'待采纳'(人审)→采纳转 active / 不达标弃；旧版低分→建议归档(人审)。去重/冲突复用 retrieval 相似度 + RuleConflict 范式。
+
+【约束】仅 E slot；不碰接缝骨架(表/类型归卡1)；skill 可含可执行脚本→采纳前留人审/信任门钩子；回流总控终审；不碰 git。` },
+  { dom: "D", status: "done", title: "【计算工具·skill 管理 · 卡3/3】SkillManagementPane 控制台 + 看板 + SkillSelector 增强（前端）", brief:
+`✅ 总控回流终审通过（2026-06-14，带 3 项 P1 跟进）。D 交付：① SkillManagementPane(漏斗看板 候选/草稿/采纳/归档徽章+点击筛选 + skill 池表[启用勾选/版本/状态/来源/score/activationRate/usageCount/出处] + 低分高亮+建议归档 + 分页) ② CreateSkillModal(新建/版本更新，SKILL.md textarea 内联可见可编辑=采纳前预览 ✓；编辑锁 slug；变更原因转 HTML 注释追加) ③ EvalSkillModal(送评测 选 eval set+repeat，内联调 /evaluate 回写后刷新——因 TabContext 无 setActiveTab 改内联评测，合理) ④ api/engine.ts 5 client(list/create/patch/archive/evaluate) ⑤ SkillSelector 增强(workspace scope 并行拉 registry+enablement，按 启用→池内→文件系统 分组 + 启用徽标/版本/归档灰禁) ⑥ DataTabs 接 skills_mgmt。门禁 server+web typecheck ✅ build ✅ 隔离 grep 空 ✅。
+
+【终审发现 → 总控裁决】
+1 接缝触碰追认：D 在 web/types.ts 加 SkillRegistryCreateBody/EvaluateBody/EvaluateResult、在 api/engine.ts(E slot) 加 5 client。内容正确、语义确属该处→**追认不回滚**；治理：后续接缝类型仍应提总控合，本次既成合规。
+2 [P1] 裁决"同 slug 二次确认"未落实：新建若 slug 撞已有→后端算成该 slug 新版本、静默覆盖 SKILL.md。采纳前预览已满足(modal 可见内容)故风险低，降 P1：新建时前端查 slug 是否已存在并二次确认。
+3 [P1·要紧] 版本"可回滚"名不副实：skill_registry 无 content 列、SKILL.md 每 slug 单文件，版本更新覆盖旧文件→旧版本内容无快照、回滚不到旧内容(与卡2 notes 宣称的"留档可回滚"不符)。P1 修：按版本快照内容(.pi/skills/<slug>/versions/v<n>.md 或 registry 加 content 列)，或修正"可回滚"措辞。
+
+【skill 管理 P0(3 卡)收口】卡1(X 表/契约)+卡2(E 后端/评测联动/usage)+卡3(D 控制台/SkillSelector) 全 done。P1 待办：上述 2/3 + 自进化飞轮人审队列、workflow 节点级 skill 集、score 口径统一、全局池跨工作区归档语义、去重冲突 API。**待实跑**：建 skill→启用→对话/SkillSelector 见荐→送评测回写分 整链真机点检。
+
+— 原始契约 —
+依赖卡1(X 契约) + 卡2(E 端点)。
+
+【文件边界(D slot)】web/src/components/SkillManagementPane.tsx(新建，替 DataTabs 里 skills_mgmt 的 Placeholder) + web/src/lib/api/data.ts 或 api/engine.ts client(按端点归属，skill 端点在 engine→client 走 api/engine.ts，E 暴露 D 调) + SkillSelector.tsx 增强。注：跨域——UI 在 aggregate(D 渲染)但调 E 端点；契约以卡1 为准。
+
+【P0 三块】
+1 数据看板：skill 池清单(名称/版本/状态/来源/评测分/激活率/使用次数/出处) + 自进化漏斗视图(候选→评测→待采纳→采纳/归档)。
+2 生命周期 CRUD：手写创建 / 版本更新(变更原因) / 归档(留档可回滚)；全局池 + 按工作区启用勾选(复用规则记忆池视图范式)。
+3 评测联动：每条 skill「送评测」→预填 variant + 选 eval set→跳实验室 skill_eval；展示回写的 score/activationRate；低分行高亮"建议归档"。
+
+【跨模块联动】SkillSelector 增强为"项目池 + 启用勾选 + retrieval 自动荐"(探索/对话)；工作流节点 skill 集配置(复用 node skillPaths + workflow fallback，P1)。
+
+【约束】仅 D slot(SkillManagementPane + SkillSelector + client 方法)；不碰接缝骨架；不碰数据探索子树(改完跑隔离 grep)；回流总控终审；不碰 git。` },
+  { dom: "X", status: "done", title: "【计算工具·hooks 管理 v2】护栏化(block/mutate/notify) + 拆出插件管理（总控跨域自做+自检）", brief:
+`✅ 总控自做并自检通过（2026-06-14）。用户反馈：原 hooks 管理首屏=「已加载扩展」其实是**插件管理**；真 hooks 应是生命周期节点的**确定性护栏 + 传感器**(Pre/Post/Notification)。重新核 pi 机制后确认我 MVP 把 hooks 的"灵魂"(护栏 block)保守砍了——pi 的 tool_call 支持 \`return {block:true,reason}\` 拦截 + \`event.input\` 原地改参，确定性规则无需人确认、-p 模式可用(extensions.md:702/708)。据此 A+B+C 全做。当前无并行 agent(顺序开发)，总控一次性跨域推进(含 D-slot)。
+
+【A · 拆插件管理】新建 web/src/components/PluginManagementPane.tsx 承接「已加载扩展」只读表；后端 GET /api/hooks/extensions→GET /api/plugins(routes/data.ts，类型 LoadedExtensionInfo→PluginInfo)；client listHookExtensions→listPlugins、HookExtensionInfo→PluginInfo；DataTabs 的 plugin_mgmt 占位→PluginManagementPane。HooksManagementPane 去掉扩展视图、默认首屏改 Hook 管理(只剩 Hook 管理 + 运行看板)。
+
+【B · 补护栏(核心)】契约(server+web types.ts)HookActionKind 加 block|mutate|notify、HookAction 加 reason/set、HookTriggerRecord 加 reason/blocked。px-hook-runner v2：tool_call 改同步求值并 \`return {block,reason}\`(首个命中 block 决定)、mutate 把 set 浅合并进 event.input、command/log/notify 旁路；其余事件不受理 block/mutate。coerceHook 白名单加 3 类 + 强制 block/mutate 仅 tool_call。
+
+【C · 通知】notify 动作=本地系统通知(darwin osascript display notification；非 darwin 退化只记录)；运行看板加「原因」列、拦截行红底+「已拦截」徽标、失败行琥珀底、计数表加「拦截」列。外发 HTTP 仍 UI 划线禁用 + server 类型层不暴露(数据红线不变)。
+
+【门禁】server+web typecheck ✅ + build ✅ + 数据探索隔离 grep(含两新 pane)空 ✅。扩展 v2 独立 smoke ✅：block 返回 {block,reason} 且同 tool_call 上 mutate 注入 timeout=30000；安全命令不拦截仍改参；notify(osascript) exitCode 0；trigger 落 blocked:true+reason；toolName 不匹配不误触发。
+【边界说明】本轮触了 D-slot(routes/data.ts·api/data.ts·HooksManagementPane·DataTabs)——顺序开发无并行冲突，按 hotfix 同理总控可一次性改；已在此台账标注，D 知悉即可。**待实跑**：起 app→建 block hook(如 toolName=bash,pattern=rm -rf)→跑对话验证工具被拦 + 看板红行。
+
+— 历史(卡1/卡2 v1 已并入本 v2) —
+`,
+  },
+  { dom: "X", status: "done", title: "【计算工具·hooks 管理 · 卡1/2】契约 + 接缝 + px-hook-runner 扩展基建（总控自做，产出供 D 卡实现）", brief:
+`✅ 总控自做并自检通过（2026-06-14）。交付：① server/src/types.ts + web/src/types.ts 加 Hook/HookEvent/HookAction/HookMatch/HookTriggerRecord 契约(双份解耦)；② server/src/config.ts 加 HOOKS_CONFIG_PATH(~/.pi-xanthil/hooks.json) / HOOKS_LOG_PATH(hooks-triggers.jsonl) / HOOK_RUNNER_EXTENSION(import.meta.url 解析仓库内扩展，env 可覆盖)；③ 新建 pi-extensions/px-hook-runner/index.ts —— 通用转发扩展(读 hooks.json→匹配事件→本地命令/记日志→写 trigger.jsonl，观测旁路不拦截)；④ pi-adapter.ts runPiTurn 注入 -e <扩展> + env(PX_HOOKS_CONFIG/PX_HOOKS_LOG)，existsSync 守卫 + env 合并，仅此一处。门禁：server+web typecheck ✅ + web build ✅。扩展独立 smoke ✅(11 事件注册、log/command 各落 trigger 行、disabled/不匹配正确跳过、argsPreview 已脱敏仅含 toolName+截断 command)。
+两处落地修正(比原卡更贴架构)：a) 命名 TriggerRecord→HookTriggerRecord；b) client 方法**移交卡2**——web/src/lib/api/data.ts 是 D 域 slot(文件级独占)，总控不代写，本卡只交 types 契约；c) pi 原生加载 .ts，px-hook-runner **无需编译/不进构建链**(原卡说法作废)，pi-adapter -e 直接指向 .ts 源。
+待 D 卡：后端端点(routes/data.ts) + 前端 HooksManagementPane + api/data.ts client 方法。**待实跑**：跑一次真实 agent 对话→看板见触发流水。
+
+— 原始契约(供 D 卡对接) —
+整特性按派发惯例拆 2 卡：本卡=X 契约/接缝/扩展基建(总控自做)；下游=D 实现卡(后端端点+前端 Pane)。
+
+【背景/核心认知】pi 的 "hooks" ≠ Claude Code 那种 settings.json 声明 shell 的 hooks。pi 的 hook = extension(TS 模块)里 pi.on(event,handler) 订阅事件。可订阅事件：project_trust / session_start·shutdown / resources_discover / before_agent_start(可改 system prompt) / agent_start·end / turn_start·end / message_start·update·end(可改写) / context(可裁剪) / before_provider_request / after_provider_response / tool_execution_start·update·end / tool_call(可 block) / tool_result(可改写) / compaction / fork。pi-xanthil 全程保持 extensions 启用(pi-adapter 只 --no-skills)，runPiTurn 已用 --mode json + onEvent 消费事件流。
+
+【用户三处决策(已定)】① 创建路线 = A 声明式转发扩展(不在网页编译 TS)；② 看板数据 = 实时触发流水优先；③ 外发动作 = 默认禁用，MVP 仅"本地 shell 命令 + 记日志"(数据安全)。
+
+【架构·声明式转发三层】UI(填表定义规则)→server(读写 hooks.json / 读 trigger.jsonl)→pi 扩展 px-hook-runner(运行时读 hooks.json，对每个事件匹配规则、执行动作、写 trigger.jsonl)。只写一个通用扩展，用户填表=改 hooks.json，永不写/编译 TS。
+
+【本卡(X)交付物】
+1 接缝契约：types.ts 加 Hook 类型(见下 schema) + api.ts 加 client 方法签名(列扩展 / CRUD hooks / 读 trigger)，供 D 卡前端直接调。
+2 新扩展 px-hook-runner：pi-extensions/px-hook-runner/(仓库内新 TS 包，纳入 npm run build 编译链)。启动读 hooks.json，对每个 pi 事件匹配规则、执行动作(本地 shell spawn / 记日志)、把每次触发写 trigger.jsonl。
+3 注入点：pi-adapter.ts runPiTurn 注入 -e <px-hook-runner 绝对路径> + env(PX_HOOKS_CONFIG / PX_HOOKS_LOG)，仅此一处小改；作用域天然隔离(仅 pi-xanthil 触发的 pi 加载，用户手动 pi 不受影响)。
+4 schema(契约，写死供 D 接)：Hook = { id, name, enabled, event, match?:{ toolName?; pattern? }, action:{ kind:"command"|"log"; command?; } }；TriggerRecord(trigger.jsonl 一行) = { ts, hookId, event, matched, actionKind, ok, exitCode?, durationMs, sessionId, argsPreview? }。
+
+【数据安全(按决策钉死，本卡 enforce)】动作只开 本地命令+记日志，外发不实现(类型层不暴露 http 动作)；trigger.jsonl 只存事件元数据+参数预览(截断)，不落完整 message/tool 内容(防 draw_data/clean_data 被动持久化)；shell 动作由 px-hook-runner 在 pi 进程内 spawn(继承 pi cwd/sandbox)，非 server。
+
+【风险/待决】① 作用域 MVP=全局 hooks.json(按 workspace/session 分组留 P1)；② tool_call 拦截类动作 -p 模式无人确认 → MVP 不做拦截，只观测+旁路；③ px-hook-runner 需进构建链。
+【约束】接缝层(pi-adapter/api/types)仅总控写权；新扩展契约总控持有；不碰 git；不碰数据探索子树。constants.ts 的 hooks_mgmt subtab + DataTabs 占位已在前序快修落地，D 卡替换占位即可。` },
+  { dom: "D", status: "done", title: "【计算工具·hooks 管理 · 卡2/2】后端 hooks 端点 + 前端 HooksManagementPane（替占位，依赖卡1 契约）", brief:
+`✅ 总控回流终审通过（2026-06-14）。D 交付：① routes/data.ts 加 4 端点(GET /api/hooks/extensions·GET/PUT /api/hooks·GET /api/hooks/triggers)，复用卡1 config 常量、coerceHook 白名单校验(event 11 种 + action 仅 command|log，外发拒收=server 侧二次防线)、triggers 倒序扫描+limit 上限 5000、写顶层数组兼容 px-hook-runner；② api/data.ts 加 listHookExtensions/listHooks/saveHooks/listHookTriggers(HookExtensionInfo 为模块本地类型，未上提接缝层)；③ 新建 HooksManagementPane.tsx 三视图(扩展只读表/Hook 增删改+保存/看板实时流水5s+按 hook·事件计数)，外发 HTTP 划线禁用+红线提示、toolName 仅 tool_* 可填、零 LLM import；④ DataTabs 接 hooks_mgmt→HooksManagementPane。门禁：server+web typecheck ✅ + build ✅ + 数据探索隔离 grep 空 ✅。复核无正确性 bug、红线守护到位(UI+server 双层拒外发、看板仅展示已脱敏字段)。
+⚠️ 终审旁注(非本卡范围)：D 同时在 docs/notes-infra.md(总控域)写了一段「模板库前端接缝·总控追认」——讲的是 E 的模板库卡、以总控口吻记裁决，与 hooks 无关。已交总控核实归属，未回滚(视为脏区他人成果)。
+**待实跑**：起 app→建一条 command hook→跑真实 agent 对话→看板见触发流水。
+
+— 原始契约(供 D 卡对接) —
+hooks 管理实现卡（D 域 opencode）。复用卡1 产出：types.ts 的 Hook/HookTriggerRecord 契约、config.ts 的 HOOKS_CONFIG_PATH/HOOKS_LOG_PATH 常量、已注入运行的 px-hook-runner 扩展。
+
+【文件边界(D slot)】
+- 后端：server/src/routes/data.ts 加 hooks 端点(D 的 server slot；勿新建顶层 routes/hooks.ts 以免动接缝注册表)——① 列已加载扩展 ② hooks.json CRUD(读写 config.ts 的 HOOKS_CONFIG_PATH) ③ 读 trigger.jsonl(HOOKS_LOG_PATH)。
+- 后端读数据源：扫 ~/.pi/agent/settings.json 的 packages[]/extensions[] + global(~/.pi/agent/extensions/) + project(.pi/extensions/) 目录得扩展清单；hooks.json / trigger.jsonl 路径直接 import config.ts 常量(勿硬编码)。
+- 前端 client(D slot)：web/src/lib/api/data.ts 加 client 方法(列扩展 / 列&CRUD hooks / 读 trigger 流水)，类型引 @/types 的 Hook/HookTriggerRecord。**注**：卡1 未碰 api（api/data.ts 属 D 文件级独占），client 方法由本卡写。
+- 前端 UI：web/src/components/HooksManagementPane.tsx(新建)替换 DataTabs 里 hooks_mgmt 的 Placeholder(计算工具 aggregate tab)。
+
+【三个子视图】
+1 已加载扩展(只读)：列扩展名/来源(package/local/global/project)/启停。
+2 hook 创建&管理：表格+表单，一条 hook = { id,name,enabled,event,match,action }(schema 见卡1)。事件=下拉；匹配=toolName 等于 / 命令·参数正则；动作 MVP 只 ①本地 shell 命令 ②记日志；外发 HTTP 动作 UI 灰掉+红线提示(类型层本就不暴露)。调 api.ts 方法写 hooks.json。
+3 运行看板：读 trigger.jsonl→实时流水表(时间/hook/事件/命中/动作/结果/耗时/sessionId)+按 hook·事件计数。趋势分析(接 trace-kernel pi-session-analytics SQLite)留 P1。
+
+【数据安全】UI 不提供外发动作入口；看板只展示卡1 已脱敏的 trigger 字段，前端不再额外拉取 message/tool 原文。本模块在 aggregate tab、不在数据探索红线子树，但因 hook 涉对话观测，约束等同红线对待；改完跑数据探索隔离 grep 应空。
+【验收】web+server typecheck+build 绿；扩展列表如实、hook 增删改写入 hooks.json 后由 px-hook-runner 生效、跑一次 agent 对话能在看板看到触发流水。
+【分期】P0(本卡 MVP)：扩展列表(只读)+声明式 hook CRUD(命令/记日志)+实时流水看板。P1：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截、外发动作(带强告警)。
+【约束】仅 D slot(routes/data.ts + HooksManagementPane.tsx)，不碰接缝层骨架(types/api/constants/pi-adapter 归卡1)；回流总控终审；不碰 git。` },
   { dom: "X", status: "done", delegate: "E", title: "【tool-use·红线政策变更】放开 AI 工具输入限制（去 clean_data 守卫）+ 改写 AGENTS.md §一", brief:
 `✅ E 代笔交付、总控加重终审通过（2026-06-13，红线政策变更最高审查级）。逐项核：① index.ts /run 的 source=ai clean_data 白名单 403 块已移除（source 留作来源标记+注释，typecheck 净）✓ ② AGENTS.md §一 draw_data 行按口径改写（原始行禁直进 LLM、工具聚合/衍生产物可进）+ 政策说明 ✓ ③ **数据探索模块硬约束整节未动（关键边界守住）** ✓ ④ MCP server 描述/头注释改为"允许已登记数据路径"、旧禁止措辞已无 ✓ ⑤ notes-infra §五.7 + §0 记 I4 反转 ✓ ⑥ server typecheck+build 绿 + 探索隔离 grep 空 ✓。E 抛的"手动卡是否放开"=已由 Card B(E)覆盖。**待实跑**：source=ai 传 draw_data 路径不再 403 + 工具聚合产物回灌对话整链。
 
@@ -899,8 +1117,13 @@ P3(onto + KG)：
 
 【约束】db.ts 接缝层归总控；改前先定 origin 语义；全程不碰 git。` },
 
-  { dom: "E", status: "todo", title: "【工作流·前端】Loop/工作流 模板库入口（一键实例化预置模板）", brief:
-`需求：预置工作流模板目前只有后端实例化接口、无前端入口（用户在界面找不到，只能调 API）。要一个「模板库」让用户浏览 + 一键调用，省去手搓 DAG。已就绪后端接口：SQL 修复 loop = POST /api/workspaces/:id/sql-loop/instantiate；AnaX = POST /api/workspaces/:id/anax/instantiate（+ /instantiate-quick）。
+  { dom: "E", status: "done", title: "【工作流·前端】Loop/工作流 模板库入口（一键实例化预置模板）", brief:
+`✅ 总控回流终审通过（2026-06-14）。E 交付：① WorkflowTemplateLibraryPane（卡片列 3 模板：AnaX 商业分析 / AnaX 快速分析 / SQL 修复 loop，各带「实例化到当前工作区」）② 入口走「工作流列表 → 从模板新建」（按决策未新增 'templates' 二级 tab，避开接缝 tab 骨架）③ 三个 instantiate 端点接线（anax/instantiate、anax/instantiate-quick、sql-loop/instantiate），成功后自动选中新 flow 进 multi/view。门禁 web typecheck+build 绿。
+
+回流核验：3 模板前后端 URL 全部对齐——评审曾报「sql-loop 404 / WorkflowTemplateLibraryPane 末尾废注释」，经复核为**基于旧快照的误报**（当前 api.ts:359 与 engine.ts:229 均 /sql-loop/instantiate 一致、pane 无废注释），不成立；用户已手测 3 模板实例化通过。✅ 越界已总控追认（2026-06-14）：核查实际足迹仅 2 处（App.tsx 加 instantiateWorkflowTemplate handler + lib/api.ts 加 3 个 REST wrapper，均与既有 seam 惯例同构；评审点名的 constants.ts/DataTabs/EngineTabs 经 grep 证实未动，越界被高估）→ 裁决追认不回滚，已入接缝台账 notes-infra §六。附带修 WorkflowReadmePane 两处 doc drift（设计入口口径 / 「计算工具→SQL连接」路径）。
+
+— 原始需求 —
+需求：预置工作流模板目前只有后端实例化接口、无前端入口（用户在界面找不到，只能调 API）。要一个「模板库」让用户浏览 + 一键调用，省去手搓 DAG。已就绪后端接口：SQL 修复 loop = POST /api/workspaces/:id/sql-loop/instantiate；AnaX = POST /api/workspaces/:id/anax/instantiate（+ /instantiate-quick）。
 
 【当前可纳入的模板（3 个）】① AnaX 商业分析（完整，buildAnaxWorkflow）② AnaX 快速分析（buildAnaxQuickWorkflow）③ SQL 修复 loop（buildSqlLoopWorkflow，含 onBlock 回跳门禁，是 loop 的样板）。
 

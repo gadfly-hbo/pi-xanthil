@@ -1,4 +1,4 @@
-import { Database, Store, CircleX, Workflow, Webhook, Sparkles, SquareTerminal, Puzzle, Bot, BrainCircuit } from "lucide-react";
+import { Database, Store, CircleX, Workflow, SquareTerminal, Bot, BrainCircuit } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { DataExplorationPane } from "@/components/DataExplorationPane";
@@ -6,6 +6,9 @@ import { AggregatePane } from "@/components/AggregatePane";
 import { ExtractionPane } from "@/components/ExtractionPane";
 import { SqlConnectPane } from "@/components/SqlConnectPane";
 import { ToolUsePane } from "@/components/ToolUsePane";
+import { HooksManagementPane } from "@/components/HooksManagementPane";
+import { PluginManagementPane } from "@/components/PluginManagementPane";
+import { SkillManagementPane } from "@/components/SkillManagementPane";
 import { RulesPane } from "@/components/RulesPane";
 import { BusinessContextPane } from "@/components/BusinessContextPane";
 import { IndicatorsPane } from "@/components/IndicatorsPane";
@@ -49,16 +52,16 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <ToolUsePane scope={ctx.folderScope} workspaceId={ctx.activeWorkspaceId} />
       )}
       {activeTab === "aggregate" && activeSubTab === "hooks_mgmt" && (
-        <Placeholder icon={Webhook} title="hooks管理" hint="管理 hooks 配置，即将推出" />
+        <HooksManagementPane />
       )}
       {activeTab === "aggregate" && activeSubTab === "skills_mgmt" && (
-        <Placeholder icon={Sparkles} title="skills管理" hint="管理 skills 配置，即将推出" />
+        <SkillManagementPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} />
       )}
       {activeTab === "aggregate" && activeSubTab === "command_mgmt" && (
         <Placeholder icon={SquareTerminal} title="command管理" hint="管理 command 配置，即将推出" />
       )}
       {activeTab === "aggregate" && activeSubTab === "plugin_mgmt" && (
-        <Placeholder icon={Puzzle} title="插件管理" hint="管理插件配置，即将推出" />
+        <PluginManagementPane />
       )}
       {activeTab === "aggregate" && activeSubTab === "subagents_mgmt" && (
         <Placeholder icon={Bot} title="subagents管理" hint="管理 subagents 配置，即将推出" />

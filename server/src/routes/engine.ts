@@ -1,8 +1,8 @@
 import express, { Router } from "express";
 import multer from "multer";
 import type { WebSocket } from "ws";
-import { resolve, join, sep } from "node:path";
-import { rmSync, statSync, mkdirSync, readFileSync, existsSync } from "node:fs";
+import { dirname, resolve, join, sep } from "node:path";
+import { rmSync, statSync, mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import {
@@ -13,8 +13,17 @@ import {
   getStaleNodes, markNodesStale, listWorkspacePaths, addWorkspacePath, removeWorkspacePath,
   addFlowMessage, getFileAnalysesByPathIds, createFlowRun, finishFlowRun,
   recordMemoryInjectionUsage, buildHypothesisLibraryContext, getAnaxGateConfig, upsertAnaxGateConfig,
-  upsertHypothesisFromArchive, createChangeProposal,
+  upsertHypothesisFromArchive, createChangeProposal, saveSkillEvaluation,
 } from "../db.ts";
+import {
+  archiveSkillRegistryEntry,
+  createSkillRegistryEntry,
+  getSkillRegistryEntry,
+  incrementSkillRegistryUsage,
+  listSkillRegistryEntries,
+  updateSkillRegistryEntry,
+  updateSkillRegistryMetrics,
+} from "../db/engine.ts";
 import { readTree, readFlowFile, writeFlowFile, copyLocalFolderIntoFlow, copyFlowSnapshot, inferWorkflow, moveAllFiles } from "../flow-fs.ts";
 import { normalizeWorkflowModels, normalizeWorkflowSkills, type WorkflowLike } from "../workflow-config.ts";
 import { withWorkspacePathStatuses } from "../workspace-path-status.ts";
@@ -35,7 +44,13 @@ import { buildAnaxWorkflow, buildAnaxQuickWorkflow } from "../anax-template.ts";
 import { buildSqlLoopWorkflow } from "../sql-loop-template.ts";
 import { moveManagedDirToTrash } from "../trash.ts";
 import { listSkills } from "../skills.ts";
+import { extractSkillMarkdown, parseSkillName, slugifySkillName } from "../skill-distillation.ts";
+import { parseSkillEvaluationRunRequest } from "../skill-evaluation-api.ts";
+import { runSkillEvaluation, type SkillEvaluationRunSummary } from "../skill-evaluation-runner.ts";
+import { autoTriggerCuration } from "../skill-curator.ts";
+import { rankSkillSimilarity } from "../skill-retrieval.ts";
 import { FAVORITES_ROOT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
+import type { SkillRegistryConflict, SkillRegistryConflictsResult, SkillRegistryEntry, SkillSource, SkillStatus } from "../types.ts";
 
 /**
  * 【Agent-E · 智能引擎域】HTTP 路由 slot —— owner: codex(GPT-5.5)
@@ -126,7 +141,7 @@ engineRouter.get("/api/flows/:id/workflow", (req, res) => {
     if (content === null) {
       res.json({ workflow: inferWorkflow(flow.folderPath), inferred: true });
     } else {
-      res.json({ workflow: normalizeWorkflowModels(JSON.parse(content) as WorkflowLike), inferred: false });
+      res.json({ workflow: normalizeWorkflowSkills(flow.folderPath, normalizeWorkflowModels(JSON.parse(content) as WorkflowLike)), inferred: false });
     }
   } catch {
     res.json({ workflow: inferWorkflow(flow.folderPath), inferred: true });
@@ -138,7 +153,7 @@ engineRouter.put("/api/flows/:id/workflow", (req, res) => {
   const flow = getFlow(req.params.id);
   if (!flow) return res.status(404).json({ error: "flow not found" });
   try {
-    const workflow = normalizeWorkflowModels(req.body as WorkflowLike);
+    const workflow = normalizeWorkflowSkills(flow.folderPath, normalizeWorkflowModels(req.body as WorkflowLike));
     writeFlowFile(flow.folderPath, "workflow.json", JSON.stringify(workflow, null, 2));
     res.json({ ok: true });
   } catch (err) {
@@ -334,6 +349,381 @@ engineRouter.get("/api/flows/:id/skills", (req, res) => {
   if (!flow) return res.status(404).json({ error: "flow not found" });
   res.json(listSkills(flow.folderPath));
 });
+
+// ---- skill registry ----
+engineRouter.get("/api/workspaces/:id/skill-registry", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const status = parseSkillStatus(req.query.status);
+  if (req.query.status !== undefined && !status) return res.status(400).json({ error: "invalid status" });
+  res.json(listSkillRegistryEntries(req.params.id, status));
+});
+
+engineRouter.get("/api/workspaces/:id/skill-registry/conflicts", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const result = detectSkillRegistryConflicts({
+      workspaceId: workspace.id,
+      workspaceRoot: workspace.rootPath,
+      slug: typeof req.query.slug === "string" ? req.query.slug : undefined,
+      content: typeof req.query.content === "string" ? req.query.content : undefined,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.post("/api/workspaces/:id/skill-registry", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseSkillRegistryCreateBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const skillPath = registrySkillPath(workspace.rootPath, parsed.value.slug);
+    mkdirSync(dirname(skillPath), { recursive: true });
+    writeFileSync(skillPath, parsed.value.content, "utf8");
+    const entry = createSkillRegistryEntry(workspace.id, {
+      slug: parsed.value.slug,
+      name: parsed.value.name,
+      status: parsed.value.status,
+      source: parsed.value.source,
+      version: parsed.value.version,
+      supersedesId: parsed.value.supersedesId,
+      originSessionId: parsed.value.originSessionId,
+    });
+    // P1-a：为该版本留内容快照，使回滚真可用。
+    writeVersionSnapshot(workspace.rootPath, entry.slug, entry.version, parsed.value.content);
+    res.json({ entry, skillPath });
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.patch("/api/skill-registry/:id", (req, res) => {
+  const existing = getSkillRegistryEntry(req.params.id);
+  if (!existing) return res.status(404).json({ error: "skill not found" });
+  const parsed = parseSkillRegistryPatchBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  if (
+    parsed.value.status === "active"
+    && (existing.source === "distilled" || existing.source === "curated")
+    && !hasConfirmedReview(req.body)
+  ) {
+    return res.status(400).json({ error: "confirmed=true required to activate distilled/curated skill" });
+  }
+  try {
+    const entry = updateSkillRegistryEntry({ id: req.params.id, ...parsed.value });
+    res.json(entry);
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.delete("/api/skill-registry/:id", (req, res) => {
+  const entry = archiveSkillRegistryEntry(req.params.id);
+  if (!entry) return res.status(404).json({ error: "skill not found" });
+  res.json(entry);
+});
+
+// P1-a：读某版本的内容快照（供 D 回滚前预览/查看历史版本）。
+engineRouter.get("/api/skill-registry/:id/content", (req, res) => {
+  const entry = getSkillRegistryEntry(req.params.id);
+  if (!entry) return res.status(404).json({ error: "skill not found" });
+  const workspace = getWorkspace(entry.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const content = readVersionSnapshot(workspace.rootPath, entry.slug, entry.version);
+  if (content === null) return res.status(404).json({ error: "该版本无内容快照（P1-a 前创建）" });
+  res.json({ version: entry.version, content });
+});
+
+// P1-a：回滚到某历史版本——以该版本快照内容创建新版本并写回 SKILL.md（不删旧行/旧快照）。
+engineRouter.post("/api/skill-registry/:id/rollback", (req, res) => {
+  const target = getSkillRegistryEntry(req.params.id);
+  if (!target) return res.status(404).json({ error: "skill not found" });
+  const workspace = getWorkspace(target.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const content = readVersionSnapshot(workspace.rootPath, target.slug, target.version);
+  if (content === null) return res.status(400).json({ error: "该版本无内容快照，无法回滚（P1-a 前创建）" });
+  try {
+    const skillPath = registrySkillPath(workspace.rootPath, target.slug);
+    mkdirSync(dirname(skillPath), { recursive: true });
+    writeFileSync(skillPath, content, "utf8");
+    const entry = createSkillRegistryEntry(workspace.id, {
+      slug: target.slug,
+      name: target.name,
+      status: "active",
+      source: target.source,
+      supersedesId: target.id, // 版本链：新版本由被回滚版本派生
+      originSessionId: target.originSessionId,
+    });
+    writeVersionSnapshot(workspace.rootPath, entry.slug, entry.version, content);
+    res.json(entry);
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.post("/api/skill-registry/:id/evaluate", async (req, res) => {
+  const entry = getSkillRegistryEntry(req.params.id);
+  if (!entry) return res.status(404).json({ error: "skill not found" });
+  if (entry.status === "archived") return res.status(400).json({ error: "archived skill cannot be evaluated" });
+  const workspace = getWorkspace(entry.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const skillPath = registrySkillPath(workspace.rootPath, entry.slug);
+  const parsed = parseSkillEvaluationRunRequest({
+    ...((typeof req.body === "object" && req.body !== null ? req.body : {}) as Record<string, unknown>),
+    variants: [
+      { id: "baseline", label: "Baseline", skillPaths: [] },
+      { id: entry.id, label: `${entry.name} v${String(entry.version)}`, skillPaths: [skillPath] },
+    ],
+  });
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const summary = await runSkillEvaluation({
+      workspaceRoot: workspace.rootPath,
+      workspaceId: workspace.id,
+      evaluationId: randomUUID(),
+      model: parsed.value.model,
+      variants: parsed.value.variants,
+      tasks: parsed.value.tasks,
+      repeat: parsed.value.repeat,
+      judgeRepeat: parsed.value.judgeRepeat,
+      contextPrefix: parsed.value.contextPrefix,
+      dataContextPaths: parsed.value.dataContextPaths,
+    });
+    const evaluation = saveSkillEvaluation(
+      workspace.id,
+      parsed.value.model,
+      parsed.value.repeat,
+      parsed.value.variants,
+      parsed.value.tasks,
+      parsed.value.contextPrefix,
+      summary,
+    );
+    const metrics = skillRegistryMetricsFromEvaluation(entry.id, summary);
+    const updated = updateSkillRegistryMetrics(entry.id, metrics);
+    res.json({ evaluation, entry: updated, metrics });
+    autoTriggerCuration({ workspaceRoot: workspace.rootPath, workspaceId: workspace.id, model: parsed.value.model, evaluation });
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+type ParsedSkillRegistryCreate =
+  | {
+    ok: true;
+    value: {
+      slug: string;
+      name: string;
+      content: string;
+      source: SkillSource;
+      status?: SkillStatus;
+      version?: number;
+      supersedesId?: string | null;
+      originSessionId?: string | null;
+    };
+  }
+  | { ok: false; error: string };
+
+type ParsedSkillRegistryPatch =
+  | { ok: true; value: { name?: string; status?: SkillStatus; version?: number; supersedesId?: string | null } }
+  | { ok: false; error: string };
+
+function parseSkillRegistryCreateBody(body: unknown): ParsedSkillRegistryCreate {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  const contentRaw = raw.content ?? raw.skillMarkdown ?? raw.markdown;
+  if (typeof contentRaw !== "string" || !contentRaw.trim()) return { ok: false, error: "content required" };
+  const content = extractSkillMarkdown(contentRaw);
+  const parsedName = parseSkillName(content);
+  const name = String(raw.name ?? parsedName ?? "").trim();
+  if (!name) return { ok: false, error: "name required" };
+  const slug = sanitizeSkillSlug(String(raw.slug ?? slugifySkillName(name)));
+  if (!slug) return { ok: false, error: "valid slug required" };
+  const source = parseSkillSource(raw.source) ?? "manual";
+  const status = raw.status === undefined ? undefined : parseSkillStatus(raw.status);
+  if (raw.status !== undefined && !status) return { ok: false, error: "invalid status" };
+  const version = raw.version === undefined ? undefined : Number(raw.version);
+  if (version !== undefined && (!Number.isInteger(version) || version < 1)) {
+    return { ok: false, error: "version must be a positive integer" };
+  }
+  const supersedesId = raw.supersedesId === undefined ? undefined : nullableString(raw.supersedesId);
+  const originSessionId = raw.originSessionId === undefined ? undefined : nullableString(raw.originSessionId);
+  return { ok: true, value: { slug, name, content, source, status, version, supersedesId, originSessionId } };
+}
+
+function parseSkillRegistryPatchBody(body: unknown): ParsedSkillRegistryPatch {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  const value: { name?: string; status?: SkillStatus; version?: number; supersedesId?: string | null } = {};
+  if (raw.name !== undefined) {
+    const name = String(raw.name ?? "").trim();
+    if (!name) return { ok: false, error: "name must not be empty" };
+    value.name = name;
+  }
+  if (raw.status !== undefined) {
+    const status = parseSkillStatus(raw.status);
+    if (!status) return { ok: false, error: "invalid status" };
+    value.status = status;
+  }
+  if (raw.version !== undefined) {
+    const version = Number(raw.version);
+    if (!Number.isInteger(version) || version < 1) return { ok: false, error: "version must be a positive integer" };
+    value.version = version;
+  }
+  if (raw.supersedesId !== undefined) value.supersedesId = nullableString(raw.supersedesId);
+  return { ok: true, value };
+}
+
+function parseSkillStatus(value: unknown): SkillStatus | undefined {
+  return value === "draft" || value === "candidate" || value === "active" || value === "archived" ? value : undefined;
+}
+
+function parseSkillSource(value: unknown): SkillSource | undefined {
+  return value === "manual" || value === "distilled" || value === "curated" || value === "imported" ? value : undefined;
+}
+
+function nullableString(value: unknown): string | null {
+  const text = String(value ?? "").trim();
+  return text || null;
+}
+
+function hasConfirmedReview(body: unknown): boolean {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  return raw.confirmed === true;
+}
+
+function sanitizeSkillSlug(value: string): string {
+  const slug = value.trim().toLowerCase();
+  if (!/^[a-z0-9][a-z0-9_-]*$/.test(slug)) return "";
+  if (slug.includes("..") || slug.includes("/") || slug.includes("\\")) return "";
+  return slug;
+}
+
+function registrySkillPath(workspaceRoot: string, slug: string): string {
+  const root = resolve(workspaceRoot, ".pi", "skills");
+  const skillPath = resolve(root, slug, "SKILL.md");
+  if (!skillPath.startsWith(`${root}${sep}`)) throw new Error("invalid skill slug");
+  return skillPath;
+}
+
+// P1-a 版本内容快照：每版本一份内容存 .pi/skill-versions/<slug>/v<n>.md（**不在 .pi/skills 下，pi 不扫描**），
+// 使"留档可回滚"真可用——SKILL.md 仍是当前版本真源，快照供回滚/查看历史版本内容。
+function registryVersionPath(workspaceRoot: string, slug: string, version: number): string {
+  const root = resolve(workspaceRoot, ".pi", "skill-versions");
+  const versionPath = resolve(root, slug, `v${String(version)}.md`);
+  if (!versionPath.startsWith(`${root}${sep}`)) throw new Error("invalid skill slug");
+  return versionPath;
+}
+
+function writeVersionSnapshot(workspaceRoot: string, slug: string, version: number, content: string): void {
+  const snapPath = registryVersionPath(workspaceRoot, slug, version);
+  mkdirSync(dirname(snapPath), { recursive: true });
+  writeFileSync(snapPath, content, "utf8");
+}
+
+function readVersionSnapshot(workspaceRoot: string, slug: string, version: number): string | null {
+  const snapPath = registryVersionPath(workspaceRoot, slug, version);
+  return existsSync(snapPath) ? readFileSync(snapPath, "utf8") : null;
+}
+
+// SkillRegistryConflict / SkillRegistryConflictsResult 契约已上移至 types.ts（server+web 双份单源）。
+
+function detectSkillRegistryConflicts(input: {
+  workspaceId: string;
+  workspaceRoot: string;
+  slug?: string;
+  content?: string;
+}): SkillRegistryConflictsResult {
+  const querySlug = input.slug ? sanitizeSkillSlug(input.slug) : "";
+  if (input.slug && !querySlug) throw new Error("valid slug required");
+  const queryEntry = querySlug
+    ? listSkillRegistryEntries(input.workspaceId).find((entry) => entry.slug === querySlug && entry.status !== "archived")
+    : undefined;
+  const queryContent = input.content?.trim() || (queryEntry ? readRegistrySkillContent(input.workspaceRoot, queryEntry.slug) : "");
+  if (!queryContent.trim()) throw new Error("content or slug with existing SKILL.md required");
+  const documents = listSkillRegistryEntries(input.workspaceId)
+    .filter((entry) => entry.status !== "archived" && entry.id !== queryEntry?.id)
+    .map((entry) => {
+      const content = readRegistrySkillContent(input.workspaceRoot, entry.slug);
+      return content ? { id: entry.id, name: entry.name, content } : null;
+    })
+    .filter((item): item is { id: string; name: string; content: string } => item !== null);
+  const entriesById = new Map(listSkillRegistryEntries(input.workspaceId).map((entry) => [entry.id, entry]));
+  const conflicts = rankSkillSimilarity(queryContent, documents, 10)
+    .map((match) => {
+      const entry = entriesById.get(match.id);
+      if (!entry) return null;
+      const severity = match.score >= 1.5 ? "high" : match.score >= 0.75 ? "medium" : "low";
+      return {
+        id: `skill-conflict:${entry.id}`,
+        workspaceId: input.workspaceId,
+        itemKind: "skill" as const,
+        itemId: entry.id,
+        slug: entry.slug,
+        name: entry.name,
+        version: entry.version,
+        status: entry.status,
+        score: match.score,
+        severity,
+        reason: `疑似重复 skill：BM25 similarity ${match.score.toFixed(2)}，建议人工审查后采纳/归档。`,
+        snippet: match.snippet,
+      };
+    })
+    .filter((item): item is SkillRegistryConflict => item !== null);
+  return { querySlug: querySlug || null, conflicts };
+}
+
+function readRegistrySkillContent(workspaceRoot: string, slug: string): string {
+  const path = registrySkillPath(workspaceRoot, slug);
+  return existsSync(path) ? readFileSync(path, "utf8") : "";
+}
+
+function skillRegistryMetricsFromEvaluation(
+  skillId: string,
+  summary: SkillEvaluationRunSummary,
+): { score: number | null; activationRate: number | null } {
+  const variant = summary.variantSummaries.find((item) => item.variantId === skillId);
+  if (!variant) return { score: null, activationRate: null };
+  const pairwise = summary.pairwiseSummaries.find((item) => item.variantId === skillId);
+  const successRate = variant.total > 0 ? variant.success / variant.total : 0;
+  // 卡 P1·D 口径：有 pairwise 用 winRate=win/(win+tie+loss)，否则用 successRate；
+  // activationRate 始终单列、不混入 score（激活率=是否被用，score=用了效果好不好）。
+  const decided = pairwise ? pairwise.win + pairwise.tie + pairwise.loss : 0;
+  const score = decided > 0 ? pairwise!.win / decided : successRate;
+  return { score: Math.max(0, Math.min(1, score)), activationRate: variant.activationRate };
+}
+
+function recordSkillRegistryUsageForPaths(workspaceId: string, workspaceRoot: string, skillPaths: string[] | undefined): void {
+  if (!skillPaths || skillPaths.length === 0) return;
+  const byPath = new Map<string, SkillRegistryEntry>();
+  for (const entry of listSkillRegistryEntries(workspaceId)) {
+    if (entry.status === "archived") continue;
+    byPath.set(resolve(registrySkillPath(workspaceRoot, entry.slug)), entry);
+  }
+  const seen = new Set<string>();
+  for (const skillPath of skillPaths) {
+    const entry = byPath.get(resolve(skillPath));
+    if (!entry || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    incrementSkillRegistryUsage(entry.id);
+  }
+}
+
+function collectWorkflowSkillPaths(workflow: WorkflowLike): string[] {
+  const paths = new Set<string>();
+  if (Array.isArray(workflow.defaultSkillPaths)) {
+    for (const item of workflow.defaultSkillPaths) {
+      if (typeof item === "string") paths.add(item);
+    }
+  }
+  for (const node of workflow.nodes ?? []) {
+    if (!Array.isArray(node.skillPaths)) continue;
+    for (const item of node.skillPaths) {
+      if (typeof item === "string") paths.add(item);
+    }
+  }
+  return Array.from(paths);
+}
 
 // ---- run stale-nodes / cascade（变更管理）----
 engineRouter.get("/api/runs/:runId/stale-nodes", (req, res) => {
@@ -560,6 +950,8 @@ export async function handleSendFlow(
   } catch (err) {
     return send(ws, { type: "error", flowId: flow.id, message: String(err) });
   }
+  const workspace = getWorkspace(flow.workspaceId);
+  if (workspace) recordSkillRegistryUsageForPaths(flow.workspaceId, workspace.rootPath, skillPaths);
 
   const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow");
   recordMemoryInjectionUsage(flow.workspaceId, memoryInjection);
@@ -651,6 +1043,8 @@ export async function handleExecuteMultiAgent(
     traceFlowEvent(flow.id, "error", "failed", String(err), { phase: "normalize_workflow_models", runId: msg.runId });
     return send(ws, { type: "error", flowId: flow.id, runId: msg.runId, message: String(err) });
   }
+  const workspace = getWorkspace(flow.workspaceId);
+  if (workspace) recordSkillRegistryUsageForPaths(flow.workspaceId, workspace.rootPath, collectWorkflowSkillPaths(workflow));
 
   const runsRoot = join(flow.folderPath, "runs");
   const runDir = join(runsRoot, msg.runId);

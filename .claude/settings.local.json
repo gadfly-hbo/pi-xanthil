@@ -212,7 +212,10 @@
       "Bash(awk '/^function evaluateSqlGate/,/^}/' server/src/multi-agent-runner.ts)",
       "Bash(grep -E \"tests [0-9]+$|pass [0-9]+$|fail [0-9]+$\")",
       "Bash(grep -E \"pass [0-9]+$|fail [0-9]+$\")",
-      "Bash(grep -n 'brief:\\\\\\\\`\\\\|\\\\\\\\`需求' docs/wiki.html)"
+      "Bash(grep -n 'brief:\\\\\\\\`\\\\|\\\\\\\\`需求' docs/wiki.html)",
+      "Bash(echo \"grep EXIT=$? \\(1=空,符合\\)\")",
+      "WebSearch",
+      "Bash(echo \"exit=$?\\(1=空\\)\")"
     ]
   }
 }

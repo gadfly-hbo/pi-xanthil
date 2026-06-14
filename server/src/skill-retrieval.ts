@@ -37,6 +37,45 @@ function extractSnippet(content: string, queryTokens: Set<string>, maxLen = 120)
   return content.slice(0, maxLen).replace(/\n/g, " ").trim();
 }
 
+export interface SkillSimilarityDocument {
+  id: string;
+  name: string;
+  content: string;
+}
+
+export interface SkillSimilarityResult {
+  id: string;
+  name: string;
+  score: number;
+  snippet: string;
+}
+
+export function rankSkillSimilarity(query: string, documents: SkillSimilarityDocument[], topK = 5): SkillSimilarityResult[] {
+  const queryTokens = tokenize(query);
+  if (queryTokens.length === 0 || documents.length === 0) return [];
+
+  type Doc = SkillSimilarityDocument & { tokens: string[]; freq: Map<string, number> };
+  const docs: Doc[] = documents.map((doc) => {
+    const tokens = tokenize(`${doc.name} ${doc.content}`);
+    return { ...doc, tokens, freq: buildFreqMap(tokens) };
+  }).filter((doc) => doc.tokens.length > 0);
+  if (docs.length === 0) return [];
+
+  const avgDocLen = docs.reduce((sum, d) => sum + d.tokens.length, 0) / docs.length;
+  const idfMap = buildIdfMap(queryTokens, docs.map((doc) => doc.freq));
+  const querySet = new Set(queryTokens);
+  return docs
+    .map((doc) => ({
+      id: doc.id,
+      name: doc.name,
+      score: bm25Score(queryTokens, doc.freq, doc.tokens.length, avgDocLen, idfMap),
+      snippet: extractSnippet(doc.content, querySet),
+    }))
+    .filter((result) => result.score > 0)
+    .sort((a, b) => b.score - a.score)
+    .slice(0, topK);
+}
+
 export function retrieveSkills(query: string, workspaceRoot: string, topK = 5): RetrievedSkill[] {
   const skills = listSkills(workspaceRoot).filter((s) => s.available);
   if (skills.length === 0) return [];
@@ -62,12 +101,7 @@ export function retrieveSkills(query: string, workspaceRoot: string, topK = 5): 
   const avgDocLen = docs.reduce((sum, d) => sum + d.tokens.length, 0) / docs.length;
   const N = docs.length;
 
-  // IDF per query token
-  const idfMap = new Map<string, number>();
-  for (const qt of queryTokens) {
-    const df = docs.filter((d) => d.freq.has(qt)).length;
-    idfMap.set(qt, Math.log((N - df + 0.5) / (df + 0.5) + 1));
-  }
+  const idfMap = buildIdfMap(queryTokens, docs.map((doc) => doc.freq));
 
   const querySet = new Set(queryTokens);
   const scored = docs.map((d) => ({
@@ -81,4 +115,14 @@ export function retrieveSkills(query: string, workspaceRoot: string, topK = 5): 
     .filter((s) => s.score > 0)
     .sort((a, b) => b.score - a.score)
     .slice(0, topK);
+}
+
+function buildIdfMap(queryTokens: string[], freqs: Array<Map<string, number>>): Map<string, number> {
+  const idfMap = new Map<string, number>();
+  const N = freqs.length;
+  for (const qt of queryTokens) {
+    const df = freqs.filter((freq) => freq.has(qt)).length;
+    idfMap.set(qt, Math.log((N - df + 0.5) / (df + 0.5) + 1));
+  }
+  return idfMap;
 }

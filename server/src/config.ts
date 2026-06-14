@@ -1,5 +1,6 @@
 import { homedir } from "node:os";
 import { join } from "node:path";
+import { fileURLToPath } from "node:url";
 import { existsSync, mkdirSync } from "node:fs";
 
 // All persistent data lives under a single app data root (local single-user tool).
@@ -35,6 +36,14 @@ export const RUN_BUDGET_LIMITS: { maxTotalTokens?: number; maxCostUsd?: number }
 export const DIRECT_LLM_ROOT = join(DATA_ROOT, "direct-llm");
 export const SQL_CONNECTIONS_PATH = join(DATA_ROOT, "sql-connections.json");
 export const BI_DATASETS_ROOT = join(DATA_ROOT, "bi-datasets");
+
+// 计算工具·hooks 管理（声明式转发，详见 docs/wiki.html「计算工具·hooks 管理」卡）。
+// hooks.json 由 server 端 CRUD（D 卡）写、px-hook-runner 扩展读；触发流水写 hooks-triggers.jsonl。
+export const HOOKS_CONFIG_PATH = process.env.XANTHIL_HOOKS_CONFIG ?? join(DATA_ROOT, "hooks.json");
+export const HOOKS_LOG_PATH = process.env.XANTHIL_HOOKS_LOG ?? join(DATA_ROOT, "hooks-triggers.jsonl");
+// px-hook-runner pi 扩展入口（仓库内；pi 原生加载 .ts，无需编译）。仅注入到 pi-xanthil 触发的 pi 进程。
+export const HOOK_RUNNER_EXTENSION =
+  process.env.XANTHIL_HOOK_RUNNER ?? fileURLToPath(new URL("../../pi-extensions/px-hook-runner/index.ts", import.meta.url));
 
 export function ensureDirs(): void {
   mkdirSync(DATA_ROOT, { recursive: true });

@@ -18,7 +18,20 @@ import type {
   ExtractionTool,
   ExtractionRun,
   ToolEvalCaseTemplateList,
+  Hook,
+  HookTriggerRecord,
 } from "@/types";
+
+// 插件管理：pi 已加载扩展/包清单条目（模块本地类型，仅本域消费故不上提接缝层）。
+// 来源 source 与 server routes/data.ts 的 PluginInfo 同源。
+export type PluginSource = "package" | "global" | "project" | "local";
+export interface PluginInfo {
+  id: string;
+  name: string;
+  source: PluginSource;
+  enabled: boolean;
+  path?: string;
+}
 
 export const dataApi = {
   getBiAggregations: (workspaceId: string) =>
@@ -80,4 +93,27 @@ export const dataApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ brand, competitors, model }),
     }).then(json<CompetitorIntel>),
+
+  // ---- 计算工具 · 插件管理 + hooks 管理 ----
+  // 插件清单只读；hooks 整体覆盖式写入 hooks.json；触发流水读 hooks-triggers.jsonl。
+  // 数据安全：UI 不提供任何外发(HTTP)动作入口；server 也会拒收。block/mutate 仅 tool_call 事件。
+  listPlugins: () => fetch("/api/plugins").then(json<PluginInfo[]>),
+
+  listHooks: () => fetch("/api/hooks").then(json<Hook[]>),
+
+  saveHooks: (hooks: Hook[]) =>
+    fetch("/api/hooks", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(hooks),
+    }).then(json<Hook[]>),
+
+  listHookTriggers: (params?: { limit?: number; hookId?: string; event?: string }) => {
+    const q = new URLSearchParams();
+    if (params?.limit !== undefined) q.set("limit", String(params.limit));
+    if (params?.hookId) q.set("hookId", params.hookId);
+    if (params?.event) q.set("event", params.event);
+    const qs = q.toString();
+    return fetch(`/api/hooks/triggers${qs ? `?${qs}` : ""}`).then(json<HookTriggerRecord[]>);
+  },
 };

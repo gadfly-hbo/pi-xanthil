@@ -103,6 +103,7 @@ interface BusinessRequirementStructuredOutput {
   version?: {
     markdownEditedAt?: number;
     jsonStaleReason?: string;
+    requirementInput?: Partial<RequirementDraft>;
   };
 }
 
@@ -137,6 +138,17 @@ const EMPTY_DRAFT: RequirementDraft = {
   outputPreference: "",
   extraPrompt: "",
 };
+
+// Rebuild the left-side draft form from a persisted version's requirementInput, so refreshing the
+// page or reopening a version restores the business background instead of losing it to ephemeral state.
+function draftFromRequirementInput(input: Partial<RequirementDraft>): RequirementDraft {
+  const next = { ...EMPTY_DRAFT };
+  for (const key of Object.keys(EMPTY_DRAFT) as Array<keyof RequirementDraft>) {
+    const value = input[key];
+    if (typeof value === "string") next[key] = value;
+  }
+  return next;
+}
 
 const FIELD_CONFIG: Array<{
   id: keyof RequirementDraft;
@@ -458,6 +470,7 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
   const lastAppliedExtractRef = useRef<unknown>(null);
   const lastAppliedGenerateRef = useRef<unknown>(null);
   const lastAppliedClarifyRef = useRef<unknown>(null);
+  const autoRestoredPathRef = useRef<number | null>(null);
 
   const selectedPath = useMemo(
     () => paths.find((path) => String(path.id) === selectedPathId) ?? null,
@@ -709,7 +722,7 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
     });
   };
 
-  const openVersion = async () => {
+  const openVersion = useCallback(async () => {
     if (!selectedPath || !selectedVersionId) return;
     const version = versions.find((item) => item.id === selectedVersionId);
     if (!version) return;
@@ -720,11 +733,14 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
         markdownPath: version.markdownPath,
         jsonPath: version.jsonPath,
       });
+      const structured = isStructuredOutput(result.structured) ? result.structured : null;
       setGeneratedPath(version.markdownPath);
       setGeneratedJsonPath(version.jsonPath);
       setGeneratedContent(result.content);
       setEditedContent(result.content);
-      setGeneratedStructured(isStructuredOutput(result.structured) ? result.structured : null);
+      setGeneratedStructured(structured);
+      const requirementInput = structured?.version?.requirementInput;
+      if (requirementInput) setDraft(draftFromRequirementInput(requirementInput));
       setDiffContent("");
       setActiveResult("framework");
       setEditingFramework(false);
@@ -732,10 +748,21 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
     } catch (err) {
       setError(String(err));
     }
-  };
+  }, [selectedPath, selectedVersionId, versions]);
+
+  // On first load of each report path, auto-open the latest saved version so the business background
+  // (left draft) and framework preview survive a page refresh / backend restart. One-shot per path:
+  // never clobbers an in-progress generate (which sets the ref itself) or a manual version switch.
+  useEffect(() => {
+    if (!selectedPath || !selectedVersionId || generating || clarifying) return;
+    if (autoRestoredPathRef.current === selectedPath.id) return;
+    autoRestoredPathRef.current = selectedPath.id;
+    void openVersion();
+  }, [selectedPath, selectedVersionId, generating, clarifying, openVersion]);
 
   const generate = useCallback(async () => {
     if (!canGenerate || !selectedPath) return;
+    autoRestoredPathRef.current = selectedPath.id;
     setError("");
     setGeneratedPath("");
     setGeneratedJsonPath("");
@@ -1318,6 +1345,7 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
                   </div>
                 )}
               </div>
+              <div className="min-h-0 flex-1 overflow-auto">
               {activeResult === "framework" && sinkMessage && (
                 <p className="mb-2 text-right text-[11.5px] text-emerald-600 dark:text-emerald-400">{sinkMessage}</p>
               )}
@@ -1384,7 +1412,7 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
                   )}
                 </div>
               )}
-              <div className="min-h-0 flex-1 overflow-auto">
+              <div className="mt-1">
                 {activeResult === "framework" && editingFramework ? (
                   <textarea
                     value={editedContent}
@@ -1395,6 +1423,7 @@ export function BusinessRequirementPane({ scope, model, onGenerated, onBusinessC
                 ) : (
                   <Markdown>{activeResult === "clarification" ? clarificationContent : activeResult === "diff" ? diffContent : generatedContent}</Markdown>
                 )}
+              </div>
               </div>
             </div>
           ) : (

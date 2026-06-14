@@ -406,13 +406,56 @@ function sanitizeReportForLlm(content: string): string {
     .replace(/\S+\.(?:png|jpe?g|gif|webp|heic|svg)(?:\?\S*)?/gi, "[图片路径已省略]");
 }
 
+// LLM JSON outputs frequently include JS-style comments or trailing commas that break JSON.parse.
+// Strip them in a string-aware pass so we never corrupt string values that themselves contain
+// `//`, `/* */` or commas. This recovers the most common malformations without risky quote rewriting.
+function repairLooseJson(input: string): string {
+  let out = "";
+  let inString = false;
+  let escaped = false;
+  for (let i = 0; i < input.length; i++) {
+    const ch = input[i];
+    const next = input[i + 1];
+    if (inString) {
+      out += ch;
+      if (escaped) escaped = false;
+      else if (ch === "\\") escaped = true;
+      else if (ch === '"') inString = false;
+      continue;
+    }
+    if (ch === '"') { inString = true; out += ch; continue; }
+    if (ch === "/" && next === "/") {
+      while (i < input.length && input[i] !== "\n") i++;
+      continue;
+    }
+    if (ch === "/" && next === "*") {
+      i += 2;
+      while (i < input.length && !(input[i] === "*" && input[i + 1] === "/")) i++;
+      i += 1;
+      continue;
+    }
+    if (ch === ",") {
+      let j = i + 1;
+      while (j < input.length && /\s/.test(input[j] ?? "")) j++;
+      const after = input[j];
+      if (after === "}" || after === "]") continue; // drop trailing comma
+    }
+    out += ch;
+  }
+  return out;
+}
+
 function extractJsonObject(text: string): unknown {
   const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
   const raw = fenced?.[1] ?? text;
   const start = raw.indexOf("{");
   const end = raw.lastIndexOf("}");
   if (start < 0 || end <= start) throw new Error(`LLM response does not contain JSON object: ${raw.slice(0, 300)}`);
-  return JSON.parse(raw.slice(start, end + 1)) as unknown;
+  const sliced = raw.slice(start, end + 1);
+  for (const candidate of [sliced, repairLooseJson(sliced)]) {
+    try { return JSON.parse(candidate) as unknown; } catch { /* try next candidate */ }
+  }
+  throw new Error(`LLM response JSON could not be parsed: ${sliced.slice(0, 300)}`);
 }
 
 function isMeaningfulGraphText(value: unknown): value is string {
@@ -3057,14 +3100,13 @@ function resolveRequestedModel(model: unknown, fallback: string): string {
 function parseJsonObject(text: string): unknown {
   const fenced = text.match(/```(?:json)?\s*([\s\S]*?)```/i)?.[1];
   const raw = (fenced ?? text).trim();
-  try {
-    return JSON.parse(raw);
-  } catch {
-    const start = raw.indexOf("{");
-    const end = raw.lastIndexOf("}");
-    if (start >= 0 && end > start) return JSON.parse(raw.slice(start, end + 1));
-    throw new Error("LLM response is not valid JSON");
+  const start = raw.indexOf("{");
+  const end = raw.lastIndexOf("}");
+  const sliced = start >= 0 && end > start ? raw.slice(start, end + 1) : raw;
+  for (const candidate of [raw, sliced, repairLooseJson(sliced)]) {
+    try { return JSON.parse(candidate); } catch { /* try next candidate */ }
   }
+  throw new Error(`LLM response is not valid JSON: ${sliced.slice(0, 300)}`);
 }
 
 function validateDecisionTreeResult(value: unknown): DecisionTreeNode[] {

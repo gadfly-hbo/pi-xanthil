@@ -7,33 +7,31 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-14 · 回流审核终审 + 文档审计修复（无功能改动，文档/口径对齐）。
+- 最近更新：2026-06-14 · skill 管理 P1 A/B/C 合流收尾 + 业务需求版本恢复归属核实。
 - 进度：
-  - **回流评审两项被证伪（基于旧快照）**：评审报「sql-loop URL 不匹配致 404」与「WorkflowTemplateLibraryPane 末尾废注释」在当前代码均不成立。实测 `api.ts:359` 与 `engine.ts:229` 都用 `/api/workspaces/:id/sql-loop/instantiate`（字符串一致，无 404）；pane 文件末尾无任何废注释。结论：不动代码（用户已手测模板实例化通过）。
-  - **WorkflowDesignPane（454 行）逐行审 = 无 bug**：WS 通道 `send_flow`/`abort_flow`/`run_start`/`run_end`/`error`/`flow_event(message_end)` 在 web/server 两侧 `types.ts` 均已定义，属复用既有契约、非新增接缝；运行态恢复(1.5s 轮询 + flowIdRef 防重订阅 + 乐观用户消息 + role==="user" 早返回防重)自洽，守卫完整。
-  - **3 个 readme pane 审完**：`ExploreReadmePane`/`AggregateReadmePane` 是 `Markdown + ?raw` 同构壳，零风险；内容在 `web/src/docs/*.md`，红线表述准确（数据探索永久无 LLM、原始行禁入 LLM）。`WorkflowReadmePane` 修了 2 处 doc drift（见改动清单）。
-  - **文档双份隐患已消除**：`explore-readme.md`/`aggregate-readme.md` 曾在 `web/src/docs/`(被 `@/docs/?raw` 真消费) 与根 `docs/`(无人引用) 各存逐字相同一份；删除根 `docs/` 那两份，留单一真源。
-  - **`onApplyToEditor` 接线审 + 修 2 处**：链路正确（设计页生成 workflow.json → `applyToEditor` 切 execute + bump `workflowRefreshKey` → 加载 effect 重新 `flowWorkflowGet` 拉新图），与顶部「执行」tab 同行为无分叉。修了路径上两处缺陷（`MultiAgentExecutionPane.tsx`）：**A** 加载 effect 缺 `.catch` → 拉取失败永久 spinner，已补兜底；**B** 进 execute 必 reload 会静默丢弃执行侧未保存节点修改，已给 `applyToEditor` 加 `workflowDirty` 守卫(`window.confirm`)，并让「执行」tab 复用它消除重复内联逻辑。
-  - **MultiAgentExecutionPane 5 个拆分件审 + 修 1 处**：`multi-agent/{types,workflow-utils,RunControlPanel,ToolNodeConfig}` 干净（纯类型/纯函数/纯展示，局部扩展类型未污染全局接缝，校验链与 onBlock 契约一致，WS 消息类型在 `types.ts:1404-1418` 全部存在）。修了 `useMultiAgentRun.ts` 恢复 effect 依赖过宽：原 `[flowId, workflow]` 导致每次节点编辑都重打 `listFlowRuns`/`flowRunTree`；拆成①`[flowId]` 网络拉取（每 flow 一次）+ ②`[restoreDirs, workflow]` 纯映射（映射一次即清空 restoreDirs，不随编辑重跑）。
-- 校验：`npm run typecheck` ✅；`npm run build` ✅（仅既有 chunk size warning）。本次纯 engine 域文档/pane，未触发 data 探索子树 LLM 隔离 grep。
-- 下一步（非阻塞，承接上轮，建议优先级）：
-  - ① 做一次浏览器交互 smoke：模板库实例化 3 个模板 → 设计表单生成写作 workflow → 迭代修改插入/回跳节点 → 执行页保存并打开 DAG。（sql-loop 用户已单点手测通过，其余链路尚未端到端跑）
-  - ② 设计页运行态恢复目前只覆盖“进程仍在 activeFlowRuns 中”的 UI 恢复；真正断点续跑（server 重启/pi 异常后继续）未做。若要做第 2 层，需要持久化 design run 表单、patch 指令、systemPrompt、runId 和阶段状态。
-  - ③ 设计页生成/patch 的 prompt 仍依赖 pi 遵守 schema；建议后续增加前端表单级校验和生成后 schema/edge/onBlock 可视化摘要，降低模型漏字段风险。
-  - ④ 模板库清单当前前端硬编码；若模板继续增加，建议补后端 `GET /api/workflow-templates`，避免 UI 与后端模板漂移。
-  - ⑤ 可选继续拆 `MultiAgentExecutionPane`：节点编辑器/EdgeEditor/ExecutionPanel 仍可做第二阶段深拆，但本轮未动。
+  - **P1 A 后端已落地**：skill registry 评测回写时 `candidate + score >= 0.6` 自动转 `draft`（达标待人审采纳）；`distilled/curated` 置 `active` 必须 PATCH 带 `confirmed=true`；新增 `/api/workspaces/:id/skill-registry/conflicts?slug=&content=`，复用 BM25 返回疑似重复/建议归档结果，不自动归档。
+  - **P1 B 前端已落地（D slot 跨域调 E）**：skill 管理页采纳/弃用按钮覆盖 candidate + draft；`AdoptConfirmModal` 信任门与 A 域 `confirmed=true` 契约对齐；同 slug 新建/版本更新有二次确认；冲突展示接入采纳前预查与 modal 手动检测；code-review 的 Critical/Important 已修。
+  - **P1 C workflow skill 子集已打通**：`GET/PUT /api/flows/:id/workflow` 对 `defaultSkillPaths/node.skillPaths` 做 `normalizeWorkflowSkills()`；`MultiAgentExecutionPane` 表单视图支持 workflow 默认 skill 与节点三态配置（继承 / 禁用 / 指定子集）；runner 继续使用既有 `node.skillPaths ?? workflow.defaultSkillPaths` 注入逻辑。
+  - **业务需求版本恢复已认领**：`BusinessRequirementPane` 左侧 draft 业务背景持久化恢复属 E 域有效改动，不回滚。完整性已核实：后端生成版本写 `structured.version.requirementInput = requirement`；手动编辑 markdown 后保留已有 `requirementInput`，缺失时补 fallback；前端 `openVersion()` 与一次性 auto-restore 读取字段不是 no-op。
+  - **focused 测试覆盖**：`server/src/skill-registry.test.ts` 覆盖 registry CRUD/归档、metrics/usage、candidate→draft、confirmed 信任门、conflicts API、workflow skillPaths 规范化。
+- 校验：
+  - `node --experimental-strip-types --test server/src/skill-registry.test.ts` ✅（本 session focused）
+  - `npm run typecheck` ✅（server + web）
+  - `npm run build` ✅（仅既有 Vite chunk size / dynamic import warning）
+  - 本次目标域为 engine，未触发 data 探索子树 LLM 隔离 grep。
+- 下一步（非阻塞，建议优先级）：
+  - ① **运行态 UI 验证**（需浏览器人工跑）：skill 管理页采纳信任门、同 slug confirm、冲突展示、draft 采纳/弃用、连续切换 entry 的 race 防护；workflow 表单中 workflow/default 与 node skill 子集保存后执行注入。
+  - ② **冲突 API 建议升级 POST**：当前 `/skill-registry/conflicts?content=` 为 GET，前端已截断 4KB 防 URL 414；POST body 可保留完整 content，提高 BM25 准确度。
+  - ③ **业务需求版本恢复 smoke**：生成业务需求版本 → 刷新/重启 → 重新进入同 report path，确认左侧 draft 与框架预览自动恢复；当前已做代码链路核实与全量门禁。
+  - ④ **生产真实激活埋点**：usageCount 仍是“注入次数”，不含 retrievalMode 动态检索和真实激活；如需治理报表，需要在 retrieval/runner 回调追加区分字段。
+  - ⑤ **DAG 内 skill 编辑**：当前 node skillPaths 只在 `MultiAgentExecutionPane` 表单视图编辑；若用户强依赖 DAG overlay，可再抽同一 selector 给 `WorkflowDagEditor`。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/用户拍板）：
-  - **越界归属待总控裁决**：上轮 E 接线模板库/设计 pane 时改了接缝层骨架（`App.tsx`/`lib/api.ts`/`constants.ts`/`DataTabs`/`EngineTabs`）。功能合理但按章程这些归总控。要追认归属还是回滚重接，需总控定。
-  - **评审流程教训**：本轮评审的两个 actionable 项均因「未读当前文件、基于旧快照」而误报；与「typecheck/build 绿 ≠ 端到端通」同源——评审与 build 都不能替代对当前工作树的实读。是否要把「评审前强制重读目标文件」写进评审 SOP，待定。
-  - 是否要把模板库清单上移到后端接口，并约定模板 id/name/sourceName/instantiateEndpoint 的稳定 schema。
-  - 是否允许“设计”阶段在后端持久化 design run，用于真正断点续跑；若做，需要确定 DB 表和运行态清理策略。
-  - `api.ts` 仍承载 legacy 聚合方法；本轮为最小接入继续在 `legacyApi` 增加 `instantiateSqlLoop/getFlowChatRuntime`，后续是否迁到 `lib/api/engine.ts` 需总控决定。
-  - SQL loop 输入字段 `sql_connection_id / required_fields / schema_context / task` 命名是否固定；若接缝层将来有统一 workflow input schema 需对齐。
-  - 预算停止经 `__run_budget_stop` blackboard update 落 trace，是否需专门 `run_budget_stop` trace/WS 事件。
-  - 前端以 `agent_gate` 计数推导迭代轮次；是否需接缝层显式发 `iter`/`maxIterations` 以支持刷新恢复 + 多 gate 精确展示。
-  - isDeterministicSqlGateNode 以 `node.id === "sql_gate"`(magic string)识别确定性 SQL gate；将来若多种确定性 gate，考虑改为按上游 tool 输出 kind 识别。
-  - （tool-use 遗留，待核实是否仍开）ExtractionTool skill 注入时机、ToolLab 联动入口、`tool_result.content` 形态。
+  - **冲突 API 是否升级为 POST**：影响 A/E 端点契约，前端已有截断兜底，是否值得下个迭代修。
+  - **信任门范围是否扩展到 manual/imported**：当前仅 distilled/curated 强制 `confirmed=true`；若扩展，后端与前端需同步。
+  - **archived 同 slug 是否允许覆盖 SKILL.md**：当前明确 confirm 后允许；产品是否改为禁止或强制走 rollback 链路，待定。
+  - **workflow skillPaths 保存无效路径的策略**：当前 lenient 过滤并静默剔除；是否改为 strict 400，需产品体验取舍。
+  - **业务需求历史版本 backfill**：旧 JSON 若没有 `version.requirementInput`，只能恢复框架预览，无法恢复左侧 draft。是否需要离线 backfill 历史版本，由总控/用户决定。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -60,10 +58,16 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **每节点 = 独立 pi turn**（spawn 子进程隔离，可重试/可追溯）；节点间数据通过 prompt 里 `{{nodeId}}` 占位符（黑板）传递。
 - **WorkflowDef 扩展字段全 optional**（role/icon/color/desc/inputs/layout），默认值由渲染/执行层兜底，向后兼容已有 `workflow.json`。
 - **模型硬约束后端统一校验**：`normalizeWorkflowModels` 在 GET/PUT/执行入口校验，前端 prompt 仅辅助。
+- **LLM→JSON 解析统一入口（2026-06-14 快修2.1）**：所有把 LLM 输出转结构化 JSON 的链路一律走 `server/src/index.ts` 的 `parseJsonObject` / `extractJsonObject`，二者已内置字符串感知的 `repairLooseJson()` 兜底（剥 `//`、`/* */` 注释 + 尾逗号；字符串内的 `//`、`,]` 受保护不误伤）。解析顺序 `原文 → 切片([首{,末}]) → repair 切片`；**禁止在各 LLM 功能里各自直接 `JSON.parse`**。最终仍无法解析时抛带原文片段的领域错误（如 `LLM response is not valid JSON: <前300字>`），不得让裸 V8 `SyntaxError` 冒泡成 500。新增 LLM 链路复用此入口，配合既有 `repairJsonObject`（二次 LLM 修复）兜底。
 - **数据文件夹 scope 化**：`workspace_paths` 带 `session_id`/`flow_id`，三级 scope（workspace/session/flow）。
 - **强制停止双层**：active handle 优先 + `pgrep`/`lsof` 兜底杀孤儿进程。
 - **AnaX 数据安全适配**：data-curator 不读原始数据，改为基于已登记 `clean_data` 聚合数据做 6 维评分（与 `BLOCK_SAFETY` 一致）。
 - **skill 落盘项目级** `<workspace>/.pi/skills/<slug>/SKILL.md`（被 `listSkills` 识别为 project skill），不落全局。
+- **skill registry 生命周期（2026-06-14）**：内容真源仍是 `<workspace>/.pi/skills/<slug>/SKILL.md`，`skill_registry` 只存元数据/生命周期态。`status` 为 `draft|candidate|active|archived`；归档只更新 status 并关闭当前 workspace 的 enablement，**不删除文件**。版本链用 `version + supersedesId`，沿用 RuleMemory 的“留档可回滚”范式。
+- **skill 自进化人审门（2026-06-14 P1 A）**：`candidate` 表示待评测/评测中/低分候选，评测达阈值后自动转 `draft`，`draft` 在 skill registry 语境中表示“达标待人审采纳”。`active` 必须由人审 PATCH 触发；`source=distilled|curated` 置 active 需 `confirmed=true`，禁止全自动 active。
+- **skill registry 启用与 usage 口径**：创建 registry entry 后调用 `enableForOrigin(workspaceId, "skill", id)`，归档调用 `setMemoryEnablement(... false)`。`usageCount` 当前表示“被注入路径使用过”，不是模型真实激活；flow chat 显式 `skillPaths` 与 workflow `defaultSkillPaths/node.skillPaths` 会按 registry path 匹配后累加。
+- **skill registry 去重/冲突边界（2026-06-14 P1 A）**：`/api/workspaces/:id/skill-registry/conflicts` 只做即时 BM25 相似度计算，过滤 archived，不自动归档、不落冲突表。返回结构按 RuleConflict 风格给 B/D 展示“疑似重复/建议归档”，最终处理仍走人审。
+- **workflow skill 子集配置（2026-06-14 P1 C）**：`WorkflowDef.defaultSkillPaths` 是 workflow 级 fallback；`node.skillPaths === undefined` 继承 workflow 默认，`node.skillPaths = []` 明确禁用默认 skill，非空数组则只注入该节点专属子集。runner 的权威逻辑是 `node.skillPaths ?? workflow.defaultSkillPaths`。
 - **ChatPane fork/delegate 前端边界**：ChatPane 不能为此改 `App.tsx` 接线；从 `folderScope.type === "session"` 取活跃 session。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
 - **ChatPane ExtractionTool 展示边界**：前端只展示 X 透传的 tool event / pi content block，不直接触发工具执行；`tool_call` 映射为 running `tool_use`，`tool_result` 回填同 id 卡片，最终 `message_end` 再带同一 tool block 时按 `id/tool_use_id` 去重。真实红线仍在后端 `source=ai` 守卫，前端不得把 `draw_data` 内容或样本送入 LLM。
@@ -79,6 +83,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **工作流设计入口（2026-06-13）**：工作流内 tab 收敛为“设计 / 执行”。“设计”是表单式 workflow compiler，不是自由聊天；首次生成靠目标/输入/步骤/gate/输出表单约束，后续“迭代修改”才允许自然语言 patch，且必须最小修改当前 flow 的 `workflow.json`。
 - **设计运行态恢复边界（2026-06-13）**：`GET /api/flows/:id/chat-runtime` 只读取内存 `activeFlowRuns`，用于切换 flow 后恢复 UI running 状态；这不是 checkpoint，也不保证 server 重启、pi 进程异常、WebSocket 断开后的断点续跑。
 - **AnaX 与工作流主栈前端解耦**：AnaX 定位独立产品/后台系统（白皮书 type-B）。不要为了消除重复把 AnaXPane 的 WS 订阅/恢复逻辑抽到主栈共享 hook；`web/src/components/multi-agent/useMultiAgentRun.ts` 是 MultiAgentExecutionPane 私有 hook，不对 AnaX 承诺复用。
+- **skill 冲突 API 客户端调用规范（2026-06-14 P1-B）**：D slot 通过 `engineApi.listSkillConflicts(workspaceId, {slug?, content?})` 调用。`content` 走 GET querystring 有 URL 长度上限（浏览器/反向代理通常 8KB），客户端层在 `engine.ts` 内置 `truncateConflictContent`（4KB 上限），任何新增冲突调用方必须复用同一方法、不绕开截断；A 域如未来支持 POST body，前端可移除截断但保持同名方法。
+- **skill 信任门 `confirmed` 字段语义边界（2026-06-14 P1-B）**：A 域 `hasConfirmedReview` 仅在 `source ∈ {distilled, curated}` 且 `status → active` 时强校验 `confirmed=true`。前端 PATCH 必须**仅在敏感来源传 `confirmed: true`**，其他来源不带该字段；不可"反正传上无副作用"地一律传 true，否则未来若 A 域扩展信任门到所有来源，前端会静默旁路。
 
 ---
 
@@ -98,6 +104,15 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 2026-06-13 模板库入口决策：没有新增 `SubTab` 字面量和 `MULTI_SUB_TABS`，而是在工作流列表栏加“从模板新建”。理由：满足“一键实例化”需求，同时避开接缝层 tab 骨架变更；当前模板数量少，前端硬编码清单比新增列表端点更轻。
 - 2026-06-13 设计入口决策：否决“创建”和“搭建”并行长期存在。两者对用户的视觉差异不明显，且都像对话框；最终合并为“设计”表单，要求用户先填写目标、输入、步骤、gate、回跳、输出，降低自由自然语言的不精确性。自然语言保留在“迭代修改”区，只用于已有 workflow 的局部 patch。
 - 2026-06-13 运行态恢复决策：短期只做 active run UI 恢复，不做真正断点续跑。理由：`activeFlowRuns` 已有内存态，可低成本解决“切 flow 后回来不知道是否还在跑”；真正断点续跑需要 DB 持久化设计 run 与阶段状态，属于后续较大改造。
+- 2026-06-14 skill registry 后端决策：只在 E slot 新增 `db/engine.ts` CRUD 与 `routes/engine.ts` registry 路由，不迁移 `index.ts` 中既有 skill-evaluation legacy 端点。原因是用户约束“仅 E slot、不碰接缝骨架”，而 runner/db 保存函数已经可复用；registry evaluate 端点直接调用现有 runner 与保存函数即可闭环。
+- 2026-06-14 skill registry 评测回写口径：registry evaluate 端点临时构造 baseline + skill variant，复用 `runSkillEvaluation()` 与 `saveSkillEvaluation()`。score 暂定为 pairwise `0.5 + avgScoreDelta/20` 截断到 0..1；无 pairwise 时用 successRate 与 activationRate 均值。该口径是工程接线默认值，不是最终实验室评分标准。
+- 2026-06-14 skill 采纳写文件决策：POST registry 端点负责写 `<workspace>/.pi/skills/<slug>/SKILL.md`，并限制 slug/path，拒绝路径逃逸。没有新增全局 skill 写入，也不写 `.agents/skills`，避免影响用户全局环境。
+- 2026-06-14 P1 A 阈值状态机决策：不新增 SkillStatus，复用卡1契约中的 `candidate/draft/active/archived`。原因是表/类型归卡1/总控，E 卡不能扩接缝；因此把 `draft` 明确定义为“达标待采纳”，由 UI 文案解释，而不是改 schema。
+- 2026-06-14 P1 A 信任门决策：用 `confirmed=true` 作为 distilled/curated 采纳的人审轻量标记。它只防止后端被无意直接置 active，不记录 reviewer；若未来要审计，需要总控扩表或新增审计事件。
+- 2026-06-14 P1 C 前端落点决策：节点 skill 子集配置先放 `MultiAgentExecutionPane` 表单视图，不放 `WorkflowDagEditor`。原因是 DAG 已提示高级字段到表单视图编辑，且表单视图能同时编辑 workflow/default 与 node override，避免两个编辑入口状态漂移。
+- 2026-06-14 P1-B Modal 拆分决策：`AdoptConfirmModal` 抽到独立文件而非内联在 `SkillManagementPane.tsx`。原因是 D slot 既有惯例（`CreateSkillModal.tsx`/`EvalSkillModal.tsx` 都是平级独立文件），且采纳确认 modal 自身 ~150 行逻辑足够独立；同时弹窗内引入独立 `adoptError` state，避免错误显示在主面板被遮住。
+- 2026-06-14 P1-B 共享 utility 决策：`severityLabel` / `severityTone` / `truncateConflictContent` 抽到 `web/src/lib/skillConflict.ts`，被 `CreateSkillModal` 与 `AdoptConfirmModal` 同时复用。否决了在每个 modal 内本地复制实现的方案——本次 code-review 已踩到一处实现漂移（行内复制）。utility 模块小（~20 行）但能消除"两份实现一改一漏"的隐患。
+- 2026-06-14 P1-B race 防护决策：`AdoptConfirmModal` 不用 `AbortController`，而是用 `adoptRequestTokenRef` 自增 token。原因是冲突 API 是非幂等查询、无副作用，简单 token 即足以丢弃旧回调；`AbortController` 会让 `fetch` 抛 AbortError，反而需要在 catch 内额外区分 abort 与真错。token-ref 范式可在后续类似场景复用（弹窗预查询 + 用户连续切换目标）。
 - 画布**纯预览只读**（`nodesDraggable=false` 等），所有变更经「pi 对话」自然语言完成。
 - `workflow.json` 不存在时从**目录树自动推断节点**（数字前缀排序/单目录包裹展开，标 `inferred:true`）。
 - 创建视图三区（架构+进度+对话）；黑板**正名融合**——把唯一真实价值（`{{id}}` 传递关系）显示在执行流节点卡，删重复输出汇总。
@@ -121,6 +136,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 **探索·对话/skill/业务需求**
 - skill 提炼**压成单次 LLM 调用**（A 解构→B 提炼→C 写 SKILL.md 内嵌进一个 prompt），不做链式三次往返；**先预览可编辑再保存**（两个 API）。
 - 业务需求来源引用 = 字段级 `sourceRefs` + quote 最小闭环，**不做字符 offset 定位**；业务需求上下文抽成前端共享 hook（Chat/报告版本/Golden Strategy 复用）。
+- 业务需求版本恢复依赖 `structured.version.requirementInput`：后端生成版本必须写入原始 draft 输入，手动编辑 markdown 时必须保留已有 requirementInput；前端打开历史版本/刷新恢复左侧 draft 时只读该字段，旧 JSON 缺字段时不应臆造完整业务背景。
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
 - Phase 2b 数据分析工具展示采用**事件容错层而非深绑 pi-adapter 类型**：E 侧只认 `tool_call`/`tool_result` 事件和 pi `tool_use`/`tool_result` content block，不改 `pi-adapter/index.ts/types`。这样 X 可继续收敛总控契约，前端只在 `App.tsx` 映射层适配字段差异。
@@ -136,6 +152,11 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **AnaX fan-out 上限必须和 plan 假设数量一致**：plan 真跑可能生成 12 个假设；若 `maxItems` 仍是 8，H9-H12 永远不验证，review_gate 会因 evidence=0 / confidence=low 必然阻断。
 - **AnaX archive flywheel 只读本轮回复会漏写**：真实 archive 可能把完整 `anax-hypotheses` 写进 `09-archive-summary.md`，但本轮回复只输出摘要，导致 `onBlackboardUpdate("archive")` backfill=0。prompt 已要求本轮回复末尾原样输出结构块；若仍不稳，下一步考虑 runner 从 `specs/09-archive-summary.md` 兜底读取。
 - **skill distillation frontmatter 提取不能取第一个 `---`**：真实 LLM 可能在 `<think>` 中输出自查清单、fenced YAML 示例和最终 SKILL.md。`extractSkillMarkdown()` 应优先找最后一个 `--- + name:` frontmatter；否则保存后 `listSkills()` 会识别为 project source 但 `available:false`（缺 description）。
+- **skill registry POST 必须和文件路径强绑定**：registry 的 `slug` 同时决定 DB 行和 `<workspace>/.pi/skills/<slug>/SKILL.md` 路径。不要接受带 `/`、`\`、`..` 的 slug，也不要从请求体直接信任目标路径；否则会把“采纳 skill”变成任意文件写入。
+- **registry usageCount 不等于 activation**：`usageCount` 只说明系统把某 skill path 注入了一次；模型是否真正用了它要看评测 `activationRate` 或未来生产激活事件。不要用 usageCount 直接判断 skill 有效性。
+- **candidate→draft 是语义复用，不是普通草稿**：P1 A 为避免扩 `SkillStatus`，把 `draft` 用作“达标待人审采纳”。任何 UI/文档展示都应写“待采纳”而不是只写“草稿”，否则会误导用户以为尚未评测。
+- **workflow skillPaths 保存时会规范化并过滤无效路径**：`GET/PUT /api/flows/:id/workflow` 调用 `normalizeWorkflowSkills()`，沿用 lenient 规则。无效路径会被剔除而不是 400；前端保存后应以重新加载结果为准，不要假设用户输入的每个 path 都落盘。
+- **node.skillPaths 三态不要混淆**：`undefined` 是继承 workflow 默认，`[]` 是明确禁用默认 skill，非空数组是指定子集。前端 patch 时如果想恢复继承必须把字段设为 `undefined`，不能写空数组。
 - **工具事件重复显示风险**：pi 可能先流式透传 `tool_call/tool_result`，最终 `message_end` 又带完整 `tool_use/tool_result` content。ChatPane 必须按 `id/tool_use_id` 去重，否则用户会看到两套工具卡。
 - **ExtractionTool skill 不是红线本体**：skill 文字只能引导模型选择 clean_data；真正防泄漏必须依赖后端 `POST /api/extraction-tools/:id/run` 的 `source=ai`、`workspaceId` 和已登记 `clean_data` 校验。不要在前端或 skill 文案里把软约束误认为安全边界。
 - **SQL loop 不能让 tool 节点非零退出**：普通 tool node 失败会在 runner 中立即 `return { code }`，下游 gate 不会执行。SQL loop 的可修复失败必须编码进 `run_sql` JSON 的 `code/success/error`，workflow 层保持 `code:0`，由 `sql_gate` block 并写入 `sql_error`。
@@ -151,6 +172,9 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **onto-extract 文档抽取的两层硬上限**（2026-06-11 hotfix 已调）：①`CONTENT_LIMIT`（字符截断，原 6000 → 现 24000）是真正决定"能不能看到文档后半段"的开关；②prompt 配额（实体/关系/逻辑/动作 ≤N）是次级限制，长文档若超配额会被模型自行裁掉。**所有抽取调优必须双层一起看**，只调一层都不够。
 - **onto-extract 分块抽取的"合并几乎免费"**：`processExtractionOutput` 是纯函数 + 已有同名去重（entity nameCn / logic nameCn / link `src|tgt|kind`）+ `resolveId` 模糊匹配，对同一 `ontologyId` 多次调用可天然合并落库。未来要做分块只需在 `extractOntologyFromText` 外层切分 + 串行多次跑 `runPiPrompt` + 逐次喂 `processExtractionOutput`，**不必动质检流水线**。但分块切分本身是难点：按段落边界（双换行/标题）切 + ~200 字 overlap，不要 `slice(0, N)`。
 - **onto-extract "按名去重"对编辑不友好**：line 233-241 已存在则 `continue`，后入块即便 description 更富也不会更新。未来要做"以新换旧/取富者"需改这段逻辑；这是分块上线前要先解决的 TODO。
+- **GET querystring 传业务文本会触发 414**（2026-06-14 P1-B 已规避）：`/api/workspaces/:id/skill-registry/conflicts?content=...` 这类把整段 SKILL.md 文本塞进 query 的设计，浏览器侧 ~8KB、nginx 默认 8KB、其他反向代理 4-16KB 不等，实测踩到的不是 fetch 失败而是 414/400。规避：客户端 `truncateConflictContent` 4KB 上限（`web/src/lib/skillConflict.ts`）。**任何后端读 `req.query` 中长文本字段的端点都应：① 改 POST body；或 ② 客户端必须有上限**；不要假设 GET 想塞多少就能塞多少。
+- **`AbortController` 不是 race 防护的唯一解**（2026-06-14 P1-B 已修，列此供后续参考）：弹窗预查询 + 用户连续切换目标场景下，`AbortController` 会让旧请求抛 AbortError，需要在 catch 内手动区分；用 `useRef<number>` 自增 token + 回调首行校验 `token === ref.current` 就够了，简单且不污染 catch 分支。该范式已在 `SkillManagementPane.tsx` `adoptRequestTokenRef` 落地。
+- **窗口内 fetch 回调的 setError 写到主面板会被遮住**（2026-06-14 P1-B 已修）：弹窗渲染于 `fixed inset-0` 全屏遮罩之上，主面板的 error banner 被遮罩盖住，用户根本看不到。所有 modal 内异步操作都应有**弹窗内独立 errorState**（如 `adoptError`），不要复用主面板 `error`；同时 `try/catch/finally` 中复位 `submitting=false` 必须用 `finally`，否则成功路径与失败路径状态机容易漂移。
 
 ---
 

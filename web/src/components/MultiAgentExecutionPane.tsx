@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import {
   ArrowRight,
   AlertCircle,
+  BookOpen,
   GitBranch,
   CheckCircle2,
   Loader2,
@@ -19,7 +20,7 @@ import { WorkflowDesignPane } from "@/components/WorkflowDesignPane";
 import { WorkflowDagEditor } from "@/components/WorkflowDagEditor";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import type { ExtractionTool, Flow, PiModel, WorkflowDef, WorkflowNode } from "@/types";
+import type { ExtractionTool, Flow, PiModel, PiSkill, SkillRegistryEntry, WorkflowDef, WorkflowNode } from "@/types";
 import type { CenterTab, EditableWorkflowDef, EditableWorkflowNode, WorkflowIssue, WorkflowNodeKind } from "@/components/multi-agent/types";
 import { RunControlPanel } from "@/components/multi-agent/RunControlPanel";
 import { ToolNodeConfig } from "@/components/multi-agent/ToolNodeConfig";
@@ -106,6 +107,141 @@ function NodeModelSelect(p: {
   );
 }
 
+interface WorkflowSkillOption {
+  path: string;
+  name: string;
+  description: string;
+  version?: number;
+}
+
+function buildWorkflowSkillOptions(skills: PiSkill[], registryEntries: SkillRegistryEntry[]): WorkflowSkillOption[] {
+  const bySlug = new Map(registryEntries.map((entry) => [entry.slug, entry]));
+  const options: WorkflowSkillOption[] = [];
+  for (const skill of skills) {
+    const slug = skill.path.match(/\.pi\/skills\/([^/]+)\/SKILL\.md$/)?.[1];
+    const registryEntry = slug ? bySlug.get(slug) : undefined;
+    if (!skill.available || !registryEntry || registryEntry.status === "archived") continue;
+    options.push({
+        path: skill.path,
+        name: skill.name,
+        description: skill.description,
+        version: registryEntry.version,
+    });
+  }
+  return options.sort((a, b) => a.name.localeCompare(b.name, "zh"));
+}
+
+function WorkflowSkillSelect(p: {
+  label: string;
+  mode: "workflow" | "node";
+  value: string[] | undefined;
+  options: WorkflowSkillOption[];
+  loading: boolean;
+  disabled: boolean;
+  inheritedCount?: number;
+  onChange: (value: string[] | undefined) => void;
+}) {
+  const selected = p.value ?? [];
+  const selectedSet = new Set(selected);
+  const availablePaths = new Set(p.options.map((option) => option.path));
+  const missing = selected.filter((path) => !availablePaths.has(path));
+  const stateLabel = p.mode === "node" && p.value === undefined
+    ? `继承工作流默认${p.inheritedCount ? ` (${p.inheritedCount})` : ""}`
+    : selected.length === 0
+      ? p.mode === "node" ? "禁用默认 skill" : "不指定默认 skill"
+      : `${selected.length} 个 skill`;
+
+  return (
+    <div className="flex flex-col gap-2 rounded-md border border-neutral-100 bg-neutral-50/60 p-2 dark:border-neutral-800 dark:bg-neutral-900/30">
+      <div className="flex items-center gap-2">
+        <BookOpen className="h-3.5 w-3.5 text-neutral-500" strokeWidth={1.75} />
+        <span className="text-[10px] font-medium text-neutral-500">{p.label}</span>
+        <span className="ml-auto text-[10px] text-neutral-400">{p.loading ? "加载中..." : stateLabel}</span>
+      </div>
+      {p.mode === "node" && (
+        <div className="flex flex-wrap gap-1">
+          <button
+            type="button"
+            disabled={p.disabled}
+            onClick={() => p.onChange(undefined)}
+            className={cn(
+              "h-6 rounded border px-2 text-[10.5px]",
+              p.value === undefined
+                ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                : "border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800",
+            )}
+          >
+            继承
+          </button>
+          <button
+            type="button"
+            disabled={p.disabled}
+            onClick={() => p.onChange([])}
+            className={cn(
+              "h-6 rounded border px-2 text-[10.5px]",
+              p.value !== undefined && p.value.length === 0
+                ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                : "border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800",
+            )}
+          >
+            禁用
+          </button>
+        </div>
+      )}
+      <div className="grid gap-1 md:grid-cols-2">
+        {p.options.length === 0 && (
+          <p className="text-[10.5px] text-neutral-400 md:col-span-2">
+            {p.loading ? "正在读取 skill..." : "没有可选的未归档 registry skill。"}
+          </p>
+        )}
+        {p.options.map((option) => {
+          const checked = selectedSet.has(option.path);
+          return (
+            <label
+              key={option.path}
+              className={cn(
+                "flex min-w-0 items-start gap-2 rounded border px-2 py-1.5",
+                checked
+                  ? "border-sky-200 bg-sky-50/70 dark:border-sky-900/50 dark:bg-sky-950/20"
+                  : "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950",
+                p.disabled && "opacity-60",
+              )}
+              title={option.path}
+            >
+              <input
+                type="checkbox"
+                checked={checked}
+                disabled={p.disabled}
+                onChange={() => {
+                  const base = p.value ?? [];
+                  p.onChange(
+                    checked
+                      ? base.filter((path) => path !== option.path)
+                      : [...base, option.path],
+                  );
+                }}
+                className="mt-0.5 h-3.5 w-3.5 shrink-0"
+              />
+              <span className="min-w-0">
+                <span className="flex items-center gap-1">
+                  <span className="truncate text-[11px] font-medium text-neutral-800 dark:text-neutral-100">{option.name}</span>
+                  {option.version !== undefined && <span className="shrink-0 rounded bg-neutral-100 px-1 text-[9px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">v{option.version}</span>}
+                </span>
+                <span className="line-clamp-2 text-[10.5px] leading-4 text-neutral-400">{option.description}</span>
+              </span>
+            </label>
+          );
+        })}
+      </div>
+      {missing.length > 0 && (
+        <p className="break-all text-[10px] leading-4 text-amber-600 dark:text-amber-400">
+          已保存但当前不可选：{missing.join(", ")}
+        </p>
+      )}
+    </div>
+  );
+}
+
 export function MultiAgentExecutionPane(p: Props) {
   const flowId = p.flow?.id ?? "";
   const [view, setView] = useState<View>("design");
@@ -118,6 +254,9 @@ export function MultiAgentExecutionPane(p: Props) {
   const [workflowSaveMessage, setWorkflowSaveMessage] = useState<string | null>(null);
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [loadingTools, setLoadingTools] = useState(false);
+  const [flowSkills, setFlowSkills] = useState<PiSkill[]>([]);
+  const [registryEntries, setRegistryEntries] = useState<SkillRegistryEntry[]>([]);
+  const [loadingFlowSkills, setLoadingFlowSkills] = useState(false);
 
   const [centerTab, setCenterTab] = useState<CenterTab>("flow");
   const [expandedNode, setExpandedNode] = useState<string | null>(null);
@@ -216,6 +355,27 @@ export function MultiAgentExecutionPane(p: Props) {
     };
   }, []);
 
+  useEffect(() => {
+    if (!flowId || !p.flow?.workspaceId) return;
+    let cancelled = false;
+    setLoadingFlowSkills(true);
+    Promise.all([
+      api.listFlowSkills(flowId).catch(() => [] as PiSkill[]),
+      api.listSkillRegistry(p.flow.workspaceId).catch(() => [] as SkillRegistryEntry[]),
+    ])
+      .then(([skills, entries]) => {
+        if (cancelled) return;
+        setFlowSkills(skills);
+        setRegistryEntries(entries);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingFlowSkills(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [flowId, p.flow?.workspaceId]);
+
   // ---- apply to editor ----
   const applyToEditor = useCallback(() => {
     if (workflowDirty && !window.confirm("执行视图有未保存的节点修改，切换会从服务器重新加载并丢弃这些修改。是否继续？")) return;
@@ -231,6 +391,13 @@ export function MultiAgentExecutionPane(p: Props) {
         nodes: cur.nodes.map((node) => (node.id === nodeId ? { ...node, ...patch } : node)),
       };
     });
+    setWorkflowDirty(true);
+    setWorkflowSaveError(null);
+    setWorkflowSaveMessage(null);
+  }, []);
+
+  const updateWorkflowRoot = useCallback((patch: Partial<EditableWorkflowDef>) => {
+    setWorkflow((cur) => cur ? { ...cur, ...patch } : cur);
     setWorkflowDirty(true);
     setWorkflowSaveError(null);
     setWorkflowSaveMessage(null);
@@ -375,6 +542,7 @@ export function MultiAgentExecutionPane(p: Props) {
     [orderedNodes, stepStates],
   );
   const workflowIssues = useMemo(() => validateWorkflowEditor(workflow), [workflow]);
+  const skillOptions = useMemo(() => buildWorkflowSkillOptions(flowSkills, registryEntries), [flowSkills, registryEntries]);
   const workflowHasErrors = workflowIssues.some((issue) => issue.level === "error");
   const issueByNodeId = useMemo(() => {
     const out = new Map<string, WorkflowIssue[]>();
@@ -556,6 +724,17 @@ export function MultiAgentExecutionPane(p: Props) {
               <div className="flex min-h-0 flex-1 overflow-y-auto">
                 {centerTab === "flow" && (
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
+                    {workflow && (
+                      <WorkflowSkillSelect
+                        label="workflow defaultSkillPaths"
+                        mode="workflow"
+                        value={workflow.defaultSkillPaths ?? []}
+                        options={skillOptions}
+                        loading={loadingFlowSkills}
+                        disabled={running}
+                        onChange={(value) => updateWorkflowRoot({ defaultSkillPaths: value ?? [] })}
+                      />
+                    )}
                     {orderedNodes.length === 0 ? (
                       <div className="flex flex-1 items-center justify-center text-[12px] text-neutral-400">
                         工作流暂无节点
@@ -708,6 +887,18 @@ export function MultiAgentExecutionPane(p: Props) {
                                       className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
                                     />
                                   </label>
+                                  <div className="md:col-span-2">
+                                    <WorkflowSkillSelect
+                                      label="node skillPaths"
+                                      mode="node"
+                                      value={node.skillPaths}
+                                      options={skillOptions}
+                                      loading={loadingFlowSkills}
+                                      disabled={running}
+                                      inheritedCount={workflow?.defaultSkillPaths?.length ?? 0}
+                                      onChange={(value) => updateWorkflowNode(node.id, { skillPaths: value })}
+                                    />
+                                  </div>
                                   {kind !== "tool" && (
                                     <label className="flex flex-col gap-1 md:col-span-2">
                                       <span className="text-[10px] font-medium text-neutral-500">prompt</span>

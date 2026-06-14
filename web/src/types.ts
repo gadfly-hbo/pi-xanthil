@@ -414,6 +414,7 @@ export type MemoryItemKind =
   | "case"             // analysis_cases 项目记忆
   | "metric"           // metric_definitions 指标记忆
   | "ontology"         // onto-xanthil：启用粒度=本体整体（P3 落地）
+  | "skill"            // skill_registry 项目级 skill（全局池 + 按工作区启用）
   | "failure" | "field" | "process"; // 预留占位模块（失败/字段/流程记忆）
 
 export interface WorkspaceMemoryEnablement {
@@ -1871,4 +1872,138 @@ export interface CompetitorIntel {
   comparison: CompetitorCompareRow[];
   substitutionRisk: string;
   recommendations: string[];
+}
+
+// 计算工具·hooks 管理 —— pi 声明式 hook 契约（详见 docs/wiki.html「计算工具·hooks 管理」卡）。
+// pi 的 hook = px-hook-runner 扩展运行时读 hooks.json，对 pi 生命周期事件匹配规则并执行动作。
+export type HookEvent =
+  | "session_start" | "session_shutdown"
+  | "before_agent_start" | "agent_start" | "agent_end"
+  | "turn_start" | "turn_end"
+  | "tool_execution_start" | "tool_execution_end" | "tool_call"
+  | "message_end";
+
+// command/log/notify 任意事件可用；block/mutate 仅 tool_call 事件生效（pi 的拦截/改参点）。
+export type HookActionKind = "command" | "log" | "block" | "mutate" | "notify";
+
+export interface HookAction {
+  kind: HookActionKind;
+  command?: string;             // kind==="command"：本地 shell 命令（外发 HTTP 动作不支持，数据安全）
+  reason?: string;              // kind==="block"/"notify"：拒绝原因 / 通知文案
+  set?: Record<string, string>; // kind==="mutate"：浅合并进 tool input 的字段覆盖（仅 tool_call）
+}
+
+export interface HookMatch {
+  toolName?: string; // 仅对 tool_* 事件生效：toolName 精确匹配
+  pattern?: string;  // 正则，匹配事件参数预览字符串
+}
+
+export interface Hook {
+  id: string;
+  name: string;
+  enabled: boolean;
+  event: HookEvent;
+  match?: HookMatch;
+  action: HookAction;
+}
+
+// px-hook-runner 每次触发写入 hooks-triggers.jsonl 的一行（已脱敏：不含完整 message/tool 内容）。
+export interface HookTriggerRecord {
+  ts: number;
+  hookId: string;
+  event: HookEvent;
+  matched: boolean;
+  actionKind: HookActionKind;
+  ok: boolean;
+  exitCode?: number;
+  durationMs: number;
+  sessionId?: string;
+  argsPreview?: string;
+  reason?: string;   // block/notify 的原因/文案，供看板展示
+  blocked?: boolean; // 该触发是否实际拦截了工具调用
+}
+
+// 计算工具·skill 管理 —— 项目级 skill 生命周期注册表（详见 docs/wiki.html「skill 管理」卡）。
+// 内容真源 = <workspace>/.pi/skills/<slug>/SKILL.md；本表(skill_registry)存元数据/生命周期态。
+// 启用关系走 WorkspaceMemoryEnablement(itemKind="skill")，全局池 + 按工作区启用。
+export type SkillStatus = "draft" | "candidate" | "active" | "archived";
+export type SkillSource = "manual" | "distilled" | "curated" | "imported";
+
+export interface SkillRegistryEntry {
+  id: string;
+  workspaceId: string;
+  slug: string;                   // <workspace>/.pi/skills/<slug>/SKILL.md
+  name: string;
+  status: SkillStatus;
+  version: number;
+  supersedesId: string | null;
+  source: SkillSource;
+  score: number | null;           // 最近评测综合分（实验室回写）
+  activationRate: number | null;  // 最近评测激活率（实验室回写）
+  usageCount: number;             // 注入使用次数（埋点累计）
+  originSessionId: string | null; // 蒸馏/策展出处（可追溯）
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SkillRegistryInput {
+  slug: string;
+  name: string;
+  source: SkillSource;
+  status?: SkillStatus;
+  originSessionId?: string | null;
+}
+
+// P1-a：某历史版本的内容快照（回滚前预览/查看历史版本内容）。
+export interface SkillVersionContent {
+  version: number;
+  content: string;
+}
+
+export interface SkillRegistryCreateBody {
+  slug: string;
+  name?: string;
+  source: SkillSource;
+  status?: SkillStatus;
+  version?: number;
+  supersedesId?: string | null;
+  originSessionId?: string | null;
+  content: string;
+}
+
+export interface SkillRegistryEvaluateBody {
+  model: string;
+  repeat?: number;
+  judgeRepeat?: number;
+  contextPrefix?: string;
+  dataContextPaths?: string[];
+  tasks: SkillEvalTask[];
+}
+
+export interface SkillRegistryEvaluateResult {
+  evaluation: SkillEvaluationDetail;
+  entry: SkillRegistryEntry;
+  metrics: { score: number | null; activationRate: number | null };
+}
+
+// P1-B：冲突检测（A 域端点 GET /api/workspaces/:id/skill-registry/conflicts）
+// 用于采纳/新建前展示"疑似重复"提示，不阻断流程，供人决策。
+export interface SkillRegistryConflict {
+  id: string;
+  workspaceId: string;
+  itemKind: "skill";
+  itemId: string;
+  slug: string;
+  name: string;
+  version: number;
+  status: SkillStatus;
+  score: number;
+  severity: "low" | "medium" | "high";
+  reason: string;
+  snippet: string;
+}
+
+export interface SkillRegistryConflictsResult {
+  querySlug: string | null;
+  conflicts: SkillRegistryConflict[];
 }

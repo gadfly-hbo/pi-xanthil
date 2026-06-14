@@ -1,8 +1,8 @@
 import { spawn } from "node:child_process";
 import { createInterface } from "node:readline";
-import { mkdirSync } from "node:fs";
+import { mkdirSync, existsSync } from "node:fs";
 import { join } from "node:path";
-import { PI_BIN } from "./config.ts";
+import { PI_BIN, HOOK_RUNNER_EXTENSION, HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "./config.ts";
 import type { PiEvent } from "./types.ts";
 import { assembleSystemPrompt } from "./prompt-blocks.ts";
 import { notifyChildProcess, registerChildProcess, type ChildProcessListener } from "./child-processes.ts";
@@ -275,13 +275,21 @@ export function runPiTurn(opts: RunPiOptions): PiRun {
     args.push("--no-skills");
     for (const path of opts.skillPaths) args.push("--skill", path);
   }
+  // 计算工具·hooks 管理：注入 px-hook-runner 扩展（仅 pi-xanthil 触发的 pi 加载，用户手动 pi 不受影响）。
+  // 扩展运行时读 PX_HOOKS_CONFIG(hooks.json)、把触发流水写 PX_HOOKS_LOG(hooks-triggers.jsonl)。
+  const hookEnv: Record<string, string> = {};
+  if (existsSync(HOOK_RUNNER_EXTENSION)) {
+    args.push("-e", HOOK_RUNNER_EXTENSION);
+    hookEnv.PX_HOOKS_CONFIG = HOOKS_CONFIG_PATH;
+    hookEnv.PX_HOOKS_LOG = HOOKS_LOG_PATH;
+  }
   args.push(opts.text);
 
   opts.onEvent({ type: "process_start", cwd: opts.workspaceRoot, command: PI_BIN, args: args.slice(0, -1), sessionDir: piSessionDir });
 
   const child = spawn(PI_BIN, args, {
     cwd: opts.workspaceRoot,
-    env: process.env,
+    env: { ...process.env, ...hookEnv },
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],
   });
