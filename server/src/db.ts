@@ -851,6 +851,11 @@ export function deleteWorkspace(id: string): void {
   for (const flow of flows) deleteFlow(flow.id);
   db.prepare("DELETE FROM sessions WHERE workspace_id = ?").run(id);
   db.prepare("DELETE FROM workspace_paths WHERE workspace_id = ?").run(id);
+  // Token usage stats hold a workspace_id FK — must be cleared or the final
+  // workspaces delete fails with FOREIGN KEY constraint (every used workspace
+  // accumulates these, so without this no used workspace could be deleted).
+  db.prepare("DELETE FROM token_usage_stats WHERE workspace_id = ?").run(id);
+  db.prepare("DELETE FROM token_usage_daily_stats WHERE workspace_id = ?").run(id);
   db.prepare("DELETE FROM workspaces WHERE id = ?").run(id);
 }
 

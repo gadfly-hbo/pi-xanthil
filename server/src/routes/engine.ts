@@ -61,6 +61,12 @@ engineRouter.get("/api/flows/:id/messages", (req, res) => {
   res.json(listFlowMessages(req.params.id));
 });
 
+engineRouter.get("/api/flows/:id/chat-runtime", (req, res) => {
+  if (!getFlow(req.params.id)) return res.status(404).json({ error: "flow not found" });
+  const active = getActiveChatRun(activeFlowRuns, req.params.id);
+  res.json(active ? { running: true, startedAt: active.startedAt } : { running: false, startedAt: null });
+});
+
 engineRouter.get("/api/flows/:id/tree", (req, res) => {
   const flow = getFlow(req.params.id);
   if (!flow) return res.status(404).json({ error: "flow not found" });

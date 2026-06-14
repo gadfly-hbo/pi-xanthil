@@ -4,3 +4,8 @@ declare module "react-syntax-highlighter/dist/esm/styles/prism" {
   export const oneDark: Record<string, React.CSSProperties>;
   export default styles;
 }
+
+declare module "*.md?raw" {
+  const content: string;
+  export default content;
+}

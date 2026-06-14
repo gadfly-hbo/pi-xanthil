@@ -335,6 +335,8 @@ const legacyApi = {
   listFlows: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/flows`).then(json<Flow[]>),
   getFlow: (flowId: string) => fetch(`/api/flows/${flowId}`).then(json<Flow>),
+  getFlowChatRuntime: (flowId: string) =>
+    fetch(`/api/flows/${flowId}/chat-runtime`).then(json<{ running: boolean; startedAt: number | null }>),
   createFlow: (workspaceId: string, name: string, kind?: "single" | "multi") =>
     fetch(`/api/workspaces/${workspaceId}/flows`, {
       method: "POST",
@@ -349,6 +351,12 @@ const legacyApi = {
     }).then(json<Flow>),
   instantiateAnaxQuick: (workspaceId: string, name?: string) =>
     fetch(`/api/workspaces/${workspaceId}/anax/instantiate-quick`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then(json<Flow>),
+  instantiateSqlLoop: (workspaceId: string, name?: string) =>
+    fetch(`/api/workspaces/${workspaceId}/sql-loop/instantiate`, {
       method: "POST",
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),

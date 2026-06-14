@@ -69,6 +69,12 @@
 
 ---
 
+## 二·五、deleteWorkspace 漏删子表 + 测试污染真实库（2026-06-13 修）
+
+- **症状**：UI 删工作区报错/删不掉（删除按钮在行 hover 才显示，但点了也 500）。根因 = `deleteWorkspace` 抛 `FOREIGN KEY constraint failed`：它没清掉所有带 `workspace_id` 外键的子表。**已补 `token_usage_stats` + `token_usage_daily_stats`**（每个用过的工作区都会累积 token 统计，不补则任何用过的工作区都删不掉）。
+- **⚠ 仍不完整（待办）**：对 workspaces 有 FK 的表共 20+ 张，`deleteWorkspace` 仍漏：`analysis_cases/analysis_standards/business_contexts/change_proposals/dashboards/hypothesis_library/metric_definitions/onto_prompts/ontologies/rule_memories/trace_events`。其中 ontologies 有嵌套子表、metric/rule/standard/ontology 涉及**全局池 origin 语义**（删 origin 工作区是否连带删全局定义=产品决策），需专门设计，勿盲目补 DELETE。
+- **测试污染真实库（已修）**：`multi-agent-runner.test.ts` 预算用例 `createWorkspace("runner budget stop")` 曾静态 import db.ts、未隔离 → 多次跑测试在真实 `~/.pi-xanthil` 堆了 12 个测试工作区。**已按 memory-injection.test.ts 范式修**：import 任何经 cache→db 的模块前先 `process.env.XANTHIL_DATA_DIR = mkdtempSync(...)` + 动态 import。**铁律：任何 *.test.ts 在碰 db.ts 前必须先设临时 XANTHIL_DATA_DIR，否则污染真实库**（db.ts 在 import 期即按 env 打开 DB_PATH）。已清掉 12 个污染工作区（经 API/直连，保留森马会员）。
+
 ## 三、本机已知坑（pi 侧，非本项目 bug）
 
 - 扩展 `ptk-memory-inject` 的 better-sqlite3 NODE_MODULE_VERSION 不匹配 → 本项目选 `node:sqlite` 免疫原生编译坑。

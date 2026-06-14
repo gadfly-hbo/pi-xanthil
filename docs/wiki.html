@@ -885,6 +885,34 @@ P3(onto + KG)：
 
 【验收】主栈拆分后行为不变；web build 绿；AnaXPane 零改动。
 【约束】不与 AnaXPane 共享前端逻辑；不碰接缝层；全程不碰 git，回流终审。` },
+
+  { dom: "X", status: "todo", title: "【bug·db】deleteWorkspace 全量补齐子表删除 + 全局池 origin 语义决策", brief:
+`背景：deleteWorkspace 漏删带 workspace_id 外键的子表 → 删工作区报 FOREIGN KEY constraint failed（UI 表现为“删不掉”/500）。2026-06-13 已临时补 token_usage_stats + token_usage_daily_stats（每个用过的工作区都会累积，是最常见阻塞）；但仍不完整。详见 docs/notes-infra.md §二·五。
+
+【仍漏删的 workspace-FK 表（共 11，需补）】analysis_cases · analysis_standards · business_contexts · change_proposals · dashboards · hypothesis_library · metric_definitions · onto_prompts · ontologies · rule_memories · trace_events。（flows 已由 deleteFlow 循环处理；sessions/workspace_paths/各 eval 表/memory_* 已处理。）
+
+【两个难点·勿盲目补 DELETE】
+① 嵌套 FK 顺序：ontologies 有子表（object_types/property_types/link_types/logic/actions 等）、change_proposals 可能有子行 → 必须子表先删、按 FK 依赖排序，否则换个表继续 FK 报错。
+② **全局池 origin 语义（产品决策，需用户/总控拍板）**：metric_definitions / rule_memories / analysis_standards / analysis_cases / business_contexts / ontologies 经池化改造后是**全局池**，仅有 origin workspace_id，跨工作区靠 workspace_memory_enablements 共享。删 origin 工作区时——(a) 连带删除全局定义（会让其他启用它的工作区丢失）？(b) 仅删 enablement、定义保留为孤儿？(c) 把 origin 改派给其他工作区？需先定语义再实现，且要清 workspace_memory_enablements 对应行。
+
+【待做】1. 定 origin 语义(找用户拍板)。2. 按语义 + FK 依赖顺序补全 deleteWorkspace（接缝层 db.ts，归总控）。3. 加单测：建带各类子数据的工作区→删→确认无 FK 错、无孤儿。
+
+【约束】db.ts 接缝层归总控；改前先定 origin 语义；全程不碰 git。` },
+
+  { dom: "E", status: "todo", title: "【工作流·前端】Loop/工作流 模板库入口（一键实例化预置模板）", brief:
+`需求：预置工作流模板目前只有后端实例化接口、无前端入口（用户在界面找不到，只能调 API）。要一个「模板库」让用户浏览 + 一键调用，省去手搓 DAG。已就绪后端接口：SQL 修复 loop = POST /api/workspaces/:id/sql-loop/instantiate；AnaX = POST /api/workspaces/:id/anax/instantiate（+ /instantiate-quick）。
+
+【当前可纳入的模板（3 个）】① AnaX 商业分析（完整，buildAnaxWorkflow）② AnaX 快速分析（buildAnaxQuickWorkflow）③ SQL 修复 loop（buildSqlLoopWorkflow，含 onBlock 回跳门禁，是 loop 的样板）。
+
+【待做】
+1. 模板库 pane：卡片列出每个模板（名称 / 一句话用途 / 简要节点结构或亮点，如"SQL 修复 loop：写 SQL→执行→门禁不过自动退回重写，最多 5 轮"）；每张带「实例化到当前工作区」按钮。
+2. 点按钮 → 调对应 instantiate 接口 → 成功后跳到新建工作流（activeTab=multi + 选中返回的 flow.id，进 DAG 视图可见配好的 loop）。
+3. 入口位置：工作流(multi) tab 加二级 tab「模板库」（接法参本次新增的 readme 二级 tab：见 EngineTabs 渲染 + constants 路由）；或工作流列表加「从模板新建」。
+4.（可选，更稳）后端加 GET /api/workflow-templates 返回清单（id/name/desc/instantiateEndpoint），避免前端硬编码；当前模板硬编码在 anax-template.ts / sql-loop-template.ts，可先前端写死 3 项清单调已有 instantiate，列表端点按需再加（写 routes/engine.ts）。
+
+【文件边界(E 域)】web 新建模板库 pane + tabs/EngineTabs.tsx 渲染 + （可选）routes/engine.ts 列表端点。
+【接缝层依赖(总控)】若新增 'templates' 二级 tab，需在 lib/constants.ts 的 SubTab 类型 + MULTI_SUB_TABS 加字面量（接缝层归总控，E 先报口径由总控加，或复用现有 readme/subtab 形态）。
+【约束】工作流/模板属 E 域；不碰接缝层骨架；SQL loop 实例化后要真跑需先配 SQL 连接；全程不碰 git，回流总控终审。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──

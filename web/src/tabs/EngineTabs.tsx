@@ -11,6 +11,8 @@ import { AnaXPane } from "@/components/AnaXPane";
 import { HypothesisPane } from "@/components/HypothesisPane";
 import { ChangeManagementPane } from "@/components/ChangeManagementPane";
 import { AnaXReadmePane } from "@/components/AnaXReadmePane";
+import { WorkflowReadmePane } from "@/components/WorkflowReadmePane";
+import { ExploreReadmePane } from "@/components/ExploreReadmePane";
 import type { TabContext } from "./types";
 
 /**
@@ -54,6 +56,10 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
           onExploreFields={(fieldHints, source) => { ctx.setExploreSeed({ fieldHints, source }); ctx.setActiveSubTab("data_exploration"); }}
         />
       )}
+
+      {activeTab === "multi" && activeSubTab === "readme" && <WorkflowReadmePane />}
+
+      {activeTab === "explore" && activeSubTab === "readme" && <ExploreReadmePane />}
 
       {activeTab === "multi" && activeSubTab === "view" && (
         <MultiAgentExecutionPane

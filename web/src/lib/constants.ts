@@ -5,14 +5,17 @@ export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'rea
 export const SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }];
 
 // 探索 tab 专用排序：view 改名「数据分析」并移至数据探索之后（multi/工作流 仍用 SUB_TABS，工作视图保持首位）。
-export const EXPLORE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'view', label: '数据分析' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }];
+export const EXPLORE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'view', label: '数据分析' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }, { id: 'readme', label: 'readme' }];
+
+// 工作流(multi) tab 专用：在 SUB_TABS 基础上追加「readme」操作说明二级 tab（结合案例讲解工作流模块）。
+export const MULTI_SUB_TABS: { id: SubTab; label: string }[] = [...SUB_TABS, { id: 'readme', label: 'readme' }];
 
 export const VIEW_ONLY_TABS = new Set<Tab>(['aggregate', 'research_lab', 'dashboard']);
 
 // onto-xanthil 数据语义层二级 tab（详见 docs/onto-xanthil-design.md）。导入(import)为 P3。
 export const ONTO_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'onto_readme', label: '说明' }, { id: 'onto_objects', label: '对象' }, { id: 'onto_links', label: '关系' }, { id: 'onto_metrics', label: '指标' }, { id: 'onto_logic', label: '逻辑' }, { id: 'onto_actions', label: '动作' }, { id: 'onto_graph', label: '图谱' }, { id: 'onto_import', label: '导入' }];
 
-export const AGGREGATE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '聚合计算' }, { id: 'extraction', label: '数据提取' }, { id: 'sql_connect', label: 'SQL连接' }, { id: 'tool_use', label: 'tool-use' }];
+export const AGGREGATE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '聚合计算' }, { id: 'extraction', label: '数据提取' }, { id: 'sql_connect', label: 'SQL连接' }, { id: 'tool_use', label: 'tool-use' }, { id: 'readme', label: 'readme' }];
 
 // 实验室 = 原 research_lab 模块 + AnaX 整体并入（AnaX 一级 tab 已移除）。
 // 顶部横向 tab：workflow/skill/tool/model/DLF/AnaX；点开 AnaX 时其 4 个二级以左侧竖栏呈现（LAB_ANAX_SUB_TABS）。
@@ -37,6 +40,7 @@ export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'dashboard') return DASHBOARD_SUB_TABS;
   if (tab === 'onto_xanthil') return ONTO_SUB_TABS;
   if (tab === 'explore') return EXPLORE_SUB_TABS;
+  if (tab === 'multi') return MULTI_SUB_TABS;
   if (VIEW_ONLY_TABS.has(tab)) return SUB_TABS.slice(0, 1);
   return SUB_TABS;
 }

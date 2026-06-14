@@ -29,6 +29,12 @@ interface Props {
   systemPrompt?: string;
   primingPrompt?: string;
   rulesPromptEnabled: boolean;
+  modeTitle?: string;
+  modeDescription?: string;
+  conversationLabel?: string;
+  emptyHint?: string;
+  inputPlaceholder?: string;
+  suggestions?: Array<{ label: string; text: string }>;
 }
 
 declare module "react" {
@@ -338,6 +344,11 @@ export function CreationPane(p: Props) {
   const activeWaitMs = activeSince ? clock - activeSince : 0;
   const showWorkflowTimeout = !hasNodes && (chatRunning || generationRunning) && activeWaitMs > WORKFLOW_WAIT_TIMEOUT_MS;
   const showStoppedEmpty = !hasNodes && messages.length > 0 && !chatRunning && !generationRunning;
+  const suggestions = p.suggestions ?? [
+    { label: "数据分析", text: "帮我设计一个数据分析工作流：读取 CSV，清洗数据，统计分析，生成报告。" },
+    { label: "内容创作", text: "构建一个内容创作智能体：调研主题，制定大纲，撰写初稿，润色输出。" },
+    { label: "代码审查", text: "设计一个代码审查工作流：分析代码质量、安全漏洞、可维护性，输出审查报告。" },
+  ];
 
   // Compute node card sizing based on count
   const nodeCount = workflow?.nodes.length ?? 0;
@@ -350,6 +361,12 @@ export function CreationPane(p: Props) {
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
+      {(p.modeTitle || p.modeDescription) && (
+        <div className="shrink-0 border-b border-sky-200 bg-sky-50 px-4 py-2 dark:border-sky-900 dark:bg-sky-950/30">
+          {p.modeTitle && <div className="text-[12px] font-semibold text-sky-800 dark:text-sky-200">{p.modeTitle}</div>}
+          {p.modeDescription && <div className="mt-0.5 text-[11.5px] leading-5 text-sky-700 dark:text-sky-300">{p.modeDescription}</div>}
+        </div>
+      )}
       {generationRunning && (
         <div className="flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11.5px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
@@ -432,7 +449,7 @@ export function CreationPane(p: Props) {
                   )}
                 </div>
               ) : messages.length === 0 ? (
-                "在下方描述需求，pi 将自动设计工作流"
+                p.emptyHint ?? "在下方描述需求，pi 将自动设计工作流"
               ) : showStoppedEmpty ? (
                 <div className="flex max-w-md flex-col items-center gap-2 text-center">
                   <span className="font-medium text-neutral-700 dark:text-neutral-200">未读取到 workflow.json</span>
@@ -574,7 +591,7 @@ export function CreationPane(p: Props) {
       {/* ── Bottom half: Chat ── */}
       <div className="flex min-h-0 flex-1 flex-col">
         <div className="flex h-6 shrink-0 items-center gap-2 border-b border-neutral-100 px-4 dark:border-neutral-800">
-          <span className="text-[9.5px] font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">对话</span>
+          <span className="text-[9.5px] font-medium uppercase tracking-wide text-neutral-400 dark:text-neutral-500">{p.conversationLabel ?? "对话"}</span>
           {(chatRunning || generationRunning) && !canReplyDuringGeneration && (
             <span className="flex items-center gap-1 text-[9.5px] text-amber-500">
               <span className="inline-block h-1.5 w-1.5 animate-pulse rounded-full bg-amber-400" />
@@ -587,14 +604,10 @@ export function CreationPane(p: Props) {
           {messages.length === 0 && !chatRunning ? (
             <div className="flex flex-col items-center gap-2 px-4 py-6">
               <p className="text-[11.5px] text-neutral-400 dark:text-neutral-500">
-                描述你想创建的多智能体，pi 会引导你完成设计
+                {p.emptyHint ?? "描述你想创建的多智能体，pi 会引导你完成设计"}
               </p>
               <div className="flex flex-wrap gap-1.5">
-                {[
-                  { label: "数据分析", text: "帮我设计一个数据分析工作流：读取 CSV，清洗数据，统计分析，生成报告。" },
-                  { label: "内容创作", text: "构建一个内容创作智能体：调研主题，制定大纲，撰写初稿，润色输出。" },
-                  { label: "代码审查", text: "设计一个代码审查工作流：分析代码质量、安全漏洞、可维护性，输出审查报告。" },
-                ].map((q) => (
+                {suggestions.map((q) => (
                   <button
                     key={q.label}
                     onClick={() => {
@@ -688,7 +701,7 @@ export function CreationPane(p: Props) {
                   }
                 }}
                 rows={1}
-                placeholder={canReplyDuringGeneration ? "回复 pi 的问题，Shift+Enter 发送" : generationRunning ? "正在从探索对话生成工作流..." : "描述需求或告诉 pi 修复问题，Shift+Enter 发送"}
+                placeholder={canReplyDuringGeneration ? "回复 pi 的问题，Shift+Enter 发送" : generationRunning ? "正在从探索对话生成工作流..." : p.inputPlaceholder ?? "描述需求或告诉 pi 修复问题，Shift+Enter 发送"}
                 className="min-h-[30px] w-full resize-none bg-transparent px-3 py-1.5 text-[12.5px] leading-5 text-neutral-900 outline-none placeholder:text-neutral-400 disabled:opacity-50 dark:text-neutral-100 dark:placeholder:text-neutral-500"
               />
             </div>

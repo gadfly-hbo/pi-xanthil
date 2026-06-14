@@ -4,14 +4,21 @@ import { join } from "node:path";
 import { execFileSync } from "node:child_process";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { makeFakePiAdapter } from "./multi-agent-runner.test-helpers.ts";
-import { extractMarkerArray, readWorkflow, runMultiAgent, validateWorkflow, type WorkflowDef } from "./multi-agent-runner.ts";
-import { trackUsageEvent } from "./cache.ts";
-import { createWorkspace } from "./db.ts";
+import type { WorkflowDef } from "./multi-agent-runner.ts";
 import type { GateVerdict } from "./anax-gate.ts";
-import { buildSqlLoopWorkflow, RUN_SQL_QUERY_TOOL_ID } from "./sql-loop-template.ts";
 import type { PiEvent, PiUsage } from "./types.ts";
 import type { RegisteredExtractionTool } from "../tools/registry.ts";
+
+// 在 import 任何会经 cache.ts 间接加载 db.ts 的模块之前，把数据库隔离到临时目录——
+// 否则本文件预算用例的 createWorkspace() 会污染真实 ~/.pi-xanthil 库（曾累积一堆
+// "runner budget stop" 工作区）。其他 *.test.ts 也是此模式（见 memory-injection.test.ts）。
+process.env.XANTHIL_DATA_DIR = mkdtempSync(join(tmpdir(), "pi-xanthil-runner-test-"));
+
+const { makeFakePiAdapter } = await import("./multi-agent-runner.test-helpers.ts");
+const { extractMarkerArray, readWorkflow, runMultiAgent, validateWorkflow } = await import("./multi-agent-runner.ts");
+const { trackUsageEvent } = await import("./cache.ts");
+const { createWorkspace } = await import("./db.ts");
+const { buildSqlLoopWorkflow, RUN_SQL_QUERY_TOOL_ID } = await import("./sql-loop-template.ts");
 
 function makeRunDir(): string {
   return mkdtempSync(join(tmpdir(), "pi-xanthil-multi-agent-test-"));

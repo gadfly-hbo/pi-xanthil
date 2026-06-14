@@ -7,25 +7,31 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-13 · 工作流改造 0→1→2 全部完成（总控终审 + 预算缺口已补）
-- 进度（**工作流改造 12 卡全 ✅，全程 typecheck/build/108 测试绿**；方案见 `docs/工作流模块改造方案.md`、契约 `docs/工作流-onblock契约.md`、派发书 `docs/工作流改造-任务派发.md`、wiki 卡）：
-  - **阶段0 清场** ✅：删 `execute_flow` 死契约+`handleExecuteFlow`、删 5 孤儿前端(ExecutionPane/AgentFlowPane/FlowChatPane/FlowWorkflowPane/FlowEditorPane)+single 退化。
-  - **阶段1 收口** ✅：抽 `runtime.ts`(运行时句柄)；**所有 flow REST 路由 + 3 个流式 WS handler(handleSendFlow/handleExecuteMultiAgent/handleAnaxPrecheck)从 index.ts 迁入 `routes/engine.ts`**(wss.on 派发分支留 index.ts 反向 import)；主栈 `MultiAgentExecutionPane` 拆出 `multi-agent/useMultiAgentRun.ts` 等(1479→996 行)，AnaXPane 零改动。
-  - **阶段2 加闭环** ✅：`WorkflowNode.onBlock` 契约+runner 回跳+trace 迭代谱系(红线>预算>重试 优先级；红线硬停不重试)；`cache.ts` run 级预算原语；gate 编辑器 UI onBlock 配置(retryFromNodeId 限 topo 上游)；**SQL 修复 loop MVP**(sql-loop-template + 内联 executeSqlQueryToolNode 真实 SQL + 确定性 evaluateSqlGate 零 LLM)；真实 SQLite MVP 收敛测试通过。
-  - **预算生产接线(总控补，2026-06-13)** ✅：`config.ts` RUN_BUDGET_LIMITS(env XANTHIL_RUN_MAX_TOKENS/COST_USD，未设=null)；engine.ts handler 传 runBudget。
-- 校验：`npm run typecheck` ✅ · `npm run build` ✅(仅既有 chunk/echarts 警告) · 全量 108 测试 ✅；engine 域未碰 data 子树。
-- 下一步（**残留，非阻塞**）：
-  - ① ✅ flow/anax 业务路由**全部迁出 index.ts**(2026-06-13)：含 `flows/:id/import`(multer 随路由搬) 与 `anax-gate-config`(GET/PUT)，均冒烟通过。接缝迁移彻底收官。
-  - ② SQL loop 前端入口未做：`POST /api/workspaces/:id/sql-loop/instantiate` 已就绪，但无 UI 入口(放 SQL 连接页/workflow 模板库/实验室待定)。
-  - ③ 业务行为浏览器 smoke：主栈 workflow 创建→编辑(含 onBlock gate)→保存→运行→停止；本轮做了 WS 级 + fake-adapter + 真实 SQLite 烟测，未做浏览器交互截图。
-  - ④ 可选 T-E6 第二阶段深拆(WorkflowNodeEditor/EdgeEditor/ExecutionPanel)，为控风险未续。
-- 阻塞 / 待总控：无代码阻塞。
-- 开放问题（仍待决；本会话已解决的 runBudget 来源/T-E6 终审/AnaX 解耦 已落定，不再列）：
+- 最近更新：2026-06-14 · 回流审核终审 + 文档审计修复（无功能改动，文档/口径对齐）。
+- 进度：
+  - **回流评审两项被证伪（基于旧快照）**：评审报「sql-loop URL 不匹配致 404」与「WorkflowTemplateLibraryPane 末尾废注释」在当前代码均不成立。实测 `api.ts:359` 与 `engine.ts:229` 都用 `/api/workspaces/:id/sql-loop/instantiate`（字符串一致，无 404）；pane 文件末尾无任何废注释。结论：不动代码（用户已手测模板实例化通过）。
+  - **WorkflowDesignPane（454 行）逐行审 = 无 bug**：WS 通道 `send_flow`/`abort_flow`/`run_start`/`run_end`/`error`/`flow_event(message_end)` 在 web/server 两侧 `types.ts` 均已定义，属复用既有契约、非新增接缝；运行态恢复(1.5s 轮询 + flowIdRef 防重订阅 + 乐观用户消息 + role==="user" 早返回防重)自洽，守卫完整。
+  - **3 个 readme pane 审完**：`ExploreReadmePane`/`AggregateReadmePane` 是 `Markdown + ?raw` 同构壳，零风险；内容在 `web/src/docs/*.md`，红线表述准确（数据探索永久无 LLM、原始行禁入 LLM）。`WorkflowReadmePane` 修了 2 处 doc drift（见改动清单）。
+  - **文档双份隐患已消除**：`explore-readme.md`/`aggregate-readme.md` 曾在 `web/src/docs/`(被 `@/docs/?raw` 真消费) 与根 `docs/`(无人引用) 各存逐字相同一份；删除根 `docs/` 那两份，留单一真源。
+- 校验：`npm run typecheck` ✅；`npm run build` ✅（仅既有 chunk size warning）。本次纯 engine 域文档/pane，未触发 data 探索子树 LLM 隔离 grep。
+- 下一步（非阻塞，承接上轮，建议优先级）：
+  - ① 做一次浏览器交互 smoke：模板库实例化 3 个模板 → 设计表单生成写作 workflow → 迭代修改插入/回跳节点 → 执行页保存并打开 DAG。（sql-loop 用户已单点手测通过，其余链路尚未端到端跑）
+  - ② 设计页运行态恢复目前只覆盖“进程仍在 activeFlowRuns 中”的 UI 恢复；真正断点续跑（server 重启/pi 异常后继续）未做。若要做第 2 层，需要持久化 design run 表单、patch 指令、systemPrompt、runId 和阶段状态。
+  - ③ 设计页生成/patch 的 prompt 仍依赖 pi 遵守 schema；建议后续增加前端表单级校验和生成后 schema/edge/onBlock 可视化摘要，降低模型漏字段风险。
+  - ④ 模板库清单当前前端硬编码；若模板继续增加，建议补后端 `GET /api/workflow-templates`，避免 UI 与后端模板漂移。
+  - ⑤ 可选继续拆 `MultiAgentExecutionPane`：节点编辑器/EdgeEditor/ExecutionPanel 仍可做第二阶段深拆，但本轮未动。
+- 阻塞：无代码阻塞。
+- 开放问题（待总控/用户拍板）：
+  - **越界归属待总控裁决**：上轮 E 接线模板库/设计 pane 时改了接缝层骨架（`App.tsx`/`lib/api.ts`/`constants.ts`/`DataTabs`/`EngineTabs`）。功能合理但按章程这些归总控。要追认归属还是回滚重接，需总控定。
+  - **评审流程教训**：本轮评审的两个 actionable 项均因「未读当前文件、基于旧快照」而误报；与「typecheck/build 绿 ≠ 端到端通」同源——评审与 build 都不能替代对当前工作树的实读。是否要把「评审前强制重读目标文件」写进评审 SOP，待定。
+  - 是否要把模板库清单上移到后端接口，并约定模板 id/name/sourceName/instantiateEndpoint 的稳定 schema。
+  - 是否允许“设计”阶段在后端持久化 design run，用于真正断点续跑；若做，需要确定 DB 表和运行态清理策略。
+  - `api.ts` 仍承载 legacy 聚合方法；本轮为最小接入继续在 `legacyApi` 增加 `instantiateSqlLoop/getFlowChatRuntime`，后续是否迁到 `lib/api/engine.ts` 需总控决定。
   - SQL loop 输入字段 `sql_connection_id / required_fields / schema_context / task` 命名是否固定；若接缝层将来有统一 workflow input schema 需对齐。
   - 预算停止经 `__run_budget_stop` blackboard update 落 trace，是否需专门 `run_budget_stop` trace/WS 事件。
-  - T-E3 前端以 `agent_gate` 计数推导迭代轮次；是否需接缝层显式发 `iter`/`maxIterations` 以支持刷新恢复 + 多 gate 精确展示。
+  - 前端以 `agent_gate` 计数推导迭代轮次；是否需接缝层显式发 `iter`/`maxIterations` 以支持刷新恢复 + 多 gate 精确展示。
   - isDeterministicSqlGateNode 以 `node.id === "sql_gate"`(magic string)识别确定性 SQL gate；将来若多种确定性 gate，考虑改为按上游 tool 输出 kind 识别。
-  - （上轮 tool-use 遗留，待核实是否仍开）ExtractionTool skill 注入时机、ToolLab 联动入口、`tool_result.content` 形态。
+  - （tool-use 遗留，待核实是否仍开）ExtractionTool skill 注入时机、ToolLab 联动入口、`tool_result.content` 形态。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -67,6 +73,9 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **onBlock 前端接缝边界**：T-E3 按任务约束未改 `web/src/types.ts` / `server/src/types.ts` / WS 消息契约；`WorkflowDagEditor` 和 `MultiAgentExecutionPane` 用局部扩展类型读写 `node.onBlock`。执行面板轮次展示当前以本 run 内 `agent_gate` 事件计数推导，不能等同于刷新后可恢复的权威 trace 字段；若要精确恢复，需要后续接缝层显式携带 iter 或读取 run artifact。
 - **SQL loop gate 边界**：`sql_gate` 是 deterministic gate，不启动 pi turn，不读取模型自报；只从 `run_sql` 结构化 JSON 判定 `code===0`、`success===true`、`rowCount>0`、`requiredFields ⊆ columns`。模板字段当前约定为 `input.sql_connection_id`、`input.required_fields`、`input.schema_context`、`input.task`。
 - **SQL tool 节点失败语义**：内置 `run-sql-query` 的 SQL 执行失败必须保留为 tool output 内部失败，而不是 workflow node 非零退出；否则 runner 会在 tool 节点处直接停止，`sql_gate.onBlock` 无法拿到错误反馈并回跳修复。
+- **工作流模板库当前边界（2026-06-13）**：模板库入口在工作流左栏，不新增 `templates` 二级 tab；当前清单前端硬编码 3 项并调用既有 instantiate API。若模板继续扩容，再补 `GET /api/workflow-templates`，避免现在为了 3 个模板过早扩展后端 schema。
+- **工作流设计入口（2026-06-13）**：工作流内 tab 收敛为“设计 / 执行”。“设计”是表单式 workflow compiler，不是自由聊天；首次生成靠目标/输入/步骤/gate/输出表单约束，后续“迭代修改”才允许自然语言 patch，且必须最小修改当前 flow 的 `workflow.json`。
+- **设计运行态恢复边界（2026-06-13）**：`GET /api/flows/:id/chat-runtime` 只读取内存 `activeFlowRuns`，用于切换 flow 后恢复 UI running 状态；这不是 checkpoint，也不保证 server 重启、pi 进程异常、WebSocket 断开后的断点续跑。
 - **AnaX 与工作流主栈前端解耦**：AnaX 定位独立产品/后台系统（白皮书 type-B）。不要为了消除重复把 AnaXPane 的 WS 订阅/恢复逻辑抽到主栈共享 hook；`web/src/components/multi-agent/useMultiAgentRun.ts` 是 MultiAgentExecutionPane 私有 hook，不对 AnaX 承诺复用。
 
 ---
@@ -84,6 +93,9 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 2026-06-13 T-E5：SQL loop 的“真实实跑”不等于真 pi；T-E5 只要求真实 SQL tool 与真实数据收敛。因此测试允许 fake `runTurn` 生成两轮 SQL，但 `run_sql` 必须走真实 `run-sql-query`、真实 `sql-connections`、真实 SQLite 数据表。为避免 `sql-connections.ts` 模块级 `SQL_CONNECTIONS_PATH` 固定到默认数据目录，实跑测试用子进程传临时 `XANTHIL_DATA_DIR`。
 - 2026-06-13 T-E6：拆 `MultiAgentExecutionPane` 时优先做“搬迁式拆分”，先抽私有 hook、纯工具、执行控制面板和 tool 配置；保留节点编辑主体在原文件，避免低优先卡引入大范围 JSX 行为变动。`useMultiAgentRun` 明确放在 `components/multi-agent/`，不是全局 `hooks/`，用于防止后续误解为跨 AnaX 共享能力。
 - 2026-06-13 预算生产接线（总控补，闭合 T-E1/T-E2 遗留的“取决于后续总控接线”）：`config.ts` `RUN_BUDGET_LIMITS` 读 env `XANTHIL_RUN_MAX_TOKENS`/`XANTHIL_RUN_MAX_COST_USD`（>0 生效，未设=null 即不限、行为不变），`routes/engine.ts` handleExecuteMultiAgent 传 `runBudget`。决策：env 可选 > 硬编码魔法上限（误伤大 run）> DB 配置（过重）；per-workspace 限额 + UI 留待按需。接缝细节见 `notes-infra.md §六`。
+- 2026-06-13 模板库入口决策：没有新增 `SubTab` 字面量和 `MULTI_SUB_TABS`，而是在工作流列表栏加“从模板新建”。理由：满足“一键实例化”需求，同时避开接缝层 tab 骨架变更；当前模板数量少，前端硬编码清单比新增列表端点更轻。
+- 2026-06-13 设计入口决策：否决“创建”和“搭建”并行长期存在。两者对用户的视觉差异不明显，且都像对话框；最终合并为“设计”表单，要求用户先填写目标、输入、步骤、gate、回跳、输出，降低自由自然语言的不精确性。自然语言保留在“迭代修改”区，只用于已有 workflow 的局部 patch。
+- 2026-06-13 运行态恢复决策：短期只做 active run UI 恢复，不做真正断点续跑。理由：`activeFlowRuns` 已有内存态，可低成本解决“切 flow 后回来不知道是否还在跑”；真正断点续跑需要 DB 持久化设计 run 与阶段状态，属于后续较大改造。
 - 画布**纯预览只读**（`nodesDraggable=false` 等），所有变更经「pi 对话」自然语言完成。
 - `workflow.json` 不存在时从**目录树自动推断节点**（数字前缀排序/单目录包裹展开，标 `inferred:true`）。
 - 创建视图三区（架构+进度+对话）；黑板**正名融合**——把唯一真实价值（`{{id}}` 传递关系）显示在执行流节点卡，删重复输出汇总。
@@ -126,6 +138,10 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **ExtractionTool skill 不是红线本体**：skill 文字只能引导模型选择 clean_data；真正防泄漏必须依赖后端 `POST /api/extraction-tools/:id/run` 的 `source=ai`、`workspaceId` 和已登记 `clean_data` 校验。不要在前端或 skill 文案里把软约束误认为安全边界。
 - **SQL loop 不能让 tool 节点非零退出**：普通 tool node 失败会在 runner 中立即 `return { code }`，下游 gate 不会执行。SQL loop 的可修复失败必须编码进 `run_sql` JSON 的 `code/success/error`，workflow 层保持 `code:0`，由 `sql_gate` block 并写入 `sql_error`。
 - **SQL 关键字段校验依赖结果 columns，不依赖首行 row key**：空结果时 rows 无法提供字段信息；后续若要支持“空结果但 schema 字段完整”的场景，需要总控明确是否允许 `rowCount=0` pass。目前 T-E4 验收要求结果非空，所以 `rowCount=0` 一律 block。
+- **设计页运行态恢复不是跨进程恢复**：`chat-runtime` 只反映当前 server 进程里的 `activeFlowRuns`。如果 server 重启或 pi 已异常退出，前端只能看到历史消息/已落盘 workflow，不能继续上一轮生成。不要把该能力描述成“断点续跑”。
+- **设计/执行切换不应重复展示同一张图**：设计页去掉上半流程节点预览，避免和执行页 DAG/执行流重复。设计页承担“结构化输入 + 局部 patch + 生成状态”，执行页承担“查看/编辑节点配置 + DAG + 运行”。
+- **readme 内容会随 UI 收敛漂移，改入口必须同步**：`WorkflowReadmePane` 是手写 JSX，里面写死了 tab 命名与生成入口口径。2026-06-14 修过两处漂移——把已收敛掉的「对话」生成入口改成表单式「设计 + 迭代修改」，把「聚合数据 → SQL连接」修正为「计算工具 → SQL连接」(`sql_connect` 实际挂在顶层 `aggregate`/计算工具 tab，见 `constants.ts AGGREGATE_SUB_TABS`，不在 `clean_data`/聚合数据 子 tab 下)。凡收敛 tab/入口/归属，必须回头扫 readme。
+- **readme markdown 单一真源在 `web/src/docs/`**：`ExploreReadmePane`/`AggregateReadmePane` 用 `@/docs/*.md?raw` 导入，`@` 解析到 `web/src/`。不要在根 `docs/` 再放同名副本——`?raw` 只消费 `web/src/docs/` 那份，根目录副本无人引用且必然漂移（2026-06-14 已删根 `docs/explore-readme.md`/`aggregate-readme.md`）。
 - `scope` 对象字面量每次渲染新引用 → `useCallback([scope])` 重建 → effect 清空画布。根治：Pane 内提取稳定原始值（scopeType/scopeSessionId/scopeFlowId）作 deps，不改 App.tsx 内联写法（项目惯例）。
 - 流式响应中断（`Stream ended without finish_reason`）：建议切 MiniMax-M3 重试，长报告分块写文件。
 - **onto-extract 文档抽取的两层硬上限**（2026-06-11 hotfix 已调）：①`CONTENT_LIMIT`（字符截断，原 6000 → 现 24000）是真正决定"能不能看到文档后半段"的开关；②prompt 配额（实体/关系/逻辑/动作 ≤N）是次级限制，长文档若超配额会被模型自行裁掉。**所有抽取调优必须双层一起看**，只调一层都不够。

@@ -13,6 +13,7 @@ import { CasesPane } from "@/components/CasesPane";
 import { WeatherPane } from "@/components/WeatherPane";
 import { IndustryPane } from "@/components/IndustryPane";
 import { CompetitorPane } from "@/components/CompetitorPane";
+import { AggregateReadmePane } from "@/components/AggregateReadmePane";
 import type { TabContext } from "./types";
 
 /**
@@ -46,6 +47,9 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       )}
       {activeTab === "aggregate" && activeSubTab === "tool_use" && (
         <ToolUsePane scope={ctx.folderScope} workspaceId={ctx.activeWorkspaceId} />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "readme" && (
+        <AggregateReadmePane />
       )}
 
       {activeTab === "rule_memory" && activeSubTab === "rules" && (

@@ -5,7 +5,6 @@ import {
   GitBranch,
   CheckCircle2,
   Loader2,
-  MessageSquare,
   Plus,
   Save,
   Trash2,
@@ -15,8 +14,8 @@ import {
   XCircle,
 } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
-import { CreationPane } from "@/components/CreationPane";
 import { RunOutputPanel } from "@/components/RunOutputPanel";
+import { WorkflowDesignPane } from "@/components/WorkflowDesignPane";
 import { WorkflowDagEditor } from "@/components/WorkflowDagEditor";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -47,31 +46,7 @@ interface Props {
   rulesPromptEnabled: boolean;
 }
 
-type View = "chat" | "execute";
-
-const CREATION_SYSTEM_PROMPT = `你是一个多智能体工作流设计师。用户描述需求后，你需要：
-
-1. 直接生成可执行工作流，不要中途提问，不要等待用户确认推荐方案。只有在缺少必要信息且完全无法继续时，才提出一个可回答的问题
-2. 将工作流拆解为多个独立 agent 节点，每个节点有明确的角色和输出
-3. 为每个节点设计执行 prompt，使用 {{task}} 作为任务占位符
-4. 最终必须生成 workflow.json 到当前工作目录，也就是本次 flow 的根目录。用户需求里的"输出到某项目目录/报告目录/绝对路径"只适用于业务产物，不适用于 workflow.json；workflow.json 是 pi-Xanthil UI 载体，永远写在当前工作目录
-5. workflow.json 格式：
-   { "version": 1, "defaultModel": "", "nodes": [{ "id": "...", "label": "节点名", "prompt": "执行指令，支持{{task}}占位符", "model": "", "role": "角色标签", "icon": "🔍", "desc": "节点简介" }], "edges": [...] }
-
-节点之间通过 edges 串联，后续节点可通过 {{前序节点id}} 引用前一步产出。始终专注于工作流设计。`;
-
-const PRIMING_PROMPT = `你是一个多智能体工作流编排器。请：
-
-1. 用 Read/LS 扫描当前工作目录的所有文件，理解工作流的意图、步骤、模板和依赖。
-2. 判断它是否已具备清晰的多步骤工作流结构。
-3. 若需要改造：补全缺失的说明文档、把流程描述重写成多 agent 逐步执行的格式、整理 templates/。
-4. 若任何环节你无法仅凭文件理解原意，请直接向我提问。
-5. 最后，请在当前目录下生成或更新 workflow.json，格式如下：
-   { "version": 1, "defaultModel": "<推荐模型id>", "nodes": [
-     { "id": "step1", "label": "步骤名称", "prompt": "该步骤的提示词模板（支持{{node_id}}占位符）", "model": "", "role": "角色标签(如researcher/writer)", "icon": "🔍", "color": "#0ea5e9", "desc": "该节点的简短描述" }
-   ], "edges": [{ "id": "e1", "source": "step1", "target": "step2" }] }
-   每个节点对应一个 agent 步骤，edges 按执行顺序串联。为每个节点设置合适的 role/icon/color/desc 字段以便前端渲染。
-   如果 workflow.json 已存在且内容合理则无需覆盖。`;
+type View = "design" | "execute";
 
 /** Pick a deterministic fallback color when the node doesn't specify one. */
 const FALLBACK_COLORS = [
@@ -96,9 +71,44 @@ function iconForNode(node: WorkflowNode): string {
   return "\u{1F916}"; // 🤖 default
 }
 
+function NodeModelSelect(p: {
+  value: string;
+  models: PiModel[];
+  inheritedModel: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const groups = p.models.reduce<Record<string, PiModel[]>>((acc, model) => {
+    (acc[model.provider] ??= []).push(model);
+    return acc;
+  }, {});
+  const inheritedLabel = p.inheritedModel ? `继承默认模型 (${p.inheritedModel.split("/").pop()})` : "继承默认模型";
+
+  return (
+    <select
+      value={p.value}
+      disabled={p.disabled}
+      onChange={(event) => p.onChange(event.target.value)}
+      className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+    >
+      <option value="">{inheritedLabel}</option>
+      {Object.entries(groups).map(([provider, items]) => (
+        <optgroup key={provider} label={provider}>
+          {items.map((model) => (
+            <option key={model.id} value={model.id}>{model.id}</option>
+          ))}
+        </optgroup>
+      ))}
+      {p.value && !p.models.some((model) => model.id === p.value) && (
+        <option value={p.value}>{p.value}</option>
+      )}
+    </select>
+  );
+}
+
 export function MultiAgentExecutionPane(p: Props) {
   const flowId = p.flow?.id ?? "";
-  const [view, setView] = useState<View>("chat");
+  const [view, setView] = useState<View>("design");
   const [workflowRefreshKey, setWorkflowRefreshKey] = useState(0);
   const [workflow, setWorkflow] = useState<EditableWorkflowDef | null>(null);
   const [loading, setLoading] = useState(true);
@@ -391,16 +401,16 @@ export function MultiAgentExecutionPane(p: Props) {
       {/* sub-view switcher */}
       <div className="flex h-10 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
         <button
-          onClick={() => setView("chat")}
+          onClick={() => setView("design")}
           className={cn(
             "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px]",
-            view === "chat"
+            view === "design"
               ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
               : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-100",
           )}
         >
-          <MessageSquare className="h-3.5 w-3.5" strokeWidth={1.75} />
-          创建
+          <Workflow className="h-3.5 w-3.5" strokeWidth={1.75} />
+          设计
         </button>
         <button
           onClick={() => { setView("execute"); setWorkflowRefreshKey((k) => k + 1); }}
@@ -420,16 +430,13 @@ export function MultiAgentExecutionPane(p: Props) {
       </div>
 
       <div className="flex min-h-0 flex-1">
-        {view === "chat" ? (
-          <CreationPane
+        {view === "design" ? (
+          <WorkflowDesignPane
             flow={p.flow}
-            kind="multi"
             models={p.models}
             model={p.model}
             onModelChange={p.onModelChange}
             onApplyToEditor={applyToEditor}
-            systemPrompt={CREATION_SYSTEM_PROMPT}
-            primingPrompt={PRIMING_PROMPT}
             rulesPromptEnabled={p.rulesPromptEnabled}
           />
         ) : loading ? (
@@ -676,12 +683,12 @@ export function MultiAgentExecutionPane(p: Props) {
                                   </label>
                                   <label className="flex flex-col gap-1">
                                     <span className="text-[10px] font-medium text-neutral-500">model</span>
-                                    <input
+                                    <NodeModelSelect
                                       value={node.model ?? ""}
+                                      models={p.models}
+                                      inheritedModel={workflow?.defaultModel || p.model}
                                       disabled={running}
-                                      onChange={(e) => updateWorkflowNode(node.id, { model: e.target.value })}
-                                      placeholder="留空继承默认模型"
-                                      className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 font-mono text-[11px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+                                      onChange={(value) => updateWorkflowNode(node.id, { model: value })}
                                     />
                                   </label>
                                   <label className="flex flex-col gap-1 md:col-span-2">

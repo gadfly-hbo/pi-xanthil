@@ -1,7 +1,8 @@
 import { useState } from "react";
-import { ChevronRight, PanelLeftClose, Pencil, Plus, Trash2, Workflow } from "lucide-react";
+import { ChevronRight, LayoutTemplate, PanelLeftClose, Pencil, Plus, Trash2, Workflow } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
+import { WorkflowTemplateLibraryPane, type WorkflowTemplate } from "@/components/WorkflowTemplateLibraryPane";
 import type { Flow } from "@/types";
 
 /**
@@ -12,8 +13,10 @@ import type { Flow } from "@/types";
 interface Props {
   flows: Flow[];
   activeFlowId: string | null;
+  workspaceReady: boolean;
   onSelectFlow: (id: string) => void;
   onNewFlow: (kind: "single" | "multi") => void;
+  onInstantiateTemplate: (template: WorkflowTemplate) => Promise<void>;
   onRenameFlow: (id: string, name: string) => void;
   onDeleteFlow: (id: string, deleteFiles: boolean) => void;
 }
@@ -21,13 +24,13 @@ interface Props {
 const rowActionBtn =
   "inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:text-neutral-500 dark:hover:bg-neutral-700 dark:hover:text-neutral-200";
 
-export function FlowListColumn({ flows, activeFlowId, onSelectFlow, onNewFlow, onRenameFlow, onDeleteFlow }: Props) {
+export function FlowListColumn({ flows, activeFlowId, workspaceReady, onSelectFlow, onNewFlow, onInstantiateTemplate, onRenameFlow, onDeleteFlow }: Props) {
   const [collapsed, setCollapsed] = useState(false);
   const [editing, setEditing] = useState<{ id: string; value: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
+  const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false);
 
-  // 排除 AnaX 模板派生 flow（与原侧栏过滤保持一致）。
-  const visible = flows.filter((f) => f.kind === "multi" && f.sourceName !== "AnaX v3.0" && f.sourceName !== "AnaX v3.0 Quick");
+  const visible = flows.filter((f) => f.kind === "multi");
 
   const commitEdit = () => {
     if (!editing) return;
@@ -58,6 +61,13 @@ export function FlowListColumn({ flows, activeFlowId, onSelectFlow, onNewFlow, o
           className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
         >
           <Plus className="h-3.5 w-3.5" strokeWidth={1.75} />
+        </button>
+        <button
+          onClick={() => setTemplateLibraryOpen(true)}
+          title="从模板新建"
+          className="inline-flex h-6 w-6 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-200 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-700 dark:hover:text-neutral-100"
+        >
+          <LayoutTemplate className="h-3.5 w-3.5" strokeWidth={1.75} />
         </button>
         <button
           onClick={() => setCollapsed(true)}
@@ -131,6 +141,12 @@ export function FlowListColumn({ flows, activeFlowId, onSelectFlow, onNewFlow, o
           }}
         />
       )}
+      <WorkflowTemplateLibraryPane
+        open={templateLibraryOpen}
+        workspaceReady={workspaceReady}
+        onClose={() => setTemplateLibraryOpen(false)}
+        onInstantiate={onInstantiateTemplate}
+      />
     </aside>
   );
 }

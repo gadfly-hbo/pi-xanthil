@@ -14,6 +14,7 @@ import { DataTabs } from "@/tabs/DataTabs";
 import { EngineTabs } from "@/tabs/EngineTabs";
 import { VizTabs } from "@/tabs/VizTabs";
 import type { TabContext } from "@/tabs/types";
+import type { WorkflowTemplate } from "@/components/WorkflowTemplateLibraryPane";
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
@@ -419,6 +420,19 @@ export default function App() {
     setActiveSubTab("view");
   }, [activeWorkspaceId]);
 
+  const instantiateWorkflowTemplate = useCallback(async (template: WorkflowTemplate) => {
+    if (!activeWorkspaceId) throw new Error("请先选择工作区");
+    const flow = template.id === "anax-full"
+      ? await api.instantiateAnax(activeWorkspaceId, template.name)
+      : template.id === "anax-quick"
+        ? await api.instantiateAnaxQuick(activeWorkspaceId, template.name)
+        : await api.instantiateSqlLoop(activeWorkspaceId, template.name);
+    setFlows((current) => [flow, ...current.filter((item) => item.id !== flow.id)]);
+    setActiveFlowId(flow.id);
+    setActiveTab("multi");
+    setActiveSubTab("view");
+  }, [activeWorkspaceId]);
+
   const renameFlow = useCallback(async (id: string, name: string) => {
     await api.renameFlow(id, name);
     setFlows((cur) => cur.map((f) => (f.id === id ? { ...f, name } : f)));
@@ -817,8 +831,10 @@ export default function App() {
             <FlowListColumn
               flows={flows}
               activeFlowId={activeFlowId}
+              workspaceReady={Boolean(activeWorkspaceId)}
               onSelectFlow={onSelectFlow}
               onNewFlow={newFlow}
+              onInstantiateTemplate={instantiateWorkflowTemplate}
               onRenameFlow={renameFlow}
               onDeleteFlow={deleteFlow}
             />
