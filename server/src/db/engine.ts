@@ -1,6 +1,8 @@
 import { randomUUID } from "node:crypto";
+import { join, resolve } from "node:path";
 import { db } from "../db.ts";
 import { enableForOrigin, setMemoryEnablement, disableItemEverywhere } from "./shared.ts";
+import { detectSkillActivation } from "../skill-activation.ts";
 import type { SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus } from "../types.ts";
 
 /**
@@ -24,6 +26,8 @@ type SkillRegistryRow = {
   score: number | null;
   activation_rate: number | null;
   usage_count: number;
+  prod_injected_count: number;
+  prod_activated_count: number;
   origin_session_id: string | null;
   created_at: number;
   updated_at: number;
@@ -161,6 +165,52 @@ export function incrementSkillRegistryUsage(id: string, by = 1): SkillRegistryEn
   return getSkillRegistryEntry(id);
 }
 
+// A 卡：记一次生产真实运行的注入与（可选）激活。口径独立于评测分(score/activationRate)
+// 与注入埋点(usageCount)：prod_injected_count 永远 +1，prod_activated_count 仅在本次
+// 真实激活时 +1。registry 派生 prodActivationRate = activated / injected。
+export function recordSkillActivationOutcome(id: string, activated: boolean): SkillRegistryEntry | undefined {
+  if (!getSkillRegistryEntry(id)) return undefined;
+  db.prepare(
+    `UPDATE skill_registry
+     SET prod_injected_count = prod_injected_count + 1,
+         prod_activated_count = prod_activated_count + ?,
+         updated_at = ?
+     WHERE id = ?`,
+  ).run(activated ? 1 : 0, Date.now(), id);
+  return getSkillRegistryEntry(id);
+}
+
+// A 卡：生产 run 完成（成功、非 abort）后，对本次注入的每个 registry skill 记一次生产
+// 注入，并按 detectSkillActivation 的证据判定是否真实激活。仅生产链路调用（flow chat /
+// workflow / autonomous）；评测路径不调用，避免污染实验室口径。
+export function recordSkillActivationForRun(input: {
+  workspaceId: string;
+  workspaceRoot: string;
+  skillPaths: string[] | undefined;
+  output: string;
+}): void {
+  const { workspaceId, workspaceRoot, skillPaths, output } = input;
+  if (!skillPaths || skillPaths.length === 0) return;
+  // registry 内容真源 = <workspaceRoot>/.pi/skills/<slug>/SKILL.md（与 routes/engine.ts
+  // registrySkillPath 同约定）；据此把注入的绝对路径映射回 registry 行，过滤已归档。
+  const byPath = new Map<string, SkillRegistryEntry>();
+  for (const entry of listSkillRegistryEntries(workspaceId)) {
+    if (entry.status === "archived") continue;
+    byPath.set(resolve(join(workspaceRoot, ".pi", "skills", entry.slug, "SKILL.md")), entry);
+  }
+  if (byPath.size === 0) return;
+  const activatedPaths = new Set(
+    detectSkillActivation({ skillPaths, output }).evidence.map((e) => e.skillPath),
+  );
+  const seen = new Set<string>();
+  for (const skillPath of skillPaths) {
+    const entry = byPath.get(resolve(skillPath));
+    if (!entry || seen.has(entry.id)) continue;
+    seen.add(entry.id);
+    recordSkillActivationOutcome(entry.id, activatedPaths.has(skillPath));
+  }
+}
+
 function nextSkillRegistryVersion(workspaceId: string, slug: string): number {
   const row = db.prepare(
     "SELECT MAX(version) AS maxVersion FROM skill_registry WHERE workspace_id = ? AND slug = ?",
@@ -181,6 +231,11 @@ function mapSkillRegistryRow(row: SkillRegistryRow): SkillRegistryEntry {
     score: row.score,
     activationRate: row.activation_rate,
     usageCount: row.usage_count,
+    prodInjectedCount: row.prod_injected_count,
+    prodActivatedCount: row.prod_activated_count,
+    prodActivationRate: row.prod_injected_count > 0
+      ? row.prod_activated_count / row.prod_injected_count
+      : null,
     originSessionId: row.origin_session_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,

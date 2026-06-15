@@ -3,6 +3,7 @@ import { join } from "node:path";
 import { retrieveSkills } from "./skill-retrieval.ts";
 import { runPiTurn } from "./pi-adapter.ts";
 import { collectEvent, emptyMetrics, extractText } from "./evaluation-common.ts";
+import { recordSkillActivationForRun } from "./db/engine.ts";
 import type { AutonomousRunResult, RetrievedSkill } from "./types.ts";
 
 export interface AutonomousRunOptions {
@@ -49,5 +50,7 @@ export async function runAutonomousTask(opts: AutonomousRunOptions): Promise<Aut
   if (code !== 0) {
     return { output, skillsUsed, durationSec, error: `进程退出码 ${String(code)}` };
   }
+  // A 卡：自主完成成功后记本次注入 skill 的真实激活（生产链路之一）。
+  recordSkillActivationForRun({ workspaceRoot, workspaceId, skillPaths, output });
   return { output, skillsUsed, durationSec };
 }

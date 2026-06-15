@@ -69,6 +69,8 @@ export function initSharedTables(): void {
       score             REAL,
       activation_rate   REAL,
       usage_count       INTEGER NOT NULL DEFAULT 0,
+      prod_injected_count  INTEGER NOT NULL DEFAULT 0,
+      prod_activated_count INTEGER NOT NULL DEFAULT 0,
       origin_session_id TEXT,
       created_at        INTEGER NOT NULL,
       updated_at        INTEGER NOT NULL,
@@ -76,6 +78,16 @@ export function initSharedTables(): void {
     );
   `);
   db.exec("CREATE INDEX IF NOT EXISTS idx_skill_registry_ws ON skill_registry(workspace_id, status, updated_at DESC)");
+  // A 卡接缝前置（2026-06-15，总控持有）：生产激活遥测两列；存量库补列。
+  // usage_count(注入埋点) 之外，prod_injected_count/prod_activated_count 记生产真实运行的
+  // 注入/激活次数，registry 派生 prodActivationRate；写入逻辑由 E 卡 A 落地。
+  const skillCols = db.prepare("PRAGMA table_info(skill_registry)").all() as Array<{ name: string }>;
+  if (!skillCols.some((c) => c.name === "prod_injected_count")) {
+    db.exec("ALTER TABLE skill_registry ADD COLUMN prod_injected_count INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!skillCols.some((c) => c.name === "prod_activated_count")) {
+    db.exec("ALTER TABLE skill_registry ADD COLUMN prod_activated_count INTEGER NOT NULL DEFAULT 0");
+  }
 }
 
 // ---- Fork 分支 CRUD ----

@@ -55,7 +55,7 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <HooksManagementPane />
       )}
       {activeTab === "aggregate" && activeSubTab === "skills_mgmt" && (
-        <SkillManagementPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} />
+        <SkillManagementPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} />
       )}
       {activeTab === "aggregate" && activeSubTab === "command_mgmt" && (
         <Placeholder icon={SquareTerminal} title="command管理" hint="管理 command 配置，即将推出" />

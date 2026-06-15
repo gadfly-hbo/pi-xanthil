@@ -14,12 +14,14 @@ import {
   addFlowMessage, getFileAnalysesByPathIds, createFlowRun, finishFlowRun,
   recordMemoryInjectionUsage, buildHypothesisLibraryContext, getAnaxGateConfig, upsertAnaxGateConfig,
   upsertHypothesisFromArchive, createChangeProposal, saveSkillEvaluation,
+  listSessions, listMessages, getSessionRuntime,
 } from "../db.ts";
 import {
   archiveSkillRegistryEntry,
   createSkillRegistryEntry,
   getSkillRegistryEntry,
   incrementSkillRegistryUsage,
+  recordSkillActivationForRun,
   listSkillRegistryEntries,
   updateSkillRegistryEntry,
   updateSkillRegistryMetrics,
@@ -36,15 +38,15 @@ import { buildMemoryInjectionSnapshot, withRulesPrompt, buildMemoryPrompt } from
 import { buildRegisteredPathContext } from "../output-paths.ts";
 import { standardDirIn } from "../workspace-dirs.ts";
 import { readWorkflow, runMultiAgent, topoOrder } from "../multi-agent-runner.ts";
-import { runPiTurn } from "../pi-adapter.ts";
+import { runPiPrompt, runPiTurn } from "../pi-adapter.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
-import type { ClientMessage, PiEvent } from "../types.ts";
+import type { ClientMessage, PiEvent, Session } from "../types.ts";
 import { buildAnaxWorkflow, buildAnaxQuickWorkflow } from "../anax-template.ts";
 import { buildSqlLoopWorkflow } from "../sql-loop-template.ts";
 import { moveManagedDirToTrash } from "../trash.ts";
 import { listSkills } from "../skills.ts";
-import { extractSkillMarkdown, parseSkillName, slugifySkillName } from "../skill-distillation.ts";
+import { buildSkillDistillationPrompt, buildSkillRevisionPrompt, extractSkillMarkdown, parseSkillName, SKILL_DISTILL_SYSTEM_PROMPT, SKILL_REVISE_SYSTEM_PROMPT, slugifySkillName } from "../skill-distillation.ts";
 import { parseSkillEvaluationRunRequest } from "../skill-evaluation-api.ts";
 import { runSkillEvaluation, type SkillEvaluationRunSummary } from "../skill-evaluation-runner.ts";
 import { autoTriggerCuration } from "../skill-curator.ts";
@@ -374,6 +376,121 @@ engineRouter.get("/api/workspaces/:id/skill-registry/conflicts", (req, res) => {
   }
 });
 
+engineRouter.post("/api/workspaces/:id/skill-auto-distill", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseSkillAutoDistillBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+
+  const sessions = collectAutoDistillSessions(workspace.id, parsed.value.since, parsed.value.limit);
+  const results: SkillAutoDistillSessionResult[] = [];
+  for (const session of sessions) {
+    const transcript = buildAutoDistillTranscript(session.id);
+    if (!transcript.trim()) {
+      results.push({ sessionId: session.id, title: session.title, status: "skipped", reason: "empty_transcript" });
+      continue;
+    }
+    try {
+      const rawOutput = await runPiPrompt({
+        workspaceRoot: workspace.rootPath,
+        text: buildSkillDistillationPrompt(transcript),
+        model: parsed.value.model,
+        systemPrompt: SKILL_DISTILL_SYSTEM_PROMPT,
+        timeoutMs: parsed.value.timeoutMs,
+        onEvent: (event) => trackUsageEvent({
+          workspaceId: workspace.id,
+          targetKind: "session",
+          targetId: session.id,
+          title: `自动沉淀 Skill：${session.title}`,
+        }, event),
+      });
+      const content = extractSkillMarkdown(rawOutput);
+      const name = parseSkillName(content) ?? "";
+      const description = parseSkillDescription(content);
+      if (!name || !description) {
+        results.push({ sessionId: session.id, title: session.title, status: "failed", error: "distilled SKILL.md missing name or description frontmatter" });
+        continue;
+      }
+      const slug = sanitizeSkillSlug(slugifySkillName(name));
+      if (!slug) {
+        results.push({ sessionId: session.id, title: session.title, status: "failed", error: "distilled skill name cannot form a valid registry slug" });
+        continue;
+      }
+      const duplicate = findAutoDistillDuplicate(workspace.id, workspace.rootPath, slug, content, parsed.value.duplicateThreshold);
+      if (duplicate) {
+        results.push({
+          sessionId: session.id,
+          title: session.title,
+          status: "skipped",
+          reason: duplicate.reason,
+          slug,
+          name,
+          similarSkill: duplicate.similarSkill,
+        });
+        continue;
+      }
+      if (parsed.value.dryRun) {
+        results.push({ sessionId: session.id, title: session.title, status: "dry_run", slug, name });
+        continue;
+      }
+      const skillPath = registrySkillPath(workspace.rootPath, slug);
+      mkdirSync(dirname(skillPath), { recursive: true });
+      const normalizedContent = content.endsWith("\n") ? content : `${content}\n`;
+      writeFileSync(skillPath, normalizedContent, "utf8");
+      const entry = createSkillRegistryEntry(workspace.id, {
+        slug,
+        name,
+        status: "candidate",
+        source: "distilled",
+        originSessionId: session.id,
+      });
+      writeVersionSnapshot(workspace.rootPath, entry.slug, entry.version, normalizedContent);
+      results.push({ sessionId: session.id, title: session.title, status: "created", slug, name, entry, skillPath });
+    } catch (err) {
+      results.push({ sessionId: session.id, title: session.title, status: "failed", error: String(err) });
+    }
+  }
+
+  res.json({
+    workspaceId: workspace.id,
+    since: parsed.value.since,
+    limit: parsed.value.limit,
+    model: parsed.value.model ?? "",
+    dryRun: parsed.value.dryRun,
+    scanned: sessions.length,
+    created: results.filter((item) => item.status === "created").length,
+    skipped: results.filter((item) => item.status === "skipped").length,
+    failed: results.filter((item) => item.status === "failed").length,
+    results,
+  });
+});
+
+// 方式2：AI 改写——基于用户「修改说明」对给定 SKILL.md 内容做最小修改，返回改写结果供预览，
+// 不写盘/不建版本（保存仍走既有「保存为新版本」）。operate on 请求体提供的 content（即编辑框当前文本），
+// 既可改原文也可改用户未保存的草稿。
+engineRouter.post("/api/workspaces/:id/skill-revise", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const content = typeof req.body?.content === "string" ? req.body.content : "";
+  const instruction = typeof req.body?.instruction === "string" ? req.body.instruction.trim() : "";
+  const model = String(req.body?.model ?? "").trim() || undefined;
+  if (!content.trim()) return res.status(400).json({ error: "content is required" });
+  if (!instruction) return res.status(400).json({ error: "instruction is required" });
+  try {
+    const raw = await runPiPrompt({
+      workspaceRoot: workspace.rootPath,
+      text: buildSkillRevisionPrompt(content, instruction),
+      model,
+      systemPrompt: SKILL_REVISE_SYSTEM_PROMPT,
+      timeoutMs: 180_000,
+      onEvent: (event) => trackUsageEvent({ workspaceId: workspace.id, targetKind: "skill", targetId: workspace.id, title: "Skill AI 改写" }, event),
+    });
+    res.json({ content: extractSkillMarkdown(raw) });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 engineRouter.post("/api/workspaces/:id/skill-registry", (req, res) => {
   const workspace = getWorkspace(req.params.id);
   if (!workspace) return res.status(404).json({ error: "workspace not found" });
@@ -509,6 +626,133 @@ engineRouter.post("/api/skill-registry/:id/evaluate", async (req, res) => {
     res.status(400).json({ error: String(err) });
   }
 });
+
+type ParsedSkillAutoDistill =
+  | {
+    ok: true;
+    value: {
+      since: number;
+      limit: number;
+      model?: string;
+      dryRun: boolean;
+      timeoutMs: number;
+      duplicateThreshold: number;
+    };
+  }
+  | { ok: false; error: string };
+
+type SkillAutoDistillSessionResult =
+  | { sessionId: string; title: string; status: "created"; slug: string; name: string; entry: SkillRegistryEntry; skillPath: string }
+  | { sessionId: string; title: string; status: "dry_run"; slug: string; name: string }
+  | { sessionId: string; title: string; status: "skipped"; reason: string; slug?: string; name?: string; similarSkill?: SkillRegistryConflict }
+  | { sessionId: string; title: string; status: "failed"; error: string };
+
+function parseSkillAutoDistillBody(body: unknown): ParsedSkillAutoDistill {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  const now = Date.now();
+  const defaultSince = now - 7 * 24 * 60 * 60 * 1000;
+  const sinceValue = raw.since === undefined || raw.since === null || raw.since === ""
+    ? defaultSince
+    : typeof raw.since === "string" && /^\d{4}-\d{2}-\d{2}/.test(raw.since)
+      ? Date.parse(raw.since)
+      : Number(raw.since);
+  if (!Number.isFinite(sinceValue) || sinceValue < 0) return { ok: false, error: "since must be a timestamp or date string" };
+  const limit = raw.limit === undefined ? 5 : Number(raw.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 20) return { ok: false, error: "limit must be an integer between 1 and 20" };
+  const timeoutMs = raw.timeoutMs === undefined ? 180_000 : Number(raw.timeoutMs);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 10_000 || timeoutMs > 600_000) {
+    return { ok: false, error: "timeoutMs must be an integer between 10000 and 600000" };
+  }
+  const duplicateThreshold = raw.duplicateThreshold === undefined ? 1.5 : Number(raw.duplicateThreshold);
+  if (!Number.isFinite(duplicateThreshold) || duplicateThreshold <= 0) return { ok: false, error: "duplicateThreshold must be positive" };
+  const model = String(raw.model ?? "").trim() || undefined;
+  return { ok: true, value: { since: sinceValue, limit, model, dryRun: raw.dryRun === true, timeoutMs, duplicateThreshold } };
+}
+
+function collectAutoDistillSessions(workspaceId: string, since: number, limit: number): Session[] {
+  const selected: Session[] = [];
+  for (const session of listSessions(workspaceId)) {
+    if (session.updatedAt < since) continue;
+    const runtime = getSessionRuntime(session.id);
+    if (runtime.status === "running" || runtime.status === "compacting" || runtime.status === "error") continue;
+    const hasCompletedAssistantResponse = listMessages(session.id)
+      .some((message) => message.role === "assistant" && extractStoredMessageText(message.content));
+    if (!hasCompletedAssistantResponse) continue;
+    selected.push(session);
+    if (selected.length >= limit) break;
+  }
+  return selected;
+}
+
+function buildAutoDistillTranscript(sessionId: string): string {
+  const transcript = listMessages(sessionId)
+    .filter((message) => message.role === "user" || message.role === "assistant")
+    .map((message) => {
+      const text = extractStoredMessageText(message.content);
+      return text ? `${message.role === "user" ? "用户" : "助手"}:\n${text}` : "";
+    })
+    .filter(Boolean)
+    .join("\n\n");
+  return transcript.slice(-24_000);
+}
+
+function extractStoredMessageText(content: unknown): string {
+  if (!Array.isArray(content)) return "";
+  return content
+    .filter(
+      (block): block is { type: "text"; text: string } =>
+        typeof block === "object"
+        && block !== null
+        && (block as { type?: unknown }).type === "text"
+        && typeof (block as { text?: unknown }).text === "string",
+    )
+    .map((block) => block.text)
+    .join("\n")
+    .trim();
+}
+
+function parseSkillDescription(content: string): string | undefined {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  if (!match?.[1]) return undefined;
+  const descriptionLine = match[1].split("\n").find((line) => /^description\s*:/.test(line));
+  if (!descriptionLine) return undefined;
+  const value = descriptionLine.replace(/^description\s*:/, "").trim().replace(/^["']|["']$/g, "");
+  return value || undefined;
+}
+
+function findAutoDistillDuplicate(
+  workspaceId: string,
+  workspaceRoot: string,
+  slug: string,
+  content: string,
+  duplicateThreshold: number,
+): { reason: string; similarSkill?: SkillRegistryConflict } | null {
+  const existingSlug = listSkillRegistryEntries(workspaceId)
+    .find((entry) => entry.slug === slug);
+  if (existingSlug) {
+    return {
+      reason: "slug_exists",
+      similarSkill: {
+        id: `skill-conflict:${existingSlug.id}`,
+        workspaceId,
+        itemKind: "skill",
+        itemId: existingSlug.id,
+        slug: existingSlug.slug,
+        name: existingSlug.name,
+        version: existingSlug.version,
+        status: existingSlug.status,
+        score: Number.POSITIVE_INFINITY,
+        severity: "high",
+        reason: "同 slug 的非归档 skill 已存在，跳过自动沉淀。",
+        snippet: "",
+      },
+    };
+  }
+  if (existsSync(registrySkillPath(workspaceRoot, slug))) return { reason: "skill_file_exists" };
+  const conflicts = detectSkillRegistryConflicts({ workspaceId, workspaceRoot, content }).conflicts;
+  const duplicate = conflicts.find((conflict) => conflict.score >= duplicateThreshold);
+  return duplicate ? { reason: "similar_skill", similarSkill: duplicate } : null;
+}
 
 type ParsedSkillRegistryCreate =
   | {
@@ -1011,6 +1255,10 @@ export async function handleSendFlow(
         traceFlowEvent(flow.id, "workflow_capture_failed", "failed", String(err), {});
       }
     }
+    // A 卡：生产成功完成后记本轮注入 skill 的真实激活（独立于 usageCount/评测口径）。
+    if (code === 0 && !active.aborted && workspace) {
+      recordSkillActivationForRun({ workspaceId: flow.workspaceId, workspaceRoot: workspace.rootPath, skillPaths, output: capturedText });
+    }
     traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : code === 0 ? "success" : "failed", code === 0 ? null : `pi exited with code ${String(code)}`, { code, aborted: active.aborted });
     send(ws, { type: "run_end", flowId: flow.id, code, aborted: active.aborted });
   } finally {
@@ -1148,6 +1396,10 @@ export async function handleExecuteMultiAgent(
     });
     if (activeMultiAgentRuns.get(clientRunId) === active) activeMultiAgentRuns.delete(clientRunId);
     finishFlowRun(runRow.id, active.aborted ? "aborted" : result.code === 0 ? "success" : "failed");
+    // A 卡：生产成功完成后记本次工作流注入 skill 的真实激活（聚合各节点黑板输出）。
+    if (result.code === 0 && !active.aborted && workspace) {
+      recordSkillActivationForRun({ workspaceId: flow.workspaceId, workspaceRoot: workspace.rootPath, skillPaths: collectWorkflowSkillPaths(workflow), output: Object.values(result.blackboard).join("\n") });
+    }
     traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : result.code === 0 ? "success" : "failed", result.code === 0 ? null : `multi-agent exited with code ${String(result.code)}`, { code: result.code, aborted: active.aborted }, runRow.id);
     send(ws, { type: "run_end", flowId: flow.id, runId: clientRunId, code: result.code, aborted: active.aborted });
   } catch (err) {

@@ -186,7 +186,8 @@ export type TokenUsageTargetKind =
   | "report_version"
   | "workflow_promotion"
   | "evaluation"
-  | "repair";
+  | "repair"
+  | "skill";
 
 export interface TokenUsageStats {
   workspaceId: string;
@@ -1940,7 +1941,10 @@ export interface SkillRegistryEntry {
   source: SkillSource;
   score: number | null;           // 最近评测综合分（实验室回写）
   activationRate: number | null;  // 最近评测激活率（实验室回写）
-  usageCount: number;             // 注入使用次数（埋点累计）
+  usageCount: number;             // 注入使用次数（埋点累计，含评测/注入路径）
+  prodInjectedCount: number;      // A：生产真实运行注入次数
+  prodActivatedCount: number;     // A：生产 run 完成后 detectSkillActivation 命中次数
+  prodActivationRate: number | null; // A 派生：prodActivatedCount/prodInjectedCount，注入为 0 时 null
   originSessionId: string | null; // 蒸馏/策展出处（可追溯）
   createdAt: number;
   updatedAt: number;
@@ -1952,6 +1956,31 @@ export interface SkillRegistryInput {
   source: SkillSource;
   status?: SkillStatus;
   originSessionId?: string | null;
+}
+
+// B 卡：手动一键自动沉淀 sweep 的返回（POST /api/workspaces/:id/skill-auto-distill）。
+// 与 routes/engine.ts 的 SkillAutoDistillSessionResult 同形（消费侧最小子集）。
+export interface SkillAutoDistillSessionResult {
+  sessionId: string;
+  title: string;
+  status: "created" | "dry_run" | "skipped" | "failed";
+  slug?: string;
+  name?: string;
+  reason?: string;
+  error?: string;
+}
+
+export interface SkillAutoDistillResult {
+  workspaceId: string;
+  since: number;
+  limit: number;
+  model: string;
+  dryRun: boolean;
+  scanned: number;
+  created: number;
+  skipped: number;
+  failed: number;
+  results: SkillAutoDistillSessionResult[];
 }
 
 // P1-a：某历史版本的内容快照（回滚前预览/查看历史版本内容）。

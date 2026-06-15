@@ -3,6 +3,7 @@
 //   复用请求工具 `import { json } from "./_http"`; 类型从 "@/types" 引入。
 import type {
   ForkBranch,
+  SkillAutoDistillResult,
   SkillRegistryConflictsResult,
   SkillRegistryCreateBody,
   SkillRegistryEntry,
@@ -89,4 +90,22 @@ export const engineApi = {
     fetch(`/api/skill-registry/${id}/content`).then(json<SkillVersionContent>),
   rollbackSkillRegistry: (id: string) =>
     fetch(`/api/skill-registry/${id}/rollback`, { method: "POST" }).then(json<SkillRegistryEntry>),
+  // B 卡：手动一键触发自动沉淀 sweep（替代定时）。不传 body → 端点默认 since=近7天 / limit=5 / 继承 pi 默认模型。
+  // 产物恒为 distilled candidate，守人审门；前端调完刷新列表即可看到新候选。
+  runSkillAutoDistill: (
+    workspaceId: string,
+    body?: { since?: number | string; limit?: number; model?: string; dryRun?: boolean },
+  ) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-auto-distill`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    }).then(json<SkillAutoDistillResult>),
+  // 方式2：AI 改写——把当前 SKILL.md 内容 + 修改说明交给 LLM，返回改写后的内容供预览（不写盘）。
+  reviseSkill: (workspaceId: string, body: { content: string; instruction: string; model?: string }) =>
+    fetch(`/api/workspaces/${workspaceId}/skill-revise`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<{ content: string }>),
 };

@@ -284,3 +284,54 @@ test("workflow endpoints preserve valid skillPaths and filter unavailable ones",
     await server.close();
   }
 });
+
+test("recordSkillActivationForRun tracks production injection vs real activation", async () => {
+  const workspace = db.createWorkspace("skill activation telemetry");
+  const slug = "activation-demo-skill";
+  const entry = engineDb.createSkillRegistryEntry(workspace.id, {
+    slug,
+    name: "Activation Demo",
+    source: "manual",
+    status: "active",
+  });
+  // SKILL.md 文件无需存在：detectSkillActivation 回退到 slug 派生关键词。
+  const skillPath = join(workspace.rootPath, ".pi", "skills", slug, "SKILL.md");
+
+  // 注入且输出命中 slug → 注入+激活各 +1，prodActivationRate=1。
+  engineDb.recordSkillActivationForRun({
+    workspaceId: workspace.id,
+    workspaceRoot: workspace.rootPath,
+    skillPaths: [skillPath],
+    output: "we applied the activation-demo-skill approach to the task",
+  });
+  let now = engineDb.getSkillRegistryEntry(entry.id)!;
+  assert.equal(now.prodInjectedCount, 1);
+  assert.equal(now.prodActivatedCount, 1);
+  assert.equal(now.prodActivationRate, 1);
+
+  // 注入但输出未命中 → 只注入 +1，prodActivationRate=0.5。
+  engineDb.recordSkillActivationForRun({
+    workspaceId: workspace.id,
+    workspaceRoot: workspace.rootPath,
+    skillPaths: [skillPath],
+    output: "totally unrelated content with no matching tokens",
+  });
+  now = engineDb.getSkillRegistryEntry(entry.id)!;
+  assert.equal(now.prodInjectedCount, 2);
+  assert.equal(now.prodActivatedCount, 1);
+  assert.equal(now.prodActivationRate, 0.5);
+
+  // 评测/注入口径不被污染：usageCount/activationRate 不受影响。
+  assert.equal(now.usageCount, 0);
+  assert.equal(now.activationRate, null);
+
+  // 非 registry 路径被忽略，不抛错、不改计数。
+  engineDb.recordSkillActivationForRun({
+    workspaceId: workspace.id,
+    workspaceRoot: workspace.rootPath,
+    skillPaths: [join(workspace.rootPath, ".pi", "skills", "ghost", "SKILL.md")],
+    output: "ghost",
+  });
+  now = engineDb.getSkillRegistryEntry(entry.id)!;
+  assert.equal(now.prodInjectedCount, 2);
+});

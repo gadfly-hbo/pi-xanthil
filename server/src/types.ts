@@ -621,7 +621,8 @@ export type TokenUsageTargetKind =
   | "report_version"
   | "workflow_promotion"
   | "evaluation"
-  | "repair";
+  | "repair"
+  | "skill";
 
 export interface TokenUsageStats {
   workspaceId: string;
@@ -1627,7 +1628,10 @@ export interface SkillRegistryEntry {
   source: SkillSource;
   score: number | null;           // 最近评测综合分（实验室回写）
   activationRate: number | null;  // 最近评测激活率（实验室回写）
-  usageCount: number;             // 注入使用次数（埋点累计）
+  usageCount: number;             // 注入使用次数（埋点累计，含评测/注入路径）
+  prodInjectedCount: number;      // A：生产真实运行注入次数
+  prodActivatedCount: number;     // A：生产 run 完成后 detectSkillActivation 命中次数
+  prodActivationRate: number | null; // A 派生：prodActivatedCount/prodInjectedCount，注入为 0 时 null
   originSessionId: string | null; // 蒸馏/策展出处（可追溯）
   createdAt: number;
   updatedAt: number;

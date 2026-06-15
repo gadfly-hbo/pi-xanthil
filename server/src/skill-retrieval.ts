@@ -4,6 +4,7 @@ import type { RetrievedSkill } from "./types.ts";
 
 const K1 = 1.5;
 const B = 0.75;
+const SEARCHABLE_BODY_MAX_CHARS = 2400;
 
 function tokenize(text: string): string[] {
   return text.toLowerCase().split(/[^a-z0-9一-鿿]+/).filter(Boolean);
@@ -35,6 +36,21 @@ function extractSnippet(content: string, queryTokens: Set<string>, maxLen = 120)
     }
   }
   return content.slice(0, maxLen).replace(/\n/g, " ").trim();
+}
+
+function stripFrontmatter(content: string): string {
+  if (!content.startsWith("---")) return content;
+  const end = content.indexOf("\n---", 3);
+  if (end < 0) return content;
+  return content.slice(end + "\n---".length);
+}
+
+function buildSkillSearchContent(description: string, content: string): string {
+  const bodySummary = stripFrontmatter(content)
+    .replace(/\r\n/g, "\n")
+    .trim()
+    .slice(0, SEARCHABLE_BODY_MAX_CHARS);
+  return [description, bodySummary].filter((part) => part.trim().length > 0).join("\n\n");
 }
 
 export interface SkillSimilarityDocument {
@@ -86,8 +102,9 @@ export function retrieveSkills(query: string, workspaceRoot: string, topK = 5): 
   for (const skill of skills) {
     try {
       const content = readFileSync(skill.path, "utf8");
-      const tokens = tokenize(`${skill.name} ${skill.description} ${content}`);
-      docs.push({ path: skill.path, name: skill.name, content, tokens, freq: buildFreqMap(tokens) });
+      const searchableContent = buildSkillSearchContent(skill.description, content);
+      const tokens = tokenize(`${skill.name} ${searchableContent}`);
+      docs.push({ path: skill.path, name: skill.name, content: searchableContent, tokens, freq: buildFreqMap(tokens) });
     } catch {
       // skip unreadable skills
     }

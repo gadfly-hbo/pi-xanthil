@@ -1,5 +1,6 @@
-import { Sparkles, X, Save, Loader2, AlertTriangle } from "lucide-react";
-import type { SkillRegistryConflict, SkillSource, SkillStatus } from "@/types";
+import { useState } from "react";
+import { Sparkles, X, Save, Loader2, AlertTriangle, Wand2 } from "lucide-react";
+import type { PiModel, SkillRegistryConflict, SkillSource, SkillStatus } from "@/types";
 import { cn } from "@/lib/cn";
 import { severityLabel, severityTone } from "@/lib/skillConflict";
 
@@ -25,6 +26,11 @@ interface Props {
   conflicts?: SkillRegistryConflict[];
   conflictsLoading?: boolean;
   onCheckConflicts?: () => void;
+  // 方式2：AI 改写（仅编辑模式）。父组件拿当前 draft.content + 说明 + 模型调 LLM，回填到 draft.content。
+  models?: PiModel[];
+  aiRevising?: boolean;
+  aiError?: string;
+  onAiRevise?: (instruction: string, model: string) => void;
 }
 
 export function CreateSkillModal({
@@ -37,7 +43,17 @@ export function CreateSkillModal({
   conflicts = [],
   conflictsLoading = false,
   onCheckConflicts,
+  models = [],
+  aiRevising = false,
+  aiError = "",
+  onAiRevise,
 }: Props) {
+  const [aiInstruction, setAiInstruction] = useState("");
+  const [aiModel, setAiModel] = useState("");
+  const modelGroups = models.reduce<Record<string, PiModel[]>>((acc, m) => {
+    (acc[m.provider] ??= []).push(m);
+    return acc;
+  }, {});
   return (
     <div className="fixed inset-0 z-40 flex items-center justify-center bg-black/40 p-4">
       <div className="flex max-h-[90vh] w-full max-w-2xl flex-col overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-2xl dark:border-neutral-700 dark:bg-neutral-900">
@@ -145,6 +161,50 @@ export function CreateSkillModal({
                 className="rounded border border-neutral-200 bg-white px-2 py-1.5 text-[11.5px] text-neutral-800 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
               />
             </label>
+          )}
+
+          {editing && onAiRevise && (
+            <div className="mt-3 rounded-md border border-violet-200 bg-violet-50/60 p-2.5 dark:border-violet-900 dark:bg-violet-950/20">
+              <div className="mb-1.5 flex items-center gap-1.5 text-[11.5px] font-medium text-violet-700 dark:text-violet-300">
+                <Wand2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                AI 改写（描述要改哪里，LLM 在下方原文上修改，结果可再手动编辑）
+              </div>
+              <textarea
+                value={aiInstruction}
+                onChange={(e) => setAiInstruction(e.target.value)}
+                placeholder="例：把触发场景收紧到只针对服饰类目；补充一条小红书数据是叙述式的陷阱；删掉第3步"
+                rows={2}
+                disabled={aiRevising}
+                className="w-full rounded border border-violet-200 bg-white px-2 py-1.5 text-[11.5px] text-neutral-800 disabled:opacity-60 dark:border-violet-900 dark:bg-neutral-900 dark:text-neutral-100"
+              />
+              <div className="mt-1.5 flex items-center gap-2">
+                <select
+                  value={aiModel}
+                  onChange={(e) => setAiModel(e.target.value)}
+                  disabled={aiRevising}
+                  title="改写用模型（默认继承 pi 配置）"
+                  className="h-7 max-w-[160px] rounded border border-violet-200 bg-white px-1.5 text-[11px] text-neutral-700 disabled:opacity-60 dark:border-violet-900 dark:bg-neutral-900 dark:text-neutral-200"
+                >
+                  <option value="">默认模型</option>
+                  {Object.entries(modelGroups).map(([provider, items]) => (
+                    <optgroup key={provider} label={provider}>
+                      {items.map((m) => <option key={m.id} value={m.id}>{m.model}</option>)}
+                    </optgroup>
+                  ))}
+                </select>
+                <button
+                  type="button"
+                  onClick={() => onAiRevise(aiInstruction.trim(), aiModel)}
+                  disabled={aiRevising || !aiInstruction.trim() || !draft.content.trim()}
+                  className="inline-flex h-7 items-center gap-1 rounded bg-violet-600 px-2.5 text-[11px] text-white hover:bg-violet-500 disabled:opacity-50"
+                  title="基于上方说明，对下方 SKILL.md 内容做修改"
+                >
+                  {aiRevising ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Wand2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                  {aiRevising ? "改写中…" : "AI 改写"}
+                </button>
+                {aiError && <span className="text-[10.5px] text-red-600 dark:text-red-400">{aiError}</span>}
+              </div>
+            </div>
           )}
 
           <label className="mt-3 flex flex-col gap-1 text-[11.5px]">

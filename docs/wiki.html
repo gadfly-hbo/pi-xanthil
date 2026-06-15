@@ -217,6 +217,146 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "E", status: "done", title: "【skill 自进化·缺口1】skill 内渐进式披露（SKILL.md 摘要 + scripts/references 二级懒加载）", brief:
+`✅ 总控回流终审通过（2026-06-15）。E 交付：① skill-retrieval.ts retrieveSkills 的 BM25 文档收敛为 name+description+「去 frontmatter 后正文前 2400 chars 摘要」，snippet 同源；子资源(scripts/references/resources)不进 docs。② skills.ts 维持"目录命中 SKILL.md 即 return 不展开子目录"现状，未加 hasResources(避免扩散类型面)。③ pi-adapter.ts 仍走 --no-skills --skill <SKILL.md path>、不做正文注入；pi CLI smoke 确认 SKILL.md 内 ./scripts 相对路径激活后可按需读取(输出 XANTHIL_RESOURCE_SMOKE_OK)。门禁 server typecheck ✅ build ✅ + 新增 skill-retrieval.test.ts(子资源/超摘要窗口正文不命中、摘要/description 命中)+ skills/activation 回归全绿；零新依赖、未碰接缝、未碰 git。notes-engine §0/§二(progressive disclosure 契约 line 62)已记。缺口2 打包须保真子资源相对路径、缺口3 脚本执行沙箱为后续。
+
+— 原始派发 —
+来源：2026-06-15 用户 + 本会话「skill 管理 vs 行业趋势」对照（缺口1/3）。
+缺口：当前 skill 为单文件 SKILL.md。listSkills(skills.ts walk:153) 每目录只取 SKILL.md（已是好基座），但 skill-retrieval.ts retrieveSkills 把**整篇 SKILL.md 正文** tokenize 进 BM25(skill-retrieval.ts:89)——长 skill 既膨胀检索文档又稀释命中；且不支持目录内 scripts/ references/ assets 的"激活后才读"。行业主流(Anthropic Agent Skills)是 SKILL.md 只放 frontmatter+摘要、正文/脚本/资源由模型激活后按相对路径懒加载(progressive disclosure)。
+
+目标：支持 skill 目录形态——SKILL.md(摘要+frontmatter) + 同目录 scripts/ references/ resources/ 子资源；**检索/注入只认 SKILL.md 摘要**，子资源仅在 skill 命中后由 pi 按 SKILL.md 内相对路径读取，不进 BM25、不整篇注入。
+
+【改动范围（E 域，无接缝）】
+1. skill-retrieval.ts：retrieveSkills 的 BM25 文档来源从"整篇 content"收敛为"name+description+SKILL.md 正文摘要"(可截断/只取首屏)；子资源文件一律不入 docs。
+2. skills.ts：确认 listSkills 不展开子资源（walk 命中 SKILL.md 即 return，现状已是）；如需可给 PiSkill 加 hasResources 标记供 UI/注入提示。
+3. 注入路径：确认 skill 命中后传给 pi 的是 SKILL.md 路径、子资源由 pi 自行按相对路径读取（pi CLI 对 bundled skill 的支持须实跑确认）。
+
+依赖：无。是缺口2（打包须含子资源）、缺口3（沙箱跑脚本）的**前置**。
+【验收】server typecheck+build 绿；含 scripts/ 的 skill 检索命中只看摘要、子资源不污染 BM25；实跑一个带 ./scripts 引用的 skill，pi 激活后能按需读取子文件。
+【约束】纯 E、不碰接缝/契约；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】pi CLI 对 bundled skill 子资源读取能力须实跑确认；若 pi 不支持需总控议是否补桥。` },
+  { dom: "E", status: "todo", title: "【skill 自进化·缺口2】skill 跨端可移植 + 分发（导出/导入包 + 跨工作区共享）", brief:
+`来源：2026-06-15 用户 + 本会话「skill 管理 vs 行业趋势」对照（缺口2/3）。
+缺口：registry 仅 workspace 内（skill_registry 表按 workspace_id 维度），虽已有"全局 vs 项目池 + 按工作区启用"(enablement)，但**无 skill 的导出/导入/订阅通道**——一个 workspace 调好的 skill 无法成包带到另一端或团队共享。行业主流有 marketplace/plugin + 团队共享。
+
+目标(MVP)：skill 包**导出**(SKILL.md + 缺口1 子资源 + registry 元数据 → 单文件/目录包) + **导入**(校验 + 落 .pi/skills/<slug>/ + 建 registry candidate)，先解决"跨工作区/跨机器搬运"；市场化分发为后续。
+
+【改动范围（主域 E + 开放点）】
+1. 后端(E，routes/engine.ts)：POST .../skill-registry/:id/export 打包（复用 registryVersionPath/路径围栏惯例）；POST .../skill-registry/import 解包 + sanitizeSkillSlug + startsWith 围栏 + 建 candidate；导入来源标记 source="imported"（types 已有该枚举）。
+2. 契约（开放点·须先报总控）：若新增 SkillPackage 双侧 types 即接缝层，归 X；不新增则 E 内闭环。
+3. 前端（开放点·D 子卡）：SkillManagementPane 加导出按钮 / 导入弹窗——拆 D 域后续卡。
+
+依赖：缺口1（包须含子资源）。
+【验收】server+web typecheck+build 绿；导出包可在另一 workspace 导入并作为 candidate 出现、经评测/人审走采纳；导入路径有 slug 围栏（拒 ../ 与穿越）。
+【约束】导入即写盘 + 可含脚本=安全敏感，slug/path 围栏复用既有 sanitizeSkillSlug + startsWith；imported skill 默认 candidate、**不自动 active**（守人审门）；不碰 git；回流总控终审。
+【开放点】① SkillPackage 是否上接缝（总控裁）；② 前端导入/导出 UI 拆 D 子卡；③ 远程 marketplace/订阅为 P2+，本卡不做。` },
+  { dom: "X", status: "todo", delegate: "E", title: "【skill 自进化·缺口3·安全红线】代码执行类 skill 的沙箱安全", brief:
+`来源：2026-06-15 用户 + 本会话「skill 管理 vs 行业趋势」对照（缺口3/3）。安全红线议题→总控持有、委派 E 代笔、总控加重终审。
+缺口：现有 skill 多为"提示型"；唯一执行链路 ExtractionTool 桥靠后端 /run 的 source=ai + clean_data 白名单兜底(notes-engine §一)，**无通用脚本执行沙箱**。一旦缺口1 引入 skill 内 scripts/ 且 pi 可执行，导入(缺口2)/蒸馏来的 skill 携带脚本将能在本机跑——属安全红线，须沙箱（资源限额 / 文件系统范围 / 网络禁用 / 命令白名单）或显式禁用。
+
+【口径待总控裁（本卡核心，先定再落）】
+A. 是否允许 skill 自带可执行脚本？若**否**→在导入/激活层显式拒绝并提示（零沙箱成本、最稳）。
+B. 若**是**→沙箱方案：进程隔离 / cwd 限定到 skill 目录 + 登记 clean_data、网络默认禁用、超时与内存上限、解释器/命令白名单；执行入口收口到**单点**（类比 ExtractionTool /run 单点守卫）。
+C. 与数据安全红线对齐：脚本绝不可读 draw_data/原始数据，复用既有 clean_data 边界。
+
+【改动范围（初判，待口径定）】pi-adapter.ts 执行注入点 / 新增 skill-exec 守卫单点 / 安全文档 AGENTS.md §一 + notes-engine。
+依赖：缺口1（脚本形态）、缺口2（导入外来脚本放大风险）——本卡须在两者落地"可执行"**之前**先定红线，否则出现"先能跑后补防护"的窗口。
+【验收】红线口径成文(AGENTS.md + notes)；选 A 禁用→导入/激活携脚本 skill 被显式拦截有测试；选 B 沙箱→脚本无法读 draw_data/越界文件/联网、超时被杀，有 focused test。
+【约束】安全红线归总控（dom X），E 代笔落地后总控加重终审；不碰 git。` },
+  { dom: "X", status: "done", title: "【skill 自进化·A】生产激活遥测闭环（real activation → registry，不再 usageCount≈激活）", brief:
+`✅ 总控直做并自检通过（2026-06-15，用户指定不委派、总控直接做掉）。交付：① 接缝(db/shared.ts skill_registry 加 prod_injected_count/prod_activated_count 两列 + 存量库 ALTER；双侧 types SkillRegistryEntry 加 prodInjectedCount/prodActivatedCount + 派生 prodActivationRate=activated/injected，injected=0 时 null，mapSkillRegistryRow 算不落列)；② 写入(db/engine.ts recordSkillActivationOutcome + recordSkillActivationForRun：按 .pi/skills/<slug>/SKILL.md 映射回 registry、过滤归档、用 detectSkillActivation 的 evidence.skillPath 集判每 skill 激活)；③ 三条生产链路在 run 成功且非 abort 完成时接同一聚合点——flow chat(handleSendFlow，output=capturedText)/ workflow(handleExecuteMultiAgent，output=blackboard 拼接)/ autonomous(runAutonomousTask，output=末条 assistant)。**关键边界**：runMultiAgent 同被 evaluation-runner 调用，故只在 routes 生产处接、不进 runner，评测口径(activationRate/score)与注入埋点(usageCount/recordSkillRegistryUsageForPaths)均不被污染。门禁 server+web typecheck ✅ build ✅ + skill 测试 14 全绿(含新增 recordSkillActivationForRun：注入命中/未命中/非 registry 路径忽略/不污染 usageCount)；零新依赖、未碰数据探索子树、未碰 git。notes-engine §二已记。
+
+— 原始派发 —
+来源：2026-06-15 用户「缺口1 后接 A+B」+ 本会话趋势评估（T1）。趋势：eval↔observability 融合、把实验室评分与生产真实行为接成"glass box"闭环。涉及 skill_registry 共享表加列(总控持有)+检测/聚合逻辑(E 代笔)，故 X 委派 E。
+缺口：检测器 detectSkillActivation(skill-activation.ts) **生产侧零调用**(仅 eval/test 用过)。registry 的 usageCount 只在**注入时**累加(routes/engine.ts:696 recordSkillRegistryUsageForPaths，flow chat :954 / workflow :1047，**那一刻只有 skillPaths、没有 output/events**)；activation_rate 至今只来自评测。notes-engine §66/§153 自标"usageCount≠真实激活"。结果：registry 的"激活率/使用"不反映生产真相，自进化飞轮缺生产端输入。
+
+目标：生产 pi run 结束、拿到 output+events 后调用 detectSkillActivation，按 skill 累计「注入次数 / 真实激活次数」，registry 暴露**生产激活率**(独立于评测分，不覆盖 eval activation_rate)。
+
+【接缝前置·总控(X)持有】
+1. db/shared.ts skill_registry 表加列 prod_injected_count / prod_activated_count(默认0)——该表是跨域基础表(notes §310 仅总控写)。
+2. types.ts 双侧 SkillRegistryEntry 加对应字段 + 派生 prodActivationRate。
+【E 代笔范围】
+3. 新增 db/engine.ts recordSkillActivationOutcome(id, injected, activated)；routes/engine.ts 在 run 完成回调(非注入时点)对命中 skillPaths 调 detectSkillActivation(output+events)→按 entry 聚合。
+4. flow chat / workflow / autonomous 三条生产链路接同一聚合点；注入时的 recordSkillRegistryUsageForPaths 保留(injected 口径)。
+依赖：无硬依赖；是 C(回归)/D(触发词优化)/G(面板) 的数据源。
+【验收】server+web typecheck+build 绿；跑一次命中 skill 的生产任务后 registry prodActivated/prodInjected 正确累加、prodActivationRate 合理；未命中只增 injected；focused test 覆盖"注入未激活只加 injected / 激活加两者"。
+【约束】共享表加列+类型=总控持有(dom X)，E 代笔后总控加重终审；激活率口径独立于评测分、不污染 eval；不碰数据探索子树；不碰 git。
+【开放点】① 生产激活检测的精确接线点(各 run 完成回调能否拿到完整 output+events)实跑确认；② prodActivationRate 用累计比还是滑动窗口(默认累计，C 卡可升窗口)。` },
+  { dom: "E", status: "done", title: "【skill 自进化·B】任务自动沉淀候选 skill（后台蒸馏→candidate，守人审门）", brief:
+`✅ 总控回流终审通过（2026-06-15，加重终审独立复跑）。E 交付：① 新端点 POST /api/workspaces/:id/skill-auto-distill(routes/engine.ts)，参数 since/limit/model/dryRun/timeoutMs/duplicateThreshold，供 /loop/cron/手动调度；② collectAutoDistillSessions 扫近期完成 session(过滤 running/compacting/error + 必须有 assistant 文本)，buildAutoDistillTranscript 只取 user/assistant 文本块(slice -24k)→buildSkillDistillationPrompt→extractSkillMarkdown(沿用"取最后一个 name: frontmatter"防漂移)；③ 落 .pi/skills/<slug>/SKILL.md + writeVersionSnapshot，createSkillRegistryEntry source="distilled"/status="candidate"/originSessionId=session.id；④ 三层去重 findAutoDistillDuplicate(slug_exists→skill_file_exists→BM25 conflict≥threshold 默认1.5)，命中 skipped 不重复造；新增 skill-auto-distill.test.ts(candidate 创建/高相似跳过)。
+总控加重终审复核：**红线全过**——① 人审门：候选恒 candidate+distilled，绝不自动 active，不绕过 distilled/curated 的 confirmed=true(active 仍须人审 PATCH)；② 数据安全：蒸馏只读 messages transcript 文本块(extractStoredMessageText)，不读 draw_data/文件内容；③ 路径穿越：sanitizeSkillSlug(正则+拒 ../ // \\) + registrySkillPath startsWith 围栏双卡；④ 未碰 index.ts 会话结束 seam(git diff 无 index.ts)，MVP 走可调度端点不 inline。独立门禁：server+web typecheck ✅ + build ✅ + skill-auto-distill/registry/archive 测试 11 全绿；零新依赖、未碰数据探索子树、未碰 git。notes-engine §0/§二(触发口径 line 67)已记。**真实 LLM sweep smoke ✅ 通过(2026-06-15，MiniMax-M3，limit=1)**：created 路径已被真实数据证实——session「商品人群画像分析」蒸馏出 candidate \`cross-platform-consumer-profile\`(source=distilled/status=candidate/origin 回填，SKILL.md frontmatter name+description 完整、正文按"用变量替换常量"抽象成 {target_sku_name} 等、含适用/不适用/输入/流程章节，质量达标)；重跑同 session 被去重门正确拦截(BM25 160.24≥阈值→skipped 不重复造)。两路径(created/dedup)+ frontmatter 稳定性 + 人审门(候选不自动 active)全验。调度入口已定=手动一键按钮(见 line 67)；去重命中是否入治理队列留 G/后续。
+
+— 原始派发 —
+来源：2026-06-15 用户「缺口1 后接 A+B」+ 本会话趋势评估（T1）+ 用户两次发现"跑任务不产 skill"。趋势：self-improving agent + memory distillation(后台小模型把 episodic 经验蒸馏成可复用语义资产)，契合 local-first/隐私不出三方。
+缺口：现状蒸馏**全程手动**(POST /api/sessions/:id/distill-skill 只在探索会话点按钮，notes-engine §65)；普通任务对 skill 库零副作用。无"从近期任务自动沉淀候选"的链路。
+
+目标：后台把近期已完成 session 蒸馏成**候选 skill**(source="distilled" + status="candidate")，**绝不自动 active**(走既有 candidate→评测→人审采纳 管道)。不做内联 hook 改 index.ts seam，走**可调度的 sweep 端点**(local-first、零接缝)。
+
+【改动范围（E 域，复用为主）】
+1. 新端点 POST /api/workspaces/:id/skill-auto-distill：扫近期完成 session(可带 since/limit)，对每个跑 buildSkillDistillationPrompt(已存在)→extractSkillMarkdown。
+2. 去重门：建候选前调既有冲突 API(rankSkillSimilarity BM25)，与现有 skill 高相似则跳过/标"疑似重复"，不重复造。
+3. 落候选：复用 registry create 写 .pi/skills/<slug>/(sanitizeSkillSlug+围栏)，source=distilled、status=candidate。
+4. 范式照搬 autoTriggerCuration(skill-curator.ts:190)的 fire-and-forget；蒸馏模型可配置便宜/本地小模型(runPiPrompt model 参数)。
+5. "自动"由调度触发(/loop 或 cron 调该端点)，不内联进会话结束 seam。
+依赖：可选用 A 的生产激活数据排序"哪些任务值得沉淀"(非硬依赖)。
+【验收】server+web typecheck+build 绿；调 sweep 端点后近期 session 产出 candidate 条目、与现有高相似的被去重跳过、全部 candidate 不自动 active；实跑确认 frontmatter 稳定(沿用 §151 extractSkillMarkdown 取最后一个 name: frontmatter 的坑)。
+【约束】只读 transcript(已 LLM-visible，distillation 数据安全契约不适用原始数据)，绝不读 draw_data/原始行；候选**默认 candidate、守人审门**；不碰 index.ts seam(走独立端点)；不碰 git；回流总控终审。
+【开放点】① 调度方式(/loop vs cron routine vs 前端按钮先手动)定哪个为 MVP；② 沉淀触发的筛选信号(任务成功/反复出现同类/A 的激活缺口)先用简单"近期成功 session"。` },
+  { dom: "E", status: "todo", title: "【skill 自进化·C】连续评测 + 回归/漂移检测（skill 变更/模型升级自动重测）", brief:
+`来源：2026-06-15 趋势评估 T2（continuous eval / lab-to-production drift）立卡。
+缺口：评测是一次性手动触发(skill-evaluation-runner.ts + evaluation-archive.ts 已具备)；skill 内容改版或模型升级后**无自动重测、无历史比分、无回归告警**，容易"模型一升级 skill 静默劣化"。
+目标：① skill version bump 或指定模型升级时，对受影响 active skill 自动重跑既有 eval；② 存历史分，与上一版比 score/activationRate，跌破阈值标 regression 回写 registry + 治理提示；③ 可手动"重测全部 active"。
+【改动范围（E 域）】复用 skill-evaluation-runner / saveSkillEvaluation / evaluation-archive；新增历史比对 + 触发器(version 变更 hook / 手动重测端点)；routes/engine.ts。
+依赖：eval runner(有) + A 生产激活(有，可作漂移信号之一)。
+【不重叠】只**检测**回归、不改 skill 内容(改触发词是 D)；不重造 A 的生产遥测(消费它)；不碰分发(缺口2)/沙箱(缺口3)。
+【验收】server+web typecheck+build 绿；skill 改版后自动重测并与上一版比对、跌破阈值标 regression 有 focused test；回流总控终审；不碰 git。
+【开放点】回归阈值口径、模型升级如何被感知(手动指定 vs 配置 diff)。` },
+  { dom: "E", status: "todo", title: "【skill 自进化·D】触发词(description)自动优化（基于激活缺口的 curation v2）", brief:
+`来源：2026-06-15 趋势评估 T2（description=tier-1 激活入口 / prompt-opt）立卡。
+缺口：curator(skill-curator.ts autoTriggerCuration)已能基于评测产 SKILL.md 改进提案，但**不专门针对 description 触发词**，也没接 A 的"本该激活却没激活"数据。
+目标：扩 curator 增"description 优化"维度——以 A 的低 prodActivationRate skill + eval 未激活 case 为证据，生成 **description 改写提案**，仍走现有 applySkillCurationProposals **人审 apply**，不自动改文件。
+【改动范围（E 域）】skill-curator.ts buildCurationPrompt 加 description 优化维度 + 输入接 prodActivationRate 低的 skill；提案复用既有人审通道。
+依赖：curator(有) + A 生产激活(有)。
+【不重叠】复用 curator 不另起系统；不做 C 的回归检测(D 只改触发词)；产物仍是提案、守人审门(不自动 active)；不碰分发/沙箱。
+【验收】server typecheck+build 绿；低激活 skill 产出 description 改写提案、经人审 apply 写回；focused test 覆盖"低激活→提案生成"；回流总控终审；不碰 git。
+【开放点】优化后是否自动触发 C 重测验证改善闭环。` },
+  { dom: "E", status: "todo", title: "【skill 自进化·E】覆盖缺口检测（负空间→建议新建，复用 B 蒸馏）", brief:
+`来源：2026-06-15 趋势评估 T3（self-evolving "where to evolve"）立卡。
+缺口：有检索(skill-retrieval BM25) + B(蒸馏产候选) + A(激活数据)，但无"**哪些任务反复出现却无 skill 命中**"的负空间检测。
+目标：扫近期 session，对每个任务跑 retrieveSkills 判是否有高分命中，把"无命中/低命中"任务聚类成**覆盖缺口建议**；填补**复用 B 的蒸馏链路**，不另造创建路径。
+【改动范围（E 域）】新分析模块(复用 retrieveSkills + 简单聚类)；输出缺口建议列表；"一键蒸馏该缺口"调 B 的 distill。
+依赖：retrieval(有) + B(有，负责填补) + A(有，未激活也算缺口信号)。
+【不重叠】只负责"发现缺口"，创建走 B、不重造；不改 A/C/D；不碰分发/沙箱。
+【验收】server typecheck+build 绿；给定一批无命中任务输出缺口聚类、可触发 B 蒸馏；focused test；回流总控终审；不碰 git。
+【开放点】聚类粒度/阈值，缺口建议是否进治理队列还是只读列表。` },
+  { dom: "E", status: "todo", title: "【skill 自进化·F】subagent ↔ skill 绑定（复用 node.skillPaths 三态）", brief:
+`来源：2026-06-15 趋势评估 T3（composable skills 按 agent 域化）立卡。
+缺口：workflow 已有 node.skillPaths 子集绑定(multi-agent-runner)，但 **subagent 委派(delegateSubAgent / DelegateSubAgentCard)无 skill 子集**，子 agent 拿不到定向 skill。
+目标：给 subagent 委派配 skill 子集，复用 node.skillPaths 三态语义(undefined 继承 / [] 禁用 / 非空=指定子集)，注入子 agent 的 pi turn。
+【改动范围】SubAgentTaskInput 加 skillPaths(双侧 types=接缝层，**开放点报总控**)；delegate 端点透传 + validateSkillPaths 校验；pi-adapter 已支持 skillPaths 注入(无需改)；前端 DelegateSubAgentCard 加 skill 选择器(D/E 前端)。
+依赖：无硬依赖(注入机制 pi-adapter 已就绪)。
+【不重叠】复用既有 node.skillPaths 范式 + validateSkillPaths，不另造注入；激活记录走 A，不重做；不碰分发/沙箱。
+【验收】server+web typecheck+build 绿；委派子 agent 带 skill 子集且注入生效；回流总控终审；不碰 git。
+【开放点】SubAgentTaskInput.skillPaths 是否上接缝(总控裁)；前端选择器复用既有 SkillSelector。` },
+  { dom: "D", status: "todo", title: "【skill 自进化·G】skill 可观测面板（激活趋势/ROI/回归时间线，消费 A/C/E）", brief:
+`来源：2026-06-15 趋势评估 T3（observability dashboard）立卡。
+缺口：registry 已存 usageCount/activationRate + A 的 prodInjectedCount/prodActivatedCount/prodActivationRate，但 SkillManagementPane 只有表格，**无趋势/ROI/回归时间线可视化**。
+目标：面板呈现 ① 生产激活率趋势(A 数据)；② ROI(相对 baseline 省的 token，评测数据)；③ 回归时间线(接 C)；④ 覆盖缺口(接 E)。**先做 A 已有数据的可视**，C/E 数据后补。
+【改动范围（D 域前端为主）】SkillManagementPane 加可视区或新子 pane；复用 registry 已暴露字段；若需时间序列聚合则 E 补只读聚合端点(开放点)。
+依赖：A(有，主数据) + C/E(可选，后补)。
+【不重叠】**只可视化、不产生新数据、不改 skill**；数据源是 A/C/E 的产出，不重算；不碰分发/沙箱。
+【验收】web build 绿；面板展示生产激活率/注入/使用等 A 数据；回流总控终审；不碰 git。
+【开放点】是否需要 E 域新增时间序列聚合端点(纯前端聚合现有字段 vs 后端聚合)。` },
+  { dom: "E", status: "todo", title: "【skill 自进化·H】高质量链式蒸馏模式（手动 /distill-skill 可选走 A→B→C 三次）", brief:
+`来源：2026-06-15 本会话讨论衍生的可选项，留待"想要极致质量"时再做（用户明确：先停着，后面有需要再做）。
+背景：当前蒸馏（auto-sweep 与手动 /distill-skill）都是**单次 LLM 调用**（A 解构+B 提炼+C 写作折叠进一个 prompt），且已并入「关键变量清单表格 + 常见陷阱与对策」，真实 smoke 质量达标。但用户的源 prompt 库 \`~/.pi/agent/prompts/skill-distillation-prompts.md\` 本是 **A→B→C 链式**（解构→提炼→写作分三步），逐步串接能让每步更充分（解构更细 / 抽象更狠 / 写作更规范）。
+目标：仅在**手动** \`POST /api/sessions/:id/distill-skill\` 路径加一个「高质量链式模式」开关（默认关=单次，维持现状）；开启则按源模板的 Prompt A→B→C 串行跑三次（A 输出喂 B、B 输出喂 C），末步产 SKILL.md。**auto-sweep 永远保持单次**（成本敏感，notes §134），绝不接链式。
+【改动范围（E 域）】skill-distillation.ts 加 buildPromptA/B/C（照搬源模板）；/distill-skill 端点加 \`mode: "single"|"chain"\` 参数，chain 时串行 3 次 runPiPrompt 串接中间产物；前端探索会话蒸馏入口加开关（D/E 前端）。
+依赖：无（源模板已存在）。
+【不重叠】不碰 auto-sweep(B)单次链路；不改已并入增强的单次版（单次仍是默认）；Prompt D（多案例融合）归 curator/版本融合、不在此卡。
+【验收】server+web typecheck+build 绿；开关开→3 次串接产出 SKILL.md 且质量≥单次（真实 smoke 对比）；开关关→维持单次现状；回流总控终审；不碰 git。
+【约束】chain=3x 成本/延迟，**仅手动可选、绝不进 auto-sweep**；只读 transcript 不碰原始数据；候选仍走人审门。
+【开放点】① 是否把 A/B 中间产物暴露给用户查看/编辑（链式可视 vs 仅末步产物）；② 前端开关落点与默认值。` },
   { dom: "E", status: "done", title: "【E 核实·归属】BusinessRequirementPane version.requirementInput 持久化改动（skill 终审旁路发现）", brief:
 `✅ E 认领 + 总控回流终审通过（2026-06-14）。E 认领该改动为 E 域有效成果(业务需求 version 持久化恢复)，并补全完整性：后端 index.ts:2655 生成版本写 requirementInput=requirement、2722 手动编辑保留已有/缺失补 fallback(不臆造)、types index.ts:1858 加字段——前端 openVersion/auto-restore 读的字段后端确实写，**半成品风险消除、闭环成立**。notes-engine §0/§一/§约束已记。门禁 server+web typecheck ✅ build ✅。
 【总控裁决】① 完整性闭环 OK，认领不回滚。② 治理：E 改了 index.ts(接缝/总控持有)写 requirementInput——业务需求生成逻辑仍在 index.ts legacy、足迹小、完整性必需→**追认**(同 repairLooseJson/模板库范式)，后续接缝改动仍应先报总控。③ backfill 开放问题(旧 JSON 无 requirementInput 只恢复框架)→**不强制离线 backfill**，向前生效即可、旧版本降级无害，如需再单议 P2。

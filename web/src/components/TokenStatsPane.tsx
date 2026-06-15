@@ -32,6 +32,7 @@ function kindLabel(kind: TokenUsageTargetKind): string {
     workflow_promotion: "工作流沉淀",
     evaluation: "实验室",
     repair: "JSON repair",
+    skill: "Skill",
   };
   return labels[kind] ?? kind;
 }

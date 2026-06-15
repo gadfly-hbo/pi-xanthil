@@ -12,6 +12,9 @@ import {
   ChevronRight,
   RotateCcw,
   Ban,
+  Wand2,
+  Eye,
+  X,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { sharedApi } from "@/lib/api/shared";
@@ -19,6 +22,8 @@ import { cn } from "@/lib/cn";
 import type {
   SkillEvalSet,
   SkillEvaluationDetail,
+  PiModel,
+  SkillAutoDistillResult,
   SkillRegistryConflict,
   SkillRegistryEntry,
   SkillSource,
@@ -46,7 +51,11 @@ import { AdoptConfirmModal } from "@/components/AdoptConfirmModal";
 interface Props {
   workspaceId: string | null;
   model: string;
+  models: PiModel[];
 }
+
+// B 卡：自动沉淀一次最多处理几个 session（每个 = 一次 LLM 蒸馏，顺序执行）。
+const AUTO_DISTILL_LIMITS = [1, 3, 5] as const;
 
 const PAGE_SIZE = 20;
 
@@ -136,7 +145,7 @@ function fmtTime(ts: number): string {
   return d.toLocaleString("zh-CN", { hour12: false });
 }
 
-export function SkillManagementPane({ workspaceId, model }: Props) {
+export function SkillManagementPane({ workspaceId, model, models }: Props) {
   const [entries, setEntries] = useState<SkillRegistryEntry[]>([]);
   const [enablements, setEnablements] = useState<Map<string, boolean>>(new Map());
   const [loading, setLoading] = useState(false);
@@ -168,6 +177,20 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
   // P1-B：新建/版本更新 modal 的冲突展示（不阻断；用户手动触发或在 submit 前自动调）
   const [createConflicts, setCreateConflicts] = useState<SkillRegistryConflict[]>([]);
   const [createConflictsLoading, setCreateConflictsLoading] = useState(false);
+  // B 卡：手动一键自动沉淀（替代定时）。autoDistilling=进行中；autoDistillMsg=本次结果摘要横幅。
+  // autoLimit=一次处理 session 数（1/3/5，顺序跑）；autoModel=蒸馏模型（""=继承 pi 默认）。
+  const [autoDistilling, setAutoDistilling] = useState(false);
+  const [autoDistillMsg, setAutoDistillMsg] = useState("");
+  const [autoLimit, setAutoLimit] = useState<number>(3);
+  const [autoModel, setAutoModel] = useState<string>("");
+  // 只读查看 SKILL.md 内容（点名称/「查看」按钮触发，读版本快照）。
+  const [viewing, setViewing] = useState<SkillRegistryEntry | null>(null);
+  const [viewContent, setViewContent] = useState("");
+  const [viewLoading, setViewLoading] = useState(false);
+  const [viewError, setViewError] = useState("");
+  // 方式2：编辑弹窗内 AI 改写。
+  const [aiRevising, setAiRevising] = useState(false);
+  const [aiError, setAiError] = useState("");
 
   const refresh = useCallback(async () => {
     if (!workspaceId) {
@@ -193,6 +216,29 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
       setLoading(false);
     }
   }, [workspaceId]);
+
+  // B 卡：手动一键触发后台蒸馏 sweep。端点默认扫近 7 天完成 session、产 distilled candidate（守人审门），
+  // 跑完刷新列表，新候选自动出现在「候选」漏斗。会真实调用 LLM 蒸馏，故由用户显式点击触发。
+  const runAutoDistill = useCallback(async () => {
+    if (!workspaceId || autoDistilling) return;
+    setAutoDistilling(true);
+    setError("");
+    setAutoDistillMsg("");
+    try {
+      const res: SkillAutoDistillResult = await api.runSkillAutoDistill(workspaceId, {
+        limit: autoLimit,
+        model: autoModel || undefined,
+      });
+      const createdNames = res.results.filter((r) => r.status === "created").map((r) => r.slug ?? r.name).filter(Boolean);
+      const tail = createdNames.length ? `：${createdNames.join("、")}` : "";
+      setAutoDistillMsg(`自动沉淀完成：扫描 ${res.scanned} · 新增候选 ${res.created} · 跳过 ${res.skipped} · 失败 ${res.failed}${tail}`);
+      await refresh();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setAutoDistilling(false);
+    }
+  }, [workspaceId, autoDistilling, autoLimit, autoModel, refresh]);
 
   useEffect(() => {
     void refresh();
@@ -227,6 +273,14 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
     return counts;
   }, [entries]);
 
+  // 自动沉淀模型下拉：按 provider 分组（与 ChatPane ModelSelect 一致）。
+  const modelGroups = useMemo(() => {
+    return models.reduce<Record<string, PiModel[]>>((acc, m) => {
+      (acc[m.provider] ??= []).push(m);
+      return acc;
+    }, {});
+  }, [models]);
+
   const beginCreate = () => {
     setEditing(null);
     setDraft(DEFAULT_DRAFT);
@@ -234,31 +288,38 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
     setCreating(true);
   };
 
-  const beginUpdate = (entry: SkillRegistryEntry) => {
-    const nextVer = entry.version + 1;
+  // 版本更新：载入当前 SKILL.md 原文供编辑（而非空白模板）；无快照的老条目回退到模板。
+  const beginUpdate = async (entry: SkillRegistryEntry) => {
+    const fallback = [
+      "---",
+      "name: " + entry.name,
+      "description: <change description here>",
+      "---",
+      "",
+      "# " + entry.name + " v" + String(entry.version + 1),
+      "",
+    ].join("\n");
     setEditing(entry);
+    setAiError("");
     setDraft({
       slug: entry.slug,
       name: entry.name,
       source: entry.source,
       status: "candidate",
       reason: "",
-      content: [
-        "---",
-        "name: " + entry.name,
-        "description: <change description here>",
-        "---",
-        "",
-        "# " + entry.name + " v" + String(nextVer),
-        "",
-        "变更原因：",
-        "",
-      ].join("\n"),
+      content: "（正在载入当前 SKILL.md 原文…）",
       supersedesId: entry.id,
       baseVersion: entry.version,
     });
     setCreateConflicts([]);
     setCreating(true);
+    try {
+      const res = await api.getSkillVersionContent(entry.id);
+      // 仅当用户仍停留在同一条目的更新弹窗时回填，避免连续切换时旧请求污染。
+      setDraft((d) => (d.supersedesId === entry.id ? { ...d, content: res.content } : d));
+    } catch {
+      setDraft((d) => (d.supersedesId === entry.id ? { ...d, content: fallback } : d));
+    }
   };
 
   const cancelEdit = () => {
@@ -426,6 +487,37 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
     }
   };
 
+  // 只读查看：拉该版本快照内容展示（内容真源是 SKILL.md，快照随 create/rollback 写入）。
+  const openView = async (entry: SkillRegistryEntry) => {
+    setViewing(entry);
+    setViewContent("");
+    setViewError("");
+    setViewLoading(true);
+    try {
+      const res = await api.getSkillVersionContent(entry.id);
+      setViewContent(res.content);
+    } catch (err) {
+      setViewError(`无法读取内容：${String(err)}（该版本可能无快照）`);
+    } finally {
+      setViewLoading(false);
+    }
+  };
+
+  // 方式2：AI 改写——把编辑框当前内容 + 修改说明交给 LLM，回填结果到 draft.content（用户可再手改）。
+  const aiRevise = async (instruction: string, model: string) => {
+    if (!workspaceId || !instruction || !draft.content.trim() || aiRevising) return;
+    setAiRevising(true);
+    setAiError("");
+    try {
+      const res = await api.reviseSkill(workspaceId, { content: draft.content, instruction, model: model || undefined });
+      setDraft((d) => ({ ...d, content: res.content }));
+    } catch (err) {
+      setAiError(String(err));
+    } finally {
+      setAiRevising(false);
+    }
+  };
+
   const toggleEnabled = async (entry: SkillRegistryEntry) => {
     if (!workspaceId) return;
     const current = enablements.get(entry.id) ?? false;
@@ -504,6 +596,45 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
             <RefreshCw className={cn("h-3.5 w-3.5", loading && "animate-spin")} strokeWidth={1.75} />
             刷新
           </button>
+          <div className="flex items-center gap-1 rounded-md border border-amber-300 bg-amber-50 pl-1.5 dark:border-amber-800 dark:bg-amber-950/40">
+            <select
+              value={autoLimit}
+              onChange={(e) => setAutoLimit(Number(e.target.value))}
+              disabled={autoDistilling}
+              title="一次最多处理几个 session（顺序蒸馏，每个 = 一次 LLM 调用）"
+              className="h-7 rounded bg-transparent px-1 text-[11.5px] text-amber-700 outline-none disabled:opacity-50 dark:text-amber-300"
+            >
+              {AUTO_DISTILL_LIMITS.map((n) => (
+                <option key={n} value={n}>{n} 个</option>
+              ))}
+            </select>
+            <select
+              value={autoModel}
+              onChange={(e) => setAutoModel(e.target.value)}
+              disabled={autoDistilling}
+              title="蒸馏用模型（默认继承 pi 配置）"
+              className="h-7 max-w-[150px] rounded bg-transparent px-1 text-[11.5px] text-amber-700 outline-none disabled:opacity-50 dark:text-amber-300"
+            >
+              <option value="">默认模型</option>
+              {Object.entries(modelGroups).map(([provider, items]) => (
+                <optgroup key={provider} label={provider}>
+                  {items.map((m) => (
+                    <option key={m.id} value={m.id}>{m.model}</option>
+                  ))}
+                </optgroup>
+              ))}
+            </select>
+            <button
+              type="button"
+              onClick={() => void runAutoDistill()}
+              disabled={!workspaceId || autoDistilling}
+              className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] font-medium text-amber-700 hover:bg-amber-100 disabled:opacity-50 dark:text-amber-300 dark:hover:bg-amber-950/70"
+              title="扫描近 7 天完成的任务，自动蒸馏为候选 skill（守人审门，需评测+采纳才生效）。会真实调用 LLM。"
+            >
+              <Wand2 className={cn("h-3.5 w-3.5", autoDistilling && "animate-pulse")} strokeWidth={1.75} />
+              {autoDistilling ? "沉淀中…" : "自动沉淀"}
+            </button>
+          </div>
           <button
             type="button"
             onClick={beginCreate}
@@ -563,6 +694,13 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
         </div>
       )}
 
+      {autoDistillMsg && (
+        <div className="flex items-start justify-between gap-2 rounded-md border border-amber-300 bg-amber-50 px-3 py-2 text-[11.5px] text-amber-800 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200">
+          <span>{autoDistillMsg}</span>
+          <button type="button" onClick={() => setAutoDistillMsg("")} className="shrink-0 text-amber-500 hover:text-amber-700 dark:hover:text-amber-200">✕</button>
+        </div>
+      )}
+
       <div className="flex-1 overflow-auto rounded-md border border-neutral-200 dark:border-neutral-800">
         <table className="w-full text-left text-[11.5px]">
           <thead className="sticky top-0 bg-neutral-50 text-[10.5px] uppercase tracking-wide text-neutral-500 dark:bg-neutral-900 dark:text-neutral-400">
@@ -613,7 +751,14 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
                   </td>
                   <td className="px-2 py-2 align-top">
                     <div className="flex flex-col">
-                      <span className="font-medium text-neutral-800 dark:text-neutral-100">{entry.name}</span>
+                      <button
+                        type="button"
+                        onClick={() => void openView(entry)}
+                        className="text-left font-medium text-neutral-800 hover:text-amber-600 hover:underline dark:text-neutral-100 dark:hover:text-amber-400"
+                        title="查看 SKILL.md 内容"
+                      >
+                        {entry.name}
+                      </button>
                       <span className="font-mono text-[10.5px] text-neutral-400">{entry.slug}</span>
                       {low && (
                         <span className="mt-0.5 inline-flex items-center gap-1 text-[10.5px] text-amber-600 dark:text-amber-400">
@@ -643,6 +788,15 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
                     <div className="flex flex-wrap items-center justify-end gap-1">
                       <button
                         type="button"
+                        onClick={() => void openView(entry)}
+                        className="inline-flex h-6 items-center gap-1 rounded border border-neutral-200 px-1.5 text-[10.5px] text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                        title="查看 SKILL.md 内容（只读）"
+                      >
+                        <Eye className="h-3 w-3" strokeWidth={1.75} />
+                        查看
+                      </button>
+                      <button
+                        type="button"
                         onClick={() => beginEval(entry)}
                         disabled={isArchived || busyId === entry.id}
                         className="inline-flex h-6 items-center gap-1 rounded border border-neutral-200 px-1.5 text-[10.5px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
@@ -653,7 +807,7 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
                       </button>
                       <button
                         type="button"
-                        onClick={() => beginUpdate(entry)}
+                        onClick={() => void beginUpdate(entry)}
                         disabled={busyId === entry.id}
                         className="inline-flex h-6 items-center gap-1 rounded border border-neutral-200 px-1.5 text-[10.5px] text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
                         title={versionTitle}
@@ -761,6 +915,10 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
           conflicts={createConflicts}
           conflictsLoading={createConflictsLoading}
           onCheckConflicts={() => void checkCreateConflicts()}
+          models={models}
+          aiRevising={aiRevising}
+          aiError={aiError}
+          onAiRevise={(instruction, m) => void aiRevise(instruction, m)}
         />
       )}
 
@@ -792,6 +950,32 @@ export function SkillManagementPane({ workspaceId, model }: Props) {
           onSubmit={() => void confirmAdopt()}
           onCancel={cancelAdopt}
         />
+      )}
+
+      {viewing && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-6" onClick={() => setViewing(null)}>
+          <div className="flex max-h-[80vh] w-full max-w-3xl flex-col rounded-lg border border-neutral-200 bg-white shadow-xl dark:border-neutral-700 dark:bg-neutral-900" onClick={(e) => e.stopPropagation()}>
+            <div className="flex items-center justify-between gap-3 border-b border-neutral-200 px-4 py-2.5 dark:border-neutral-800">
+              <div className="flex flex-col">
+                <span className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">{viewing.name}</span>
+                <span className="font-mono text-[10.5px] text-neutral-400">{viewing.slug} · v{viewing.version} · {STATUS_LABEL[viewing.status]}</span>
+              </div>
+              <button type="button" onClick={() => setViewing(null)} className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200" title="关闭">
+                <X className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {viewLoading && <p className="text-[11.5px] text-neutral-400">加载中…</p>}
+              {viewError && <p className="text-[11.5px] text-red-600 dark:text-red-400">{viewError}</p>}
+              {!viewLoading && !viewError && (
+                <pre className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-relaxed text-neutral-800 dark:text-neutral-200">{viewContent}</pre>
+              )}
+            </div>
+            <div className="border-t border-neutral-200 px-4 py-2 text-right text-[10.5px] text-neutral-400 dark:border-neutral-800">
+              只读预览 · 内容真源 = .pi/skills/{viewing.slug}/SKILL.md
+            </div>
+          </div>
+        </div>
       )}
     </div>
   );
