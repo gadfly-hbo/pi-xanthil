@@ -8,37 +8,37 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-14 · **skill 管理前端卡（D slot UI + 跨域调 E，含 code review 修复）**
+- 最近更新：2026-06-16 · **LLM 接入管理前端面板（LlmManagementPane）**
 - 进度：
-  - **skill 管理模块**（aggregate tab → `skills_mgmt` 子 tab）：
-    - **类型契约**（`types.ts`）：`SkillRegistryEntry` / `SkillRegistryInput` / `SkillStatus` / `SkillSource` / `SkillRegistryCreateBody` / `SkillRegistryEvaluateBody` / `SkillRegistryEvaluateResult`
-    - **前端 client**（`web/src/lib/api/engine.ts` D slot 跨域调 E）：`listSkillRegistry` / `createSkillRegistry` / `patchSkillRegistry` / `archiveSkillRegistry` / `evaluateSkillRegistry`（5 个方法，类型从 types.ts 导入）
-    - **主 UI**（`web/src/components/SkillManagementPane.tsx` ~430 行）：漏斗看板（候选/草稿/采纳/归档 4 列徽章 + 点击筛选）+ skill 池表格（启用勾选/名称/slug/版本/状态/来源/score/activationRate/usageCount/出处/操作）+ 低分高亮（score<0.6 或 activationRate<0.5）+ "建议归档"提示 + 列表分页（每页 20 条）
-    - **子组件**：`CreateSkillModal.tsx`（创建/版本更新，变更原因注释追加到 SKILL.md 末尾）+ `EvalSkillModal.tsx`（送评测，选 eval set + repeat + variantSummaries 对比，结果从 lastEvaluation.metrics 读取）
-    - **SkillSelector 增强**（`web/src/components/SkillSelector.tsx`）：workspace scope 下并行拉 skill_registry + memory-enablements，按"启用 → 池内 → 文件系统"分组排序，启用徽标(Sparkles) + 版本号 + 归档项灰禁
-    - **挂接**（`web/src/tabs/DataTabs.tsx`）：aggregate → skills_mgmt 替换 Placeholder
+  - **LLM 管理模块**（aggregate tab → `llm_mgmt` 子 tab）：
+    - **类型契约**（`types.ts`）：`LlmApiKind` / `LlmModelEntry` / `LlmProviderView` / `LlmProviderInput` / `LlmSettingsView` / `LlmAuthStatus` / `LlmTestResult`（总控预定义）
+    - **接缝 client**（`web/src/lib/api/shared.ts`）：`listLlmProviders` / `saveLlmProviders` / `testLlmProvider` / `getLlmSettings` / `saveLlmSettings` / `listLlmAuth`（总控预定义）
+    - **后端路由**（`server/src/routes/shared.ts`）：`GET/PUT /api/llm/providers` / `POST /api/llm/providers/:id/test` / `GET/PUT /api/llm/settings` / `GET /api/llm/auth`（总控实现）
+    - **真源读写**（`server/src/llm-config.ts`）：`coerceProviderInput` / `writeProviders` / `writeSettings` / `testProvider` / `listAuthStatus`（总控实现）
+    - **主 UI**（`web/src/components/LlmManagementPane.tsx` ~765 行）：左列 Providers 列表（id + 模型数 + 状态点：hasApiKey 绿 / oauth 蓝 / 无 key 灰）+ 右列表单（id 新建可改/已存只读、api select、baseUrl、apiKey password 不回显、OAuth 灰掉提示）+ Models 子表（启用 checkbox + 默认星标 + 增删 + contextWindow/reasoning/baseUrl）+ 底部「保存 providers / 保存 settings / 测试连通」两条独立 dirty 链
+    - **挂接**（`web/src/tabs/DataTabs.tsx`）：aggregate → llm_mgmt 替换 Placeholder，传入 `ctx.refreshModels`
+    - **apiKey 哨兵语义**：输入框 value 恒空、占位「已配置(****)」；键入非空 → 覆盖；留空 → 保留旧值；OAuth provider 不暴露输入框；与 server `coerceProviderInput` 的 `shouldKeepPreviousApiKey(""/"****")` 对齐
     - **code review 修复（本轮）**：
-      - `beginUpdate` 保留 `entry.source` 而非硬编码 `"curated"`
-      - 低分提示文案「评测分/激活率偏低」→「评测分或激活率偏低」
-      - `evalSetId` useEffect 改用函数式 setState，去掉自身依赖
-      - 评测结果从 `lastEvaluation.metrics` 读取，不再读可能过时的 `entries`
-      - 拆出 `CreateSkillModal` + `EvalSkillModal` 子组件
-      - `DEFAULT_EVAL_TASK` prompt 更具体
-      - 列表分页（每页 20 条）
+      - I-1：`saveProviders` 成功后若 `settingsDirty` 为 true，自动连发 `saveLlmSettings`，消除删除 model 后的孤儿引用
+      - I-2：`renameProviderId` 拒绝空字符串 id，不再允许清空后保存
+      - I-3：`addProvider` / `renameProviderId` 的 id 碰撞检测统一用 `p.id.trim()`
   - **hooks 管理 v2**（前次 session，见下方 v2 增量）
+  - **skill 管理模块**（前次 session，见下方 v5 增量）
 - 校验：
-  - `npm run typecheck`：✅ server + web 全绿
+  - `npm run typecheck`：✅ 全绿
   - `npm run build`：✅ 全绿
   - 数据探索 LLM 隔离 grep：✅ 空匹配
 - 下一步（接续优先级）：
-  - ① **workflow 节点级 skill 集**（P1，下一卡）：允许 workflow 节点指定 skill 子集，覆盖全局/工作区启用
-  - ② **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
-  - ③ **pi-agent 经 MCP 端到端验证**（D-v2 遗留）
-  - ④ **cohort 数据可用性确认**（D-v2 遗留）
-  - ⑤ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截、外发动作（带强告警）；`readTriggers` 改 stream 读取
+  - ① **真机联调**：进「聚合→LLM管理」验证 provider 增删改/模型启用/默认/测试连通全链路，确认 `/api/models` 刷新后 ModelSelect 即时反映
+  - ② **workflow 节点级 skill 集**（P1，下一卡）：允许 workflow 节点指定 skill 子集，覆盖全局/工作区启用
+  - ③ **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
+  - ④ **pi-agent 经 MCP 端到端验证**（D-v2 遗留）
+  - ⑤ **cohort 数据可用性确认**（D-v2 遗留）
+  - ⑥ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截、外发动作（带强告警）；`readTriggers` 改 stream 读取
 - 阻塞 / 待总控：
   - **跨 tab 跳实验室**：受接缝骨架约束（TabContext 仅有 `setActiveSubTab`，无 `setActiveTab`），本卡改为内联评测（在本页调 `/api/skill-registry/:id/evaluate`），结果回写后刷新表格
 - 开放问题：
+  - apiKey 留空=保留旧的哨兵语义已与后端 coerce 对齐（`""` / `"****"` → 保留旧值），联调确认即可
   - clean_data 路径白名单（Python 端纵深防御是否补强）
   - cohort-retention 在生产数据上能否实际产出（依赖事件级订单表）
   - hooks PUT 端点无认证（本地单用户工具可接受，已加注释；若未来 bind 非 localhost 需加 auth 中间件）
@@ -128,6 +128,16 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **code review 关键修复**：`beginUpdate` 保留 `entry.source` 而非硬编码 `"curated"`；低分提示文案用"或"而非"/"；`evalSetId` useEffect 用函数式 setState 避免循环依赖；评测结果从 `lastEvaluation.metrics` 读取而非可能过时的 `entries`。
 - **组件拆分**：`CreateSkillModal` + `EvalSkillModal` 独立文件，主 Pane 从 795 行降至 ~430 行。
 - **列表分页**：每页 20 条，含翻页控件（`ChevronLeft`/`ChevronRight`），`totalPages` / `paged` 均 `useMemo` 缓存。
+
+**LLM 接入管理（D-v6, 2026-06-16）**
+- **真源直写模式**：前端 PUT `/api/llm/providers` / `/api/llm/settings` 直接改写 `~/.pi/agent/{models.json,settings.json}`，不经过 pi CLI、不通过 workspace 隔离。后端 `llm-config.ts` 的 `coerceProviderInput` 做白名单校验 + apiKey 哨兵处理 + 原子写。
+- **apiKey 不回显**：`LlmProviderView` 类型层只有 `hasApiKey: boolean`，无 `apiKey` 字段。前端输入框 `type=password` + `autoComplete="new-password"`，value 恒空，用户键入存 `apiKeyDrafts`（组件本地 state），保存时仅在非空时发送。server 端 `shouldKeepPreviousApiKey(""/"****")` 决定保留旧值还是覆盖。
+- **OAuth provider 凭证隔离**：OAuth 凭证由 `pi auth` 管理（`auth.json`），本面板只读展示授权态（蓝色 dot + "已授权"标签），apiKey 输入框不渲染。
+- **两条独立 dirty/save 链**：providers 链（PUT /api/llm/providers）与 settings 链（PUT /api/llm/settings）各自独立 dirty flag + 保存按钮。**关键修复**：`saveProviders` 成功后若 `settingsDirty` 为 true，自动连发 `saveLlmSettings`——防止删除 model 后 settings.enabledModels 残留孤儿引用，导致 `/api/models` 向下游暴露不存在的 model id。
+- **`refreshModels` 回调**：任一保存成功后调 `ctx.refreshModels()`（`App.tsx` 的 `api.listModels().then(setModels)`），让 ChatPane/CreationPane 的 ModelSelect 即时反映启用/默认变更。
+- **测试连通**：POST `/api/llm/providers/:id/test`，server 端 `testProvider` 用 `AbortController` 8s 超时 + `replaceAll(key,"****")` 脱敏 message。前端仅对已保存 provider 可测（`isNewProvider || providersDirty` 时禁用）。
+- **`key={idx}` 风险**：models 子表用数组索引作 React key，中间删除会导致后续行 input 重新挂载丢焦点。当前以追加为主，影响小；若后续支持拖拽排序需改用稳定 key。
+- **opencode write 工具大小限制（第四次触发）**：LlmManagementPane（756 行）分 8 个 `cat >> file <<'EOF'` heredoc 片段拼接落地，每块 < 4K char。
 
 **数据探索**
 - 跨表 JOIN **物化成真实 duckdb 表**(`__joined_<ts>`)而非泛化 SQL → 出图/剖析/洞察管线**零改动复用**；DROP joined 表与源表独立。

@@ -146,6 +146,57 @@ export interface PiModel {
   isDefault: boolean;
 }
 
+// 计算工具·LLM 接入管理 —— pi LLM provider/模型接入契约（详见 docs/LLM管理模块设计方案.md）。
+// 真源=~/.pi/agent/{models.json,settings.json,auth.json}；apiKey 绝不进出网类型（只给 hasApiKey 布尔）。
+export type LlmApiKind = "openai-completions";
+
+export interface LlmModelEntry {
+  id: string;
+  name: string;
+  input?: string[];
+  contextWindow?: number;
+  maxTokens?: number;
+  reasoning?: boolean;
+  baseUrl?: string;        // model 级覆盖（minimax 态）
+  api?: LlmApiKind;
+}
+
+export interface LlmProviderView {
+  id: string;
+  baseUrl?: string;        // provider 级（volcengine 态）
+  api?: LlmApiKind;
+  hasApiKey: boolean;      // apiKey 不回显，只暴露是否已配置
+  models: LlmModelEntry[];
+  oauth?: boolean;         // auth.json 命中 OAuth → 已授权
+}
+
+export interface LlmProviderInput {
+  id: string;
+  baseUrl?: string;
+  api?: LlmApiKind;
+  apiKey?: string;         // 新值覆盖；空/缺省/"****" 哨兵=保留旧（后端 coerce 处理）
+  models: LlmModelEntry[];
+}
+
+export interface LlmSettingsView {
+  enabledModels: string[];   // "provider/model"
+  defaultProvider?: string;
+  defaultModel?: string;
+}
+
+export interface LlmAuthStatus {
+  providerId: string;
+  type: string;
+  authorized: boolean;
+}
+
+export interface LlmTestResult {
+  ok: boolean;
+  status?: number;
+  latencyMs?: number;
+  message?: string;
+}
+
 export interface Workspace {
   id: string;
   name: string;

@@ -1,5 +1,14 @@
 import { Router } from "express";
 import { listWorkspaceEnablements, setMemoryEnablement } from "../db/shared.ts";
+import {
+  LlmConfigValidationError,
+  listAuthStatus,
+  listProvidersView,
+  readSettingsView,
+  testProvider,
+  writeProviders,
+  writeSettings,
+} from "../llm-config.ts";
 import type { MemoryItemKind } from "../types.ts";
 
 /**
@@ -30,4 +39,62 @@ sharedRouter.put("/api/workspaces/:id/memory-enablements", (req, res) => {
   }
   setMemoryEnablement(req.params.id, itemKind, itemId, enabled);
   res.json({ ok: true });
+});
+
+function handleLlmRouteError(err: unknown, res: { status: (code: number) => { json: (body: unknown) => void } }): void {
+  if (err instanceof LlmConfigValidationError) {
+    res.status(400).json({ error: err.message });
+    return;
+  }
+  res.status(500).json({ error: err instanceof Error ? err.message : String(err) });
+}
+
+// 安全提示：本端点无认证（本地单用户工具，仅 bind localhost）。
+// 若未来 bind 非 localhost，必须在此加 auth 中间件；apiKey 仅写入 pi 本机真源，出网/回显恒脱敏。
+sharedRouter.get("/api/llm/providers", (_req, res) => {
+  try {
+    res.json(listProvidersView());
+  } catch (err) {
+    handleLlmRouteError(err, res);
+  }
+});
+
+sharedRouter.put("/api/llm/providers", (req, res) => {
+  try {
+    res.json(writeProviders(req.body));
+  } catch (err) {
+    handleLlmRouteError(err, res);
+  }
+});
+
+sharedRouter.post("/api/llm/providers/:id/test", async (req, res) => {
+  try {
+    res.json(await testProvider(req.params.id));
+  } catch (err) {
+    handleLlmRouteError(err, res);
+  }
+});
+
+sharedRouter.get("/api/llm/settings", (_req, res) => {
+  try {
+    res.json(readSettingsView());
+  } catch (err) {
+    handleLlmRouteError(err, res);
+  }
+});
+
+sharedRouter.put("/api/llm/settings", (req, res) => {
+  try {
+    res.json(writeSettings(req.body));
+  } catch (err) {
+    handleLlmRouteError(err, res);
+  }
+});
+
+sharedRouter.get("/api/llm/auth", (_req, res) => {
+  try {
+    res.json(listAuthStatus());
+  } catch (err) {
+    handleLlmRouteError(err, res);
+  }
 });

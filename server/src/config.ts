@@ -45,6 +45,13 @@ export const HOOKS_LOG_PATH = process.env.XANTHIL_HOOKS_LOG ?? join(DATA_ROOT, "
 export const HOOK_RUNNER_EXTENSION =
   process.env.XANTHIL_HOOK_RUNNER ?? fileURLToPath(new URL("../../pi-extensions/px-hook-runner/index.ts", import.meta.url));
 
+// 计算工具·LLM 接入管理 —— 直写 pi 全局真源（详见 docs/LLM管理模块设计方案.md）。
+// 注意：这些路径在 pi 全局目录（~/.pi/agent），非本应用 DATA_ROOT；故**不进 ensureDirs**（不由本应用创建）。
+export const PI_AGENT_DIR = process.env.XANTHIL_PI_AGENT_DIR ?? join(homedir(), ".pi", "agent");
+export const PI_MODELS_PATH = process.env.XANTHIL_PI_MODELS ?? join(PI_AGENT_DIR, "models.json");
+export const PI_SETTINGS_PATH = process.env.XANTHIL_PI_SETTINGS ?? join(PI_AGENT_DIR, "settings.json");
+export const PI_AUTH_PATH = process.env.XANTHIL_PI_AUTH ?? join(PI_AGENT_DIR, "auth.json");
+
 export function ensureDirs(): void {
   mkdirSync(DATA_ROOT, { recursive: true });
   mkdirSync(WORKSPACES_ROOT, { recursive: true });

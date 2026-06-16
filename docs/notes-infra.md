@@ -8,22 +8,21 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-- 最近更新：2026-06-13 · 总控（工作流改造接缝层**彻底收官**：抽 6 共享模块 + 全部 flow/anax 路由及 3 流式 handler 迁出 index.ts + run 预算接线；详见 §六）
-- 进度（接缝层 / infra 侧，本会话；工作流闭环全貌见 `notes-engine.md §0`）：
-  - ✅ **新建 6 个接缝/infra 模块**(从 index.ts 上移，只搬不改)：`runtime.ts`(WS 运行时句柄 send/active-run maps/getActiveChatRun/abortChatRun) · `flow-trace.ts`(traceFlowEvent) · `message-text.ts`(flowMessageText) · `workflow-config.ts`(normalizeWorkflow*/listConfiguredModelIds) · `workspace-path-status.ts`(withWorkspacePathStatus*) · `cache.ts` 加 run 级预算原语(getRunTokenUsage/evaluateRunBudget) + trackUsageEvent 上移。
-  - ✅ **全部 flow/anax 业务路由(REST CRUD/文件/run/paths/favorites/skills/stale-cascade/import-multer/anax-gate-config) + 3 个流式 WS handler 从 index.ts 迁入 `routes/engine.ts`**：wss.on("connection") 派发分支留 index.ts、反向 import handler；engineRouter 经 registerDomainRoutes 挂载。**index.ts 已无任何 flow/anax 业务路由**。import 的 multer 基建(upload/uploadDirs)经核查仅该路由用→随路由整块搬，无需抽共享；端到端上传冒烟通过。
-  - ✅ **run 预算生产接线**：`config.ts` RUN_BUDGET_LIMITS(env XANTHIL_RUN_MAX_TOKENS / XANTHIL_RUN_MAX_COST_USD，>0 才生效，未设=null 即不限/行为不变)；engine.ts handler 传 `runBudget: limits ? {workspaceId,limits} : undefined`。
-  - ✅ 校验：`npm run typecheck`(server+web) · `npm run build` · 全量 108 测试 全绿；多轮隔离端口 + WS + fake-adapter + 真实 SQLite + 真实上传 + anax-gate-config 烟测全通过。
-- 下一步（接缝层残留，非阻塞）：
-  - 预算限额来源：当前仅 env 全局；若要 per-workspace/flow 限额，需后续接缝层加配置(参 AnaX gate config 范式)。
+- 最近更新：2026-06-16 · 总控/E 代笔（LLM 管理特性后端底座完成：`/api/llm/*` shared 路由 + `llm-config.ts` 直写 pi 全局真源；详见 §七）
+- 进度（infra 侧，本会话）：
+  - ✅ 新建 `server/src/llm-config.ts`，集中实现 pi LLM 真源读写：`~/.pi/agent/models.json` provider 投影/写入、`settings.json` 三键局部写、`auth.json` 只读授权态投影、provider 连通性测试。
+  - ✅ 在 `server/src/routes/shared.ts` 挂 6 个 shared 路由：`GET/PUT /api/llm/providers`、`POST /api/llm/providers/:id/test`、`GET/PUT /api/llm/settings`、`GET /api/llm/auth`。
+  - ✅ apiKey 安全口径已落地：provider view 永不回显明文 key；PUT 空值/缺省/`"****"` 保留旧 key；OAuth provider 不写入新 key；test error message 对有效 key 做 replace 脱敏。
+  - ✅ 真源写入口径已落地：`models.json` / `settings.json` 均走 temp+rename 原子写；写 `models.json` 后还原旧权限位；provider/model 未知字段按旧 raw 浅展开保留；`settings.json` 只覆盖 `enabledModels/defaultProvider/defaultModel`，其余键原样保留。
+  - ✅ smoke 用隔离 `XANTHIL_PI_*=/tmp/pi-xanthil-llm-smoke/*` 验证：GET providers/auth 无敏感字段；PUT providers 后旧 key、未知字段、minimax model 级 `baseUrl` 保留；PUT settings 后 `packages/otherSetting` 保留；错误 baseUrl test 返回失败且 message 不含 key。
+- 下一步：
+  - 前端面板卡可直接对接 `web/src/lib/api/shared.ts` 既有 client：保存 provider 后刷新模型列表，apiKey 输入框保持空值/哨兵保留旧 key。
+  - 总控终审时重点逐行复核 `llm-config.ts` 的三处脱敏/保留链路：`listProvidersView()`、`writeProviders()`/`coerceProviderInput()`、`testProvider()`。
+  - 若未来扩展 `LlmApiKind`，必须同步扩 `SUPPORTED_API_KINDS`、`coerceApiKind()` 与 `testProvider()` 分支；当前唯一支持 `"openai-completions"`。
 - 阻塞：无代码阻塞。
-- 开放问题（接缝层待总控/后续）：
-  - run 预算是否需要 per-workspace 配置 + UI，还是 env 全局足够。
-  - 是否为预算停止新增专门 `run_budget_stop` trace/WS 事件（当前借 `__run_budget_stop` blackboard update 落 trace）。
-- 【上轮 tool-use 遗留·待核实是否仍开】以下为上一 infra session(ManualAnalysisToolCard/红线放开)未结项，本会话未触碰，保留待核：
-  - 浏览器实跑：`@工具` 输入下拉同现 draw_data+clean_data、输出目录只读当前 session 060_reports；真实 draw_data analysis 工具 source=ai 运行 + onBackflow 回流；pi↔MCP `tools/call` 活体点检。
-  - 新增 AI 可调 analysis 工具须 `tool.json` 标 `category:"analysis"` 且输出不含原始行/明细；D 卡若加 `enabled`，MCP 暴露条件扩为 `category==="analysis" && enabled`(改 `isAiExposed()`)。
-  - 待总控拍板：analysis manifest 是否加机器可校验"无原始行"字段；`/run source=ai`+draw_data 是否补自动化测试；ManualAnalysisToolCard 是否加组件测试 / 显式红线提示；read/bash + filesystem MCP 文件可达性是否经 pi-sandbox/移目录/exclude-tools 收紧。
+- 开放问题（待总控/后续拍板）：
+  - LLM 管理后端是否需要补 node:test 级单元测试覆盖 key 保留、OAuth 不写 key、settings 局部写和 mode 还原；本 session 已做临时 HTTP smoke，但未新增测试文件。
+  - provider 删除语义目前是 PUT 列表全量替换 `providers`，会删除未提交的 provider；这与前端列表保存范式一致，但总控终审可确认是否需要改成 patch/软删除。
 
 ---
 
@@ -196,3 +195,33 @@
 **收官（2026-06-13）**：`anax-gate-config`(GET/PUT) 也已迁入 routes/engine.ts。**至此 index.ts 已无任何 flow/anax 业务路由**——工作流改造接缝迁移彻底完成。index.ts 仅余 legacy 非工作流路由(session/workspace/onto/bi/eval 等)与 wss.on bootstrap。
 
 **模板库前端接缝·总控追认（2026-06-14，总控亲核）**：工作流模板库入口（wiki E 卡）上线时 E 接线碰了接缝层骨架。**总控 grep 核实**实际足迹**仅 2 处**，且评审点名的 `constants.ts/EngineTabs/DataTabs` 确未动（越界被高估）——证据：① `web/src/App.tsx:423` `instantiateWorkflowTemplate` handler（按 `template.id` 分发到 3 个 api 方法）+ `:837` 传 `onInstantiateTemplate` 给 `FlowListColumn`，与同处 `onNewFlow`/`onRenameFlow`/`onDeleteFlow` 同构；② `web/src/lib/api.ts:346-359` `legacyApi` 加 3 个 REST wrapper（`instantiateAnax`/`instantiateAnaxQuick`/`instantiateSqlLoop`），与既有 instantiate 方法同模式；③ `grep "template" constants.ts`=空、`EngineTabs/DataTabs` 无 template 渲染（未加 subtab/pane，模板实例化走 FlowListColumn 按钮）。**总控裁决：追认，不回滚**——足迹最小且严格遵循既有 seam 惯例，回滚等于删能跑的接线再原样重写（纯 churn）。后续同类「pane→后端」接线 E 仍应先报口径由总控加，但本次既成事实合规，正式归入接缝台账。（注：本段原由 D 在 hooks 卡2 工作中顺手写入，内容属实，已由总控核验并改以总控名义持有。）
+
+---
+
+## 七、LLM 管理后端真源（2026-06-16）
+
+**归属与边界**：`/api/llm*` 属 shared/infra 总控 slot，后端落 `server/src/routes/shared.ts` + `server/src/llm-config.ts`。该能力直写 pi 全局真源 `~/.pi/agent/{models.json,settings.json}`，读取 `auth.json` 授权态；不得下沉到 data 路由，也不得绕过 `llm-config.ts` 直接写 pi 全局文件。
+
+**真源结构**：
+- `models.json`：`providers.<id>` 为 provider 配置，兼容 provider 级 `baseUrl/api/apiKey` 与 model 级 `baseUrl/api/apiKey` 两态。
+- `settings.json`：本模块只维护 `enabledModels/defaultProvider/defaultModel`，`packages` 等其他键必须保留。
+- `auth.json`：只读；OAuth 凭证归 `pi auth`，控制台不写 access/refresh/accountId，也不向 OAuth provider 写新 key。
+
+**apiKey 安全铁律**：
+- GET provider view 只出 `hasApiKey:boolean`，永不返回 `apiKey`。
+- PUT provider 时 `apiKey` 为空、缺省或 `"****"` 均保留旧值；非 OAuth provider 的非空新值才覆盖；OAuth provider 忽略新 key。
+- `testProvider()` 只在 server 内取有效 key 调 `/models`，返回 message 前必须 `replaceAll(key, "****")`。
+- auth view 只返回 `{providerId,type,authorized:true}`，禁止返回 access/refresh/accountId。
+
+**写入约束**：
+- 所有 `models.json` / `settings.json` 写入必须经 `atomicWriteJson()`，即 temp 文件 + rename；写 `models.json` 后还原旧权限位。
+- provider/model unknown fields 以旧 raw 为基底浅展开保留，避免前端表单往返误删 pi/OAuth/provider 扩展字段。
+- provider 校验：当前 `LlmApiKind` 只允许 `"openai-completions"`；provider 级无 `baseUrl` 时，每个 model 必须有自己的 `baseUrl`，否则该 model 没有有效测试/调用地址。
+- settings 校验：`enabledModels` 必须形如 `provider/model`；default provider/model 必须成对出现，且存在于 `models.json`，否则 400。
+
+**测试/验收口径**：
+- `npm run typecheck` 与 `npm run build` 必须绿。
+- HTTP smoke 用 `XANTHIL_PI_MODELS/XANTHIL_PI_SETTINGS/XANTHIL_PI_AUTH` 指向 `/tmp` 隔离文件，避免碰真实 `~/.pi/agent`。
+- 必测：providers/auth 无明文 key；PUT 往返保留旧 key/未知字段/model 级 `baseUrl`；settings 只改三键；错误 baseUrl 的 test 返回失败且不含 key。
+
+**未来扩展**：新增 api 类型时，`types.ts` 的 `LlmApiKind`、`llm-config.ts` 的 `SUPPORTED_API_KINDS`、`coerceApiKind()`、`testProvider()` 分支必须同步扩；否则会出现 UI 能保存但 testProvider 不会测的漂移。

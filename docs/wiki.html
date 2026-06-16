@@ -217,6 +217,113 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "X", status: "todo", title: "【command 管理·接缝】XanCommand 契约 + 配置常量 + 展开占位语法（含具名参数，为向导铺路）", brief:
+`来源：2026-06-15 用户「做 command 管理，选口径2=直奔向导表单价值、Phase1 快速过」。本特性按派发惯例拆：本卡=X 契约/接缝/基建(总控自做)；下游=E 后端 + D 注册表 UI + E 向导前端 三张实现卡。
+
+背景实证（关键，定整套形态）：pi 在 -p positional 模式**不展开** prompt 里的 /command。实测 .pi/prompts 模板 + pi -p --mode json "/ping hello" → assistant 收到字面串、session 存字面文本、模板正文从未注入；extensions.md:2510 也证 -p/JSON 下 ctx.hasUI=false，slash 命令与 ctx.ui 向导均为交互式 TUI/RPC 特性。而 pi-xanthil 是 headless -p per-turn 驱动 pi（pi-adapter.ts:259 runPiTurn、index.ts:4900 拼 textForPi）。故 command 管理 = pi-xanthil 自有「注册表 + 服务端 prompt 展开器」，命令解析在本层做、不依赖 pi 扩展（比 px-hook-runner 更轻，纯 prompt 预处理）。
+
+目标：把跨 D/E 域共用的契约与基建一次性定死，避免下游各拍口径。
+【接缝交付（X 持有）】
+1. 双侧 types.ts 加 XanCommand：{ id; name; enabled; description?; argumentHint?; template; params?: XanCommandParam[]; skillSlugs?; source:"custom" }；XanCommandParam:{ key; label; required?; type?:"text"|"select"|"file"; options?:string[]; source?:"clean_data" }（source 供向导拉候选，如 clean_data 下文件名）。
+2. config.ts 加 COMMANDS_CONFIG_PATH = join(DATA_ROOT,"commands.json")（仿 HOOKS_CONFIG_PATH:42）；缺失/空文件安全降级为无命令。
+3. 定展开占位语法并成文(notes-engine)：{{args}}=参数原文、{{1}}{{2}}=位置参、{{param.key}}=具名参；并定具名参数命令行编码（向导表单产出、展开器解析的串格式，如 /cmd --key=value，值含空格用引号）。展开器/注册表UI/向导前端三方共用此语法。
+依赖：无。是 E 后端卡 + D 注册表卡 + E 向导卡的前置。
+【验收】双侧 typecheck+build 绿；XanCommand/param 类型与占位语法成文；commands.json 缺失被安全降级。
+【约束】接缝层归总控(dom X)铁律，下游不得改契约口径；不新增 ClientMessage 字段（向导传参走现有 text 通道，见 E 向导卡）；不碰 git。` },
+  { dom: "E", status: "todo", title: "【command 管理·E·后端】展开器(含具名参数) + 注册表路由 + chat 集成", brief:
+`来源：command 管理特性，承接 X 接缝卡。口径2=参数化能力一次做进后端（非纯文本），为向导前端兜底。
+
+目标：服务端单一展开源——把用户输入里命中的 /cmd（含具名/位置参数）展开成完整 prompt 再发 pi turn；展开逻辑可单测、覆盖所有发送入口。
+【改动范围（E 域，复用 hooks 范式）】
+1. 新增 command-expand.ts 纯函数 expandCommand(text, commands)：text 以 /name 开头且命中 enabled 命令 → 按接缝卡占位语法({{args}}/{{n}}/{{param.key}}) + 命令行具名参数解析做替换，返回 {expandedText, skillSlugs}；未命中原样透传(保持现有行为)。配 command-expand.test.ts（位置参/具名参/未命中透传/缺参留空，仿 skill-retrieval.test.ts 风格）。
+2. routes 加 GET/PUT /api/commands：读写 COMMANDS_CONFIG_PATH，coerceCommand 白名单校验（仿 data.ts coerceHook:456——拒未知字段、template 为 prompt 文本非 shell、无外发）。注册表读写与展开同源 commands.json。
+3. index.ts:4900 集成：textForPi 拼接前对 msg.text 调 expandCommand；命中命令 skillSlugs 并入该 turn skillPaths（与现有 --skill 注入合流）。唯一改动行，覆盖所有 chat 入口。
+依赖：X 接缝卡（类型 + 常量 + 占位语法）。是 D 注册表卡 + E 向导卡的后端底座。
+【验收】server typecheck+build 绿；command-expand.test 覆盖位置/具名/透传；PUT 一条命令后发 /cmd 文本 → pi 收到展开后 prompt(非字面 /cmd)、skillSlugs 生效；未命中文本零行为变化。
+【约束】纯 E，复用 hooks 安全范式；template 是 prompt 文本不执行 shell；commands.json 仅 localhost 可写；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】展开器命令行参数解析的转义细节(引号/等号)实现时定，须与 E 向导卡产出串对齐。` },
+  { dom: "D", status: "todo", title: "【command 管理·D·注册表 UI】CommandManagementPane（替换 command_mgmt 占位）", brief:
+`来源：command 管理特性前端注册表侧。command_mgmt 子 tab 当前是 DataTabs.tsx:60 的 Placeholder（"即将推出"）。
+
+目标：业务用户无需写代码，用表单增删改查 /命令——定义 name/description/template/具名参数/绑定 skillSlugs + 启停开关。
+【改动范围（D 域，仿 HooksManagementPane）】
+1. 新增 CommandManagementPane.tsx：列表（名/描述/启停）+ 表单 CRUD（template 编辑 + params 行编辑 key/label/required/type/source + skillSlugs 多选），调 GET/PUT /api/commands；lib/api 加 commands client。
+2. DataTabs.tsx:60 用 CommandManagementPane 替换 Placeholder（SquareTerminal 图标已 import 在文件）。
+依赖：X 接缝卡（XanCommand 类型）+ E 后端卡（/api/commands）。
+【验收】web typecheck+build 绿；新建/编辑/启停/删除命令落 commands.json、刷新存活；params 编辑可定义具名参数；交互与 HooksManagementPane 一致。
+【约束】纯前端 D 域（DataTabs 注册渲染）；不碰 server 逻辑；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】skillSlugs 多选数据源（复用现有 skill 列表 API）实现时接。` },
+  { dom: "E", status: "todo", title: "【command 管理·E·向导】ChatPane / 补全 + 参数表单弹窗（口径2 价值核心）", brief:
+`来源：command 管理的价值承重项（用户选口径2=直奔向导表单，消灭 prompt 工程学习成本）。ChatPane 在 EngineTabs（E 域）。
+
+背景：纯文本展开（E 后端卡）只是打字快捷方式；真正价值在「敲 /命令 → 弹结构化表单选数据集/填指标 → 自动拼出专业 prompt」。pi ctx.ui 在 -p 是 no-op，故向导必须 pi-xanthil 前端原生实现。
+目标：用户在对话输入框敲 / → 自动补全候选命令；选中带 params 的命令 → 弹 React 表单收参（含 source=clean_data 的文件名下拉）→ 提交时把命令+参数编码进 msg.text（走现有 text 通道、零接缝）→ 服务端展开器解析展开。
+【改动范围（E 域）】
+1. ChatPane 输入框 / autocomplete：读 GET /api/commands、过滤 enabled，展示 name+argumentHint+description；无 params 命令直接插入文本。
+2. 带 params 命令：弹结构化表单（按 XanCommandParam 渲染 text/select/file；source=clean_data 拉文件名候选），收参拼成接缝卡定义的命令行串塞进 msg.text 发送。展开仍由服务端做（前端不展开，保单一源）。
+依赖：E 后端卡（展开器 + /api/commands + 命令行参数语法）。可与 D 注册表卡并行。
+【验收】web typecheck+build 绿；敲 / 出候选；无参命令插入发送被服务端展开；带参命令弹表单、填完发送 → pi 收到参数化展开后的 prompt；clean_data 文件下拉真实可选。
+【约束】纯 E（ChatPane 前端 + 复用后端卡展开器）；不新增 ClientMessage 字段（参数走 text 编码）；前端不自行展开（服务端单一源）；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】向导表单产出的命令行串编码须与后端卡展开器解析严格对齐（接缝卡已定语法，联调确认）。` },
+  { dom: "X", status: "done", title: "【LLM 管理·接缝】Llm* 契约 + pi 全局路径常量 + api/shared client + refreshModels", brief:
+`✅ 总控自做并自检通过（2026-06-16）。交付：① 双侧 types.ts 加 Llm* 契约——LlmApiKind/LlmModelEntry/LlmProviderView(hasApiKey 布尔,无 apiKey)/LlmProviderInput(apiKey? 仅 PUT 入参,哨兵保留语义)/LlmSettingsView/LlmAuthStatus/LlmTestResult；**apiKey 不在任何出网 View 类型**(红线)。② config.ts 加 PI_AGENT_DIR/PI_MODELS_PATH/PI_SETTINGS_PATH/PI_AUTH_PATH(指向 ~/.pi/agent,各 env 可覆盖,**未进 ensureDirs**)。③ lib/api/shared.ts 加 6 client：listLlmProviders/saveLlmProviders/testLlmProvider/getLlmSettings/saveLlmSettings/listLlmAuth(后端路由待 E 卡在 routes/shared.ts 实现)。④ tabs/types.ts 的 TabContext 加 refreshModels()；App.tsx 把 listModels 抽成 refreshModels useCallback(初始加载复用,保默认选择逻辑不变)并装配进 tabCtx。门禁 server typecheck ✅ + web typecheck ✅ + build ✅;零新依赖、未碰数据探索子树、未碰 git。**E 后端卡/D 面板卡前置已解锁。**
+
+— 原始 brief —
+来源：2026-06-16 用户「把 llm_mgmt 占位做成 pi-agent 的 LLM 接入管理前端控制台」。范围 B=Provider 接入+模型启用/默认+轻量连通性测试。权威口径：docs/LLM管理模块设计方案.md。按派发惯例拆三卡：本卡=X 契约/接缝(总控自做)；下游=X·委派E 后端 + D 面板。
+
+宪章纠正（关键，定后端归属）：Orchestration §四 已把 /api/llm* 划归总控 routes/shared.ts（shared.ts:9 注释实证），非 D 的 data.ts。故后端路由 + llm-config.ts 真源读写归总控（委派 E 代笔）；前端面板归 D。
+
+pi 真源结构（已脱敏核验）：~/.pi/agent/models.json={providers.<id>:{baseUrl?,api?:"openai-completions",apiKey?,models:[{id,name,input,contextWindow,maxTokens?,reasoning?,baseUrl?,api?}]}}（二态：provider 级或 model 级带 baseUrl/api/apiKey）；settings.json 的 enabledModels[]/defaultProvider/defaultModel（仅动这三键，其余原样保留）；auth.json(0600) OAuth 凭证只读。
+
+【接缝交付（X 持有）】
+1. 双侧 types.ts 加：LlmApiKind="openai-completions"；LlmModelEntry{id;name;input?;contextWindow?;maxTokens?;reasoning?;baseUrl?;api?}；LlmProviderView{id;baseUrl?;api?;hasApiKey:boolean;models:LlmModelEntry[];oauth?:boolean}；LlmSettingsView{enabledModels:string[];defaultProvider?;defaultModel?}；LlmAuthStatus{providerId;type;authorized:boolean}；LlmTestResult{ok;status?;latencyMs?;message?}。**apiKey 绝不进任何出网类型**（只给 hasApiKey 布尔）。
+2. config.ts 加四常量（仿 HOOKS_CONFIG_PATH，但指向 pi 全局目录、**不进 ensureDirs**）：PI_AGENT_DIR=join(homedir(),".pi","agent")、PI_MODELS_PATH/PI_SETTINGS_PATH/PI_AUTH_PATH（各允许 env override）。
+3. lib/api/shared.ts 加 client：listLlmProviders/saveLlmProviders/testLlmProvider/getLlmSettings/saveLlmSettings/listLlmAuth（仿 hooks client）。
+4. tabs/types.ts 的 TabContext 加 refreshModels?():void；App.tsx 把 api.listModels().then(setModels) 抽成 refreshModels 装配进 tabCtx（供面板保存 settings 后刷新 ModelSelect）。
+依赖：无。是后端卡 + 面板卡的前置。
+【验收】双侧 typecheck+build 绿；Llm* 类型与四常量、client 骨架、refreshModels 就位；apiKey 不在任何 View 类型出现。
+【约束】接缝层归总控铁律，下游不得改契约口径；不碰数据探索子树；不碰 git。` },
+  { dom: "X", status: "done", delegate: "E", title: "【LLM 管理·后端】llm-config.ts 真源读写 + /api/llm/* 路由（写 pi 全局·安全红线）", brief:
+`✅ E 代笔 + 总控加重终审通过（2026-06-16）。新增 server/src/llm-config.ts(345L) + routes/shared.ts 挂 6 路由(GET/PUT providers·POST test·GET/PUT settings·GET auth，try/catch→ValidationError 400/其余 500，localhost-only 注释在位)。逐行核四红线 + /tmp 副本实跑(env 重定向、真实 ~/.pi/agent 零触碰)全过：① 出口无 apiKey 明文(listProvidersView 只给 hasApiKey 布尔；projectModelView 剥 model 级 key)、auth.json 只读且不返 access/refresh/accountId；② 写往返 apiKey/未知字段保留(coerce 以 prevRaw 浅展开为基底、哨兵 ""/"****" 保旧、OAuth provider 不写 key)、models.json 顶层键 + atomicWriteJson(temp+rename+mode 还原)；③ writeSettings structuredClone 只 patch enabledModels/default、其余键(packages/theme/extensions)不变、enabledModels 正则 provider/model 校验、default ensureModelExists 软校验；④ testProvider redactMessage(replaceAll key→****) 两分支覆盖、coerce 白名单拒非法 api。门禁 server typecheck ✅ web typecheck ✅ build ✅。两态(provider 级/model 级 baseUrl·key)识别正确。非阻断观察 4 处(采纳 E 判断)：readJsonFile 损坏即抛(对写路径更安全)、providers PUT 全量替换(D 须发全列表)、test 不支持 OAuth provider、coerce 对未知 api 抛错(更严)。E 守界：仅动 llm-config.ts + routes/shared.ts(+notes-infra 记一笔)，未碰接缝契约/他域/数据探索子树/git。**D 面板卡前置已全部解锁。**
+
+— 原始 brief —
+来源：LLM 管理特性后端侧，承接接缝卡。权威口径：docs/LLM管理模块设计方案.md §3.1。归属总控（/api/llm + llm-config.ts 写 pi 全局真源属 infra 敏感），口径已写死，委派 E 代笔、总控终审。
+
+目标：服务端单一真源读写——直写 ~/.pi/agent/{models.json,settings.json}，apiKey 沿用 pi 既有明文存法，但**出网/回显恒脱敏**。
+
+【改动范围（总控 slot，复用 hooks 范式）】
+1. 新建 server/src/llm-config.ts：
+   - listProvidersView()：投影 raw，apiKey 一律剥成 hasApiKey:boolean，合并 auth.json 的 oauth 标记，绝不出网 key。
+   - coerceProviderInput(id,input,prevRaw)：白名单 api∈{"openai-completions"}；baseUrl provider 级或全 model 级至少一处必填；models 每项 id 必填/name 缺省=id/数值 clamp/input 缺省 ["text"]。**apiKey 保留语义**：空/缺省/哨兵 "****" → 从 prevRaw 取旧值；非空 → 覆盖。未知字段以 prevRaw.providers[id] 为基底浅展开透传（防误删 OAuth provider 既有结构）。
+   - writeSettings(patch)：仅覆盖 enabledModels/defaultProvider/defaultModel，深拷贝原 doc 回写、其余键原样；enabledModels 校验形如 provider/model；default 软校验存在于 models.json 否则 400。
+   - atomicWriteJson(path,obj)：temp+rename 原子写；写 models.json 前 statSync 取旧 mode、写后 chmodSync 还原。
+   - listAuthStatus()：只投影 {providerId,type,authorized:true}，绝不返回 access/refresh/accountId。
+   - testProvider(id,timeout=8000)：取有效 baseUrl+api+key（provider 级优先回落 model 级），GET {baseUrl}/models + Bearer，AbortController 超时；返回 {ok,status,latencyMs,message}，message 经 .replaceAll(key,"****") 脱敏。
+2. routes/shared.ts 挂 6 路由（try/catch→500、校验失败 400、沿用 localhost-only 注释）：GET/PUT /api/llm/providers、POST /api/llm/providers/:id/test、GET/PUT /api/llm/settings、GET /api/llm/auth。
+依赖：接缝卡（Llm* 类型 + PI_*_PATH 常量）。是面板卡的后端底座。
+【验收】server typecheck+build 绿；curl GET /api/llm/providers 返回 provider 且**无 apiKey 明文**；PUT 一次往返后 models.json 的既有 apiKey/未知字段仍在、minimax 态 model 级 baseUrl 仍在；PUT settings 后 settings.json 其余键 diff 不变；错 baseUrl 测试得失败 message 且**不含 key**。
+【约束】归总控、E 代笔不得改口径；写 pi 全局文件必经 atomicWriteJson；auth.json 全程只读、OAuth provider 不写 key；不碰数据探索子树；不碰 git；回流总控终审（接缝/敏感真源，逐行核 apiKey 脱敏三道 + 原子写 + 未知字段保留）。
+【开放点】LlmApiKind 当前仅 "openai-completions"（实测唯一）；未来扩 api 类型时枚举与 testProvider 分支同步扩。` },
+  { dom: "D", status: "done", title: "【LLM 管理·D·面板】LlmManagementPane（替换 llm_mgmt 占位）", brief:
+`✅ D 完成 + 总控终审通过（2026-06-16）。新增 web/src/components/LlmManagementPane.tsx(765L)，DataTabs.tsx:70 接 <LlmManagementPane refreshModels={ctx.refreshModels}/> 替占位。逐行核两重点 + 全红线：① providers PUT 全量列表——buildProvidersInput 映射完整 providers state、无分批，删除=数组移除后整表覆盖(后端全量替换正确删)；② apiKey 不回显+哨兵对齐——type=password+value 恒空(取自 apiKeyDrafts 非 view)、仅用户键入非空且非 OAuth 才发 apiKey、留空=不发=后端保留旧、OAuth provider input 换只读「pi auth 管理」提示；③ save 后均调 refreshModels(ModelSelect 即时反映)；④ rename/remove model/provider 联动清理 enabledModels+default 防孤儿；⑤ 客户端校验镜像后端(新 provider 必填 key/baseUrl 两态/model dedup)；⑥ test 门控(新建或 dirty 禁用+提示先保存)。亮点：保存 providers 顺带保存 dirty settings 且顺序正确(先写 models.json→settings 的 ensureModelExists 可见新 model)。门禁 web typecheck ✅ build ✅ + 数据探索子树隔离 grep 空。D 守界：仅新增 Pane + 改 DataTabs，未碰 server/接缝契约/数据探索子树/git。非阻断建议(留后续)：新 provider 未保存时设默认→单独存 settings 会被后端 ensureModelExists 拒 400，可禁用未保存 provider 的默认星标。**LLM 管理三卡(接缝/后端/面板)全部交付闭环。**
+
+— 原始 brief —
+来源：LLM 管理特性前端侧。llm_mgmt 子 tab 当前是 DataTabs.tsx:69 的 Placeholder（"管理 LLM provider 与模型配置，即将推出"）。权威口径：docs/LLM管理模块设计方案.md §3.3。
+
+目标：业务用户用表单管理 LLM 接入——新增/编辑 Provider(baseUrl/api/apiKey/模型目录) + 勾选启用模型 + 设默认 + 测试连通，无需手改 ~/.pi/agent JSON。
+
+【改动范围（D 域，仿 HooksManagementPane）】
+1. 新增 LlmManagementPane.tsx：
+   - 左列 Providers 列表（id + 模型数 + 状态点：hasApiKey 绿 / oauth 蓝「已授权」/ 无 key 灰）+ 新建 Provider + 保存到 models.json。
+   - 右列 Provider 表单：id（新建可编辑/已存只读）、api select、baseUrl、apiKey（type=password、占位「已配置(****)」、value 恒空、留空保存=保留旧；OAuth provider 灰掉提示「OAuth 凭证由 pi auth 管理」）。
+   - Models 子表：每行 id/name/contextWindow/reasoning + 启用 checkbox（改 settings.enabledModels）+ 默认星标（改 defaultProvider/Model）+ 增删 model。
+   - 底部：[测试连通]（调 testLlmProvider→ok/latency/脱敏 message）、[保存]。
+   - 两条独立 dirty/save 链：providers→PUT /api/llm/providers；settings→PUT /api/llm/settings，保存 settings 成功后调 ctx.refreshModels() 让 ChatPane/CreationPane 的 ModelSelect 反映。
+2. DataTabs.tsx:69 用 <LlmManagementPane/> 替换 Placeholder（BrainCircuit 图标已 import 在文件）。
+依赖：接缝卡（Llm* 类型 + api/shared client + refreshModels）+ 后端卡（/api/llm/*）。
+【验收】web typecheck+build 绿；进「聚合→LLM管理」见现有 provider；新建 provider/加 model/勾选启用/设默认/删除落 pi 真源、刷新存活；apiKey 框不回显旧值、留空保存不清空；测试连通可用；保存默认后 ModelSelect 下拉即时反映。
+【约束】纯前端 D 域（DataTabs 注册渲染）；不碰 server 逻辑/接缝契约；apiKey input 不回显已存值；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】apiKey 留空=保留旧的哨兵语义须与后端 coerce 对齐（接缝/后端卡已定 "****"，联调确认）。` },
   { dom: "E", status: "done", title: "【skill 自进化·缺口1】skill 内渐进式披露（SKILL.md 摘要 + scripts/references 二级懒加载）", brief:
 `✅ 总控回流终审通过（2026-06-15）。E 交付：① skill-retrieval.ts retrieveSkills 的 BM25 文档收敛为 name+description+「去 frontmatter 后正文前 2400 chars 摘要」，snippet 同源；子资源(scripts/references/resources)不进 docs。② skills.ts 维持"目录命中 SKILL.md 即 return 不展开子目录"现状，未加 hasResources(避免扩散类型面)。③ pi-adapter.ts 仍走 --no-skills --skill <SKILL.md path>、不做正文注入；pi CLI smoke 确认 SKILL.md 内 ./scripts 相对路径激活后可按需读取(输出 XANTHIL_RESOURCE_SMOKE_OK)。门禁 server typecheck ✅ build ✅ + 新增 skill-retrieval.test.ts(子资源/超摘要窗口正文不命中、摘要/description 命中)+ skills/activation 回归全绿；零新依赖、未碰接缝、未碰 git。notes-engine §0/§二(progressive disclosure 契约 line 62)已记。缺口2 打包须保真子资源相对路径、缺口3 脚本执行沙箱为后续。
 

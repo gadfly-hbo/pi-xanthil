@@ -26,6 +26,7 @@ export interface TabContext {
   model: string;
   models: PiModel[];
   setModel: (model: string) => void;
+  refreshModels: () => void;   // LLM 管理保存启用/默认后重拉 /api/models，ModelSelect 即时反映
 
   // explore 对话
   messages: UiMessage[];

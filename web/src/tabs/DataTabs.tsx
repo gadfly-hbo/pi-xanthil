@@ -1,5 +1,6 @@
-import { Database, Store, CircleX, Workflow, SquareTerminal, Bot, BrainCircuit } from "lucide-react";
+import { Database, Store, CircleX, Workflow, SquareTerminal, Bot } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
+import { LlmManagementPane } from "@/components/LlmManagementPane";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { DataExplorationPane } from "@/components/DataExplorationPane";
 import { AggregatePane } from "@/components/AggregatePane";
@@ -67,7 +68,7 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <Placeholder icon={Bot} title="subagents管理" hint="管理 subagents 配置，即将推出" />
       )}
       {activeTab === "aggregate" && activeSubTab === "llm_mgmt" && (
-        <Placeholder icon={BrainCircuit} title="LLM管理" hint="管理 LLM provider 与模型配置，即将推出" />
+        <LlmManagementPane refreshModels={ctx.refreshModels} />
       )}
       {activeTab === "aggregate" && activeSubTab === "readme" && (
         <AggregateReadmePane />

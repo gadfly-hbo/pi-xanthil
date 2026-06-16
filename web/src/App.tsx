@@ -213,20 +213,27 @@ export default function App() {
   }, [activeWorkspaceId]);
 
   // ---- bootstrap ----
+  const refreshModels = useCallback(
+    () => api.listModels().then((list) => {
+      setModels(list);
+      return list;
+    }),
+    [],
+  );
+
   useEffect(() => {
     gateway.connect();
     api.listWorkspaces().then((ws) => {
       setWorkspaces(ws);
       if (ws[0]) setActiveWorkspaceId(ws[0].id);
     });
-    api.listModels().then((list) => {
-      setModels(list);
+    void refreshModels().then((list) => {
       const defaultModel = list.find((item) => item.id === DEFAULT_CHAT_MODEL)
         ?? list.find((item) => item.isDefault)
         ?? list[0];
       if (defaultModel) setModel((cur) => cur || defaultModel.id);
     });
-  }, []);
+  }, [refreshModels]);
 
   useEffect(() => {
     void refreshTokenTotals();
@@ -647,7 +654,7 @@ export default function App() {
   const tabCtx: TabContext = {
     activeTab, activeSubTab, setActiveSubTab,
     activeWorkspaceId, activeSessionId, folderScope,
-    model, models, setModel,
+    model, models, setModel, refreshModels,
     messages, running, runtime, compacting, runtimeNotice,
     onSend, onStop, compactContext, refreshRuntime,
     canPromoteToWorkflow, openPromote, openDistill,
