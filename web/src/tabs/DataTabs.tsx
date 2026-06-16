@@ -1,4 +1,4 @@
-import { Database, Store, CircleX, Workflow, SquareTerminal, Bot } from "lucide-react";
+import { Database, Store, CircleX, Workflow, Bot } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
 import { LlmManagementPane } from "@/components/LlmManagementPane";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
@@ -8,6 +8,7 @@ import { ExtractionPane } from "@/components/ExtractionPane";
 import { SqlConnectPane } from "@/components/SqlConnectPane";
 import { ToolUsePane } from "@/components/ToolUsePane";
 import { HooksManagementPane } from "@/components/HooksManagementPane";
+import { CommandManagementPane } from "@/components/CommandManagementPane";
 import { PluginManagementPane } from "@/components/PluginManagementPane";
 import { SkillManagementPane } from "@/components/SkillManagementPane";
 import { RulesPane } from "@/components/RulesPane";
@@ -59,7 +60,7 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <SkillManagementPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} />
       )}
       {activeTab === "aggregate" && activeSubTab === "command_mgmt" && (
-        <Placeholder icon={SquareTerminal} title="command管理" hint="管理 command 配置，即将推出" />
+        <CommandManagementPane workspaceId={ctx.activeWorkspaceId} />
       )}
       {activeTab === "aggregate" && activeSubTab === "plugin_mgmt" && (
         <PluginManagementPane />

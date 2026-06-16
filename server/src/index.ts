@@ -176,7 +176,7 @@ import { withWorkspacePathStatuses } from "./workspace-path-status.ts";
 import { traceFlowEvent } from "./flow-trace.ts";
 import { getActiveChatRun, abortChatRun } from "./runtime.ts";
 import { flowMessageText } from "./message-text.ts";
-import { handleSendFlow, handleExecuteMultiAgent, handleAnaxPrecheck, abortAnaxPrecheck } from "./routes/engine.ts";
+import { handleSendFlow, handleExecuteMultiAgent, handleAnaxPrecheck, abortAnaxPrecheck, readCommandsFile } from "./routes/engine.ts";
 
 import { buildModelLabPrompt, SUPPORTED_MODELS, type ModelLabId } from "./model-lab.ts";
 import { buildRegisteredPathContext, resolveOutputTarget } from "./output-paths.ts";
@@ -188,6 +188,7 @@ import { getSessionTokenStats, getWorkspaceTodayTokenStats, getWorkspaceTokenSta
 import { buildKgPrompt, extractKgEntitiesFromReports, syncKnowledgeGraph } from "./knowledge-graph.ts";
 import { deleteKgEdge, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHidden } from "./db.ts";
 import { buildMemoryInjectionSnapshot, withRulesPrompt } from "./memory-injection.ts";
+import { expandCommand } from "./command-expand.ts";
 import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
@@ -4862,9 +4863,15 @@ async function handleSend(
   }
   const ws_ = getWorkspace(session.workspaceId);
   if (!ws_) return send(ws, { type: "error", sessionId: msg.sessionId, message: "workspace not found" });
+  const commandExpansion = expandCommand(msg.text, readCommandsFile());
+  const commandSkillPaths = commandExpansion.skillSlugs.map((slug) => join(ws_.rootPath, ".pi", "skills", slug, "SKILL.md"));
+  const requestedSkillPaths = [
+    ...(msg.skillPaths ?? []),
+    ...commandSkillPaths,
+  ];
   let skillPaths: string[] | undefined;
   try {
-    skillPaths = validateSkillPaths(ws_.rootPath, msg.skillPaths);
+    skillPaths = validateSkillPaths(ws_.rootPath, requestedSkillPaths.length > 0 ? requestedSkillPaths : undefined);
   } catch (err) {
     return send(ws, { type: "error", sessionId: session.id, message: String(err) });
   }
@@ -4897,7 +4904,7 @@ async function handleSend(
   } catch (err) {
     return send(ws, { type: "error", sessionId: session.id, message: String(err) });
   }
-  const textForPi = `${contextPrefix}${businessRequirementContext}${msg.text}`;
+  const textForPi = `${contextPrefix}${businessRequirementContext}${commandExpansion.expandedText}`;
 
   const systemPrompt = msg.injectRulesPrompt
     ? withRulesPrompt(session.workspaceId, "chat", session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined)

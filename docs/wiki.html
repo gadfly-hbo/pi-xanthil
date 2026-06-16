@@ -217,8 +217,11 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
-  { dom: "X", status: "todo", title: "【command 管理·接缝】XanCommand 契约 + 配置常量 + 展开占位语法（含具名参数，为向导铺路）", brief:
-`来源：2026-06-15 用户「做 command 管理，选口径2=直奔向导表单价值、Phase1 快速过」。本特性按派发惯例拆：本卡=X 契约/接缝/基建(总控自做)；下游=E 后端 + D 注册表 UI + E 向导前端 三张实现卡。
+  { dom: "X", status: "done", title: "【command 管理·接缝】XanCommand 契约 + 配置常量 + 展开占位语法（含具名参数，为向导铺路）", brief:
+`✅ 总控自做并自检通过（2026-06-16）。交付：① 双侧 types.ts 加 XanCommand{id,name,enabled,description?,argumentHint?,template,params?,skillSlugs?,source:"custom"} + XanCommandParam{key,label,required?,type?:"text"|"select"|"file",options?,source?:"clean_data"}（紧随 HookTriggerRecord 后，含占位语法注释块）；② config.ts 加 COMMANDS_CONFIG_PATH=join(DATA_ROOT,"commands.json")（仿 HOOKS_CONFIG_PATH、单文件不进 ensureDirs、缺失=无命令安全降级）；③ 展开占位语法成文 notes-engine §二：{{args}}/{{1}}{{2}}/{{param.key}} + 命令行编码 /name --key=value（值含空格双引号）、向导传参走现有 text 通道零接缝、服务端单点展开。门禁 server typecheck ✅ + web build ✅；零新依赖、未碰数据探索子树、未碰 git。下游可开工：E 后端卡（依赖本卡类型+常量+语法）→ D 注册表卡 ∥ E 向导卡。
+
+— 原始派发 —
+来源：2026-06-15 用户「做 command 管理，选口径2=直奔向导表单价值、Phase1 快速过」。本特性按派发惯例拆：本卡=X 契约/接缝/基建(总控自做)；下游=E 后端 + D 注册表 UI + E 向导前端 三张实现卡。
 
 背景实证（关键，定整套形态）：pi 在 -p positional 模式**不展开** prompt 里的 /command。实测 .pi/prompts 模板 + pi -p --mode json "/ping hello" → assistant 收到字面串、session 存字面文本、模板正文从未注入；extensions.md:2510 也证 -p/JSON 下 ctx.hasUI=false，slash 命令与 ctx.ui 向导均为交互式 TUI/RPC 特性。而 pi-xanthil 是 headless -p per-turn 驱动 pi（pi-adapter.ts:259 runPiTurn、index.ts:4900 拼 textForPi）。故 command 管理 = pi-xanthil 自有「注册表 + 服务端 prompt 展开器」，命令解析在本层做、不依赖 pi 扩展（比 px-hook-runner 更轻，纯 prompt 预处理）。
 
@@ -230,8 +233,13 @@ const TASKS = [
 依赖：无。是 E 后端卡 + D 注册表卡 + E 向导卡的前置。
 【验收】双侧 typecheck+build 绿；XanCommand/param 类型与占位语法成文；commands.json 缺失被安全降级。
 【约束】接缝层归总控(dom X)铁律，下游不得改契约口径；不新增 ClientMessage 字段（向导传参走现有 text 通道，见 E 向导卡）；不碰 git。` },
-  { dom: "E", status: "todo", title: "【command 管理·E·后端】展开器(含具名参数) + 注册表路由 + chat 集成", brief:
-`来源：command 管理特性，承接 X 接缝卡。口径2=参数化能力一次做进后端（非纯文本），为向导前端兜底。
+  { dom: "E", status: "done", title: "【command 管理·E·后端】展开器(含具名参数) + 注册表路由 + chat 集成", brief:
+`✅ 总控加重终审通过（2026-06-16，独立复核代码+复跑全套门禁，不信汇报）。E 交付：① command-expand.ts expandCommand(text,commands)——/name 命中 enabled 命令才处理，{{args}}/{{1}}{{2}}/{{param.key}} 占位 + 命令行解析(--key=value / --key value / --key="a b"，单双引号整体、反斜杠转义)，未命中原样透传、缺参留空，纯文本替换无 shell 注入；② routes/engine.ts GET/PUT /api/commands + coerceCommand/coerceCommandParam 白名单(onlyKnownKeys 拒未知字段、source 锁 custom、读时也 coerce、PUT 仅 localhost)；③ chat 集成 index.ts handleSend:4866 + flow chat engine.ts handleSendFlow:1362，均展开在 textForPi 拼接前、持久化保存原始 /cmd 文本、pi 收展开后 prompt；④ skillSlugs→<ws>/.pi/skills/<slug>/SKILL.md 合流走 validateSkillPaths；⑤ command-expand.test.ts 5 例。
+终审独立复核（红线全过）：① 安全围栏 SAFE_COMMAND_NAME=/^[A-Za-z0-9][A-Za-z0-9_-]*$/ 校验 name/param.key/skillSlugs——杜绝 . / .. 路径穿越(slug 拼进文件路径的关键防护)，validateSkillPaths 二次围栏；② 接缝零侵入(未碰我 X 卡的 types/config，diff +69 行正是卡1 量)、未动 ClientMessage、未碰数据探索子树、未碰 git；③ 持久化/trace 用原始 msg.text、仅 pi turn 收展开文本(与 contextPrefix 注入同模式)；④ 白名单 coerce 在读(readCommandsFile)和写(PUT)双侧执行，手改 commands.json 注入也被过滤；⑤ 测试断言全文精确比对非 fake。独立复跑：server typecheck ✅ + web build ✅ + command-expand.test 5/5 ✅。
+【总控对 E 三个开放问题的裁决】① /api/commands 路由**保持 E 域 engine.ts 不迁**：展开器服务 chat turn、与路由同域内聚，单一真源 readCommandsFile 已被集成点复用；D 注册表前端走 engineApi 跨域调用(与 notes §91「D slot 经 engineApi 调 E 端点」先例一致)，迁 D 反成双耦合。② 向导参数编码**严格对齐后端现有引号/等号语法、不扩**；若要扩(转义换行/多值)必须先改 command-expand.ts 单测再接 UI。③ skillSlugs 未命中可用 skill **保持 validateSkillPaths strict 报错**：注册表显式配错应暴露不静默吞。下游 D 注册表卡 / E 向导卡按此裁决执行。
+
+— 原始派发 —
+来源：command 管理特性，承接 X 接缝卡。口径2=参数化能力一次做进后端（非纯文本），为向导前端兜底。
 
 目标：服务端单一展开源——把用户输入里命中的 /cmd（含具名/位置参数）展开成完整 prompt 再发 pi turn；展开逻辑可单测、覆盖所有发送入口。
 【改动范围（E 域，复用 hooks 范式）】
@@ -242,26 +250,39 @@ const TASKS = [
 【验收】server typecheck+build 绿；command-expand.test 覆盖位置/具名/透传；PUT 一条命令后发 /cmd 文本 → pi 收到展开后 prompt(非字面 /cmd)、skillSlugs 生效；未命中文本零行为变化。
 【约束】纯 E，复用 hooks 安全范式；template 是 prompt 文本不执行 shell；commands.json 仅 localhost 可写；不碰数据探索子树；不碰 git；回流总控终审。
 【开放点】展开器命令行参数解析的转义细节(引号/等号)实现时定，须与 E 向导卡产出串对齐。` },
-  { dom: "D", status: "todo", title: "【command 管理·D·注册表 UI】CommandManagementPane（替换 command_mgmt 占位）", brief:
-`来源：command 管理特性前端注册表侧。command_mgmt 子 tab 当前是 DataTabs.tsx:60 的 Placeholder（"即将推出"）。
+  { dom: "D", status: "done", title: "【command 管理·D·注册表 UI】CommandManagementPane（替换 command_mgmt 占位）", brief:
+`✅ 总控审核通过（2026-06-16，独立复核前端代码+复跑 web build）。D 交付：① CommandManagementPane.tsx(700 行)——命令列表(名/描述/启停) + 表单 CRUD(template + ParamsEditor 行编辑 key/label/required/type/options/source + SkillSlugsEditor 多选) + 校验面板；② lib/api/data.ts 加薄 client listCommands/saveCommands(直 fetch GET/PUT /api/commands、全量覆盖式 PUT、注释标"server expand 真源")；③ DataTabs.tsx:62-63 用 CommandManagementPane 替换 Placeholder。
+审核独立复核(裁决遵守+红线全过)：① 前端校验 SAFE_NAME_RE=/^[A-Za-z0-9][A-Za-z0-9_-]*$/ 呼应后端 SAFE_COMMAND_NAME、type==="select" 必带 options、param.source(file) 仅 clean_data；② 薄 client 不另起真源(server 为 expand/白名单真源，保存后 server 丢弃非法时前端提示条数)；③ skillSlugs 多选复用既有 engineApi.listSkillRegistry(workspaceId,"active")，无 workspace 退化纯文本，未越界加后端；④ 不读 draw_data(clean_data 仅作 param source 文案)、不碰 server 逻辑/接缝/数据探索子树/git。独立复跑 web build ✅(仅既有 chunk size warning)。
+【裁决偏差认可】client 放 lib/api/**data.ts**(非裁决原写 engine.ts)——更合规：前端 client 随**使用组件的域**走(CommandManagementPane∈D 域)，后端路由仍在 E 域 engine.ts，跨域 fetch 正常、单一真源不变。认可。
+
+— 原始派发 —
+来源：command 管理特性前端注册表侧。command_mgmt 子 tab 当前是 DataTabs.tsx:60 的 Placeholder（"即将推出"）。
 
 目标：业务用户无需写代码，用表单增删改查 /命令——定义 name/description/template/具名参数/绑定 skillSlugs + 启停开关。
 【改动范围（D 域，仿 HooksManagementPane）】
 1. 新增 CommandManagementPane.tsx：列表（名/描述/启停）+ 表单 CRUD（template 编辑 + params 行编辑 key/label/required/type/source + skillSlugs 多选），调 GET/PUT /api/commands；lib/api 加 commands client。
 2. DataTabs.tsx:60 用 CommandManagementPane 替换 Placeholder（SquareTerminal 图标已 import 在文件）。
-依赖：X 接缝卡（XanCommand 类型）+ E 后端卡（/api/commands）。
+依赖：X 接缝卡（XanCommand 类型）+ E 后端卡（/api/commands）。**E 后端卡已 done**，可开工。
+【总控裁决（2026-06-16，承 E 后端终审）】① 路由在 **E 域 engine.ts** 不迁——前端走 engineApi.getCommands/putCommands(lib/api/engine.ts) 调 GET/PUT /api/commands，与 §91「D slot 经 engineApi 调 E 端点」先例一致，勿在 D 侧另起真源。② 表单字段必须严格落在后端白名单内(COMMAND_KEYS/COMMAND_PARAM_KEYS：id/name/enabled/description/argumentHint/template/params/skillSlugs/source + key/label/required/type/options/source)，多余字段会被 coerceCommand 静默丢弃；name/param.key/skillSlug 须过 SAFE_COMMAND_NAME(/^[A-Za-z0-9][A-Za-z0-9_-]*$/)，type==="select" 必带 options。③ source 恒 "custom"，不加外发动作。
 【验收】web typecheck+build 绿；新建/编辑/启停/删除命令落 commands.json、刷新存活；params 编辑可定义具名参数；交互与 HooksManagementPane 一致。
 【约束】纯前端 D 域（DataTabs 注册渲染）；不碰 server 逻辑；不碰数据探索子树；不碰 git；回流总控终审。
 【开放点】skillSlugs 多选数据源（复用现有 skill 列表 API）实现时接。` },
-  { dom: "E", status: "todo", title: "【command 管理·E·向导】ChatPane / 补全 + 参数表单弹窗（口径2 价值核心）", brief:
-`来源：command 管理的价值承重项（用户选口径2=直奔向导表单，消灭 prompt 工程学习成本）。ChatPane 在 EngineTabs（E 域）。
+  { dom: "E", status: "done", title: "【command 管理·E·向导】ChatPane / 补全 + 参数表单弹窗（口径2 价值核心）", brief:
+`✅ 总控审核通过（2026-06-16，独立复核 ChatPane 编码逻辑+复跑 web typecheck/build）。command 管理特性收官。E 交付（ChatPane.tsx +383 行）：① 输入框 / 触发补全菜单，列表复用 api.listCommands()(dataApi，不重复造 client)、过滤展示 name+argumentHint+description；② 无 params 命令选中插入 /name 到输入框；带 params 命令弹 CommandParamDialog 结构化表单（text/select/file，file+source=clean_data 按 scope 拉 listSession/Flow/WorkspacePaths(clean_data) 文件名下拉）；③ required 前端校验 → encodeCommandLine 拼 /name --key=value → sendText → p.onSend(text) 现有通道发送；展开全在服务端。
+审核独立复核（三裁决全过+红线）：① **裁决①编码对齐**——quoteCommandValue(\\→\\\\、"→\\"、含空白/引号/反斜杠则双引号包裹) 与后端 command-expand.ts tokenize 严格 round-trip（空格/内嵌双引号/反斜杠/单引号边界逐一验证可逆），--key=value 形式后端 parseArgs 正解；② **裁决②**——前端零展开(只编码命令行串)、走现有 onSend(text,skillPaths?,businessReq?) **不新增 ClientMessage 字段**、不碰后端展开单源；③ **裁决③**——skillSlugs 由后端命中自动并入(index.ts:4867)，向导不涉及、未改 strict 口径；④ 红线——clean_data 候选只取文件名(cleanDataLabel)不读内容、不碰 draw_data、未碰 server/接缝/git。独立复跑 web typecheck ✅ + build ✅。
+【command 管理特性收官小结】4 卡全 done：X 接缝(契约/常量/占位语法) → E 后端(command-expand.ts 单源展开器 + /api/commands 白名单路由 + chat/flow chat 集成) → D 注册表(CommandManagementPane) ∥ E 向导(ChatPane / 补全+参数表单)。端到端闭环：注册表配 /命令(含具名参数+skillSlugs) → 输入框 / 补全/弹表单收参 → 编码进 text → 服务端 expandCommand 展开成完整 prompt + skillSlugs 注入 --skill → pi turn。地基修正(pi -p 不展开 slash→pi-xanthil 自有注册表+服务端展开)贯穿全程。待用户浏览器实跑点检 + 后续可汇总 CHANGELOG 一条版本记录后归档本批 4 卡。
+
+— 原始派发 —
+来源：command 管理的价值承重项（用户选口径2=直奔向导表单，消灭 prompt 工程学习成本）。ChatPane 在 EngineTabs（E 域）。
 
 背景：纯文本展开（E 后端卡）只是打字快捷方式；真正价值在「敲 /命令 → 弹结构化表单选数据集/填指标 → 自动拼出专业 prompt」。pi ctx.ui 在 -p 是 no-op，故向导必须 pi-xanthil 前端原生实现。
 目标：用户在对话输入框敲 / → 自动补全候选命令；选中带 params 的命令 → 弹 React 表单收参（含 source=clean_data 的文件名下拉）→ 提交时把命令+参数编码进 msg.text（走现有 text 通道、零接缝）→ 服务端展开器解析展开。
 【改动范围（E 域）】
 1. ChatPane 输入框 / autocomplete：读 GET /api/commands、过滤 enabled，展示 name+argumentHint+description；无 params 命令直接插入文本。
 2. 带 params 命令：弹结构化表单（按 XanCommandParam 渲染 text/select/file；source=clean_data 拉文件名候选），收参拼成接缝卡定义的命令行串塞进 msg.text 发送。展开仍由服务端做（前端不展开，保单一源）。
-依赖：E 后端卡（展开器 + /api/commands + 命令行参数语法）。可与 D 注册表卡并行。
+依赖：E 后端卡（展开器 + /api/commands + 命令行参数语法）。**E 后端卡已 done**，可与 D 注册表卡并行。
+依赖更新（2026-06-16）：**X 接缝 / E 后端 / D 注册表三卡均已 done**，本卡为 command 管理收官卡、可开工。**复用既有 client**：命令列表已有 dataApi.listCommands()(web/src/lib/api/data.ts，D 卡落地)，向导补全直接复用、**勿在 engine.ts 重复加 client**(单一前端 client 真源)；clean_data 文件候选用既有数据路径 API。
+【总控裁决（2026-06-16，承 E 后端终审）】① 参数编码须严格对齐 command-expand.ts 现有口径：具名参 /name --key=value（值含空格用双引号 --key="a b"），位置参空白切分、引号整体。**不扩语法**(转义换行/多值参数等)；若确需扩，先回 E 改 command-expand.ts + 单测，再接 UI。② 前端只把参数编码进现有 text 字段发送，**不自行展开 prompt、不新增 ClientMessage 字段**(服务端 index.ts:4866 / engine.ts:1362 单源展开)。③ skillSlugs 配错时后端 validateSkillPaths 是 strict 报错(非静默过滤)，向导侧如需可在选 skill 时做存在性提示，但不得改后端 strict 口径。
 【验收】web typecheck+build 绿；敲 / 出候选；无参命令插入发送被服务端展开；带参命令弹表单、填完发送 → pi 收到参数化展开后的 prompt；clean_data 文件下拉真实可选。
 【约束】纯 E（ChatPane 前端 + 复用后端卡展开器）；不新增 ClientMessage 字段（参数走 text 编码）；前端不自行展开（服务端单一源）；不碰数据探索子树；不碰 git；回流总控终审。
 【开放点】向导表单产出的命令行串编码须与后端卡展开器解析严格对齐（接缝卡已定语法，联调确认）。` },
@@ -342,8 +363,13 @@ pi 真源结构（已脱敏核验）：~/.pi/agent/models.json={providers.<id>:{
 【验收】server typecheck+build 绿；含 scripts/ 的 skill 检索命中只看摘要、子资源不污染 BM25；实跑一个带 ./scripts 引用的 skill，pi 激活后能按需读取子文件。
 【约束】纯 E、不碰接缝/契约；不碰数据探索子树；不碰 git；回流总控终审。
 【开放点】pi CLI 对 bundled skill 子资源读取能力须实跑确认；若 pi 不支持需总控议是否补桥。` },
-  { dom: "E", status: "todo", title: "【skill 自进化·缺口2】skill 跨端可移植 + 分发（导出/导入包 + 跨工作区共享）", brief:
-`来源：2026-06-15 用户 + 本会话「skill 管理 vs 行业趋势」对照（缺口2/3）。
+  { dom: "E", status: "done", title: "【skill 自进化·缺口2】skill 跨端可移植 + 分发（导出/导入包 + 跨工作区共享）", brief:
+`✅ 总控回流终审通过（2026-06-16，加重终审独立复跑）。E 交付后端导出/导入 MVP 闭环：① POST /api/skill-registry/:id/export → buildSkillPackage 读 .pi/skills/<slug>/ 输出单 JSON 包(format=pi-xanthil.skill-package@1，含 registry metadata + 全部普通文件；collectSkillPackageFiles 递归收子资源、跳隐藏文件/目录与 symlink、源路径 isPathInside 围栏、必含 SKILL.md；archived 不可导出)；② POST /api/workspaces/:id/skill-registry/import → parseSkillPackage 校验格式/版本/registry/files，写入目标 workspace 并建 registry entry + version snapshot。
+总控加重终审复核**红线全过**：① 人审门：导入恒 source="imported"/status="candidate"，绝不自动 active、不绕过 confirmed=true；② 不覆盖既有：uniqueImportedSkillSlug 撞 slug/目录则自动 slug-2/-3…，不碰既有 skill 文件；③ 路径围栏双层——slug 走 sanitizeSkillSlug + registrySkillRoot startsWith；每个包内文件走 isValidSkillPackageRelPath(拒 /开头、\\0、空段、./..) + resolveSkillPackageFilePath(resolve+startsWith 二次围栏)，反斜杠先归一防 Windows 式穿越；④ 未扩双侧 types(SkillPackage 仅 server 内部类型，E 内闭环，符合卡开放点)。独立门禁：server+web typecheck ✅ build ✅ + 全 skill 测试 16 全绿(含新增"导出含子资源→导入为 candidate"、"导入拒绝 slug 与文件路径穿越 ../escape→400"两用例)；零新依赖、未碰数据探索子树、未碰 git。notes-engine §0/§二(line 70)已记。
+**剩余(不阻塞本卡)**：D 域 UI 子卡(SkillManagementPane 导出按钮 + 导入弹窗，下载/粘贴 JSON)；端到端跨机器 smoke；导入包大小/二进制/allowlist 限制；远程 marketplace/订阅/签名/审计=P2+。开放点(SkillPackage 是否升双侧接缝、slug 冲突是否给用户选改名/覆盖)留总控/后续。
+
+— 原始派发 —
+来源：2026-06-15 用户 + 本会话「skill 管理 vs 行业趋势」对照（缺口2/3）。
 缺口：registry 仅 workspace 内（skill_registry 表按 workspace_id 维度），虽已有"全局 vs 项目池 + 按工作区启用"(enablement)，但**无 skill 的导出/导入/订阅通道**——一个 workspace 调好的 skill 无法成包带到另一端或团队共享。行业主流有 marketplace/plugin + 团队共享。
 
 目标(MVP)：skill 包**导出**(SKILL.md + 缺口1 子资源 + registry 元数据 → 单文件/目录包) + **导入**(校验 + 落 .pi/skills/<slug>/ + 建 registry candidate)，先解决"跨工作区/跨机器搬运"；市场化分发为后续。
@@ -357,6 +383,19 @@ pi 真源结构（已脱敏核验）：~/.pi/agent/models.json={providers.<id>:{
 【验收】server+web typecheck+build 绿；导出包可在另一 workspace 导入并作为 candidate 出现、经评测/人审走采纳；导入路径有 slug 围栏（拒 ../ 与穿越）。
 【约束】导入即写盘 + 可含脚本=安全敏感，slug/path 围栏复用既有 sanitizeSkillSlug + startsWith；imported skill 默认 candidate、**不自动 active**（守人审门）；不碰 git；回流总控终审。
 【开放点】① SkillPackage 是否上接缝（总控裁）；② 前端导入/导出 UI 拆 D 子卡；③ 远程 marketplace/订阅为 P2+，本卡不做。` },
+  { dom: "D", status: "done", title: "【skill 自进化·缺口2-UI】skill 导出/导入前端入口（D 子卡，承接缺口2 后端）", brief:
+`✅ 总控回流终审通过（2026-06-16）。D 交付 SkillManagementPane 导出/导入 UI：① 行操作「导出」(Download)→ engineApi.exportSkill → Blob 浏览器下载为 <slug>.json；② 工具栏「导入」(Upload)→ 弹窗（file input 选 .json + FileReader 回填 textarea / 或直接粘贴 JSON，提交前可见可改）→ submitImport 本地仅 JSON.parse 防呆 → engineApi.importSkill → 刷新列表；engine.ts 加 exportSkill/importSkill client + 本地 SkillPackage/SkillImportResult 类型（E 域内部契约，未上双侧 @/types，与后端"未升接缝"一致）。
+总控终审复核：① 安全分层正确——前端零安全校验，包结构/路径穿越/slug 全部由后端兜底（缺口2 已终审），符合"前端不重判"；② 人审门 UI 显式提示"导入后将建为候选，需走查看/评测/采纳走完人审门"，且 imported→candidate 由后端保证；③ slug 冲突自动改名有提示（requestedSlug≠entry.slug → "已改名为 X"）；④ 错误进弹窗/横幅不崩，提交态守护（importSubmitting 锁关闭/重复提交）；⑤ 纯 D 前端，后端一字未改。门禁：web+server typecheck ✅ build ✅；零新依赖、未碰 git。notes-engine §二(line 74 区)已记。**未做浏览器实点 smoke**（后端 export→import 往返已由 16 测试覆盖，前端为 fetch+下载+parse 薄封装，typecheck/build 绿即可；建议用户刷新页面实点一次导出→导入确认下载与候选出现）。
+
+— 原始派发 —
+来源：缺口2 后端导出/导入已终审通过（2026-06-16），前端 UI 按卡开放点拆为本 D 子卡。
+背景：后端端点已闭环（POST /api/skill-registry/:id/export 出单 JSON 包；POST /api/workspaces/:id/skill-registry/import 写盘+建 imported candidate），但 SkillManagementPane 无任何入口，用户点不到，能力等于摆设。
+目标：① 行操作加「导出」→ 下载 JSON 包为 <slug>.json 文件；② 工具栏加「导入」按钮 → 弹窗（JSON 粘贴或 file input 上传）→ 调 import → 刷新列表，新 imported candidate 进「候选」漏斗，可走查看/评测/采纳。
+【改动范围（D 域前端）】web/src/lib/api/engine.ts 加 exportSkill(id)/importSkill(workspaceId, pkg) client；SkillManagementPane 加导出按钮（操作列）+ 导入弹窗 + 结果/错误提示；复用既有 refresh 与候选漏斗。
+依赖：缺口2 后端（✅ done）。
+【不重叠】后端一字不动（缺口2 已交付）；人审门由后端保证（imported→candidate），前端不重判；不碰分发 P2/沙箱（缺口3）。
+【验收】web typecheck+build 绿；导出能下载 JSON、导入后 candidate 出现且可查看/评测/采纳；导入错误（格式非法/路径穿越被后端拒）前端给提示不崩；回流总控终审；不碰 git。
+【开放点】① 导入入口选 file input / JSON 粘贴 / 两者都给；② slug 冲突后端自动改名（slug-2…），前端是否提示"已改名为 X"；③ 是否在导出按钮旁标注"含子资源 N 文件"。` },
   { dom: "X", status: "todo", delegate: "E", title: "【skill 自进化·缺口3·安全红线】代码执行类 skill 的沙箱安全", brief:
 `来源：2026-06-15 用户 + 本会话「skill 管理 vs 行业趋势」对照（缺口3/3）。安全红线议题→总控持有、委派 E 代笔、总控加重终审。
 缺口：现有 skill 多为"提示型"；唯一执行链路 ExtractionTool 桥靠后端 /run 的 source=ai + clean_data 白名单兜底(notes-engine §一)，**无通用脚本执行沙箱**。一旦缺口1 引入 skill 内 scripts/ 且 pi 可执行，导入(缺口2)/蒸馏来的 skill 携带脚本将能在本机跑——属安全红线，须沙箱（资源限额 / 文件系统范围 / 网络禁用 / 命令白名单）或显式禁用。
@@ -409,8 +448,13 @@ C. 与数据安全红线对齐：脚本绝不可读 draw_data/原始数据，复
 【验收】server+web typecheck+build 绿；调 sweep 端点后近期 session 产出 candidate 条目、与现有高相似的被去重跳过、全部 candidate 不自动 active；实跑确认 frontmatter 稳定(沿用 §151 extractSkillMarkdown 取最后一个 name: frontmatter 的坑)。
 【约束】只读 transcript(已 LLM-visible，distillation 数据安全契约不适用原始数据)，绝不读 draw_data/原始行；候选**默认 candidate、守人审门**；不碰 index.ts seam(走独立端点)；不碰 git；回流总控终审。
 【开放点】① 调度方式(/loop vs cron routine vs 前端按钮先手动)定哪个为 MVP；② 沉淀触发的筛选信号(任务成功/反复出现同类/A 的激活缺口)先用简单"近期成功 session"。` },
-  { dom: "E", status: "todo", title: "【skill 自进化·C】连续评测 + 回归/漂移检测（skill 变更/模型升级自动重测）", brief:
-`来源：2026-06-15 趋势评估 T2（continuous eval / lab-to-production drift）立卡。
+  { dom: "E", status: "done", title: "【skill 自进化·C】连续评测 + 回归/漂移检测（skill 变更/模型升级自动重测）", brief:
+`✅ 总控回流终审通过（2026-06-16，加重终审独立复跑）。E 交付（后端 E 域 scope）：① 新模块 server/src/skill-regression.ts——compareSkillRegression(score 跌≥scoreDrop 默认0.1 或 activationRate 跌≥activationRateDrop 默认0.2 → regression)、runSkillRegistryRetest(复用 runSkillEvaluation+saveSkillEvaluation 重测→算 metrics→比历史→回写 registry+记历史)、maybeRunSkillVersionRetest(仅 active+有历史才重测，沿用上一版 model/tasks/repeat 做 apples-to-apples，否则 null 安全空跑)；② 历史表 skill_registry_eval_history(db/engine.ts initEngineTables，E 表)；skill_registry 加 regression_status/last_regression_at/regression_reason/regression_score_delta/regression_activation_delta 5 列(db/shared.ts + 存量库 ALTER)；③ 触发：版本更新(active+supersedesId)与回滚端点内联 maybeRunSkillVersionRetest(version_bump)、单条 retest 端点、POST /api/workspaces/:id/skill-registry/retest-active(模型升级/全量)；④ 双侧 types 加 SkillRegressionStatus + entry 回归字段。
+总控终审复核：① 口径不另造——score/activationRate 复用既有 skillRegistryMetricsFromEvaluation；② 成本 gate 合理——自动重测仅 active skill 版本变更/回滚触发，candidate 编辑不烧 token；try/catch 成 retestError 不阻塞保存；③ 与 D(触发词)/A(生产遥测) 不重叠，只消费 eval；④ 路径围栏复用 startsWith。注：regression 列加在 shared 表(总控持有)，按 A 卡先例**追认**（skill 生命周期元数据，ALTER 迁移规范）。独立门禁：server+web typecheck ✅ build ✅ + skill 全测试 20 全绿(新增 skill-regression.test：fake runner 验回归判定 score-0.3/activation-0.4→regression + 历史 + registry 回写)；零新依赖、未碰数据探索子树、未碰 git。notes-engine 已记。
+**剩余=D 跟进(不阻塞本卡 E scope)**：前端零展示——SkillManagementPane 无回归徽章、retest-active 无按钮；regressionStatus 已随 entry 流到前端但未渲染。建议拆 D 子卡（回归徽章 + 「重测全部 active」按钮 + 历史/漂移时间线，可与 G 面板合并）。开放点：模型升级如何被系统感知(当前靠手动调 retest-active)；回归阈值是否可配。
+
+— 原始派发 —
+来源：2026-06-15 趋势评估 T2（continuous eval / lab-to-production drift）立卡。
 缺口：评测是一次性手动触发(skill-evaluation-runner.ts + evaluation-archive.ts 已具备)；skill 内容改版或模型升级后**无自动重测、无历史比分、无回归告警**，容易"模型一升级 skill 静默劣化"。
 目标：① skill version bump 或指定模型升级时，对受影响 active skill 自动重跑既有 eval；② 存历史分，与上一版比 score/activationRate，跌破阈值标 regression 回写 registry + 治理提示；③ 可手动"重测全部 active"。
 【改动范围（E 域）】复用 skill-evaluation-runner / saveSkillEvaluation / evaluation-archive；新增历史比对 + 触发器(version 变更 hook / 手动重测端点)；routes/engine.ts。
@@ -418,8 +462,13 @@ C. 与数据安全红线对齐：脚本绝不可读 draw_data/原始数据，复
 【不重叠】只**检测**回归、不改 skill 内容(改触发词是 D)；不重造 A 的生产遥测(消费它)；不碰分发(缺口2)/沙箱(缺口3)。
 【验收】server+web typecheck+build 绿；skill 改版后自动重测并与上一版比对、跌破阈值标 regression 有 focused test；回流总控终审；不碰 git。
 【开放点】回归阈值口径、模型升级如何被感知(手动指定 vs 配置 diff)。` },
-  { dom: "E", status: "todo", title: "【skill 自进化·D】触发词(description)自动优化（基于激活缺口的 curation v2）", brief:
-`来源：2026-06-15 趋势评估 T2（description=tier-1 激活入口 / prompt-opt）立卡。
+  { dom: "E", status: "done", title: "【skill 自进化·D】触发词(description)自动优化（基于激活缺口的 curation v2）", brief:
+`✅ 总控回流终审通过（2026-06-16，加重终审独立复跑）。E 交付（扩既有 curator，复用为主）：① skill-curator.ts curateSkillEvaluation 现额外拉 listSkillRegistryEntries(ws,"active")，对 prodInjectedCount≥3(防小样本噪声 MIN_PROD_INJECTIONS=3) 且 prodActivationRate<0.4(LOW) 的 active skill 纳入 description 优化候选(即便不在本次评测 batch)；② buildDescriptionOptimizationEvidence 汇集 A 的生产激活率 + eval 未激活 case 作证据；③ buildCurationPrompt 新增「description 触发词优化证据」段 + 指令：低激活 skill 优先判断是否只需改 frontmatter description(明确触发任务类型/关键词/场景信号/负例边界)，description 提案仍输出完整 SKILL.md 但保 name+正文不变，证据必须引用生产低激活或 eval 未激活、不凭空泛化。
+总控终审复核：① **人审门保持**——autoTriggerCuration 只 saveSkillCurationProposals 存提案，applySkillCurationProposals 仅显式调用才写盘，description 提案与普通 curation 同走既有人审 apply，不自动改文件/不自动 active；② 复用既有 curator 不另起系统；③ 与 C(回归检测)不重叠——D 产改进提案、C 测回归；与 A 不重叠——只消费 prodActivationRate；④ 阈值 MIN=3/LOW=0.4 防噪声合理。**前端无缺口**：curation 提案已有现成 UI(SkillLabPane「治理分析」+ /skill-curation-proposals list/apply)，D 增强的提案直接流进同一界面被人审，无需新前端(区别于 C)。独立门禁：server+web typecheck ✅ build ✅ + skill 全测试 18 全绿(新增 skill-curator.test：低激活证据进 description 改写提案)；零新依赖、未碰数据探索子树、未碰 git。notes-engine 已记。
+【开放点】description 优化后是否自动触发 C 重测验证改善闭环（当前不自动，留 G/后续）。
+
+— 原始派发 —
+来源：2026-06-15 趋势评估 T2（description=tier-1 激活入口 / prompt-opt）立卡。
 缺口：curator(skill-curator.ts autoTriggerCuration)已能基于评测产 SKILL.md 改进提案，但**不专门针对 description 触发词**，也没接 A 的"本该激活却没激活"数据。
 目标：扩 curator 增"description 优化"维度——以 A 的低 prodActivationRate skill + eval 未激活 case 为证据，生成 **description 改写提案**，仍走现有 applySkillCurationProposals **人审 apply**，不自动改文件。
 【改动范围（E 域）】skill-curator.ts buildCurationPrompt 加 description 优化维度 + 输入接 prodActivationRate 低的 skill；提案复用既有人审通道。
@@ -427,8 +476,13 @@ C. 与数据安全红线对齐：脚本绝不可读 draw_data/原始数据，复
 【不重叠】复用 curator 不另起系统；不做 C 的回归检测(D 只改触发词)；产物仍是提案、守人审门(不自动 active)；不碰分发/沙箱。
 【验收】server typecheck+build 绿；低激活 skill 产出 description 改写提案、经人审 apply 写回；focused test 覆盖"低激活→提案生成"；回流总控终审；不碰 git。
 【开放点】优化后是否自动触发 C 重测验证改善闭环。` },
-  { dom: "E", status: "todo", title: "【skill 自进化·E】覆盖缺口检测（负空间→建议新建，复用 B 蒸馏）", brief:
-`来源：2026-06-15 趋势评估 T3（self-evolving "where to evolve"）立卡。
+  { dom: "E", status: "done", title: "【skill 自进化·E】覆盖缺口检测（负空间→建议新建，复用 B 蒸馏）", brief:
+`✅ 总控回流终审通过（2026-06-16，加重终审独立复跑）。E 全栈交付：① 纯分析模块 skill-coverage-gap.ts——analyzeSkillCoverageGaps：对每个任务跑注入的 retrieve(=retrieveSkills) 判命中，留"无命中或 topScore<阈值1.0"的任务，按 Jaccard token 相似度(≥0.25)聚类、滤掉<2 个的簇、按 taskCount 排序取前 10，输出缺口聚类(关键词/taskCount/avgTopScore/tasks)；retrieve 注入故可测、不重造检索；② 端点 POST /skill-coverage-gaps(扫 session→分析→返聚类) + POST /skill-coverage-gaps/distill(把缺口簇交给蒸馏)；③ **填补复用 B 的管道**——distillSkillCandidate(B 已抽出的共享 helper，B 与 E 同调)：buildSkillDistillationPrompt→extractSkillMarkdown→findAutoDistillDuplicate 去重→createSkillRegistryEntry status="candidate"/source="distilled"，守人审门、不自动 active；④ 前端 SkillManagementPane 工具栏「覆盖缺口」扫描按钮 + 「覆盖缺口建议」聚类面板 + 每簇「蒸馏」按钮(走 B 链路) + engine.ts client/types。
+总控终审复核：① 只检测/不创建——创建全走 B 的 distillSkillCandidate，无新创建路径；② B 行为未变——auto-distill 测试在 helper 抽取后仍绿；③ 与 A/C/D 不重叠——只消费 retrieveSkills，产候选走 B；④ 守人审门(candidate/distilled/去重)。独立门禁：server+web typecheck ✅ build ✅ + skill 全测试 15 全绿(新增 skill-coverage-gap.test 2 例：纯函数聚类+排除已覆盖任务、API 返聚类并经 candidate 路径蒸馏)；零新依赖、未碰数据探索子树、未碰 git。notes-engine 已记。**无前端缺口**(扫描+建议+蒸馏 UI 齐全)。
+【开放点】聚类粒度/阈值(topScore<1.0、Jaccard 0.25、minSize 2)为工程默认，真实样本跑完可由总控校准；缺口建议当前只读列表，是否进治理队列留后续。
+
+— 原始派发 —
+来源：2026-06-15 趋势评估 T3（self-evolving "where to evolve"）立卡。
 缺口：有检索(skill-retrieval BM25) + B(蒸馏产候选) + A(激活数据)，但无"**哪些任务反复出现却无 skill 命中**"的负空间检测。
 目标：扫近期 session，对每个任务跑 retrieveSkills 判是否有高分命中，把"无命中/低命中"任务聚类成**覆盖缺口建议**；填补**复用 B 的蒸馏链路**，不另造创建路径。
 【改动范围（E 域）】新分析模块(复用 retrieveSkills + 简单聚类)；输出缺口建议列表；"一键蒸馏该缺口"调 B 的 distill。
@@ -445,15 +499,20 @@ C. 与数据安全红线对齐：脚本绝不可读 draw_data/原始数据，复
 【不重叠】复用既有 node.skillPaths 范式 + validateSkillPaths，不另造注入；激活记录走 A，不重做；不碰分发/沙箱。
 【验收】server+web typecheck+build 绿；委派子 agent 带 skill 子集且注入生效；回流总控终审；不碰 git。
 【开放点】SubAgentTaskInput.skillPaths 是否上接缝(总控裁)；前端选择器复用既有 SkillSelector。` },
-  { dom: "D", status: "todo", title: "【skill 自进化·G】skill 可观测面板（激活趋势/ROI/回归时间线，消费 A/C/E）", brief:
-`来源：2026-06-15 趋势评估 T3（observability dashboard）立卡。
-缺口：registry 已存 usageCount/activationRate + A 的 prodInjectedCount/prodActivatedCount/prodActivationRate，但 SkillManagementPane 只有表格，**无趋势/ROI/回归时间线可视化**。
-目标：面板呈现 ① 生产激活率趋势(A 数据)；② ROI(相对 baseline 省的 token，评测数据)；③ 回归时间线(接 C)；④ 覆盖缺口(接 E)。**先做 A 已有数据的可视**，C/E 数据后补。
-【改动范围（D 域前端为主）】SkillManagementPane 加可视区或新子 pane；复用 registry 已暴露字段；若需时间序列聚合则 E 补只读聚合端点(开放点)。
-依赖：A(有，主数据) + C/E(可选，后补)。
-【不重叠】**只可视化、不产生新数据、不改 skill**；数据源是 A/C/E 的产出，不重算；不碰分发/沙箱。
-【验收】web build 绿；面板展示生产激活率/注入/使用等 A 数据；回流总控终审；不碰 git。
-【开放点】是否需要 E 域新增时间序列聚合端点(纯前端聚合现有字段 vs 后端聚合)。` },
+  { dom: "D", status: "done", title: "【skill 自进化·G】skill 可观测面板 + C 的前端展示（激活趋势/ROI/回归徽章+重测+时间线）", brief:
+`✅ 总控回流终审通过（2026-06-16，加重终审独立复跑）。D 全栈交付（含 C 前端，C 缺口同时闭合）：① 新子组件 web/src/components/skill-management/ObservabilityDashboard.tsx（从 SkillManagementPane 抽出可视区）——KPI：生产激活率(A 的 prodInjected/prodActivated 聚合)、ROI(active skill 最近 evaluation 的 baseline avgTotalTokens vs variant 对比、读既有评测不重算)、回归 active 数(rose 高亮)；回归/漂移时间线消费 skill_registry_eval_history；② **C 前端三件套**：表格新增「回归」列徽章(regressionStatus=regression + tooltip 含 regressionReason/Δscore/Δ激活pp) + 「重测全部 active」按钮 + 时间线；③ 后端只读端点 GET /api/workspaces/:id/skill-registry/eval-history(开放点裁定=补 E 域只读聚合端点)，retestActiveSkills/listSkillEvalHistory client + 双侧 history 类型。
+总控终审复核：① **重测成本闸到位**——retestAllActive 弹 window.confirm 显式列「active 数 × 任务数 = 预计 LLM 调用次数 + 模型 + 评测集」，落实本卡开放点；② 只可视化/触发既有端点，不产新数据、不改 skill——eval-history 为 GET 只读、ROI 读既有 evaluation 不重跑、回归判定全在 C 后端；③ 与缺口2/3 不重叠。独立门禁：server+web typecheck ✅ build ✅ + skill 全测试 23 全绿(G 未引入回归)；零新依赖、未碰数据探索子树、未碰 git。notes 已记。**至此 C 前端缺口闭合，连续评测/回归检测端到端可用**。
+【开放点】模型升级感知仍靠手动点「模型升级重测」(triggerKind=model_upgrade)，无自动 diff 感知；E 覆盖缺口是否进同一面板留后续。
+
+— 原始派发 —
+来源：2026-06-15 趋势评估 T3（observability dashboard）立卡；2026-06-16 **并入 C 卡的前端展示**（C 后端连续评测/回归检测已终审，但前端零展示，按用户决定合并进 G，不另拆 C-UI 子卡）。
+缺口：registry 已存 usageCount/activationRate + A 的 prodInjectedCount/prodActivatedCount/prodActivationRate + **C 的 regressionStatus/regressionReason/regression deltas（已随 entry 流到前端但未渲染）**；C 的 retest-active 端点与 skill_registry_eval_history 历史也没有 UI。SkillManagementPane 当前只有表格，无趋势/ROI/回归可视，也无重测入口。
+目标：面板/可视区呈现 ① 生产激活率趋势(A)；② ROI(相对 baseline 省的 token，评测数据)；③ **C 的前端三件套：表格回归徽章(regressionStatus=regression 高亮+regressionReason tooltip) + 「重测全部 active」按钮(调 POST /api/workspaces/:id/skill-registry/retest-active) + 回归/漂移历史时间线(消费 skill_registry_eval_history)**；④ 覆盖缺口(接 E，后补)。**先做 A 数据可视 + C 三件套(数据/端点已就绪，是本卡主体)**，E 数据最后补。
+【改动范围（D 域前端为主）】SkillManagementPane 加回归徽章列/可视区或新子 pane；engine.ts 加 retestActive/listSkillEvalHistory client（端点已存在，仅补前端方法）；复用 registry 已暴露字段；时间序列若需后端聚合则 E 补只读端点(开放点)。
+依赖：A(✅) + **C(✅ 后端+端点+历史表已就绪，本卡只做其前端)** + E(可选，后补)。
+【不重叠】**只可视化/触发既有端点、不产生新数据、不改 skill 内容**；回归判定/重测逻辑全在 C 后端，不重算；重测仍走后端人审门口径；不碰分发(缺口2)/沙箱(缺口3)。
+【验收】web build 绿；面板展示 A 激活数据 + C 回归徽章/时间线、点「重测全部 active」能触发并刷新回归状态；回流总控终审；不碰 git。
+【开放点】① 时间序列纯前端聚合 vs E 补聚合端点；② 「重测全部 active」会真实跑 LLM 评测(每个 active skill 一次)，是否加二次确认+成本提示；③ 模型升级如何被感知(手动点重测 vs 配置 diff)。` },
   { dom: "E", status: "todo", title: "【skill 自进化·H】高质量链式蒸馏模式（手动 /distill-skill 可选走 A→B→C 三次）", brief:
 `来源：2026-06-15 本会话讨论衍生的可选项，留待"想要极致质量"时再做（用户明确：先停着，后面有需要再做）。
 背景：当前蒸馏（auto-sweep 与手动 /distill-skill）都是**单次 LLM 调用**（A 解构+B 提炼+C 写作折叠进一个 prompt），且已并入「关键变量清单表格 + 常见陷阱与对策」，真实 smoke 质量达标。但用户的源 prompt 库 \`~/.pi/agent/prompts/skill-distillation-prompts.md\` 本是 **A→B→C 链式**（解构→提炼→写作分三步），逐步串接能让每步更充分（解构更细 / 抽象更狠 / 写作更规范）。
@@ -1383,6 +1442,106 @@ P3(onto + KG)：
 【文件边界(E 域)】web 新建模板库 pane + tabs/EngineTabs.tsx 渲染 + （可选）routes/engine.ts 列表端点。
 【接缝层依赖(总控)】若新增 'templates' 二级 tab，需在 lib/constants.ts 的 SubTab 类型 + MULTI_SUB_TABS 加字面量（接缝层归总控，E 先报口径由总控加，或复用现有 readme/subtab 形态）。
 【约束】工作流/模板属 E 域；不碰接缝层骨架；SQL loop 实例化后要真跑需先配 SQL 连接；全程不碰 git，回流总控终审。` },
+  { dom: "X", status: "todo", title: "【subagents 管理·接缝】SubAgentTemplate 契约 + SUBAGENTS_CONFIG_PATH + 状态扩 waiting_for_help（双侧 types + config，为 P0–P3 铺路）", brief:
+`来源：2026-06-15「计算工具-subagents 管理」模块收敛设计（方案见 docs/subagents管理模块设计方案.md）。把跨 D/E 共用的契约与基建一次性定死，避免下游各拍口径。本卡=X 接缝（总控自做/可委派 E 代笔），是 P0 两张实现卡的前置。
+背景实证：现状子 agent（index.ts:1675 runDelegatedSubAgent）用硬编码 systemPrompt（index.ts:1692）+ 通用 read/write，failed 即终止；痛点=黑盒/不可配/无自愈。模板化即剥离硬编码 prompt 交配置面板管。
+目标：定 SubAgentTemplate 类型 + 配置常量 + 任务状态扩展，三方（runner / 管控面板 / HITL）共用。
+【接缝交付（X 持有）】
+1. 双侧 types.ts 加 SubAgentTemplate{ id; name; enabled; persona; toolIds:string[]; dataScope:"clean_data"; maxRetries; source:"custom" }（紧随 SubAgentTask 后，types.ts:1135）。dataScope 锁 "clean_data" 字面量、**禁出现 draw_data 选项**（AGENTS.md §一红线，编译期堵死）。
+2. config.ts 加 SUBAGENTS_CONFIG_PATH = join(DATA_ROOT,"subagents.json")（仿 HOOKS_CONFIG_PATH；单文件不进 ensureDirs；缺失/空=无模板安全降级回退当前默认 prompt）。
+3. SubAgentTaskStatus（types.ts:1133）加 "waiting_for_help"（供 P3 HITL）；SubAgentTaskInput 视情加 templateId?。
+依赖：无。是 S1（E·runner）+ S2（D·面板）+ S7（E·HITL）的前置。
+【验收】双侧 typecheck+build 绿；SubAgentTemplate/状态枚举成文；subagents.json 缺失被安全降级；无模板时委派行为与现状零差异。
+【约束】接缝层归总控铁律，下游不得改契约口径；dataScope 不得放开 draw_data；不碰数据探索子树；不碰 git。` },
+  { dom: "E", status: "todo", title: "【subagents 管理·E·P0】runner 模板化重构 + GET/PUT /api/subagents 路由（剥离硬编码 systemPrompt）", brief:
+`来源：subagents 管理 P0，承接 X 接缝卡。
+目标：把 index.ts:1692 硬编码 systemPrompt 改为「模板 persona + 引擎注入的红线尾注 + 数据域文件清单」三段拼接；无模板回退当前默认（不破坏现状）。委派可指定 templateId。
+【改动范围（E 域）】
+1. runDelegatedSubAgent（index.ts:1675）读 subagents.json 按 templateId 取模板，persona 替换硬编码角色段；红线尾注（只读 clean_data 指定文件 / 写 reportDir / 末条摘要）由引擎恒定追加不可被 persona 覆盖；保留 safeResolve(cleanDir,basename) 文件围栏（index.ts:1689）。
+2. routes 加 GET/PUT /api/subagents：读写 SUBAGENTS_CONFIG_PATH，coerceSubAgentTemplate 白名单（仿 data.ts coerceHook——拒未知字段、source 锁 custom、dataScope 锁 clean_data、persona 为 prompt 文本非 shell、仅 localhost、无外发）。
+3. /api/sessions/:id/delegate（index.ts:1660）透传 templateId 到 runner。
+依赖：X 接缝卡（类型+常量+状态）。是 D·面板卡的后端底座。
+【验收】server typecheck+build 绿；建模板→委派用其 persona；无模板委派回退旧默认、行为零变化；PUT 非法字段被 coerce 丢弃。
+【约束】纯 E，复用 hooks 安全范式；红线尾注引擎恒定不可被模板覆盖；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】templateId 是否上接缝 SubAgentTaskInput（X 已在接缝卡预留）。` },
+  { dom: "D", status: "todo", title: "【subagents 管理·D·P0】SubAgentManagementPane（替换 subagents_mgmt 占位）", brief:
+`来源：subagents 管理 P0 前端侧。subagents_mgmt 子 tab 当前是 DataTabs.tsx:67 的 Placeholder（"即将推出"）。
+目标：图形化管理子 agent 模板——列表（名/persona 摘要/启停）+ 表单 CRUD（persona + toolIds 多选 + maxRetries）+ 数据域只读展示（锁 clean_data）。
+【改动范围（D 域前端）】
+1. 新建 SubAgentManagementPane.tsx（仿 HooksManagementPane.tsx 728L 结构）：模板列表 + 表单；toolIds 多选复用 engineApi.listExtractionTools（/api/extraction-tools，index.ts:4533）拉可挂载工具，按 category/riskLevel 展示。
+2. lib/api/data.ts 加薄 client listSubAgents/saveSubAgents（直 fetch GET/PUT /api/subagents，全量覆盖式 PUT，注释标"server coerce 真源"）。
+3. DataTabs.tsx:67 用 SubAgentManagementPane 替换 Placeholder。
+依赖：X 接缝卡 + E·runner 卡（端点）。
+【验收】web build 绿；建/改/删模板并持久化；toolIds 从真实工具清单选；dataScope 显示锁定 clean_data 不可改；server 丢弃非法时前端提示。
+【约束】薄 client 不另起真源；dataScope UI 不提供 draw_data 选项；不读 draw_data（clean_data 仅文案）；不碰 server 逻辑/接缝/数据探索子树/git；回流总控终审。` },
+  { dom: "E", status: "todo", title: "【subagents 管理·E·P1】聚合度护栏中间件（唯一 AI 闸口行数上限）+ 按 toolIds 细粒度注入 MCP", brief:
+`来源：subagents 管理 P1。原 proposal 想把行数拦截散在各工具——校正为集中在唯一 AI 闸口（引擎级硬编码红线）。
+目标：① 子 agent 只挂载模板 toolIds 选中的工具（省 token、防越权）；② 任何 source=ai 的工具调用结果超行数上限即截断 + 抛强制报错。
+【改动范围（E 域）】
+1. mcp/extraction-tools-mcp.ts + 委派路径：给子 agent 的 .mcp.json 仅注入模板 toolIds 子集（现状 MCP 暴露全部工具；改为按模板过滤）。
+2. /api/extraction-tools/:id/run（index.ts:3483 区）加 source==="ai" 行数上限中间件（默认 100，常量可配）：超限截断结果并回 Agent 报错文案「结果超 N 行，疑似明细输出，请加 GROUP BY/COUNT 聚合」。一处覆盖所有 AI 工具调用。
+依赖：X 接缝（toolIds）+ E·runner（模板读取）。配合 S4 新工具。
+【验收】server typecheck+build 绿；子 agent 只见挂载工具；故意返大结果集被截断 + 收到聚合报错；source≠ai（人工运行）不受行数闸影响。
+【约束】护栏唯一落点=run 端点不重复散落；不放宽 AGENTS.md §一；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】行数阈值默认值（proposal 占位 100）+ 是否按 riskLevel 分档，实现前报总控拍板。` },
+  { dom: "E", status: "todo", title: "【subagents 管理·E·P1】新增 duckdb-aggregate + pandas-sandbox 服务端 ExtractionTool", brief:
+`来源：subagents 管理 P1。proposal 的「duckdb_query_tool / pandas_sandbox_tool」校正为复用既有 ExtractionTool 体系（registry.ts:17），免费继承 riskLevel/trace/评测/MCP 闸口。
+**红线校正**：proposal 设想前端 duckdb-wasm 回喂 LLM——违反 AGENTS.md §一（前端 duckdb 子树永久禁 LLM）。本卡 duckdb 一律**服务端执行**经 source=ai 闸口，非前端 wasm。
+目标：新增两个可挂载到子 agent 的计算工具。
+【改动范围（E 域 server/tools/）】
+1. server/tools/duckdb-aggregate/：tool.json（入参仅 sql、riskLevel、forbiddenUse 标注"禁输出明细行"）+ python3 entry，服务端 duckdb 执行返回聚合结果。
+2. server/tools/pandas-sandbox/：受限 Python 片段处理 JSON/CSV，复用 _tool_utils.py。
+3. 两工具走既有 loadTools 自动注册（registry.ts:88），自动进 MCP 暴露 + S3 行数闸。
+依赖：无硬依赖（独立工具）；与 S3 护栏配合生效。
+【验收】工具被 listExtractionTools 识别；duckdb-aggregate 跑聚合 SQL 返回结果；超行数被 S3 截断；tool-evaluation 可评测；确认无任何前端 duckdb 回 LLM 路径。
+【约束】duckdb 仅服务端；工具对产物不含原始行负责；不碰数据探索子树；不碰 git；回流总控终审。` },
+  { dom: "E", status: "todo", title: "【subagents 管理·E·P2】runner onEvent → ws 透传 PiEvent（流式 trace）", brief:
+`来源：subagents 管理 P2。现状前端只轮询 /api/subagent-tasks/:id 拿 running/success 黑盒；而 onEvent（index.ts:1707）已拿到完整 PiEvent 流，仅留末条 assistant。可观测=透传已有流，非新建采集。
+目标：把子 agent 运行中的 message_*/turn_*/工具调用事件经 ws 推前端，支撑卡片流式 trace。
+【改动范围（E 域）】
+1. runDelegatedSubAgent onEvent 除留末条外，将事件按 taskId 经既有 ws 通道广播（项目已用 Express+ws）；定 trace 事件 schema（思考/工具调用/结果/写报告）。
+2. 保留轮询端点作降级。
+依赖：E·runner 卡。是 D·trace UI 卡的后端。
+【验收】server typecheck+build 绿；委派后 ws 实时收到子 agent 事件流；断 ws 时轮询仍可拿终态。
+【约束】trace 不外发、仅本地 ws；事件不含 draw_data 原始行；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】trace 事件 schema 是否上接缝双侧 types（报总控）。` },
+  { dom: "D", status: "todo", title: "【subagents 管理·D·P2】DelegateSubAgentCard 流式 trace 展开（消费 ws，降级轮询）", brief:
+`来源：subagents 管理 P2 前端侧。DelegateSubAgentCard.tsx（331L）当前只展示终态 reportPath/summary。
+目标：卡片展开为流式运行日志，让"计算过程"可见：💡思考 / 🛠️工具调用 / 🧮结果 / 📝写报告。
+【改动范围（D 域前端）】
+1. DelegateSubAgentCard.tsx 订阅 E·P2 的 ws trace 事件（按 taskId），结构化折叠渲染；ws 不可用降级轮询终态。
+2. 复用既有 ws client 与卡片展开交互。
+依赖：E·P2 ws 透传卡。
+【验收】web build 绿；运行中实时见思考/工具/结果流；断流降级轮询正常。
+【约束】只渲染 trace、不产新数据、不调 LLM；不碰 server/接缝/数据探索子树/git；回流总控终审。` },
+  { dom: "E", status: "todo", title: "【subagents 管理·E·P3】HITL 后端：自愈重试 + waiting_for_help + 续跑端点", brief:
+`来源：subagents 管理 P3。现状 try-catch 到 failed 即终止（index.ts:1734）。
+目标：计算工具报错原样喂回触发自愈重试；达 maxRetries 不再 failed，转 waiting_for_help；提供人工续跑端点。
+【改动范围（E 域）】
+1. runDelegatedSubAgent 捕获工具 Error 原样喂回子 agent 重试，计数 ≤ 模板 maxRetries；耗尽则 finishSubAgentTask(status:"waiting_for_help") 并留下出错上下文（如写错的 SQL）。
+2. 新增 POST /api/subagent-tasks/:id/resume：接人工修正参数 → 带正确结果续跑后续撰写。
+依赖：X 接缝（waiting_for_help 状态）+ E·runner。是 D·续跑 UI 卡后端。
+【验收】server typecheck+build 绿；连错达上限转 waiting_for_help（非 failed）；resume 带修正后续跑成功完成报告。
+【约束】重试有上限防死循环；resume 仅 localhost；不碰数据探索子树；不碰 git；回流总控终审。
+【开放点】maxRetries 默认值（proposal 占位 3）；resume 入参格式（改 SQL/改参数）实现时定。` },
+  { dom: "D", status: "todo", title: "【subagents 管理·D·P3】DelegateSubAgentCard「修正并继续」HITL UI", brief:
+`来源：subagents 管理 P3 前端侧。
+目标：waiting_for_help 态卡片弹出求助提示 + 人工修正区，点「修正并继续」调 resume 续跑。
+【改动范围（D 域前端）】
+1. DelegateSubAgentCard.tsx 识别 waiting_for_help 态，展示出错上下文（如 Agent 写错的 SQL）+ 可编辑修正框 + 「修正并继续」按钮 → POST /api/subagent-tasks/:id/resume。
+2. 续跑后回到 trace 流（接 P2）。
+依赖：E·P3 HITL 后端卡。
+【验收】web build 绿；waiting_for_help 卡片可见修正区；改 SQL 点续跑 → 任务恢复并完成。
+【约束】只触发既有 resume 端点；不调 LLM；不碰 server/接缝/数据探索子树/git；回流总控终审。` },
+  { dom: "X", status: "todo", title: "【subagents 管理·进阶·入池】多 agent 博弈 / 共享黑板 / 技能蒸馏 → docs/backlog（零残留）", brief:
+`来源：subagents 管理设计 §3.5。proposal 的进阶特性价值未验证、改动面大，按需求池机制（docs/backlog/README.md）先写方案不落产品代码。
+目标：把三项进阶沉淀为 backlog 方案文件，保产品干净、方案不丢。
+【改动范围（X 总控）】
+1. 写 docs/backlog/subagents-advanced.md：① 多 agent 博弈（Planner/Coder/Reviewer 复合单元）；② 共享黑板（口径在并行 agent 间复用）；③ 技能蒸馏/Save as Tool（注记复用 skill-distillation.ts / skill-curator.ts）。
+2. docs/backlog/README.md 在池索引加一行指针。
+依赖：无（独立文档动作）。
+【验收】backlog 文件 + README 索引存在；产品代码零残留（typecheck/build 不受影响）。
+【约束】纯文档；不在产品代码起头任何进阶字面量/路由/占位；不碰 git。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──

@@ -4,8 +4,9 @@ import { dirname, join, resolve } from "node:path";
 import { collectEvent, emptyMetrics, extractText } from "./evaluation-common.ts";
 import { runPiTurn } from "./pi-adapter.ts";
 import { saveSkillCurationProposals } from "./db.ts";
+import { listSkillRegistryEntries } from "./db/engine.ts";
 import { listSkills } from "./skills.ts";
-import type { SkillCurationApplyResult, SkillCurationProposal, SkillCurationResult, SkillEvaluationDetail } from "./types.ts";
+import type { SkillCurationApplyResult, SkillCurationProposal, SkillCurationResult, SkillEvaluationDetail, SkillRegistryEntry } from "./types.ts";
 
 export interface SkillCurationRequest {
   workspaceRoot: string;
@@ -19,12 +20,33 @@ export interface SkillCurationApplyRequest {
   proposals: SkillCurationProposal[];
 }
 
+export interface CuratedSkillContent {
+  name: string;
+  path: string;
+  content: string;
+}
+
+export interface DescriptionOptimizationEvidence {
+  skillName: string;
+  path: string;
+  currentDescription: string;
+  prodInjectedCount: number;
+  prodActivatedCount: number;
+  prodActivationRate: number | null;
+  evalMisses: Array<{ taskId: string; variantId: string; outputSnippet: string }>;
+  evidence: string[];
+}
+
+const LOW_PROD_ACTIVATION_RATE = 0.4;
+const MIN_PROD_INJECTIONS_FOR_DESCRIPTION_OPT = 3;
+
 export async function curateSkillEvaluation(request: SkillCurationRequest): Promise<SkillCurationResult> {
   const { workspaceRoot, workspaceId, model, evaluation } = request;
   const curatorDir = join(workspaceRoot, "evaluations", "curator", evaluation.evaluationId);
   mkdirSync(curatorDir, { recursive: true });
 
   const skills = listSkills(workspaceRoot).filter((s) => s.available);
+  const registryEntries = listSkillRegistryEntries(workspaceId, "active");
   const testedPaths = new Set(evaluation.variants.flatMap((v) => v.skillPaths));
   const skillContents = skills
     .filter((s) => testedPaths.has(s.path))
@@ -35,8 +57,23 @@ export async function curateSkillEvaluation(request: SkillCurationRequest): Prom
         return { name: s.name, path: s.path, content: "" };
       }
     });
+  const skillContentPaths = new Set(skillContents.map((skill) => resolve(skill.path)));
+  for (const entry of registryEntries) {
+    if (entry.prodInjectedCount < MIN_PROD_INJECTIONS_FOR_DESCRIPTION_OPT) continue;
+    if (entry.prodActivationRate === null || entry.prodActivationRate >= LOW_PROD_ACTIVATION_RATE) continue;
+    const path = registrySkillPath(workspaceRoot, entry.slug);
+    if (skillContentPaths.has(resolve(path))) continue;
+    skillContents.push({ name: entry.name, path, content: readSkillContent(path) });
+    skillContentPaths.add(resolve(path));
+  }
+  const descriptionEvidence = buildDescriptionOptimizationEvidence({
+    workspaceRoot,
+    evaluation,
+    skillContents,
+    registryEntries,
+  });
 
-  const prompt = buildCurationPrompt(evaluation, skillContents, workspaceRoot);
+  const prompt = buildCurationPrompt(evaluation, skillContents, workspaceRoot, descriptionEvidence);
   let text = "";
 
   const run = runPiTurn({
@@ -101,10 +138,60 @@ function allowedSkillDirs(workspaceRoot: string): string[] {
   ];
 }
 
-function buildCurationPrompt(
+export function buildDescriptionOptimizationEvidence(input: {
+  workspaceRoot: string;
+  evaluation: SkillEvaluationDetail;
+  skillContents: CuratedSkillContent[];
+  registryEntries: SkillRegistryEntry[];
+}): DescriptionOptimizationEvidence[] {
+  const contentsByPath = new Map(input.skillContents.map((skill) => [resolve(skill.path), skill]));
+  const missesByPath = collectEvaluationActivationMisses(input.evaluation);
+  const entriesByPath = new Map(
+    input.registryEntries
+      .filter((entry) => entry.status === "active")
+      .map((entry) => [resolve(registrySkillPath(input.workspaceRoot, entry.slug)), entry]),
+  );
+  const paths = new Set([...contentsByPath.keys(), ...missesByPath.keys()]);
+  for (const [path, entry] of entriesByPath) {
+    if (entry.prodInjectedCount >= MIN_PROD_INJECTIONS_FOR_DESCRIPTION_OPT
+      && entry.prodActivationRate !== null
+      && entry.prodActivationRate < LOW_PROD_ACTIVATION_RATE) {
+      paths.add(path);
+    }
+  }
+
+  const evidence: DescriptionOptimizationEvidence[] = [];
+  for (const path of paths) {
+    const content = contentsByPath.get(path);
+    const entry = entriesByPath.get(path);
+    if (!content && !entry) continue;
+    const rawContent = content?.content ?? readSkillContent(path);
+    const evalMisses = missesByPath.get(path) ?? [];
+    const signals: string[] = [];
+    if (entry?.prodActivationRate !== null && entry?.prodActivationRate !== undefined) {
+      signals.push(`生产激活率 ${(entry.prodActivationRate * 100).toFixed(0)}% (${entry.prodActivatedCount}/${entry.prodInjectedCount})`);
+    }
+    if (evalMisses.length > 0) signals.push(`评测未激活 ${evalMisses.length} 个 case`);
+    if (signals.length === 0) continue;
+    evidence.push({
+      skillName: content?.name ?? entry?.name ?? "",
+      path,
+      currentDescription: extractFrontmatterDescription(rawContent),
+      prodInjectedCount: entry?.prodInjectedCount ?? 0,
+      prodActivatedCount: entry?.prodActivatedCount ?? 0,
+      prodActivationRate: entry?.prodActivationRate ?? null,
+      evalMisses,
+      evidence: signals,
+    });
+  }
+  return evidence;
+}
+
+export function buildCurationPrompt(
   evaluation: SkillEvaluationDetail,
-  skillContents: Array<{ name: string; path: string; content: string }>,
+  skillContents: CuratedSkillContent[],
   workspaceRoot: string,
+  descriptionEvidence: DescriptionOptimizationEvidence[] = [],
 ): string {
   const taskLines = evaluation.tasks
     .map((t) => {
@@ -139,6 +226,24 @@ function buildCurationPrompt(
         .join("\n\n")
     : "（本次评测未涉及任何 SKILL.md 文件）";
 
+  const descriptionEvidenceLines = descriptionEvidence.length
+    ? descriptionEvidence.map((item) => {
+        const prod = item.prodActivationRate === null
+          ? "生产激活率暂无"
+          : `生产激活率 ${(item.prodActivationRate * 100).toFixed(0)}% (${item.prodActivatedCount}/${item.prodInjectedCount})`;
+        const missLines = item.evalMisses.slice(0, 3)
+          .map((miss) => `  - eval未激活 task=${miss.taskId} variant=${miss.variantId} output="${miss.outputSnippet}"`)
+          .join("\n");
+        return [
+          `- ${item.skillName || item.path}`,
+          `  路径: ${item.path}`,
+          `  当前 description: ${item.currentDescription || "（空）"}`,
+          `  ${prod}`,
+          missLines,
+        ].filter(Boolean).join("\n");
+      }).join("\n")
+    : "（无低激活或未激活 description 证据）";
+
   const newSkillBase = resolve(join(workspaceRoot, ".pi", "skills"));
 
   return `你是 Skill 治理专家，负责分析 AI skill 的评测数据并提出 SKILL.md 改进方案。
@@ -159,11 +264,18 @@ ${lossExamples || "（无失败案例）"}
 
 ${skillSections}
 
+## description 触发词优化证据
+
+${descriptionEvidenceLines}
+
 ---
 
 请分析评测数据，找出每个 skill 的问题（如触发词不准、内容含糊、缺乏关键步骤等），并给出具体改进提案。
 
 - 只修改/新建有充分证据支持的 skill，不改没有问题的 skill
+- 若某 skill 出现在「description 触发词优化证据」中，优先判断是否只需改 frontmatter 的 description：让 description 明确包含会触发该 skill 的任务类型、关键词、数据/场景信号与负例边界
+- description 优化提案仍输出完整 SKILL.md，但除 description 外尽量保持 name 与正文不变；不要自动改文件，提案必须等待人审 apply
+- 证据必须引用生产低激活率或 eval 未激活 case，不要凭空泛化触发词
 - 新建 skill 的建议路径前缀: \`${newSkillBase}/<skill-name>/SKILL.md\`
 - SKILL.md 必须包含 frontmatter（name 与 description 字段）
 
@@ -171,6 +283,43 @@ ${skillSections}
 {"proposals":[{"type":"update","targetPath":"/absolute/path/SKILL.md","suggestedContent":"---\\nname: ...\\ndescription: ...\\n---\\n\\n...(skill 正文)","rationale":"一句话说明改动原因","confidence":0.8,"evidence":["task_id: loss scoreDelta=-10","激活率 20%"]}]}
 
 type 只允许 "update" 或 "create"。proposals 可以为空数组。`;
+}
+
+function collectEvaluationActivationMisses(evaluation: SkillEvaluationDetail): Map<string, Array<{ taskId: string; variantId: string; outputSnippet: string }>> {
+  const misses = new Map<string, Array<{ taskId: string; variantId: string; outputSnippet: string }>>();
+  for (const result of evaluation.results) {
+    if (result.variantId === "baseline" || result.activation.activated) continue;
+    for (const skillPath of result.skillPaths) {
+      const key = resolve(skillPath);
+      const rows = misses.get(key) ?? [];
+      rows.push({
+        taskId: result.taskId,
+        variantId: result.variantId,
+        outputSnippet: result.output.slice(0, 180),
+      });
+      misses.set(key, rows);
+    }
+  }
+  return misses;
+}
+
+function registrySkillPath(workspaceRoot: string, slug: string): string {
+  return resolve(join(workspaceRoot, ".pi", "skills", slug, "SKILL.md"));
+}
+
+function readSkillContent(path: string): string {
+  try {
+    return existsSync(path) ? readFileSync(path, "utf8") : "";
+  } catch {
+    return "";
+  }
+}
+
+function extractFrontmatterDescription(content: string): string {
+  const match = content.match(/^---\s*\n([\s\S]*?)\n---/);
+  const frontmatter = match?.[1] ?? "";
+  const line = frontmatter.split("\n").find((item) => /^description\s*:/.test(item));
+  return line?.replace(/^description\s*:/, "").trim().replace(/^["']|["']$/g, "") ?? "";
 }
 
 function parseCurationResponse(text: string): SkillCurationResult {

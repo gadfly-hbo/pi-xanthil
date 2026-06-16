@@ -8,36 +8,38 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-16 · **LLM 接入管理前端面板（LlmManagementPane）**
+- 最近更新：2026-06-16 · **Command 管理前端面板（CommandManagementPane）**
 - 进度：
-  - **LLM 管理模块**（aggregate tab → `llm_mgmt` 子 tab）：
-    - **类型契约**（`types.ts`）：`LlmApiKind` / `LlmModelEntry` / `LlmProviderView` / `LlmProviderInput` / `LlmSettingsView` / `LlmAuthStatus` / `LlmTestResult`（总控预定义）
-    - **接缝 client**（`web/src/lib/api/shared.ts`）：`listLlmProviders` / `saveLlmProviders` / `testLlmProvider` / `getLlmSettings` / `saveLlmSettings` / `listLlmAuth`（总控预定义）
-    - **后端路由**（`server/src/routes/shared.ts`）：`GET/PUT /api/llm/providers` / `POST /api/llm/providers/:id/test` / `GET/PUT /api/llm/settings` / `GET /api/llm/auth`（总控实现）
-    - **真源读写**（`server/src/llm-config.ts`）：`coerceProviderInput` / `writeProviders` / `writeSettings` / `testProvider` / `listAuthStatus`（总控实现）
-    - **主 UI**（`web/src/components/LlmManagementPane.tsx` ~765 行）：左列 Providers 列表（id + 模型数 + 状态点：hasApiKey 绿 / oauth 蓝 / 无 key 灰）+ 右列表单（id 新建可改/已存只读、api select、baseUrl、apiKey password 不回显、OAuth 灰掉提示）+ Models 子表（启用 checkbox + 默认星标 + 增删 + contextWindow/reasoning/baseUrl）+ 底部「保存 providers / 保存 settings / 测试连通」两条独立 dirty 链
-    - **挂接**（`web/src/tabs/DataTabs.tsx`）：aggregate → llm_mgmt 替换 Placeholder，传入 `ctx.refreshModels`
-    - **apiKey 哨兵语义**：输入框 value 恒空、占位「已配置(****)」；键入非空 → 覆盖；留空 → 保留旧值；OAuth provider 不暴露输入框；与 server `coerceProviderInput` 的 `shouldKeepPreviousApiKey(""/"****")` 对齐
+  - **Command 管理模块**（aggregate tab → `command_mgmt` 子 tab）：
+    - **接缝 client**（`web/src/lib/api/data.ts`）：`listCommands` / `saveCommands`（GET/PUT `/api/commands`，全量覆盖式，server `coerceCommand` 为最终裁决）
+    - **主 UI**（`web/src/components/CommandManagementPane.tsx` ~700 行）：左列表（/name + 描述 + 启停灯 + p/s 角标）+ 右表单（name/description/argumentHint/template + ParamsEditor 行编辑 key/label/required/type/options/source + SkillSlugsEditor）
+    - **客户端预校验**：`SAFE_NAME_RE` / `select` 必有 options / `param.label` 必填 / name 唯一 / template 必填，错误以红条列出
+    - **skillSlugs 数据源**：有 workspace 时拉 `listSkillRegistry(active)` 给多选下拉；无 workspace 或空时退化为纯文本输入；始终保留手填回退（兼容外部 slug）
+    - **挂接**（`web/src/tabs/DataTabs.tsx`）：aggregate → command_mgmt 替换 Placeholder，传入 `ctx.activeWorkspaceId`
     - **code review 修复（本轮）**：
-      - I-1：`saveProviders` 成功后若 `settingsDirty` 为 true，自动连发 `saveLlmSettings`，消除删除 model 后的孤儿引用
-      - I-2：`renameProviderId` 拒绝空字符串 id，不再允许清空后保存
-      - I-3：`addProvider` / `renameProviderId` 的 id 碰撞检测统一用 `p.id.trim()`
-  - **hooks 管理 v2**（前次 session，见下方 v2 增量）
-  - **skill 管理模块**（前次 session，见下方 v5 增量）
+      - I-1：skill fetch 加 `cancelled` flag，防止 workspace 切换时旧响应覆盖新结果（race condition）
+      - I-2：`save()` 返回后比对 `saved.length !== commands.length`，server 丢弃条目时红色 error 提示命名规则
+      - R-4：`PARAM_TYPE_OPTIONS` 去掉 `text`，下拉仅 `select`/`file` + 空 option 表示 text 默认，消除双 text 选项
+  - **LLM 接入管理前端面板**（前次 session，见下方 v6 增量）
+  - **hooks 管理 v2**（前次 session）
+  - **skill 管理模块**（前次 session）
 - 校验：
   - `npm run typecheck`：✅ 全绿
   - `npm run build`：✅ 全绿
   - 数据探索 LLM 隔离 grep：✅ 空匹配
 - 下一步（接续优先级）：
-  - ① **真机联调**：进「聚合→LLM管理」验证 provider 增删改/模型启用/默认/测试连通全链路，确认 `/api/models` 刷新后 ModelSelect 即时反映
-  - ② **workflow 节点级 skill 集**（P1，下一卡）：允许 workflow 节点指定 skill 子集，覆盖全局/工作区启用
-  - ③ **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
-  - ④ **pi-agent 经 MCP 端到端验证**（D-v2 遗留）
-  - ⑤ **cohort 数据可用性确认**（D-v2 遗留）
-  - ⑥ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截、外发动作（带强告警）；`readTriggers` 改 stream 读取
+  - ① **真机联调**：进「聚合→command管理」验证新建/编辑/启停/删除命令落 commands.json、刷新存活、具名参数编辑（含 select+options / file+source=clean_data）、切换 workspace 后 skillSlugs 下拉刷新
+  - ② **真机联调 LLM 管理**：验证 provider 增删改/模型启用/默认/测试连通全链路，确认 `/api/models` 刷新后 ModelSelect 即时反映
+  - ③ **workflow 节点级 skill 集**（P1，下一卡）：允许 workflow 节点指定 skill 子集，覆盖全局/工作区启用
+  - ④ **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
+  - ⑤ **pi-agent 经 MCP 端到端验证**（D-v2 遗留）
+  - ⑥ **cohort 数据可用性确认**（D-v2 遗留）
+  - ⑦ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截、外发动作（带强告警）；`readTriggers` 改 stream 读取
 - 阻塞 / 待总控：
   - **跨 tab 跳实验室**：受接缝骨架约束（TabContext 仅有 `setActiveSubTab`，无 `setActiveTab`），本卡改为内联评测（在本页调 `/api/skill-registry/:id/evaluate`），结果回写后刷新表格
 - 开放问题：
+  - command 管理：`template` 占位与 `params[].key` 无交叉校验（模板引用未定义 key 时 server 替换为空串，设计如此；UI 可加 warn 但非阻塞）
+  - command 管理：`validateCommand` 的 `level: "warn"` 字段当前是死字段（所有 issue 用 `"error"`），待有 warn 级校验时启用
   - apiKey 留空=保留旧的哨兵语义已与后端 coerce 对齐（`""` / `"****"` → 保留旧值），联调确认即可
   - clean_data 路径白名单（Python 端纵深防御是否补强）
   - cohort-retention 在生产数据上能否实际产出（依赖事件级订单表）
@@ -139,6 +141,14 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **`key={idx}` 风险**：models 子表用数组索引作 React key，中间删除会导致后续行 input 重新挂载丢焦点。当前以追加为主，影响小；若后续支持拖拽排序需改用稳定 key。
 - **opencode write 工具大小限制（第四次触发）**：LlmManagementPane（756 行）分 8 个 `cat >> file <<'EOF'` heredoc 片段拼接落地，每块 < 4K char。
 
+**command 管理（D-v7, 2026-06-16）**
+- **全局注册表模式**：commands.json 是全局单文件（`COMMANDS_CONFIG_PATH`），不按 workspace 隔离。与 hooks.json 同为单文件覆盖式 PUT。server `coerceCommand` 为最终裁决——客户端预校验仅做 UX 提示，保存时 server 静默丢弃非法/重复条目。
+- **命名契约与 server 对齐**：`SAFE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/` 用于 name / param.key / skillSlug，与 server `coerceCommand` 的 `SAFE_COMMAND_NAME` 完全一致。`param.label` 必填、`type==="select"` 必须有 options、`source` 仅 `"custom"`、`param.source(file)` 仅 `"clean_data"`。
+- **skillSlugs 数据源设计权衡**：commands 是全局的，但 skillSlugs 下拉从当前 workspace 的 active skill 列表拉取。这是合理妥协——command 实际触发时知道当前 workspace，且 skillSlug 是字符串契约不依赖 workspace。文本输入始终保留作为回退（兼容外部 slug / 未注册 skill）。
+- **整体覆盖式 PUT + 丢条目提示**：`saveCommands` 全量 PUT，server 返回清理后的列表。前端比对 `saved.length !== commands.length` 时以红色 error 提示"server 丢弃了 N 条非法命令"，避免用户困惑数据"消失"。
+- **race condition 防护**：skill fetch 的 `useEffect` 加 `cancelled` flag，防止 workspace 快速切换时旧响应覆盖新结果。`reload` 的 `useCallback` 稳定（空 deps），无 race 风险。
+- **opencode write 工具大小限制（第五次触发）**：CommandManagementPane（696 行）分 6 个 `cat >> file <<'EOF'` heredoc 片段拼接落地，每块 < 4K char。与第四次（LlmManagementPane）模式相同。
+
 **数据探索**
 - 跨表 JOIN **物化成真实 duckdb 表**(`__joined_<ts>`)而非泛化 SQL → 出图/剖析/洞察管线**零改动复用**；DROP joined 表与源表独立。
 - Layer 2 自动洞察**纯算法**：`computeCorrelationMatrix`(duckdb 原生 `corr()` 单查询)、`computeCategoryNumericAssociation`(η²)、`detectDataQualityFlags`(纯 JS)。**绝不用 LLM 生成文案**。
@@ -179,6 +189,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **`find_col` 子串匹配导致列歧义（2026-06-13）**：`_tool_utils.find_col` 的 fallback 逻辑用 `if alias.lower() in col.lower()` 做子串匹配，导致 `items` 列被同时匹配为 `item`（ITEM_ALIASES 含 `item`）和 `items_list`（ITEMS_LIST_ALIASES 含 `items`）。**修复**：在 `build_transactions` 中检测两别名是否指向同一列 + 用 `_is_wide_column` 采样前 20 行判断是否含分隔符（`,;；|\s`），含分隔符走宽表路径，否则走长表路径。**通用教训**：任何依赖 `find_col` 且别名间有子串包含关系的工具，都应在业务逻辑层做二次消歧，不能假设别名匹配唯一。
 - **裸 `except Exception` 吞异常信息（2026-06-13）**：`clustering.py` 和 `churn_risk.py` 的 fallback 路径用裸 `except Exception`，不记录任何诊断信息，用户只能看到 `fallback=true` 但不知道原因。**修复**：改为 `except (ValueError, RuntimeError) as e` + 记录 `fallback_reasons` / `fallback_reason` 到输出。**通用约定**：工具 fallback 路径必须记录失败原因，方便用户和后续维护者排查。
 - **opencode write 工具大小限制（2026-06-14 第三次触发）**：单次 `write` / `edit` 约 16K char 上限，超大 TSX 会被 JSON parser 截断报 `Unterminated string`。本次 HooksManagementPane（676 行）用分 5 个片段 `write` + `cat` 拼接落地。**通用 workaround**：① 分多个小 `write` 写片段 ② `cat` 拼接 ③ 或用 `bash` heredoc 追加。
+- **opencode write 工具大小限制（2026-06-16 第五次触发）**：CommandManagementPane（696 行）分 6 个 `cat >> file <<'EOF'` heredoc 片段拼接落地，每块 < 4K char。与第四次（LlmManagementPane）模式相同。**经验**：含大量 Tailwind class 的 TSX 组件 > 500 行基本必超，预估时直接按 4K/块 分段。
 
 ---
 

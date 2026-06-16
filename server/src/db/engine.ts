@@ -3,7 +3,7 @@ import { join, resolve } from "node:path";
 import { db } from "../db.ts";
 import { enableForOrigin, setMemoryEnablement, disableItemEverywhere } from "./shared.ts";
 import { detectSkillActivation } from "../skill-activation.ts";
-import type { SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus } from "../types.ts";
+import type { SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus } from "../types.ts";
 
 /**
  * 【Agent-E · 智能引擎域】db 表 slot —— owner: codex(GPT-5.5)
@@ -11,7 +11,30 @@ import type { SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus }
  * 约定: 新表 CREATE TABLE IF NOT EXISTS; 配套 CRUD 写本文件, 由 routes/engine.ts 调用。
  */
 export function initEngineTables(): void {
-  void db; // 占位; 新表写: db.exec(`CREATE TABLE IF NOT EXISTS ...`)
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_registry_eval_history (
+      id                         TEXT PRIMARY KEY,
+      workspace_id               TEXT NOT NULL,
+      registry_id                TEXT NOT NULL,
+      slug                       TEXT NOT NULL,
+      skill_version              INTEGER NOT NULL,
+      evaluation_id              TEXT NOT NULL,
+      model                      TEXT NOT NULL,
+      trigger_kind               TEXT NOT NULL,
+      score                      REAL,
+      activation_rate            REAL,
+      previous_evaluation_id     TEXT,
+      previous_score             REAL,
+      previous_activation_rate   REAL,
+      score_delta                REAL,
+      activation_delta           REAL,
+      regression_status          TEXT NOT NULL DEFAULT 'none',
+      regression_reason          TEXT,
+      created_at                 INTEGER NOT NULL
+    );
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_skill_registry_eval_history_skill ON skill_registry_eval_history(workspace_id, slug, created_at DESC)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_skill_registry_eval_history_registry ON skill_registry_eval_history(registry_id, created_at DESC)");
 }
 
 type SkillRegistryRow = {
@@ -28,9 +51,59 @@ type SkillRegistryRow = {
   usage_count: number;
   prod_injected_count: number;
   prod_activated_count: number;
+  regression_status: string;
+  last_regression_at: number | null;
+  regression_reason: string | null;
+  regression_score_delta: number | null;
+  regression_activation_delta: number | null;
+  last_evaluation_id: string | null;
   origin_session_id: string | null;
   created_at: number;
   updated_at: number;
+};
+
+export type SkillRegistryRetestTrigger = "manual_evaluate" | "version_bump" | "model_upgrade" | "retest_all_active";
+
+export interface SkillRegistryEvalHistoryEntry {
+  id: string;
+  workspaceId: string;
+  registryId: string;
+  slug: string;
+  skillVersion: number;
+  evaluationId: string;
+  model: string;
+  triggerKind: SkillRegistryRetestTrigger;
+  score: number | null;
+  activationRate: number | null;
+  previousEvaluationId: string | null;
+  previousScore: number | null;
+  previousActivationRate: number | null;
+  scoreDelta: number | null;
+  activationDelta: number | null;
+  regressionStatus: SkillRegressionStatus;
+  regressionReason: string | null;
+  createdAt: number;
+}
+
+type SkillRegistryEvalHistoryRow = {
+  id: string;
+  workspace_id: string;
+  registry_id: string;
+  slug: string;
+  skill_version: number;
+  evaluation_id: string;
+  model: string;
+  trigger_kind: string;
+  score: number | null;
+  activation_rate: number | null;
+  previous_evaluation_id: string | null;
+  previous_score: number | null;
+  previous_activation_rate: number | null;
+  score_delta: number | null;
+  activation_delta: number | null;
+  regression_status: string;
+  regression_reason: string | null;
+  created_at: number;
 };
 
 export interface CreateSkillRegistryInput extends SkillRegistryInput {
@@ -155,6 +228,143 @@ export function updateSkillRegistryMetrics(
   return getSkillRegistryEntry(id);
 }
 
+export function updateSkillRegistryRegression(
+  id: string,
+  input: {
+    evaluationId: string;
+    regressionStatus: SkillRegressionStatus;
+    regressionReason: string | null;
+    scoreDelta: number | null;
+    activationDelta: number | null;
+  },
+): SkillRegistryEntry | undefined {
+  if (!getSkillRegistryEntry(id)) return undefined;
+  db.prepare(
+    `UPDATE skill_registry
+     SET regression_status = ?,
+         last_regression_at = ?,
+         regression_reason = ?,
+         regression_score_delta = ?,
+         regression_activation_delta = ?,
+         last_evaluation_id = ?,
+         updated_at = ?
+     WHERE id = ?`,
+  ).run(
+    input.regressionStatus,
+    input.regressionStatus === "regression" ? Date.now() : null,
+    input.regressionReason,
+    input.scoreDelta,
+    input.activationDelta,
+    input.evaluationId,
+    Date.now(),
+    id,
+  );
+  return getSkillRegistryEntry(id);
+}
+
+export function recordSkillRegistryEvalHistory(input: {
+  workspaceId: string;
+  registryId: string;
+  slug: string;
+  skillVersion: number;
+  evaluationId: string;
+  model: string;
+  triggerKind: SkillRegistryRetestTrigger;
+  score: number | null;
+  activationRate: number | null;
+  previousEvaluationId: string | null;
+  previousScore: number | null;
+  previousActivationRate: number | null;
+  scoreDelta: number | null;
+  activationDelta: number | null;
+  regressionStatus: SkillRegressionStatus;
+  regressionReason: string | null;
+}): SkillRegistryEvalHistoryEntry {
+  const id = randomUUID();
+  const createdAt = Date.now();
+  db.prepare(
+    `INSERT INTO skill_registry_eval_history
+     (id, workspace_id, registry_id, slug, skill_version, evaluation_id, model, trigger_kind,
+      score, activation_rate, previous_evaluation_id, previous_score, previous_activation_rate,
+      score_delta, activation_delta, regression_status, regression_reason, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.workspaceId,
+    input.registryId,
+    input.slug,
+    input.skillVersion,
+    input.evaluationId,
+    input.model,
+    input.triggerKind,
+    input.score,
+    input.activationRate,
+    input.previousEvaluationId,
+    input.previousScore,
+    input.previousActivationRate,
+    input.scoreDelta,
+    input.activationDelta,
+    input.regressionStatus,
+    input.regressionReason,
+    createdAt,
+  );
+  return getSkillRegistryEvalHistoryById(id)!;
+}
+
+export function getLatestSkillRegistryEvalHistory(input: {
+  workspaceId: string;
+  slug: string;
+  excludeEvaluationId?: string;
+}): SkillRegistryEvalHistoryEntry | undefined {
+  const row = input.excludeEvaluationId
+    ? db.prepare(
+        `SELECT * FROM skill_registry_eval_history
+         WHERE workspace_id = ? AND slug = ? AND evaluation_id != ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      ).get(input.workspaceId, input.slug, input.excludeEvaluationId)
+    : db.prepare(
+        `SELECT * FROM skill_registry_eval_history
+         WHERE workspace_id = ? AND slug = ?
+         ORDER BY created_at DESC
+         LIMIT 1`,
+      ).get(input.workspaceId, input.slug);
+  return row ? mapSkillRegistryEvalHistoryRow(row as SkillRegistryEvalHistoryRow) : undefined;
+}
+
+export function getSkillRegistryEvalHistoryById(id: string): SkillRegistryEvalHistoryEntry | undefined {
+  const row = db.prepare("SELECT * FROM skill_registry_eval_history WHERE id = ?").get(id) as SkillRegistryEvalHistoryRow | undefined;
+  return row ? mapSkillRegistryEvalHistoryRow(row) : undefined;
+}
+
+// G 卡：回归/漂移历史时间线只读查询。按 workspace 必传；slug/registryId 可选筛选；
+// limit 默认 200，封顶 1000，避免大窗口拉爆 D 域时间线渲染。
+export function listSkillRegistryEvalHistory(input: {
+  workspaceId: string;
+  slug?: string;
+  registryId?: string;
+  limit?: number;
+}): SkillRegistryEvalHistoryEntry[] {
+  const limit = Math.max(1, Math.min(1000, Math.floor(input.limit ?? 200)));
+  const conditions: string[] = ["workspace_id = ?"];
+  const params: (string | number)[] = [input.workspaceId];
+  if (input.slug) {
+    conditions.push("slug = ?");
+    params.push(input.slug);
+  }
+  if (input.registryId) {
+    conditions.push("registry_id = ?");
+    params.push(input.registryId);
+  }
+  const rows = db.prepare(
+    `SELECT * FROM skill_registry_eval_history
+     WHERE ${conditions.join(" AND ")}
+     ORDER BY created_at DESC
+     LIMIT ?`,
+  ).all(...params, limit);
+  return (rows as SkillRegistryEvalHistoryRow[]).map(mapSkillRegistryEvalHistoryRow);
+}
+
 export function incrementSkillRegistryUsage(id: string, by = 1): SkillRegistryEntry | undefined {
   if (!getSkillRegistryEntry(id)) return undefined;
   db.prepare(
@@ -236,9 +446,38 @@ function mapSkillRegistryRow(row: SkillRegistryRow): SkillRegistryEntry {
     prodActivationRate: row.prod_injected_count > 0
       ? row.prod_activated_count / row.prod_injected_count
       : null,
+    regressionStatus: normalizeSkillRegressionStatus(row.regression_status),
+    lastRegressionAt: row.last_regression_at,
+    regressionReason: row.regression_reason,
+    regressionScoreDelta: row.regression_score_delta,
+    regressionActivationDelta: row.regression_activation_delta,
+    lastEvaluationId: row.last_evaluation_id,
     originSessionId: row.origin_session_id,
     createdAt: row.created_at,
     updatedAt: row.updated_at,
+  };
+}
+
+function mapSkillRegistryEvalHistoryRow(row: SkillRegistryEvalHistoryRow): SkillRegistryEvalHistoryEntry {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    registryId: row.registry_id,
+    slug: row.slug,
+    skillVersion: row.skill_version,
+    evaluationId: row.evaluation_id,
+    model: row.model,
+    triggerKind: normalizeSkillRegistryRetestTrigger(row.trigger_kind),
+    score: row.score,
+    activationRate: row.activation_rate,
+    previousEvaluationId: row.previous_evaluation_id,
+    previousScore: row.previous_score,
+    previousActivationRate: row.previous_activation_rate,
+    scoreDelta: row.score_delta,
+    activationDelta: row.activation_delta,
+    regressionStatus: normalizeSkillRegressionStatus(row.regression_status),
+    regressionReason: row.regression_reason,
+    createdAt: row.created_at,
   };
 }
 
@@ -250,4 +489,13 @@ function normalizeSkillStatus(value: string): SkillStatus {
 function normalizeSkillSource(value: string): SkillSource {
   if (value === "manual" || value === "distilled" || value === "curated" || value === "imported") return value;
   return "manual";
+}
+
+function normalizeSkillRegressionStatus(value: string): SkillRegressionStatus {
+  return value === "regression" ? "regression" : "none";
+}
+
+function normalizeSkillRegistryRetestTrigger(value: string): SkillRegistryRetestTrigger {
+  if (value === "manual_evaluate" || value === "version_bump" || value === "model_upgrade" || value === "retest_all_active") return value;
+  return "manual_evaluate";
 }

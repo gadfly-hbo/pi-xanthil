@@ -20,6 +20,7 @@ import type {
   ToolEvalCaseTemplateList,
   Hook,
   HookTriggerRecord,
+  XanCommand,
 } from "@/types";
 
 // 插件管理：pi 已加载扩展/包清单条目（模块本地类型，仅本域消费故不上提接缝层）。
@@ -116,4 +117,15 @@ export const dataApi = {
     const qs = q.toString();
     return fetch(`/api/hooks/triggers${qs ? `?${qs}` : ""}`).then(json<HookTriggerRecord[]>);
   },
+
+  // ---- 计算工具 · command 管理（commands.json 注册表，由 server expand 真源） ----
+  // 全量覆盖式 PUT；server 端 coerceCommand 会丢弃非法/重复项（id/name 唯一）。
+  listCommands: () => fetch("/api/commands").then(json<XanCommand[]>),
+
+  saveCommands: (commands: XanCommand[]) =>
+    fetch("/api/commands", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(commands),
+    }).then(json<XanCommand[]>),
 };

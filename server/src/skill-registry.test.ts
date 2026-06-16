@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync } from "node:fs";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { createServer, type Server } from "node:http";
 import type { AddressInfo } from "node:net";
 import { tmpdir } from "node:os";
@@ -28,11 +28,26 @@ interface SkillRegistryResponse {
     name: string;
     status: "draft" | "candidate" | "active" | "archived";
     version: number;
+    source: "manual" | "distilled" | "curated" | "imported";
     score: number | null;
     activationRate: number | null;
     usageCount: number;
   };
   skillPath: string;
+}
+
+interface SkillPackageResponse {
+  format: "pi-xanthil.skill-package";
+  formatVersion: 1;
+  registry: {
+    slug: string;
+    name: string;
+    version: number;
+    source: string;
+    status: string;
+    originSessionId: string | null;
+  };
+  files: Array<{ path: string; content: string }>;
 }
 
 async function startEngineRouter(): Promise<TestServer> {
@@ -185,6 +200,109 @@ test("skill registry requires confirmed review before activating distilled or cu
       body: JSON.stringify({ status: "active", confirmed: true }),
     });
     assert.equal(activated.status, "active");
+  } finally {
+    await server.close();
+  }
+});
+
+test("skill registry exports SKILL.md with subresources and imports as candidate", async () => {
+  const server = await startEngineRouter();
+  try {
+    const sourceWorkspace = db.createWorkspace("skill package source");
+    const targetWorkspace = db.createWorkspace("skill package target");
+    const created = await json<SkillRegistryResponse>(server.baseUrl, `/api/workspaces/${sourceWorkspace.id}/skill-registry`, {
+      method: "POST",
+      body: JSON.stringify({
+        slug: "portable-skill",
+        source: "manual",
+        status: "active",
+        content: [
+          "---",
+          "name: Portable Skill",
+          "description: Carries resource files across workspaces.",
+          "---",
+          "",
+          "Use references/checklist.md before answering.",
+          "",
+        ].join("\n"),
+      }),
+    });
+    const sourceSkillRoot = join(sourceWorkspace.rootPath, ".pi", "skills", "portable-skill");
+    mkdirSync(join(sourceSkillRoot, "references"), { recursive: true });
+    writeFileSync(join(sourceSkillRoot, "references", "checklist.md"), "- Check evidence\n- Keep scope narrow\n", "utf8");
+
+    const exported = await json<SkillPackageResponse>(server.baseUrl, `/api/skill-registry/${created.entry.id}/export`, { method: "POST" });
+    assert.equal(exported.format, "pi-xanthil.skill-package");
+    assert.equal(exported.registry.slug, "portable-skill");
+    assert.ok(exported.files.some((file) => file.path === "SKILL.md" && file.content.includes("references/checklist.md")));
+    assert.ok(exported.files.some((file) => file.path === "references/checklist.md" && file.content.includes("Check evidence")));
+
+    const imported = await json<SkillRegistryResponse & { requestedSlug: string; writtenFiles: string[] }>(
+      server.baseUrl,
+      `/api/workspaces/${targetWorkspace.id}/skill-registry/import`,
+      { method: "POST", body: JSON.stringify(exported) },
+    );
+    assert.equal(imported.requestedSlug, "portable-skill");
+    assert.equal(imported.entry.workspaceId, targetWorkspace.id);
+    assert.equal(imported.entry.slug, "portable-skill");
+    assert.equal(imported.entry.status, "candidate");
+    assert.equal(imported.entry.source, "imported");
+    assert.match(readFileSync(imported.skillPath, "utf8"), /Carries resource files/);
+    assert.equal(
+      readFileSync(join(targetWorkspace.rootPath, ".pi", "skills", "portable-skill", "references", "checklist.md"), "utf8"),
+      "- Check evidence\n- Keep scope narrow\n",
+    );
+    assert.equal(readFileSync(join(targetWorkspace.rootPath, ".pi", "skill-versions", "portable-skill", "v1.md"), "utf8"), readFileSync(imported.skillPath, "utf8"));
+  } finally {
+    await server.close();
+  }
+});
+
+test("skill registry import rejects slug and file path traversal", async () => {
+  const server = await startEngineRouter();
+  try {
+    const workspace = db.createWorkspace("skill package traversal");
+    const basePackage: SkillPackageResponse = {
+      format: "pi-xanthil.skill-package",
+      formatVersion: 1,
+      registry: {
+        slug: "safe-skill",
+        name: "Safe Skill",
+        version: 1,
+        source: "manual",
+        status: "active",
+        originSessionId: null,
+      },
+      files: [
+        {
+          path: "SKILL.md",
+          content: [
+            "---",
+            "name: Safe Skill",
+            "description: Safe import package.",
+            "---",
+            "",
+            "Stay inside the skill directory.",
+            "",
+          ].join("\n"),
+        },
+      ],
+    };
+
+    const badSlug = await jsonAllowError<{ error: string }>(server.baseUrl, `/api/workspaces/${workspace.id}/skill-registry/import`, {
+      method: "POST",
+      body: JSON.stringify({ ...basePackage, registry: { ...basePackage.registry, slug: "../escape" } }),
+    });
+    assert.equal(badSlug.status, 400);
+    assert.match(badSlug.body.error, /valid slug/);
+
+    const badPath = await jsonAllowError<{ error: string }>(server.baseUrl, `/api/workspaces/${workspace.id}/skill-registry/import`, {
+      method: "POST",
+      body: JSON.stringify({ ...basePackage, files: [...basePackage.files, { path: "../escape.txt", content: "no" }] }),
+    });
+    assert.equal(badPath.status, 400);
+    assert.match(badPath.body.error, /invalid package file path/);
+    assert.equal(existsSync(join(workspace.rootPath, ".pi", "escape.txt")), false);
   } finally {
     await server.close();
   }

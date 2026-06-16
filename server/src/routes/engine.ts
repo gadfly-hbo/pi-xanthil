@@ -2,7 +2,7 @@ import express, { Router } from "express";
 import multer from "multer";
 import type { WebSocket } from "ws";
 import { dirname, resolve, join, sep } from "node:path";
-import { rmSync, statSync, mkdirSync, readFileSync, existsSync, writeFileSync } from "node:fs";
+import { rmSync, statSync, mkdirSync, readFileSync, existsSync, writeFileSync, readdirSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import {
@@ -13,7 +13,7 @@ import {
   getStaleNodes, markNodesStale, listWorkspacePaths, addWorkspacePath, removeWorkspacePath,
   addFlowMessage, getFileAnalysesByPathIds, createFlowRun, finishFlowRun,
   recordMemoryInjectionUsage, buildHypothesisLibraryContext, getAnaxGateConfig, upsertAnaxGateConfig,
-  upsertHypothesisFromArchive, createChangeProposal, saveSkillEvaluation,
+  upsertHypothesisFromArchive, createChangeProposal,
   listSessions, listMessages, getSessionRuntime,
 } from "../db.ts";
 import {
@@ -23,8 +23,8 @@ import {
   incrementSkillRegistryUsage,
   recordSkillActivationForRun,
   listSkillRegistryEntries,
+  listSkillRegistryEvalHistory,
   updateSkillRegistryEntry,
-  updateSkillRegistryMetrics,
 } from "../db/engine.ts";
 import { readTree, readFlowFile, writeFlowFile, copyLocalFolderIntoFlow, copyFlowSnapshot, inferWorkflow, moveAllFiles } from "../flow-fs.ts";
 import { normalizeWorkflowModels, normalizeWorkflowSkills, type WorkflowLike } from "../workflow-config.ts";
@@ -48,11 +48,17 @@ import { moveManagedDirToTrash } from "../trash.ts";
 import { listSkills } from "../skills.ts";
 import { buildSkillDistillationPrompt, buildSkillRevisionPrompt, extractSkillMarkdown, parseSkillName, SKILL_DISTILL_SYSTEM_PROMPT, SKILL_REVISE_SYSTEM_PROMPT, slugifySkillName } from "../skill-distillation.ts";
 import { parseSkillEvaluationRunRequest } from "../skill-evaluation-api.ts";
-import { runSkillEvaluation, type SkillEvaluationRunSummary } from "../skill-evaluation-runner.ts";
 import { autoTriggerCuration } from "../skill-curator.ts";
-import { rankSkillSimilarity } from "../skill-retrieval.ts";
-import { FAVORITES_ROOT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
-import type { SkillRegistryConflict, SkillRegistryConflictsResult, SkillRegistryEntry, SkillSource, SkillStatus } from "../types.ts";
+import { retrieveSkills, rankSkillSimilarity } from "../skill-retrieval.ts";
+import { analyzeSkillCoverageGaps, type SkillCoverageGapCluster, type SkillCoverageTask } from "../skill-coverage-gap.ts";
+import { expandCommand } from "../command-expand.ts";
+import { COMMANDS_CONFIG_PATH, FAVORITES_ROOT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
+import type { SkillRegistryConflict, SkillRegistryConflictsResult, SkillRegistryEntry, SkillSource, SkillStatus, XanCommand, XanCommandParam, XanCommandParamType } from "../types.ts";
+import {
+  maybeRunSkillVersionRetest,
+  parseSkillRegressionThresholds,
+  runSkillRegistryRetest,
+} from "../skill-regression.ts";
 
 /**
  * 【Agent-E · 智能引擎域】HTTP 路由 slot —— owner: codex(GPT-5.5)
@@ -352,6 +358,175 @@ engineRouter.get("/api/flows/:id/skills", (req, res) => {
   res.json(listSkills(flow.folderPath));
 });
 
+const COMMAND_KEYS = new Set(["id", "name", "enabled", "description", "argumentHint", "template", "params", "skillSlugs", "source"]);
+const COMMAND_PARAM_KEYS = new Set(["key", "label", "required", "type", "options", "source"]);
+const COMMAND_PARAM_TYPES = new Set<XanCommandParamType>(["text", "select", "file"]);
+const SAFE_COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+function coerceCommand(input: unknown): XanCommand | null {
+  const o = toRecord(input);
+  if (!onlyKnownKeys(o, COMMAND_KEYS)) return null;
+
+  const id = asCommandString(o.id);
+  const name = asCommandString(o.name);
+  const template = asPromptTemplate(o.template);
+  if (!id || !name || !SAFE_COMMAND_NAME.test(name) || !template) return null;
+  if (o.source !== "custom") return null;
+
+  let params: XanCommandParam[] | undefined;
+  if (o.params !== undefined) {
+    if (!Array.isArray(o.params)) return null;
+    params = [];
+    const seen = new Set<string>();
+    for (const rawParam of o.params) {
+      const param = coerceCommandParam(rawParam);
+      if (!param || seen.has(param.key)) return null;
+      seen.add(param.key);
+      params.push(param);
+    }
+  }
+
+  let skillSlugs: string[] | undefined;
+  if (o.skillSlugs !== undefined) {
+    if (!Array.isArray(o.skillSlugs)) return null;
+    skillSlugs = [];
+    for (const rawSlug of o.skillSlugs) {
+      const slug = asCommandString(rawSlug);
+      if (!slug || !SAFE_COMMAND_NAME.test(slug)) return null;
+      if (!skillSlugs.includes(slug)) skillSlugs.push(slug);
+    }
+  }
+
+  const description = asOptionalString(o.description);
+  const argumentHint = asOptionalString(o.argumentHint);
+  return {
+    id,
+    name,
+    enabled: o.enabled !== false,
+    ...(description ? { description } : {}),
+    ...(argumentHint ? { argumentHint } : {}),
+    template,
+    ...(params && params.length > 0 ? { params } : {}),
+    ...(skillSlugs && skillSlugs.length > 0 ? { skillSlugs } : {}),
+    source: "custom",
+  };
+}
+
+function coerceCommandParam(input: unknown): XanCommandParam | null {
+  const o = toRecord(input);
+  if (!onlyKnownKeys(o, COMMAND_PARAM_KEYS)) return null;
+  const key = asCommandString(o.key);
+  const label = asOptionalString(o.label);
+  if (!key || !SAFE_COMMAND_NAME.test(key) || !label) return null;
+
+  const type = o.type === undefined ? undefined : o.type;
+  if (type !== undefined && (!isString(type) || !COMMAND_PARAM_TYPES.has(type as XanCommandParamType))) return null;
+
+  let options: string[] | undefined;
+  if (o.options !== undefined) {
+    if (!Array.isArray(o.options)) return null;
+    options = o.options.map((item) => String(item ?? "").trim()).filter(Boolean);
+  }
+  if (type === "select" && (!options || options.length === 0)) return null;
+
+  const source = o.source === undefined ? undefined : o.source;
+  if (source !== undefined && source !== "clean_data") return null;
+
+  return {
+    key,
+    label,
+    ...(o.required === true ? { required: true } : {}),
+    ...(type ? { type: type as XanCommandParamType } : {}),
+    ...(options && options.length > 0 ? { options } : {}),
+    ...(source ? { source } : {}),
+  };
+}
+
+export function readCommandsFile(): XanCommand[] {
+  if (!existsSync(COMMANDS_CONFIG_PATH)) return [];
+  try {
+    const raw = readFileSync(COMMANDS_CONFIG_PATH, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    const arr: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { commands?: unknown })?.commands)
+        ? (parsed as { commands: unknown[] }).commands
+        : [];
+    return arr.map((it) => coerceCommand(it)).filter((cmd): cmd is XanCommand => cmd !== null);
+  } catch {
+    return [];
+  }
+}
+
+function writeCommandsFile(commands: XanCommand[]): void {
+  mkdirSync(dirname(COMMANDS_CONFIG_PATH), { recursive: true });
+  writeFileSync(COMMANDS_CONFIG_PATH, JSON.stringify(commands, null, 2), "utf8");
+}
+
+function toRecord(value: unknown): Record<string, unknown> {
+  return typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
+}
+
+function onlyKnownKeys(record: Record<string, unknown>, keys: Set<string>): boolean {
+  return Object.keys(record).every((key) => keys.has(key));
+}
+
+function isString(value: unknown): value is string {
+  return typeof value === "string";
+}
+
+function asCommandString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function asOptionalString(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function asPromptTemplate(value: unknown): string {
+  return typeof value === "string" ? value.trim() : "";
+}
+
+function isLocalRequest(req: express.Request): boolean {
+  const addresses = [req.ip, req.socket.remoteAddress].filter((value): value is string => typeof value === "string");
+  return addresses.some((address) => address === "127.0.0.1" || address === "::1" || address === "::ffff:127.0.0.1");
+}
+
+engineRouter.get("/api/commands", (_req, res) => {
+  try {
+    res.json(readCommandsFile());
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// 本地单用户工具端点；服务当前仅监听 localhost，若未来开放网络绑定必须先加 auth。
+engineRouter.put("/api/commands", (req, res) => {
+  try {
+    if (!isLocalRequest(req)) return res.status(403).json({ error: "localhost required" });
+    const body = req.body as unknown;
+    const list: unknown[] = Array.isArray(body)
+      ? body
+      : Array.isArray((body as { commands?: unknown })?.commands)
+        ? (body as { commands: unknown[] }).commands
+        : [];
+    const cleaned: XanCommand[] = [];
+    const seen = new Set<string>();
+    for (const it of list) {
+      const command = coerceCommand(it);
+      if (!command) continue;
+      if (seen.has(command.id) || seen.has(command.name)) continue;
+      seen.add(command.id);
+      seen.add(command.name);
+      cleaned.push(command);
+    }
+    writeCommandsFile(cleaned);
+    res.json(cleaned);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 // ---- skill registry ----
 engineRouter.get("/api/workspaces/:id/skill-registry", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
@@ -390,65 +565,19 @@ engineRouter.post("/api/workspaces/:id/skill-auto-distill", async (req, res) => 
       results.push({ sessionId: session.id, title: session.title, status: "skipped", reason: "empty_transcript" });
       continue;
     }
-    try {
-      const rawOutput = await runPiPrompt({
-        workspaceRoot: workspace.rootPath,
-        text: buildSkillDistillationPrompt(transcript),
-        model: parsed.value.model,
-        systemPrompt: SKILL_DISTILL_SYSTEM_PROMPT,
-        timeoutMs: parsed.value.timeoutMs,
-        onEvent: (event) => trackUsageEvent({
-          workspaceId: workspace.id,
-          targetKind: "session",
-          targetId: session.id,
-          title: `自动沉淀 Skill：${session.title}`,
-        }, event),
-      });
-      const content = extractSkillMarkdown(rawOutput);
-      const name = parseSkillName(content) ?? "";
-      const description = parseSkillDescription(content);
-      if (!name || !description) {
-        results.push({ sessionId: session.id, title: session.title, status: "failed", error: "distilled SKILL.md missing name or description frontmatter" });
-        continue;
-      }
-      const slug = sanitizeSkillSlug(slugifySkillName(name));
-      if (!slug) {
-        results.push({ sessionId: session.id, title: session.title, status: "failed", error: "distilled skill name cannot form a valid registry slug" });
-        continue;
-      }
-      const duplicate = findAutoDistillDuplicate(workspace.id, workspace.rootPath, slug, content, parsed.value.duplicateThreshold);
-      if (duplicate) {
-        results.push({
-          sessionId: session.id,
-          title: session.title,
-          status: "skipped",
-          reason: duplicate.reason,
-          slug,
-          name,
-          similarSkill: duplicate.similarSkill,
-        });
-        continue;
-      }
-      if (parsed.value.dryRun) {
-        results.push({ sessionId: session.id, title: session.title, status: "dry_run", slug, name });
-        continue;
-      }
-      const skillPath = registrySkillPath(workspace.rootPath, slug);
-      mkdirSync(dirname(skillPath), { recursive: true });
-      const normalizedContent = content.endsWith("\n") ? content : `${content}\n`;
-      writeFileSync(skillPath, normalizedContent, "utf8");
-      const entry = createSkillRegistryEntry(workspace.id, {
-        slug,
-        name,
-        status: "candidate",
-        source: "distilled",
-        originSessionId: session.id,
-      });
-      writeVersionSnapshot(workspace.rootPath, entry.slug, entry.version, normalizedContent);
-      results.push({ sessionId: session.id, title: session.title, status: "created", slug, name, entry, skillPath });
-    } catch (err) {
-      results.push({ sessionId: session.id, title: session.title, status: "failed", error: String(err) });
-    }
+    const result = await distillSkillCandidate({
+      workspaceId: workspace.id,
+      workspaceRoot: workspace.rootPath,
+      transcript,
+      model: parsed.value.model,
+      timeoutMs: parsed.value.timeoutMs,
+      duplicateThreshold: parsed.value.duplicateThreshold,
+      dryRun: parsed.value.dryRun,
+      originSessionId: session.id,
+      usageTargetId: session.id,
+      usageTitle: `自动沉淀 Skill：${session.title}`,
+    });
+    results.push({ sessionId: session.id, title: session.title, ...result });
   }
 
   res.json({
@@ -463,6 +592,52 @@ engineRouter.post("/api/workspaces/:id/skill-auto-distill", async (req, res) => 
     failed: results.filter((item) => item.status === "failed").length,
     results,
   });
+});
+
+engineRouter.post("/api/workspaces/:id/skill-coverage-gaps", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseSkillCoverageGapBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const tasks = collectSkillCoverageTasks(workspace.id, parsed.value.since, parsed.value.limit);
+  const clusters = analyzeSkillCoverageGaps({
+    tasks,
+    retrieve: (query, topK) => retrieveSkills(query, workspace.rootPath, topK),
+    topK: parsed.value.topK,
+    lowScoreThreshold: parsed.value.lowScoreThreshold,
+    minClusterSize: parsed.value.minClusterSize,
+    clusterSimilarityThreshold: parsed.value.clusterSimilarityThreshold,
+    maxClusters: parsed.value.maxClusters,
+  });
+  res.json({
+    workspaceId: workspace.id,
+    since: parsed.value.since,
+    limit: parsed.value.limit,
+    scanned: tasks.length,
+    lowScoreThreshold: parsed.value.lowScoreThreshold,
+    minClusterSize: parsed.value.minClusterSize,
+    clusters,
+  });
+});
+
+engineRouter.post("/api/workspaces/:id/skill-coverage-gaps/distill", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseSkillCoverageGapDistillBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const result = await distillSkillCandidate({
+    workspaceId: workspace.id,
+    workspaceRoot: workspace.rootPath,
+    transcript: buildCoverageGapDistillTranscript(parsed.value.cluster),
+    model: parsed.value.model,
+    timeoutMs: parsed.value.timeoutMs,
+    duplicateThreshold: parsed.value.duplicateThreshold,
+    dryRun: parsed.value.dryRun,
+    originSessionId: parsed.value.cluster.tasks[0]?.sessionId ?? null,
+    usageTargetId: parsed.value.cluster.id,
+    usageTitle: `覆盖缺口蒸馏：${parsed.value.cluster.title}`,
+  });
+  res.json({ workspaceId: workspace.id, clusterId: parsed.value.cluster.id, dryRun: parsed.value.dryRun, result });
 });
 
 // 方式2：AI 改写——基于用户「修改说明」对给定 SKILL.md 内容做最小修改，返回改写结果供预览，
@@ -491,7 +666,7 @@ engineRouter.post("/api/workspaces/:id/skill-revise", async (req, res) => {
   }
 });
 
-engineRouter.post("/api/workspaces/:id/skill-registry", (req, res) => {
+engineRouter.post("/api/workspaces/:id/skill-registry", async (req, res) => {
   const workspace = getWorkspace(req.params.id);
   if (!workspace) return res.status(404).json({ error: "workspace not found" });
   const parsed = parseSkillRegistryCreateBody(req.body);
@@ -511,7 +686,63 @@ engineRouter.post("/api/workspaces/:id/skill-registry", (req, res) => {
     });
     // P1-a：为该版本留内容快照，使回滚真可用。
     writeVersionSnapshot(workspace.rootPath, entry.slug, entry.version, parsed.value.content);
-    res.json({ entry, skillPath });
+    let retest: Awaited<ReturnType<typeof maybeRunSkillVersionRetest>> | null = null;
+    let retestError: string | null = null;
+    if (entry.status === "active" && entry.supersedesId) {
+      try {
+        retest = await maybeRunSkillVersionRetest({
+          workspaceRoot: workspace.rootPath,
+          entry,
+          thresholds: parseSkillRegressionThresholds(req.body),
+        });
+      } catch (err) {
+        retestError = String(err);
+      }
+    }
+    res.json({ entry: retest?.entry ?? entry, skillPath, retest, retestError });
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.post("/api/skill-registry/:id/export", (req, res) => {
+  const entry = getSkillRegistryEntry(req.params.id);
+  if (!entry) return res.status(404).json({ error: "skill not found" });
+  if (entry.status === "archived") return res.status(400).json({ error: "archived skill cannot be exported" });
+  const workspace = getWorkspace(entry.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  try {
+    res.json(buildSkillPackage(workspace.rootPath, entry));
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.post("/api/workspaces/:id/skill-registry/import", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseSkillPackage(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const requestedSlug = parsed.value.registry.slug;
+    const slug = uniqueImportedSkillSlug(workspace.id, workspace.rootPath, requestedSlug);
+    const skillRoot = registrySkillRoot(workspace.rootPath, slug);
+    const writtenFiles: string[] = [];
+    for (const file of parsed.value.files) {
+      const targetPath = resolveSkillPackageFilePath(skillRoot, file.path);
+      mkdirSync(dirname(targetPath), { recursive: true });
+      writeFileSync(targetPath, file.content, "utf8");
+      writtenFiles.push(targetPath);
+    }
+    const content = readFileSync(resolveSkillPackageFilePath(skillRoot, "SKILL.md"), "utf8");
+    const entry = createSkillRegistryEntry(workspace.id, {
+      slug,
+      name: parsed.value.registry.name,
+      status: "candidate",
+      source: "imported",
+    });
+    writeVersionSnapshot(workspace.rootPath, entry.slug, entry.version, content);
+    res.json({ entry, skillPath: registrySkillPath(workspace.rootPath, entry.slug), requestedSlug, writtenFiles });
   } catch (err) {
     res.status(400).json({ error: String(err) });
   }
@@ -555,7 +786,7 @@ engineRouter.get("/api/skill-registry/:id/content", (req, res) => {
 });
 
 // P1-a：回滚到某历史版本——以该版本快照内容创建新版本并写回 SKILL.md（不删旧行/旧快照）。
-engineRouter.post("/api/skill-registry/:id/rollback", (req, res) => {
+engineRouter.post("/api/skill-registry/:id/rollback", async (req, res) => {
   const target = getSkillRegistryEntry(req.params.id);
   if (!target) return res.status(404).json({ error: "skill not found" });
   const workspace = getWorkspace(target.workspaceId);
@@ -575,7 +806,18 @@ engineRouter.post("/api/skill-registry/:id/rollback", (req, res) => {
       originSessionId: target.originSessionId,
     });
     writeVersionSnapshot(workspace.rootPath, entry.slug, entry.version, content);
-    res.json(entry);
+    let retest: Awaited<ReturnType<typeof maybeRunSkillVersionRetest>> | null = null;
+    let retestError: string | null = null;
+    try {
+      retest = await maybeRunSkillVersionRetest({
+        workspaceRoot: workspace.rootPath,
+        entry,
+        thresholds: parseSkillRegressionThresholds(req.body),
+      });
+    } catch (err) {
+      retestError = String(err);
+    }
+    res.json({ entry: retest?.entry ?? entry, retest, retestError });
   } catch (err) {
     res.status(400).json({ error: String(err) });
   }
@@ -587,44 +829,86 @@ engineRouter.post("/api/skill-registry/:id/evaluate", async (req, res) => {
   if (entry.status === "archived") return res.status(400).json({ error: "archived skill cannot be evaluated" });
   const workspace = getWorkspace(entry.workspaceId);
   if (!workspace) return res.status(404).json({ error: "workspace not found" });
-  const skillPath = registrySkillPath(workspace.rootPath, entry.slug);
   const parsed = parseSkillEvaluationRunRequest({
     ...((typeof req.body === "object" && req.body !== null ? req.body : {}) as Record<string, unknown>),
-    variants: [
-      { id: "baseline", label: "Baseline", skillPaths: [] },
-      { id: entry.id, label: `${entry.name} v${String(entry.version)}`, skillPaths: [skillPath] },
-    ],
+    variants: [{ id: "registry", label: "Registry", skillPaths: [] }],
   });
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
   try {
-    const summary = await runSkillEvaluation({
+    const result = await runSkillRegistryRetest({
       workspaceRoot: workspace.rootPath,
-      workspaceId: workspace.id,
-      evaluationId: randomUUID(),
+      entry,
       model: parsed.value.model,
-      variants: parsed.value.variants,
       tasks: parsed.value.tasks,
       repeat: parsed.value.repeat,
       judgeRepeat: parsed.value.judgeRepeat,
       contextPrefix: parsed.value.contextPrefix,
       dataContextPaths: parsed.value.dataContextPaths,
+      triggerKind: "manual_evaluate",
+      thresholds: parseSkillRegressionThresholds(req.body),
     });
-    const evaluation = saveSkillEvaluation(
-      workspace.id,
-      parsed.value.model,
-      parsed.value.repeat,
-      parsed.value.variants,
-      parsed.value.tasks,
-      parsed.value.contextPrefix,
-      summary,
-    );
-    const metrics = skillRegistryMetricsFromEvaluation(entry.id, summary);
-    const updated = updateSkillRegistryMetrics(entry.id, metrics);
-    res.json({ evaluation, entry: updated, metrics });
-    autoTriggerCuration({ workspaceRoot: workspace.rootPath, workspaceId: workspace.id, model: parsed.value.model, evaluation });
+    res.json(result);
+    autoTriggerCuration({ workspaceRoot: workspace.rootPath, workspaceId: workspace.id, model: parsed.value.model, evaluation: result.evaluation });
   } catch (err) {
     res.status(400).json({ error: String(err) });
   }
+});
+
+engineRouter.post("/api/workspaces/:id/skill-registry/retest-active", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseSkillEvaluationRunRequest({
+    ...((typeof req.body === "object" && req.body !== null ? req.body : {}) as Record<string, unknown>),
+    variants: [{ id: "registry", label: "Registry", skillPaths: [] }],
+  });
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const triggerKind = typeof req.body === "object"
+    && req.body !== null
+    && (req.body as { triggerKind?: unknown }).triggerKind === "model_upgrade"
+    ? "model_upgrade"
+    : "retest_all_active";
+  const thresholds = parseSkillRegressionThresholds(req.body);
+  const results: Array<{ skillId: string; slug: string; status: "success"; result: Awaited<ReturnType<typeof runSkillRegistryRetest>> } | { skillId: string; slug: string; status: "failed"; error: string }> = [];
+  for (const entry of listSkillRegistryEntries(workspace.id, "active")) {
+    try {
+      const result = await runSkillRegistryRetest({
+        workspaceRoot: workspace.rootPath,
+        entry,
+        model: parsed.value.model,
+        tasks: parsed.value.tasks,
+        repeat: parsed.value.repeat,
+        judgeRepeat: parsed.value.judgeRepeat,
+        contextPrefix: parsed.value.contextPrefix,
+        dataContextPaths: parsed.value.dataContextPaths,
+        triggerKind,
+        thresholds,
+      });
+      results.push({ skillId: entry.id, slug: entry.slug, status: "success", result });
+    } catch (err) {
+      results.push({ skillId: entry.id, slug: entry.slug, status: "failed", error: String(err) });
+    }
+  }
+  res.json({
+    workspaceId: workspace.id,
+    triggerKind,
+    scanned: results.length,
+    succeeded: results.filter((item) => item.status === "success").length,
+    failed: results.filter((item) => item.status === "failed").length,
+    results,
+  });
+});
+
+// G 卡：回归/漂移历史时间线只读查询。消费 skill_registry_eval_history 真源；
+// 不重算回归、不触发评测、不暴露原始评测明细，仅返回时间序列点。
+engineRouter.get("/api/workspaces/:id/skill-registry/eval-history", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const slug = typeof req.query.slug === "string" && req.query.slug.trim() ? req.query.slug.trim() : undefined;
+  const registryId = typeof req.query.registryId === "string" && req.query.registryId.trim() ? req.query.registryId.trim() : undefined;
+  const limitRaw = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+  const limit = Number.isFinite(limitRaw) && (limitRaw as number) > 0 ? (limitRaw as number) : undefined;
+  const items = listSkillRegistryEvalHistory({ workspaceId: workspace.id, slug, registryId, limit });
+  res.json({ workspaceId: workspace.id, items });
 });
 
 type ParsedSkillAutoDistill =
@@ -646,6 +930,40 @@ type SkillAutoDistillSessionResult =
   | { sessionId: string; title: string; status: "dry_run"; slug: string; name: string }
   | { sessionId: string; title: string; status: "skipped"; reason: string; slug?: string; name?: string; similarSkill?: SkillRegistryConflict }
   | { sessionId: string; title: string; status: "failed"; error: string };
+
+type DistillCandidateResult =
+  | { status: "created"; slug: string; name: string; entry: SkillRegistryEntry; skillPath: string }
+  | { status: "dry_run"; slug: string; name: string }
+  | { status: "skipped"; reason: string; slug?: string; name?: string; similarSkill?: SkillRegistryConflict }
+  | { status: "failed"; error: string };
+
+type ParsedSkillCoverageGaps =
+  | {
+    ok: true;
+    value: {
+      since: number;
+      limit: number;
+      topK: number;
+      lowScoreThreshold: number;
+      minClusterSize: number;
+      clusterSimilarityThreshold: number;
+      maxClusters: number;
+    };
+  }
+  | { ok: false; error: string };
+
+type ParsedSkillCoverageGapDistill =
+  | {
+    ok: true;
+    value: {
+      cluster: SkillCoverageGapCluster;
+      model?: string;
+      dryRun: boolean;
+      timeoutMs: number;
+      duplicateThreshold: number;
+    };
+  }
+  | { ok: false; error: string };
 
 function parseSkillAutoDistillBody(body: unknown): ParsedSkillAutoDistill {
   const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
@@ -669,6 +987,48 @@ function parseSkillAutoDistillBody(body: unknown): ParsedSkillAutoDistill {
   return { ok: true, value: { since: sinceValue, limit, model, dryRun: raw.dryRun === true, timeoutMs, duplicateThreshold } };
 }
 
+function parseSkillCoverageGapBody(body: unknown): ParsedSkillCoverageGaps {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  const now = Date.now();
+  const defaultSince = now - 14 * 24 * 60 * 60 * 1000;
+  const sinceValue = parseSince(raw.since, defaultSince);
+  if (!Number.isFinite(sinceValue) || sinceValue < 0) return { ok: false, error: "since must be a timestamp or date string" };
+  const limit = raw.limit === undefined ? 20 : Number(raw.limit);
+  if (!Number.isInteger(limit) || limit < 1 || limit > 100) return { ok: false, error: "limit must be an integer between 1 and 100" };
+  const topK = raw.topK === undefined ? 3 : Number(raw.topK);
+  if (!Number.isInteger(topK) || topK < 1 || topK > 10) return { ok: false, error: "topK must be an integer between 1 and 10" };
+  const lowScoreThreshold = raw.lowScoreThreshold === undefined ? 1.0 : Number(raw.lowScoreThreshold);
+  if (!Number.isFinite(lowScoreThreshold) || lowScoreThreshold < 0) return { ok: false, error: "lowScoreThreshold must be non-negative" };
+  const minClusterSize = raw.minClusterSize === undefined ? 2 : Number(raw.minClusterSize);
+  if (!Number.isInteger(minClusterSize) || minClusterSize < 1 || minClusterSize > 10) return { ok: false, error: "minClusterSize must be an integer between 1 and 10" };
+  const clusterSimilarityThreshold = raw.clusterSimilarityThreshold === undefined ? 0.25 : Number(raw.clusterSimilarityThreshold);
+  if (!Number.isFinite(clusterSimilarityThreshold) || clusterSimilarityThreshold < 0 || clusterSimilarityThreshold > 1) {
+    return { ok: false, error: "clusterSimilarityThreshold must be between 0 and 1" };
+  }
+  const maxClusters = raw.maxClusters === undefined ? 10 : Number(raw.maxClusters);
+  if (!Number.isInteger(maxClusters) || maxClusters < 1 || maxClusters > 50) return { ok: false, error: "maxClusters must be an integer between 1 and 50" };
+  return { ok: true, value: { since: sinceValue, limit, topK, lowScoreThreshold, minClusterSize, clusterSimilarityThreshold, maxClusters } };
+}
+
+function parseSkillCoverageGapDistillBody(body: unknown): ParsedSkillCoverageGapDistill {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  const cluster = parseSkillCoverageGapCluster(raw.cluster);
+  if (!cluster) return { ok: false, error: "cluster is required" };
+  const timeoutMs = raw.timeoutMs === undefined ? 180_000 : Number(raw.timeoutMs);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 10_000 || timeoutMs > 600_000) {
+    return { ok: false, error: "timeoutMs must be an integer between 10000 and 600000" };
+  }
+  const duplicateThreshold = raw.duplicateThreshold === undefined ? 1.5 : Number(raw.duplicateThreshold);
+  if (!Number.isFinite(duplicateThreshold) || duplicateThreshold <= 0) return { ok: false, error: "duplicateThreshold must be positive" };
+  const model = String(raw.model ?? "").trim() || undefined;
+  return { ok: true, value: { cluster, model, dryRun: raw.dryRun === true, timeoutMs, duplicateThreshold } };
+}
+
+function parseSince(value: unknown, fallback: number): number {
+  if (value === undefined || value === null || value === "") return fallback;
+  return typeof value === "string" && /^\d{4}-\d{2}-\d{2}/.test(value) ? Date.parse(value) : Number(value);
+}
+
 function collectAutoDistillSessions(workspaceId: string, since: number, limit: number): Session[] {
   const selected: Session[] = [];
   for (const session of listSessions(workspaceId)) {
@@ -684,6 +1044,29 @@ function collectAutoDistillSessions(workspaceId: string, since: number, limit: n
   return selected;
 }
 
+function collectSkillCoverageTasks(workspaceId: string, since: number, limit: number): SkillCoverageTask[] {
+  const tasks: SkillCoverageTask[] = [];
+  for (const session of listSessions(workspaceId)) {
+    if (session.updatedAt < since) continue;
+    const runtime = getSessionRuntime(session.id);
+    if (runtime.status === "running" || runtime.status === "compacting" || runtime.status === "error") continue;
+    const userTexts = listMessages(session.id)
+      .filter((message) => message.role === "user")
+      .map((message) => extractStoredMessageText(message.content))
+      .filter(Boolean);
+    if (userTexts.length === 0) continue;
+    tasks.push({
+      id: session.id,
+      sessionId: session.id,
+      title: session.title,
+      text: userTexts.join("\n\n").slice(-4000),
+      updatedAt: session.updatedAt,
+    });
+    if (tasks.length >= limit) break;
+  }
+  return tasks;
+}
+
 function buildAutoDistillTranscript(sessionId: string): string {
   const transcript = listMessages(sessionId)
     .filter((message) => message.role === "user" || message.role === "assistant")
@@ -694,6 +1077,119 @@ function buildAutoDistillTranscript(sessionId: string): string {
     .filter(Boolean)
     .join("\n\n");
   return transcript.slice(-24_000);
+}
+
+function buildCoverageGapDistillTranscript(cluster: SkillCoverageGapCluster): string {
+  const tasks = cluster.tasks
+    .map((task, index) => [
+      `任务 ${index + 1}：${task.title}`,
+      `sessionId: ${task.sessionId}`,
+      `最高 skill 命中分：${task.topScore.toFixed(3)}`,
+      task.text,
+    ].join("\n"))
+    .join("\n\n---\n\n");
+  return [
+    "下面是一组反复出现、但现有 skill 检索无高分命中的任务。请把它们共同缺失的方法论蒸馏为一个可复用 Skill。",
+    "",
+    `覆盖缺口：${cluster.title}`,
+    `任务数量：${cluster.taskCount}`,
+    `关键词：${cluster.keywords.join("、") || "无"}`,
+    "",
+    "【低命中任务样本】",
+    tasks,
+  ].join("\n").slice(-24_000);
+}
+
+function parseSkillCoverageGapCluster(value: unknown): SkillCoverageGapCluster | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  const title = typeof raw.title === "string" ? raw.title.trim() : "";
+  const tasks = Array.isArray(raw.tasks) ? raw.tasks.map(parseSkillCoverageGapTask).filter((task): task is SkillCoverageGapCluster["tasks"][number] => Boolean(task)) : [];
+  if (!id || !title || tasks.length === 0) return null;
+  const keywords = Array.isArray(raw.keywords) ? raw.keywords.filter((item): item is string => typeof item === "string") : [];
+  const avgTopScore = Number(raw.avgTopScore);
+  return {
+    id,
+    title,
+    taskCount: Number.isInteger(Number(raw.taskCount)) ? Number(raw.taskCount) : tasks.length,
+    avgTopScore: Number.isFinite(avgTopScore) ? avgTopScore : 0,
+    keywords,
+    tasks,
+  };
+}
+
+function parseSkillCoverageGapTask(value: unknown): SkillCoverageGapCluster["tasks"][number] | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const id = typeof raw.id === "string" ? raw.id.trim() : "";
+  const sessionId = typeof raw.sessionId === "string" ? raw.sessionId.trim() : id;
+  const title = typeof raw.title === "string" ? raw.title.trim() : "";
+  const text = typeof raw.text === "string" ? raw.text.trim() : "";
+  if (!id || !sessionId || !title || !text) return null;
+  const topScore = Number(raw.topScore);
+  return {
+    id,
+    sessionId,
+    title,
+    text,
+    updatedAt: Number(raw.updatedAt) || Date.now(),
+    topScore: Number.isFinite(topScore) ? topScore : 0,
+    matches: [],
+  };
+}
+
+async function distillSkillCandidate(input: {
+  workspaceId: string;
+  workspaceRoot: string;
+  transcript: string;
+  model?: string;
+  timeoutMs: number;
+  duplicateThreshold: number;
+  dryRun: boolean;
+  originSessionId: string | null;
+  usageTargetId: string;
+  usageTitle: string;
+}): Promise<DistillCandidateResult> {
+  try {
+    const rawOutput = await runPiPrompt({
+      workspaceRoot: input.workspaceRoot,
+      text: buildSkillDistillationPrompt(input.transcript),
+      model: input.model,
+      systemPrompt: SKILL_DISTILL_SYSTEM_PROMPT,
+      timeoutMs: input.timeoutMs,
+      onEvent: (event) => trackUsageEvent({
+        workspaceId: input.workspaceId,
+        targetKind: "session",
+        targetId: input.usageTargetId,
+        title: input.usageTitle,
+      }, event),
+    });
+    const content = extractSkillMarkdown(rawOutput);
+    const name = parseSkillName(content) ?? "";
+    const description = parseSkillDescription(content);
+    if (!name || !description) return { status: "failed", error: "distilled SKILL.md missing name or description frontmatter" };
+    const slug = sanitizeSkillSlug(slugifySkillName(name));
+    if (!slug) return { status: "failed", error: "distilled skill name cannot form a valid registry slug" };
+    const duplicate = findAutoDistillDuplicate(input.workspaceId, input.workspaceRoot, slug, content, input.duplicateThreshold);
+    if (duplicate) return { status: "skipped", reason: duplicate.reason, slug, name, similarSkill: duplicate.similarSkill };
+    if (input.dryRun) return { status: "dry_run", slug, name };
+    const skillPath = registrySkillPath(input.workspaceRoot, slug);
+    mkdirSync(dirname(skillPath), { recursive: true });
+    const normalizedContent = content.endsWith("\n") ? content : `${content}\n`;
+    writeFileSync(skillPath, normalizedContent, "utf8");
+    const entry = createSkillRegistryEntry(input.workspaceId, {
+      slug,
+      name,
+      status: "candidate",
+      source: "distilled",
+      originSessionId: input.originSessionId,
+    });
+    writeVersionSnapshot(input.workspaceRoot, entry.slug, entry.version, normalizedContent);
+    return { status: "created", slug, name, entry, skillPath };
+  } catch (err) {
+    return { status: "failed", error: String(err) };
+  }
 }
 
 function extractStoredMessageText(content: unknown): string {
@@ -774,6 +1270,30 @@ type ParsedSkillRegistryPatch =
   | { ok: true; value: { name?: string; status?: SkillStatus; version?: number; supersedesId?: string | null } }
   | { ok: false; error: string };
 
+type SkillPackageFile = {
+  path: string;
+  content: string;
+};
+
+type SkillPackage = {
+  format: "pi-xanthil.skill-package";
+  formatVersion: 1;
+  exportedAt: number;
+  registry: {
+    slug: string;
+    name: string;
+    version: number;
+    source: SkillSource;
+    status: SkillStatus;
+    originSessionId: string | null;
+  };
+  files: SkillPackageFile[];
+};
+
+type ParsedSkillPackage =
+  | { ok: true; value: SkillPackage }
+  | { ok: false; error: string };
+
 function parseSkillRegistryCreateBody(body: unknown): ParsedSkillRegistryCreate {
   const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
   const contentRaw = raw.content ?? raw.skillMarkdown ?? raw.markdown;
@@ -818,6 +1338,104 @@ function parseSkillRegistryPatchBody(body: unknown): ParsedSkillRegistryPatch {
   return { ok: true, value };
 }
 
+function buildSkillPackage(workspaceRoot: string, entry: SkillRegistryEntry): SkillPackage {
+  const skillRoot = registrySkillRoot(workspaceRoot, entry.slug);
+  const skillPath = registrySkillPath(workspaceRoot, entry.slug);
+  if (!existsSync(skillPath)) throw new Error("SKILL.md not found");
+  return {
+    format: "pi-xanthil.skill-package",
+    formatVersion: 1,
+    exportedAt: Date.now(),
+    registry: {
+      slug: entry.slug,
+      name: entry.name,
+      version: entry.version,
+      source: entry.source,
+      status: entry.status,
+      originSessionId: entry.originSessionId,
+    },
+    files: collectSkillPackageFiles(skillRoot),
+  };
+}
+
+function collectSkillPackageFiles(skillRoot: string): SkillPackageFile[] {
+  const files: SkillPackageFile[] = [];
+  const visit = (dir: string): void => {
+    for (const child of readdirSync(dir, { withFileTypes: true })) {
+      if (child.name === "." || child.name === ".." || child.name.startsWith(".")) continue;
+      const childPath = resolve(dir, child.name);
+      if (!isPathInside(skillRoot, childPath)) throw new Error("invalid skill package source path");
+      if (child.isSymbolicLink()) continue;
+      if (child.isDirectory()) {
+        visit(childPath);
+        continue;
+      }
+      if (!child.isFile()) continue;
+      const relPath = childPath.slice(`${skillRoot}${sep}`.length).split(sep).join("/");
+      assertSkillPackageRelPath(relPath);
+      files.push({ path: relPath, content: readFileSync(childPath, "utf8") });
+    }
+  };
+  visit(skillRoot);
+  files.sort((a, b) => a.path.localeCompare(b.path));
+  if (!files.some((file) => file.path === "SKILL.md")) throw new Error("SKILL.md not found");
+  return files;
+}
+
+function parseSkillPackage(body: unknown): ParsedSkillPackage {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  if (raw.format !== "pi-xanthil.skill-package") return { ok: false, error: "invalid skill package format" };
+  if (raw.formatVersion !== 1) return { ok: false, error: "unsupported skill package version" };
+  const registry = typeof raw.registry === "object" && raw.registry !== null ? raw.registry as Record<string, unknown> : null;
+  if (!registry) return { ok: false, error: "registry metadata required" };
+  const slug = sanitizeSkillSlug(String(registry.slug ?? ""));
+  if (!slug) return { ok: false, error: "valid slug required" };
+  const name = String(registry.name ?? "").trim();
+  if (!name) return { ok: false, error: "name required" };
+  const version = Number(registry.version ?? 1);
+  if (!Number.isInteger(version) || version < 1) return { ok: false, error: "version must be a positive integer" };
+  const source = parseSkillSource(registry.source) ?? "manual";
+  const status = parseSkillStatus(registry.status) ?? "candidate";
+  if (!Array.isArray(raw.files)) return { ok: false, error: "files required" };
+  const files: SkillPackageFile[] = [];
+  for (const item of raw.files) {
+    const file = typeof item === "object" && item !== null ? item as Record<string, unknown> : {};
+    if (typeof file.path !== "string" || typeof file.content !== "string") return { ok: false, error: "invalid package file" };
+    const relPath = normalizeSkillPackageRelPath(file.path);
+    if (!relPath) return { ok: false, error: `invalid package file path: ${file.path}` };
+    files.push({ path: relPath, content: file.content });
+  }
+  if (!files.some((file) => file.path === "SKILL.md" && file.content.trim())) return { ok: false, error: "SKILL.md required" };
+  return {
+    ok: true,
+    value: {
+      format: "pi-xanthil.skill-package",
+      formatVersion: 1,
+      exportedAt: Number(raw.exportedAt) || Date.now(),
+      registry: {
+        slug,
+        name,
+        version,
+        source,
+        status,
+        originSessionId: nullableString(registry.originSessionId),
+      },
+      files,
+    },
+  };
+}
+
+function uniqueImportedSkillSlug(workspaceId: string, workspaceRoot: string, requestedSlug: string): string {
+  const existingSlugs = new Set(listSkillRegistryEntries(workspaceId).map((entry) => entry.slug));
+  if (!existingSlugs.has(requestedSlug) && !existsSync(registrySkillRoot(workspaceRoot, requestedSlug))) return requestedSlug;
+  for (let i = 2; i <= 999; i += 1) {
+    const candidate = sanitizeSkillSlug(`${requestedSlug}-${String(i)}`);
+    if (!candidate) continue;
+    if (!existingSlugs.has(candidate) && !existsSync(registrySkillRoot(workspaceRoot, candidate))) return candidate;
+  }
+  throw new Error("cannot allocate unique imported skill slug");
+}
+
 function parseSkillStatus(value: unknown): SkillStatus | undefined {
   return value === "draft" || value === "candidate" || value === "active" || value === "archived" ? value : undefined;
 }
@@ -843,11 +1461,43 @@ function sanitizeSkillSlug(value: string): string {
   return slug;
 }
 
-function registrySkillPath(workspaceRoot: string, slug: string): string {
+function registrySkillRoot(workspaceRoot: string, slug: string): string {
   const root = resolve(workspaceRoot, ".pi", "skills");
-  const skillPath = resolve(root, slug, "SKILL.md");
-  if (!skillPath.startsWith(`${root}${sep}`)) throw new Error("invalid skill slug");
-  return skillPath;
+  const skillRoot = resolve(root, slug);
+  if (!skillRoot.startsWith(`${root}${sep}`)) throw new Error("invalid skill slug");
+  return skillRoot;
+}
+
+function registrySkillPath(workspaceRoot: string, slug: string): string {
+  return resolveSkillPackageFilePath(registrySkillRoot(workspaceRoot, slug), "SKILL.md");
+}
+
+function normalizeSkillPackageRelPath(value: string): string {
+  const normalized = value.trim().replace(/\\/g, "/");
+  return isValidSkillPackageRelPath(normalized) ? normalized : "";
+}
+
+function assertSkillPackageRelPath(value: string): void {
+  if (!isValidSkillPackageRelPath(value)) throw new Error(`invalid package file path: ${value}`);
+}
+
+function isValidSkillPackageRelPath(value: string): boolean {
+  if (!value || value.startsWith("/") || value.includes("\0")) return false;
+  return value.split("/").every((part) => part !== "" && part !== "." && part !== "..");
+}
+
+function resolveSkillPackageFilePath(skillRoot: string, relPath: string): string {
+  const normalized = normalizeSkillPackageRelPath(relPath);
+  if (!normalized) throw new Error(`invalid package file path: ${relPath}`);
+  const targetPath = resolve(skillRoot, normalized);
+  if (!isPathInside(skillRoot, targetPath)) throw new Error(`package file escapes skill root: ${relPath}`);
+  return targetPath;
+}
+
+function isPathInside(root: string, targetPath: string): boolean {
+  const resolvedRoot = resolve(root);
+  const resolvedTarget = resolve(targetPath);
+  return resolvedTarget === resolvedRoot || resolvedTarget.startsWith(`${resolvedRoot}${sep}`);
 }
 
 // P1-a 版本内容快照：每版本一份内容存 .pi/skill-versions/<slug>/v<n>.md（**不在 .pi/skills 下，pi 不扫描**），
@@ -920,21 +1570,6 @@ function detectSkillRegistryConflicts(input: {
 function readRegistrySkillContent(workspaceRoot: string, slug: string): string {
   const path = registrySkillPath(workspaceRoot, slug);
   return existsSync(path) ? readFileSync(path, "utf8") : "";
-}
-
-function skillRegistryMetricsFromEvaluation(
-  skillId: string,
-  summary: SkillEvaluationRunSummary,
-): { score: number | null; activationRate: number | null } {
-  const variant = summary.variantSummaries.find((item) => item.variantId === skillId);
-  if (!variant) return { score: null, activationRate: null };
-  const pairwise = summary.pairwiseSummaries.find((item) => item.variantId === skillId);
-  const successRate = variant.total > 0 ? variant.success / variant.total : 0;
-  // 卡 P1·D 口径：有 pairwise 用 winRate=win/(win+tie+loss)，否则用 successRate；
-  // activationRate 始终单列、不混入 score（激活率=是否被用，score=用了效果好不好）。
-  const decided = pairwise ? pairwise.win + pairwise.tie + pairwise.loss : 0;
-  const score = decided > 0 ? pairwise!.win / decided : successRate;
-  return { score: Math.max(0, Math.min(1, score)), activationRate: variant.activationRate };
 }
 
 function recordSkillRegistryUsageForPaths(workspaceId: string, workspaceRoot: string, skillPaths: string[] | undefined): void {
@@ -1188,13 +1823,20 @@ export async function handleSendFlow(
     send(ws, { type: "run_start", flowId: flow.id });
     return send(ws, { type: "error", flowId: flow.id, message: "flow already has a running turn; stop it before sending another message" });
   }
+  const workspace = getWorkspace(flow.workspaceId);
+  const commandExpansion = expandCommand(msg.text, readCommandsFile());
+  const commandSkillRoot = workspace?.rootPath ?? flow.folderPath;
+  const commandSkillPaths = commandExpansion.skillSlugs.map((slug) => join(commandSkillRoot, ".pi", "skills", slug, "SKILL.md"));
+  const requestedSkillPaths = [
+    ...(msg.skillPaths ?? []),
+    ...commandSkillPaths,
+  ];
   let skillPaths: string[] | undefined;
   try {
-    skillPaths = validateSkillPaths(flow.folderPath, msg.skillPaths);
+    skillPaths = validateSkillPaths(flow.folderPath, requestedSkillPaths.length > 0 ? requestedSkillPaths : undefined);
   } catch (err) {
     return send(ws, { type: "error", flowId: flow.id, message: String(err) });
   }
-  const workspace = getWorkspace(flow.workspaceId);
   if (workspace) recordSkillRegistryUsageForPaths(flow.workspaceId, workspace.rootPath, skillPaths);
 
   const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow");
@@ -1218,7 +1860,7 @@ export async function handleSendFlow(
     // pi runs *inside* the flow folder so its file tools see the workflow as cwd.
     workspaceRoot: flow.folderPath,
     piSessionId: flow.id,
-    text: `${contextPrefix}${msg.text}`,
+    text: `${contextPrefix}${commandExpansion.expandedText}`,
     model: msg.model,
     systemPrompt: msg.injectRulesPrompt ? withRulesPrompt(flow.workspaceId, "workflow", msg.systemPrompt) : msg.systemPrompt,
     skillPaths,

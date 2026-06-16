@@ -1975,11 +1975,44 @@ export interface HookTriggerRecord {
   blocked?: boolean; // 该触发是否实际拦截了工具调用
 }
 
+// 计算工具·command 管理 —— pi-xanthil 自有的「斜杠命令注册表」契约（详见 docs/wiki.html「command 管理」卡）。
+// 实证：pi 在 -p positional 模式不展开 prompt 里的 /command（slash 为交互式 TUI/RPC 特性），故命令解析/展开
+// 由 pi-xanthil 服务端做（command-expand.ts），不依赖 pi 扩展。真源 = COMMANDS_CONFIG_PATH(commands.json)。
+//
+// 展开占位语法（注册表 UI / 服务端展开器 / 向导前端 三方共用）：
+//   {{args}}        全部参数原文（/name 之后的整串）
+//   {{1}} {{2}} …   位置参数（按空白切分，引号包裹的整体算一个）
+//   {{param.key}}   具名参数（来自 params[].key；向导表单或命令行 --key=value 提供）
+// 具名参数命令行编码：/name --key=value，值含空格用双引号（--key="a b"）；未提供的占位替换为空串。
+export type XanCommandParamType = "text" | "select" | "file";
+
+export interface XanCommandParam {
+  key: string;                 // 占位 {{param.key}} 与命令行 --key= 的键
+  label: string;               // 向导表单字段标签
+  required?: boolean;          // 向导表单必填校验
+  type?: XanCommandParamType;  // 表单控件类型（缺省 text）
+  options?: string[];          // type==="select"：候选项
+  source?: "clean_data";       // type==="file"：候选来源（如 clean_data 下文件名），由向导前端拉取
+}
+
+export interface XanCommand {
+  id: string;
+  name: string;                // 斜杠命令名（不含前导 /）
+  enabled: boolean;
+  description?: string;        // 补全下拉与注册表展示
+  argumentHint?: string;       // 补全下拉里的参数提示（如 "<数据集> [口径]"）
+  template: string;            // 展开目标 prompt 模板，含上述占位
+  params?: XanCommandParam[];  // 具名参数定义（驱动向导表单 + {{param.key}} 展开）
+  skillSlugs?: string[];       // 触发该命令时一并启用的 skill（并入该 turn 的 skillPaths）
+  source: "custom";            // MVP 仅自定义命令；extension/skill 类命令为后续只读展示
+}
+
 // 计算工具·skill 管理 —— 项目级 skill 生命周期注册表（详见 docs/wiki.html「skill 管理」卡）。
 // 内容真源 = <workspace>/.pi/skills/<slug>/SKILL.md；本表(skill_registry)存元数据/生命周期态。
 // 启用关系走 WorkspaceMemoryEnablement(itemKind="skill")，全局池 + 按工作区启用。
 export type SkillStatus = "draft" | "candidate" | "active" | "archived";
 export type SkillSource = "manual" | "distilled" | "curated" | "imported";
+export type SkillRegressionStatus = "none" | "regression";
 
 export interface SkillRegistryEntry {
   id: string;
@@ -1996,6 +2029,12 @@ export interface SkillRegistryEntry {
   prodInjectedCount: number;      // A：生产真实运行注入次数
   prodActivatedCount: number;     // A：生产 run 完成后 detectSkillActivation 命中次数
   prodActivationRate: number | null; // A 派生：prodActivatedCount/prodInjectedCount，注入为 0 时 null
+  regressionStatus: SkillRegressionStatus; // 连续评测：最近一次是否相对历史基线回归
+  lastRegressionAt: number | null;
+  regressionReason: string | null;
+  regressionScoreDelta: number | null;
+  regressionActivationDelta: number | null;
+  lastEvaluationId: string | null;
   originSessionId: string | null; // 蒸馏/策展出处（可追溯）
   createdAt: number;
   updatedAt: number;
@@ -2007,6 +2046,49 @@ export interface SkillRegistryInput {
   source: SkillSource;
   status?: SkillStatus;
   originSessionId?: string | null;
+}
+
+// G 卡（消费 C 后端历史）：每次 registry skill 评测的回归比对快照。
+// 真源 = skill_registry_eval_history 表；前端仅做时间线/徽章渲染，不重算。
+export type SkillRegistryRetestTrigger = "manual_evaluate" | "version_bump" | "model_upgrade" | "retest_all_active";
+
+export interface SkillRegistryEvalHistoryEntry {
+  id: string;
+  workspaceId: string;
+  registryId: string;
+  slug: string;
+  skillVersion: number;
+  evaluationId: string;
+  model: string;
+  triggerKind: SkillRegistryRetestTrigger;
+  score: number | null;
+  activationRate: number | null;
+  previousEvaluationId: string | null;
+  previousScore: number | null;
+  previousActivationRate: number | null;
+  scoreDelta: number | null;
+  activationDelta: number | null;
+  regressionStatus: SkillRegressionStatus;
+  regressionReason: string | null;
+  createdAt: number;
+}
+
+export interface SkillRegistryEvalHistoryResult {
+  workspaceId: string;
+  items: SkillRegistryEvalHistoryEntry[];
+}
+
+// G 卡：retest-active 端点的返回结构。仅暴露汇总，不外泄完整 evaluation/history。
+export interface SkillRegistryRetestActiveResult {
+  workspaceId: string;
+  triggerKind: SkillRegistryRetestTrigger;
+  scanned: number;
+  succeeded: number;
+  failed: number;
+  results: Array<
+    | { skillId: string; slug: string; status: "success" }
+    | { skillId: string; slug: string; status: "failed"; error: string }
+  >;
 }
 
 // B 卡：手动一键自动沉淀 sweep 的返回（POST /api/workspaces/:id/skill-auto-distill）。
@@ -2032,6 +2114,46 @@ export interface SkillAutoDistillResult {
   skipped: number;
   failed: number;
   results: SkillAutoDistillSessionResult[];
+}
+
+export interface SkillCoverageGapTask {
+  id: string;
+  sessionId: string;
+  title: string;
+  text: string;
+  updatedAt: number;
+  topScore: number;
+  matches: RetrievedSkill[];
+}
+
+export interface SkillCoverageGapCluster {
+  id: string;
+  title: string;
+  taskCount: number;
+  avgTopScore: number;
+  keywords: string[];
+  tasks: SkillCoverageGapTask[];
+}
+
+export interface SkillCoverageGapResult {
+  workspaceId: string;
+  since: number;
+  limit: number;
+  scanned: number;
+  lowScoreThreshold: number;
+  minClusterSize: number;
+  clusters: SkillCoverageGapCluster[];
+}
+
+export interface SkillCoverageGapDistillResult {
+  workspaceId: string;
+  clusterId: string;
+  dryRun: boolean;
+  result:
+    | { status: "created"; slug: string; name: string; entry: SkillRegistryEntry; skillPath: string }
+    | { status: "dry_run"; slug: string; name: string }
+    | { status: "skipped"; reason: string; slug?: string; name?: string; similarSkill?: SkillRegistryConflict }
+    | { status: "failed"; error: string };
 }
 
 // P1-a：某历史版本的内容快照（回滚前预览/查看历史版本内容）。

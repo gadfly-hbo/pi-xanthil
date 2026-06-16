@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
 import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Sparkles, Square, Workflow, Wrench, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
@@ -6,8 +6,9 @@ import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
 import { hasToolBlocks, hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
+import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { textOf, type PiModel, type SessionRuntime } from "@/types";
+import { textOf, type PiModel, type SessionRuntime, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
 
 type FolderScope =
   | { type: "workspace"; workspaceId: string }
@@ -17,6 +18,7 @@ type FolderScope =
 const DRAWER_MIN = 360;
 const DRAWER_DEFAULT = 460;
 const DRAWER_WIDTH_KEY = "chatpane.assistDrawerWidth";
+const COMMAND_QUERY_RE = /^\/([^\s/]*)$/;
 
 interface Props {
   messages: UiMessage[];
@@ -71,10 +73,190 @@ function clampDrawerWidth(width: number, containerWidth: number): number {
   return Math.min(Math.max(width, DRAWER_MIN), max);
 }
 
+function commandHasParams(command: XanCommand): boolean {
+  return Array.isArray(command.params) && command.params.length > 0;
+}
+
+function commandQuery(input: string): string | null {
+  const match = COMMAND_QUERY_RE.exec(input);
+  return match ? match[1] ?? "" : null;
+}
+
+function quoteCommandValue(value: string): string {
+  const needsQuote = /\s|["'\\]/.test(value);
+  if (!needsQuote) return value;
+  return `"${value.replace(/\\/g, "\\\\").replace(/"/g, '\\"')}"`;
+}
+
+function encodeCommandLine(command: XanCommand, values: Record<string, string>): string {
+  const parts = [`/${command.name}`];
+  for (const param of command.params ?? []) {
+    const raw = values[param.key]?.trim() ?? "";
+    if (!raw) continue;
+    parts.push(`--${param.key}=${quoteCommandValue(raw)}`);
+  }
+  return parts.join(" ");
+}
+
+function cleanDataLabel(path: WorkspacePath): string {
+  return path.path.split(/[\\/]/).filter(Boolean).at(-1) ?? path.path;
+}
+
+interface CommandParamDialogProps {
+  command: XanCommand;
+  values: Record<string, string>;
+  cleanDataFiles: WorkspacePath[];
+  cleanDataLoading: boolean;
+  error: string;
+  running: boolean;
+  disabled: boolean;
+  onChange: (key: string, value: string) => void;
+  onCancel: () => void;
+  onSubmit: () => void;
+}
+
+function CommandParamDialog({
+  command,
+  values,
+  cleanDataFiles,
+  cleanDataLoading,
+  error,
+  running,
+  disabled,
+  onChange,
+  onCancel,
+  onSubmit,
+}: CommandParamDialogProps) {
+  function renderParam(param: XanCommandParam) {
+    const value = values[param.key] ?? "";
+    const baseClass = "mt-1 w-full rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-[12px] outline-none focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100";
+
+    if (param.type === "select") {
+      return (
+        <select
+          value={value}
+          onChange={(event) => onChange(param.key, event.target.value)}
+          className={baseClass}
+        >
+          <option value="">请选择</option>
+          {(param.options ?? []).map((option) => (
+            <option key={option} value={option}>{option}</option>
+          ))}
+        </select>
+      );
+    }
+
+    if (param.type === "file" && param.source === "clean_data") {
+      return (
+        <select
+          value={value}
+          onChange={(event) => onChange(param.key, event.target.value)}
+          disabled={cleanDataLoading}
+          className={baseClass}
+        >
+          <option value="">{cleanDataLoading ? "加载 clean_data…" : "选择 clean_data 文件"}</option>
+          {cleanDataFiles.map((path) => (
+            <option key={path.id} value={path.path}>{cleanDataLabel(path)}</option>
+          ))}
+        </select>
+      );
+    }
+
+    return (
+      <input
+        value={value}
+        onChange={(event) => onChange(param.key, event.target.value)}
+        className={baseClass}
+      />
+    );
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+      <div className="w-full max-w-[520px] rounded-lg border border-neutral-200 bg-white shadow-xl dark:border-neutral-800 dark:bg-neutral-950">
+        <div className="flex items-start gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+          <div className="min-w-0 flex-1">
+            <div className="font-mono text-[13px] font-medium text-neutral-900 dark:text-neutral-100">/{command.name}</div>
+            {(command.argumentHint || command.description) && (
+              <div className="mt-1 text-[12px] text-neutral-500 dark:text-neutral-400">
+                {command.argumentHint && <span className="font-mono">{command.argumentHint}</span>}
+                {command.argumentHint && command.description ? " · " : ""}
+                {command.description}
+              </div>
+            )}
+          </div>
+          <button
+            type="button"
+            onClick={onCancel}
+            className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+            title="关闭"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+
+        <form
+          onSubmit={(event) => {
+            event.preventDefault();
+            onSubmit();
+          }}
+          className="space-y-3 px-4 py-4"
+        >
+          {(command.params ?? []).map((param) => (
+            <label key={param.key} className="block text-[12px] text-neutral-600 dark:text-neutral-300">
+              <span className="flex items-center gap-1">
+                {param.label}
+                {param.required && <span className="text-red-500">*</span>}
+                <code className="font-mono text-[10.5px] text-neutral-400">--{param.key}</code>
+              </span>
+              {renderParam(param)}
+              {param.type === "file" && param.source === "clean_data" && !cleanDataLoading && cleanDataFiles.length === 0 && (
+                <span className="mt-1 block text-[11px] text-amber-600 dark:text-amber-400">当前 scope 没有登记 clean_data 文件</span>
+              )}
+            </label>
+          ))}
+
+          {error && (
+            <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-700 dark:border-red-900 dark:bg-red-950/40 dark:text-red-300">
+              {error}
+            </div>
+          )}
+
+          <div className="flex justify-end gap-2 pt-1">
+            <button
+              type="button"
+              onClick={onCancel}
+              className="rounded-md border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900"
+            >
+              取消
+            </button>
+            <button
+              type="submit"
+              disabled={running || disabled}
+              className="rounded-md bg-neutral-900 px-3 py-1.5 text-[12px] text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
+            >
+              发送
+            </button>
+          </div>
+        </form>
+      </div>
+    </div>
+  );
+}
+
 export function ChatPane(p: Props) {
   const [input, setInput] = useState("");
   const [selectedSkillPaths, setSelectedSkillPaths] = useState<string[]>([]);
   const [activeAssistPanel, setActiveAssistPanel] = useState<"fork" | "delegate" | "tool" | null>(null);
+  const [commands, setCommands] = useState<XanCommand[]>([]);
+  const [commandsLoading, setCommandsLoading] = useState(false);
+  const [commandsError, setCommandsError] = useState("");
+  const [commandMenuOpen, setCommandMenuOpen] = useState(false);
+  const [selectedCommand, setSelectedCommand] = useState<XanCommand | null>(null);
+  const [commandFormValues, setCommandFormValues] = useState<Record<string, string>>({});
+  const [commandFormError, setCommandFormError] = useState("");
+  const [cleanDataFiles, setCleanDataFiles] = useState<WorkspacePath[]>([]);
+  const [cleanDataLoading, setCleanDataLoading] = useState(false);
   const [drawerWidth, setDrawerWidth] = useState(() => {
     if (typeof window === "undefined") return DRAWER_DEFAULT;
     const raw = window.localStorage.getItem(DRAWER_WIDTH_KEY);
@@ -94,6 +276,24 @@ export function ChatPane(p: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const activeSessionId = p.folderScope?.type === "session" ? p.folderScope.sessionId : "";
   const canUseSessionTools = Boolean(activeSessionId) && !p.disabled;
+  const commandQueryText = commandQuery(input);
+  const commandCandidates = useMemo(() => {
+    if (commandQueryText === null) return [];
+    const query = commandQueryText.toLowerCase();
+    return commands
+      .filter((command) => command.enabled)
+      .filter((command) => {
+        if (!query) return true;
+        return command.name.toLowerCase().includes(query)
+          || (command.description ?? "").toLowerCase().includes(query)
+          || (command.argumentHint ?? "").toLowerCase().includes(query);
+      })
+      .slice(0, 8);
+  }, [commandQueryText, commands]);
+  const commandFileParams = useMemo(
+    () => (selectedCommand?.params ?? []).filter((param) => param.type === "file" && param.source === "clean_data"),
+    [selectedCommand],
+  );
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
@@ -102,6 +302,66 @@ export function ChatPane(p: Props) {
   useEffect(() => {
     if (!canUseSessionTools) setActiveAssistPanel(null);
   }, [canUseSessionTools]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setCommandsLoading(true);
+    setCommandsError("");
+    api.listCommands()
+      .then((next) => {
+        if (cancelled) return;
+        setCommands(next.filter((command) => command.enabled));
+      })
+      .catch((err) => {
+        if (cancelled) return;
+        setCommandsError(String(err));
+        setCommands([]);
+      })
+      .finally(() => {
+        if (!cancelled) setCommandsLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
+    setCommandMenuOpen(commandQueryText !== null && !selectedCommand && !p.disabled);
+  }, [commandQueryText, p.disabled, selectedCommand]);
+
+  useEffect(() => {
+    if (!selectedCommand || commandFileParams.length === 0) {
+      setCleanDataFiles([]);
+      setCleanDataLoading(false);
+      return;
+    }
+    let cancelled = false;
+    setCleanDataLoading(true);
+    setCommandFormError("");
+    const scope = p.folderScope;
+    const load = scope?.type === "session"
+      ? api.listSessionPaths(scope.sessionId, "clean_data")
+      : scope?.type === "flow"
+        ? api.listFlowPaths(scope.flowId, "clean_data")
+        : scope?.type === "workspace"
+          ? api.listWorkspacePaths(scope.workspaceId, "clean_data")
+          : Promise.resolve([]);
+
+    load
+      .then((paths) => {
+        if (cancelled) return;
+        setCleanDataFiles(paths.filter((path) => path.kind === "file"));
+      })
+      .catch((err) => {
+        if (!cancelled) setCommandFormError(String(err));
+      })
+      .finally(() => {
+        if (!cancelled) setCleanDataLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [commandFileParams.length, p.folderScope, selectedCommand]);
 
   useEffect(() => {
     if (typeof window === "undefined") return;
@@ -156,11 +416,11 @@ export function ChatPane(p: Props) {
     ta.style.height = `${Math.min(ta.scrollHeight, window.innerHeight * 0.4)}px`;
   }
 
-  function submit() {
-    const text = input.trim();
-    if (!text || p.running || p.disabled) return;
+  function sendText(text: string) {
+    const trimmed = text.trim();
+    if (!trimmed || p.running || p.disabled) return;
     p.onSend(
-      text,
+      trimmed,
       selectedSkillPaths.length > 0 ? selectedSkillPaths : undefined,
       selectedBusinessRequirement ? {
         pathId: selectedBusinessRequirement.pathId,
@@ -168,6 +428,51 @@ export function ChatPane(p: Props) {
         jsonPath: selectedBusinessRequirement.jsonPath,
       } : undefined,
     );
+  }
+
+  function submit() {
+    const text = input.trim();
+    if (!text || p.running || p.disabled) return;
+    sendText(text);
+    setInput("");
+    setCommandMenuOpen(false);
+    requestAnimationFrame(autosize);
+  }
+
+  function selectCommand(command: XanCommand) {
+    if (commandHasParams(command)) {
+      const initialValues = Object.fromEntries((command.params ?? []).map((param) => [param.key, ""]));
+      setSelectedCommand(command);
+      setCommandFormValues(initialValues);
+      setCommandFormError("");
+      setCommandMenuOpen(false);
+      return;
+    }
+    setInput(`/${command.name} `);
+    setCommandMenuOpen(false);
+    requestAnimationFrame(() => {
+      taRef.current?.focus();
+      autosize();
+    });
+  }
+
+  function updateCommandFormValue(key: string, value: string) {
+    setCommandFormValues((current) => ({ ...current, [key]: value }));
+    setCommandFormError("");
+  }
+
+  function submitCommandForm() {
+    const command = selectedCommand;
+    if (!command) return;
+    const missing = (command.params ?? []).find((param) => param.required && !commandFormValues[param.key]?.trim());
+    if (missing) {
+      setCommandFormError(`请填写 ${missing.label}`);
+      return;
+    }
+    const line = encodeCommandLine(command, commandFormValues);
+    sendText(line);
+    setSelectedCommand(null);
+    setCommandFormValues({});
     setInput("");
     requestAnimationFrame(autosize);
   }
@@ -334,7 +639,45 @@ export function ChatPane(p: Props) {
             </button>
           </div>
 
-          <div className="rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="relative rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            {commandMenuOpen && (
+              <div className="absolute bottom-full left-0 right-0 z-20 mb-2 overflow-hidden rounded-lg border border-neutral-200 bg-white shadow-lg dark:border-neutral-800 dark:bg-neutral-950">
+                <div className="border-b border-neutral-100 px-3 py-2 text-[11.5px] text-neutral-500 dark:border-neutral-800 dark:text-neutral-400">
+                  {commandsLoading ? "正在加载 commands…" : commandsError ? `命令加载失败：${commandsError}` : "选择命令"}
+                </div>
+                {!commandsLoading && !commandsError && commandCandidates.length === 0 && (
+                  <div className="px-3 py-3 text-[12px] text-neutral-400">没有匹配的命令</div>
+                )}
+                {!commandsLoading && !commandsError && commandCandidates.map((command) => (
+                  <button
+                    key={command.id}
+                    type="button"
+                    onMouseDown={(event) => {
+                      event.preventDefault();
+                      selectCommand(command);
+                    }}
+                    className="flex w-full items-start gap-3 border-b border-neutral-100 px-3 py-2.5 text-left last:border-b-0 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-900"
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        <span className="font-mono text-[13px] font-medium text-neutral-900 dark:text-neutral-100">/{command.name}</span>
+                        {command.argumentHint && (
+                          <span className="truncate font-mono text-[11px] text-neutral-400">{command.argumentHint}</span>
+                        )}
+                      </div>
+                      {command.description && (
+                        <div className="mt-0.5 truncate text-[12px] text-neutral-500 dark:text-neutral-400">{command.description}</div>
+                      )}
+                    </div>
+                    {commandHasParams(command) && (
+                      <span className="mt-0.5 rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700 dark:text-neutral-400">
+                        表单
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            )}
             <textarea
               ref={taRef}
               value={input}
@@ -344,6 +687,19 @@ export function ChatPane(p: Props) {
                 autosize();
               }}
               onKeyDown={(e) => {
+                if (commandMenuOpen && !e.nativeEvent.isComposing && (e.key === "Tab" || (e.key === "Enter" && !e.shiftKey))) {
+                  const first = commandCandidates[0];
+                  if (first) {
+                    e.preventDefault();
+                    selectCommand(first);
+                    return;
+                  }
+                }
+                if (commandMenuOpen && e.key === "Escape") {
+                  e.preventDefault();
+                  setCommandMenuOpen(false);
+                  return;
+                }
                 if (e.key === "Enter" && e.shiftKey && !e.nativeEvent.isComposing) {
                   e.preventDefault();
                   submit();
@@ -412,6 +768,26 @@ export function ChatPane(p: Props) {
         </div>
       </div>
       </div>
+
+      {selectedCommand && (
+        <CommandParamDialog
+          command={selectedCommand}
+          values={commandFormValues}
+          cleanDataFiles={cleanDataFiles}
+          cleanDataLoading={cleanDataLoading}
+          error={commandFormError}
+          running={p.running}
+          disabled={p.disabled}
+          onChange={updateCommandFormValue}
+          onCancel={() => {
+            setSelectedCommand(null);
+            setCommandFormValues({});
+            setCommandFormError("");
+            requestAnimationFrame(() => taRef.current?.focus());
+          }}
+          onSubmit={submitCommandForm}
+        />
+      )}
 
       {activeSessionId && activeAssistPanel && (
         <aside

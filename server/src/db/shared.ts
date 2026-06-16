@@ -71,6 +71,12 @@ export function initSharedTables(): void {
       usage_count       INTEGER NOT NULL DEFAULT 0,
       prod_injected_count  INTEGER NOT NULL DEFAULT 0,
       prod_activated_count INTEGER NOT NULL DEFAULT 0,
+      regression_status TEXT NOT NULL DEFAULT 'none',
+      last_regression_at INTEGER,
+      regression_reason TEXT,
+      regression_score_delta REAL,
+      regression_activation_delta REAL,
+      last_evaluation_id TEXT,
       origin_session_id TEXT,
       created_at        INTEGER NOT NULL,
       updated_at        INTEGER NOT NULL,
@@ -87,6 +93,24 @@ export function initSharedTables(): void {
   }
   if (!skillCols.some((c) => c.name === "prod_activated_count")) {
     db.exec("ALTER TABLE skill_registry ADD COLUMN prod_activated_count INTEGER NOT NULL DEFAULT 0");
+  }
+  if (!skillCols.some((c) => c.name === "regression_status")) {
+    db.exec("ALTER TABLE skill_registry ADD COLUMN regression_status TEXT NOT NULL DEFAULT 'none'");
+  }
+  if (!skillCols.some((c) => c.name === "last_regression_at")) {
+    db.exec("ALTER TABLE skill_registry ADD COLUMN last_regression_at INTEGER");
+  }
+  if (!skillCols.some((c) => c.name === "regression_reason")) {
+    db.exec("ALTER TABLE skill_registry ADD COLUMN regression_reason TEXT");
+  }
+  if (!skillCols.some((c) => c.name === "regression_score_delta")) {
+    db.exec("ALTER TABLE skill_registry ADD COLUMN regression_score_delta REAL");
+  }
+  if (!skillCols.some((c) => c.name === "regression_activation_delta")) {
+    db.exec("ALTER TABLE skill_registry ADD COLUMN regression_activation_delta REAL");
+  }
+  if (!skillCols.some((c) => c.name === "last_evaluation_id")) {
+    db.exec("ALTER TABLE skill_registry ADD COLUMN last_evaluation_id TEXT");
   }
 }
 
