@@ -50,6 +50,11 @@ export const HOOK_RUNNER_EXTENSION =
 // 缺失/空文件 = 无命令（安全降级，不改变现有发送行为）。
 export const COMMANDS_CONFIG_PATH = process.env.XANTHIL_COMMANDS_CONFIG ?? join(DATA_ROOT, "commands.json");
 
+// 计算工具·subagents 管理（子 agent 模板：剥离 runner 硬编码 systemPrompt，详见 docs/subagents管理模块设计方案.md）。
+// subagents.json 由 server 端 CRUD（E·P0 卡）写、runDelegatedSubAgent 读；与 hooks/commands 同为单文件，不进 ensureDirs。
+// 缺失/空文件 = 无模板（安全降级，委派回退引擎默认 systemPrompt，行为同现状）。
+export const SUBAGENTS_CONFIG_PATH = process.env.XANTHIL_SUBAGENTS_CONFIG ?? join(DATA_ROOT, "subagents.json");
+
 // 计算工具·LLM 接入管理 —— 直写 pi 全局真源（详见 docs/LLM管理模块设计方案.md）。
 // 注意：这些路径在 pi 全局目录（~/.pi/agent），非本应用 DATA_ROOT；故**不进 ensureDirs**（不由本应用创建）。
 export const PI_AGENT_DIR = process.env.XANTHIL_PI_AGENT_DIR ?? join(homedir(), ".pi", "agent");

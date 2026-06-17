@@ -1442,8 +1442,11 @@ P3(onto + KG)：
 【文件边界(E 域)】web 新建模板库 pane + tabs/EngineTabs.tsx 渲染 + （可选）routes/engine.ts 列表端点。
 【接缝层依赖(总控)】若新增 'templates' 二级 tab，需在 lib/constants.ts 的 SubTab 类型 + MULTI_SUB_TABS 加字面量（接缝层归总控，E 先报口径由总控加，或复用现有 readme/subtab 形态）。
 【约束】工作流/模板属 E 域；不碰接缝层骨架；SQL loop 实例化后要真跑需先配 SQL 连接；全程不碰 git，回流总控终审。` },
-  { dom: "X", status: "todo", title: "【subagents 管理·接缝】SubAgentTemplate 契约 + SUBAGENTS_CONFIG_PATH + 状态扩 waiting_for_help（双侧 types + config，为 P0–P3 铺路）", brief:
-`来源：2026-06-15「计算工具-subagents 管理」模块收敛设计（方案见 docs/subagents管理模块设计方案.md）。把跨 D/E 共用的契约与基建一次性定死，避免下游各拍口径。本卡=X 接缝（总控自做/可委派 E 代笔），是 P0 两张实现卡的前置。
+  { dom: "X", status: "done", title: "【subagents 管理·接缝】SubAgentTemplate 契约 + SUBAGENTS_CONFIG_PATH + 状态扩 waiting_for_help（双侧 types + config，为 P0–P3 铺路）", brief:
+`✅ 总控自做并自检通过（2026-06-16）。交付：① 双侧 types.ts 加 SubAgentTemplate{id;name;enabled;persona;toolIds:string[];dataScope:"clean_data";maxRetries;source:"custom"}（紧随 SubAgentTaskInput 后）——dataScope 用字面量类型 "clean_data" 锁死，**编译期堵死 draw_data**（AGENTS.md §一红线）；② SubAgentTaskStatus 加 "waiting_for_help"（非终态，供 P3 HITL 挂起求助）；SubAgentTaskInput 加 templateId?（缺省=回退引擎默认 prompt、行为同现状）；③ config.ts 加 SUBAGENTS_CONFIG_PATH=process.env.XANTHIL_SUBAGENTS_CONFIG ?? join(DATA_ROOT,"subagents.json")（仿 COMMANDS_CONFIG_PATH:51、单文件不进 ensureDirs、缺失=无模板安全降级）。门禁 server typecheck ✅ + web typecheck ✅ + build ✅；零新依赖、未碰数据探索子树、未碰 git。下游可开工：S1（E·runner 模板化）依赖本卡类型+常量+状态 → S2（D·面板）∥；S7（E·HITL）依赖 waiting_for_help。
+
+— 原始派发 —
+来源：2026-06-15「计算工具-subagents 管理」模块收敛设计（方案见 docs/subagents管理模块设计方案.md）。把跨 D/E 共用的契约与基建一次性定死，避免下游各拍口径。本卡=X 接缝（总控自做/可委派 E 代笔），是 P0 两张实现卡的前置。
 背景实证：现状子 agent（index.ts:1675 runDelegatedSubAgent）用硬编码 systemPrompt（index.ts:1692）+ 通用 read/write，failed 即终止；痛点=黑盒/不可配/无自愈。模板化即剥离硬编码 prompt 交配置面板管。
 目标：定 SubAgentTemplate 类型 + 配置常量 + 任务状态扩展，三方（runner / 管控面板 / HITL）共用。
 【接缝交付（X 持有）】
@@ -1453,8 +1456,12 @@ P3(onto + KG)：
 依赖：无。是 S1（E·runner）+ S2（D·面板）+ S7（E·HITL）的前置。
 【验收】双侧 typecheck+build 绿；SubAgentTemplate/状态枚举成文；subagents.json 缺失被安全降级；无模板时委派行为与现状零差异。
 【约束】接缝层归总控铁律，下游不得改契约口径；dataScope 不得放开 draw_data；不碰数据探索子树；不碰 git。` },
-  { dom: "E", status: "todo", title: "【subagents 管理·E·P0】runner 模板化重构 + GET/PUT /api/subagents 路由（剥离硬编码 systemPrompt）", brief:
-`来源：subagents 管理 P0，承接 X 接缝卡。
+  { dom: "E", status: "done", title: "【subagents 管理·E·P0】runner 模板化重构 + GET/PUT /api/subagents 路由（剥离硬编码 systemPrompt）", brief:
+`✅ 总控加重终审通过（2026-06-16，独立复核代码+复跑全套门禁，不信汇报）。E 交付：① resolveSubAgentPersona(templateId) 读 subagents.json 取 enabled 模板 persona，runDelegatedSubAgent(index.ts:1790) systemPrompt 改为「persona + 引擎恒定[硬性约束]尾注」——尾注(只读 clean_data 指定文件/写 reportDir/末条摘要/不提问)拼在 persona 之后、persona 仅替换角色段不可覆盖红线；safeResolve(cleanDir,basename) 文件围栏保留(index.ts:1805)；② GET/PUT /api/subagents + coerceSubAgentTemplate 白名单(构造式重建仅保留已知字段=拒未知字段、dataScope 硬置 clean_data、source 锁 custom、maxRetries clamp 0..5、persona 经 hasExternalUrl 拒外发 URL)；readSubAgentTemplates 缺失/解析失败→[] 安全降级；③ delegate 端点(index.ts:1774)透传 templateId，缺省 resolveSubAgentPersona 回 DEFAULT_SUBAGENT_PERSONA(行为同现状)。
+终审独立复核（红线全过）：① dataScope 双重锁——接缝层字面量类型 + coerce 运行期硬置，draw_data 编译期+运行期皆堵；② 红线尾注引擎恒定、persona 无法越过；③ 白名单构造式重建，手改 subagents.json 注入未知字段被丢弃；④ 未碰数据探索子树、未碰前端 delegate(ChatPane/DelegateSubAgentCard)、未碰 git、零新依赖。**总控补一处奇偶缺口**：PUT /api/subagents 原缺 localhost 护栏(与 command-mgmt /api/commands PUT:506 isLocalRequest 范式不齐)——总控加 isLoopbackRequest 本地 helper(对齐 engine.ts:490 逻辑) + PUT 入口 403 拦非 loopback。独立复跑：server typecheck ✅ + web typecheck ✅ + build ✅。下游解锁：S2(D·SubAgentManagementPane) 可接此端点开工。
+
+— 原始派发 —
+来源：subagents 管理 P0，承接 X 接缝卡。
 目标：把 index.ts:1692 硬编码 systemPrompt 改为「模板 persona + 引擎注入的红线尾注 + 数据域文件清单」三段拼接；无模板回退当前默认（不破坏现状）。委派可指定 templateId。
 【改动范围（E 域）】
 1. runDelegatedSubAgent（index.ts:1675）读 subagents.json 按 templateId 取模板，persona 替换硬编码角色段；红线尾注（只读 clean_data 指定文件 / 写 reportDir / 末条摘要）由引擎恒定追加不可被 persona 覆盖；保留 safeResolve(cleanDir,basename) 文件围栏（index.ts:1689）。
@@ -1464,8 +1471,12 @@ P3(onto + KG)：
 【验收】server typecheck+build 绿；建模板→委派用其 persona；无模板委派回退旧默认、行为零变化；PUT 非法字段被 coerce 丢弃。
 【约束】纯 E，复用 hooks 安全范式；红线尾注引擎恒定不可被模板覆盖；不碰数据探索子树；不碰 git；回流总控终审。
 【开放点】templateId 是否上接缝 SubAgentTaskInput（X 已在接缝卡预留）。` },
-  { dom: "D", status: "todo", title: "【subagents 管理·D·P0】SubAgentManagementPane（替换 subagents_mgmt 占位）", brief:
-`来源：subagents 管理 P0 前端侧。subagents_mgmt 子 tab 当前是 DataTabs.tsx:67 的 Placeholder（"即将推出"）。
+  { dom: "D", status: "done", title: "【subagents 管理·D·P0】SubAgentManagementPane（替换 subagents_mgmt 占位）", brief:
+`✅ 总控加重终审通过（2026-06-16，独立复核前端代码+复跑 web 门禁）。D 交付：① SubAgentManagementPane.tsx(705 行)——模板列表(名/persona 摘要/启停/toolIds 计数) + 表单 CRUD(name/persona/maxRetries + ToolPicker 按 category 分组挂载、带 riskLevel 徽章) + 校验面板；toolIds 候选取自 api.listExtractionTools(GET /api/extraction-tools)；② lib/api/data.ts 加薄 client listSubAgents/saveSubAgents(直 fetch GET/PUT /api/subagents、全量覆盖式 PUT、注释标"server coerce 真源")；③ DataTabs.tsx:69 用 SubAgentManagementPane 替换 Placeholder。
+终审独立复核(红线全过)：① **dataScope/source UI 双锁**——blankSubAgent 与 updateSelected(:156) 恒置 dataScope:"clean_data"/source:"custom"，表单无 draw_data 选项、无法被编辑绕过(呼应 server 运行期锁 + 接缝层字面量锁，三重防 draw_data)；② 前端校验镜像 server coerce(hasExternalUrl 拒非 localhost 外链、maxRetries 0~5、未知 toolIds 警告"引擎挂载忽略")，且明示"最终裁决在 server"不另起真源；③ **零 LLM·零 draw_data**——全树 grep 无 generate/chat/extract/clarify api 调用、无 draw_data 读取(仅文案提示锁定)；④ 薄 client 全量覆盖式 PUT、server 丢弃非法项；⑤ 未碰 server/接缝(types/config 未动)、未碰数据探索子树、未碰 git、零新依赖。独立复跑：web typecheck ✅ + build ✅。**至此 subagents 管理 P0 闭环**：建模板(D 面板)→委派带 templateId(E runner)→persona 生效 + 红线尾注恒定，端到端可用。下游：P1(E·护栏+工具挂载) / P2(E·D·trace) / P3(E·D·HITL) 可开工。
+
+— 原始派发 —
+来源：subagents 管理 P0 前端侧。subagents_mgmt 子 tab 当前是 DataTabs.tsx:67 的 Placeholder（"即将推出"）。
 目标：图形化管理子 agent 模板——列表（名/persona 摘要/启停）+ 表单 CRUD（persona + toolIds 多选 + maxRetries）+ 数据域只读展示（锁 clean_data）。
 【改动范围（D 域前端）】
 1. 新建 SubAgentManagementPane.tsx（仿 HooksManagementPane.tsx 728L 结构）：模板列表 + 表单；toolIds 多选复用 engineApi.listExtractionTools（/api/extraction-tools，index.ts:4533）拉可挂载工具，按 category/riskLevel 展示。
@@ -1474,8 +1485,19 @@ P3(onto + KG)：
 依赖：X 接缝卡 + E·runner 卡（端点）。
 【验收】web build 绿；建/改/删模板并持久化；toolIds 从真实工具清单选；dataScope 显示锁定 clean_data 不可改；server 丢弃非法时前端提示。
 【约束】薄 client 不另起真源；dataScope UI 不提供 draw_data 选项；不读 draw_data（clean_data 仅文案）；不碰 server 逻辑/接缝/数据探索子树/git；回流总控终审。` },
-  { dom: "E", status: "todo", title: "【subagents 管理·E·P1】聚合度护栏中间件（唯一 AI 闸口行数上限）+ 按 toolIds 细粒度注入 MCP", brief:
-`来源：subagents 管理 P1。原 proposal 想把行数拦截散在各工具——校正为集中在唯一 AI 闸口（引擎级硬编码红线）。
+  { dom: "E", status: "done", title: "【subagents 管理·E·P1】聚合度护栏中间件（唯一 AI 闸口行数上限）+ 按 toolIds 细粒度注入 MCP", brief:
+`✅ 总控第二轮加重终审通过（2026-06-17，独立复核 E 修复代码+复跑全套门禁）。E 三项修复全部到位：① [并发隔离] 废弃改写共享 .mcp.json 的 installScopedSubAgentMcpConfig，改 resolveSubAgentCwd(index.ts:1722)——有模板时建 per-task 独立 cwd .subagent-cwd/<taskId> 自带 scoped .mcp.json，subagent 以该 cwd 跑(data 走绝对路径不依赖 cwd)；无模板回 workspaceRoot(全工具继承、行为同现状)。不再触碰工作区共享文件→交叉污染/嵌套 clobber 根除；边界正确：toolIds=[] → --tools "" → 空集零工具(if([]) 真值推 --tools，mcp 侧 ""!==undefined→空 Set)，undefined → 不推 --tools → 全继承。② [误拦] guard 抽出独立纯模块 ai-tool-row-guard.ts，ROW_COUNT_KEYS 收窄为 rowCount/rowsTotal/totalRows，移除通用 count/totalCount→聚合列 count 标量不再误拦。③ [单测] ai-tool-row-guard.test.ts 4 例：超限 block+截断 detail 数组、聚合 count 标量不误判、manual 不 block、嵌套 detail+报错文案——从模块导入不启动 server。
+终审独立复跑：server+web typecheck ✅ + build ✅ + ai-tool-row-guard.test 4/4 ✅；index.ts 旧 guard/scoped 残留已清、未碰数据探索子树、未碰 git。guardToolRunSummaryForSource 正确门控(manual 直接放行)。残留可接受项(非回归)：>100 行的内联聚合数组仍会被 backstop 拦(行数上限语义本意)，阈值默认/分档是卡内既定开放点(实现前报总控)。**至此 subagents 管理 P1 护栏+注入闭环**：子 agent 按模板 toolIds 细粒度挂载、AI 工具调用经唯一闸口行数护栏。下游 S4(duckdb/pandas 工具)可挂此护栏开工。
+
+— 原始派发 —
+来源：subagents 管理 P1。原 proposal 想把行数拦截散在各工具——校正为集中在唯一 AI 闸口（引擎级硬编码红线）。核心机制与红线达标——护栏在唯一 AI 闸口(run 端点响应→MCP body→LLM)、source=ai 门控 manual 零影响、超限截断 detail 数组+block 400+"加 GROUP BY/COUNT"报错文案、--tools 过滤 + buildExtractionToolsMcpServer 抽取、阈值 100 默认+env 可配、未碰数据探索子树。**但发现 3 项需 E 修后再回流**：
+① [medium·必修] 共享 .mcp.json 并发隐患：installScopedSubAgentMcpConfig(index.ts:1721) 改写工作区共享 <workspaceRoot>/.mcp.json，而 subagent 以 workspaceRoot 为 cwd、delegate 又是后台 void fire-and-forget → (a) scoped 窗口内同工作区 main-chat turn 读到收窄配置丢工具；(b) 两个 delegate 并发时嵌套还原 clobber，工作区 .mcp.json 被永久卡在某次 scoped 直到下次 ensureWorkspaceMcpConfig。根因=用共享文件做 per-run scoping。方向(E 定)：subagent 独立 cwd + 自带 scoped .mcp.json 隔离(data 走绝对路径不依赖 cwd)，或 per-workspace 串行锁。
+② [low-med·建议] guardAiToolRows 通用键误拦：ROW_COUNT_KEYS(index.ts:4705) 含通用 count/totalCount，聚合列常叫 count(COUNT(*) AS count)，内联返回 [{date,count:12345}] 会被 count>100 误判明细 block——误伤合法聚合。收窄到行基数专用键 rowCount/rowsTotal/totalRows + 数组长度检测。
+③ [low·缺口] 无单测：guardAiToolRows 纯函数+安全关键，仿 command-expand.test.ts 补(超限 block/截断、count 标量不误拦、manual 不触发、嵌套结构)。
+用户裁决(2026-06-17)：退回 E 修 #1+#2+#3 后再回流终审。下方原始派发不变。
+
+— 原始派发 —
+来源：subagents 管理 P1。原 proposal 想把行数拦截散在各工具——校正为集中在唯一 AI 闸口（引擎级硬编码红线）。
 目标：① 子 agent 只挂载模板 toolIds 选中的工具（省 token、防越权）；② 任何 source=ai 的工具调用结果超行数上限即截断 + 抛强制报错。
 【改动范围（E 域）】
 1. mcp/extraction-tools-mcp.ts + 委派路径：给子 agent 的 .mcp.json 仅注入模板 toolIds 子集（现状 MCP 暴露全部工具；改为按模板过滤）。
@@ -1484,19 +1506,45 @@ P3(onto + KG)：
 【验收】server typecheck+build 绿；子 agent 只见挂载工具；故意返大结果集被截断 + 收到聚合报错；source≠ai（人工运行）不受行数闸影响。
 【约束】护栏唯一落点=run 端点不重复散落；不放宽 AGENTS.md §一；不碰数据探索子树；不碰 git；回流总控终审。
 【开放点】行数阈值默认值（proposal 占位 100）+ 是否按 riskLevel 分档，实现前报总控拍板。` },
-  { dom: "E", status: "todo", title: "【subagents 管理·E·P1】新增 duckdb-aggregate + pandas-sandbox 服务端 ExtractionTool", brief:
-`来源：subagents 管理 P1。proposal 的「duckdb_query_tool / pandas_sandbox_tool」校正为复用既有 ExtractionTool 体系（registry.ts:17），免费继承 riskLevel/trace/评测/MCP 闸口。
-**红线校正**：proposal 设想前端 duckdb-wasm 回喂 LLM——违反 AGENTS.md §一（前端 duckdb 子树永久禁 LLM）。本卡 duckdb 一律**服务端执行**经 source=ai 闸口，非前端 wasm。
-目标：新增两个可挂载到子 agent 的计算工具。
+  { dom: "E", status: "done", title: "【subagents 管理·E·P1】新增 duckdb-aggregate 服务端 ExtractionTool", brief:
+`✅ 总控第二轮加重终审通过（2026-06-17，独立复核 E 修复+真实执行验证沙箱已封死）。红线缺口三项修复验证：① [主修] input_data 改 CREATE TEMP TABLE(物化非惰性)，物化后→关闭前执行 disable_external_access(SET enable_external_access=false)→再跑用户 SQL(run() 顺序正确 line165-173)；② [纵深] FORBIDDEN_SQL_RE 加 read_csv/read_csv_auto/read_parquet/parquet_scan/read_json/read_json_auto/read_text/read_blob/glob/sniff_csv。**实证(真跑同一越权脚本)**：(a) 黑名单层——read_csv_auto('/tmp/外部')/read_parquet/glob 三条均被 normalize_sql 拒；(b) 运行期锁——绕过黑名单直接 con.execute 越权读，被 DuckDB "Permission Error: Cannot access file" 拦死，而物化的 input_data 表仍可查(5 行)；(c) 端到端合法聚合 region SUM 正常。双层防御成立，dataScope 沙箱封死。
+③ [安全回归测试·总控补] E 未补 cases.json 安全用例，总控直接加两条 must-fail(框架已支持，类比 P0 localhost 一行补)：duckdb-aggregate-rejects-external-read(read_csv_auto('/etc/hosts')→拒「禁止关键字」) + duckdb-aggregate-rejects-select-star(SELECT *→拒「明细」)；实跑验证两条均 exit=1 且 summary.error 命中 expectedErrorPattern。门禁 server/web typecheck ✅ + build ✅；requirements.txt 仅加 duckdb>=1.1(工具自身依赖、已登记注释)、未碰数据探索子树、未碰 git。**至此 subagents 管理 P1 计算工具就绪**：duckdb-aggregate 经唯一 AI 闸口+S3 行数护栏+外部访问锁三重约束，可挂载给子 agent 做安全 SQL 聚合。下游 P2(可观测)/P3(HITL) 可开工。
+
+— 原始派发 —
+来源：subagents 管理 P1。proposal 的「duckdb_query_tool」校正为复用既有 ExtractionTool 体系（registry.ts:17），免费继承 riskLevel/trace/评测/MCP 闸口。门禁 typecheck/build ✅、工具注册 ✅、tool.json 风控元数据规范、resultColumns.rowCount 正好对接 S3 行数闸——但**发现红线级安全缺口，必修后再回流**：
+🔴 [HIGH·红线] SQL 校验可绕过 → 数据域沙箱失效：normalize_sql 的 FORBIDDEN_SQL_RE 拦了 DDL/DML/COPY/ATTACH/INSTALL/LOAD/PRAGMA/SET，但**没拦 duckdb 文件读取表函数**（read_csv/read_csv_auto/read_parquet/parquet_scan/read_json/read_json_auto/read_text/read_blob/glob/sniff_csv）。且 input_data 用 CREATE TEMP VIEW（惰性）。**实证(已真跑)**：SELECT count(*),sum(salary) FROM read_csv_auto('/tmp/secret_outside.csv') 通过 normalize_sql 并被 duckdb 真实读取返回；SELECT name,salary FROM read_csv_auto(...) 也放行，2 行明细(<100 行护栏)整条回喂。即 subagent 可读 input(clean_data) 之外任意文件(draw_data 原始/他工作区/本机任意可读文件)，dataScope=clean_data 沙箱被绕过、AGENTS.md §一被突破。
+【必修方向】① 主修(稳健)：input_data 改 CREATE TEMP **TABLE**(物化、不惰性)，物化后、跑用户 SQL 前执行 SET enable_external_access=false(DuckDB 安全设置，禁后续 read_*/httpfs/attach 文件网络访问，内存表仍可查)——验 duckdb 1.4.4 运行期 SET 行为(单向置 false)，若不支持则连接级 config 物化方案。② 纵深(辅)：把上述 read_* 表函数全部加入 FORBIDDEN_SQL_RE(黑名单脆弱、仅兜底，真锁靠 enable_external_access)。③ 补安全回归测试：断言 SELECT ... FROM read_csv_auto('/tmp/外部') 被拒(证沙箱成立)。
+【关联】此缺口独立于「输入路径硬锁 clean_data」(line~948 红线守卫卡/pandas 暂缓卡)——in-SQL 读取无视 inputPath，必须在工具内修；两者互补。下方原始派发不变。
+
+— 原始派发 —
+来源：subagents 管理 P1。proposal 的「duckdb_query_tool」校正为复用既有 ExtractionTool 体系（registry.ts:17），免费继承 riskLevel/trace/评测/MCP 闸口。
+**范围收窄（用户裁决 2026-06-17）**：本卡只做 duckdb-aggregate；pandas-sandbox 因安全沙箱方案未成熟拆出单独卡暂缓（见「pandas-sandbox·暂缓」卡）。
+**红线校正（措辞已校准）**：AGENTS.md §一是两层——第一层数据级「明细禁/聚合可」(聚合结果回 LLM 本身合法)；第二层模块级「数据探索前端 duckdb 实例=LLM-free 隔离区」。proposal 的错位不在「duckdb 算聚合→回 LLM」本身，而在复用了探索模块那个 LLM-free 前端实例。故本卡 duckdb 做成**独立服务端 ExtractionTool**(不碰探索模块前端实例)经 source=ai 闸口 + S3 聚合护栏，在隔离通道里执行第一层红线。
+目标：新增一个可挂载到子 agent 的服务端 SQL 聚合工具。
 【改动范围（E 域 server/tools/）】
 1. server/tools/duckdb-aggregate/：tool.json（入参仅 sql、riskLevel、forbiddenUse 标注"禁输出明细行"）+ python3 entry，服务端 duckdb 执行返回聚合结果。
-2. server/tools/pandas-sandbox/：受限 Python 片段处理 JSON/CSV，复用 _tool_utils.py。
-3. 两工具走既有 loadTools 自动注册（registry.ts:88），自动进 MCP 暴露 + S3 行数闸。
+2. 走既有 loadTools 自动注册（registry.ts:88），自动进 MCP 暴露 + S3 行数闸。
 依赖：无硬依赖（独立工具）；与 S3 护栏配合生效。
-【验收】工具被 listExtractionTools 识别；duckdb-aggregate 跑聚合 SQL 返回结果；超行数被 S3 截断；tool-evaluation 可评测；确认无任何前端 duckdb 回 LLM 路径。
+【验收】工具被 listExtractionTools 识别；duckdb-aggregate 跑聚合 SQL 返回结果；超行数被 S3 截断；tool-evaluation 可评测；确认 duckdb 走独立服务端实例、不复用探索模块前端 duckdb 实例。
 【约束】duckdb 仅服务端；工具对产物不含原始行负责；不碰数据探索子树；不碰 git；回流总控终审。` },
-  { dom: "E", status: "todo", title: "【subagents 管理·E·P2】runner onEvent → ws 透传 PiEvent（流式 trace）", brief:
-`来源：subagents 管理 P2。现状前端只轮询 /api/subagent-tasks/:id 拿 running/success 黑盒；而 onEvent（index.ts:1707）已拿到完整 PiEvent 流，仅留末条 assistant。可观测=透传已有流，非新建采集。
+  { dom: "E", status: "todo", title: "【subagents 管理·pandas-sandbox·暂缓】受限 Python 计算工具（待 duckdb 落地后再判断是否上严格模式·硬锁 clean_data）", brief:
+`来源：subagents 管理 P1 范围收窄（用户裁决 2026-06-17：S4 暂不做 pandas-sandbox，先只上 duckdb-aggregate）。本卡入池暂缓，**不立即开发**，待 duckdb-aggregate 落地、积累真实使用后再判断是否做、以及做到哪个安全级别。
+作用（设计意图）：受限 Python 计算原语，给 subagent 做 duckdb/SQL 表达不了的复杂逻辑清洗与统计（命令式分组变换、字符串/日期处理、reshape、统计算法）。与 duckdb-aggregate 分工：SQL 能写的聚合走 duckdb，需命令式 Python 走 pandas。结果（聚合产物）经 S3 护栏回喂 LLM。
+**暂缓主因——「sandbox」在现有 ExtractionTool 体系下名不副实**：① python3 以完整 stdlib 运行，能 import 任意库、发网络、读被给到的任意文件路径，真正的硬边界是外层围栏(输出路径围栏 + S3 行数护栏 + buildSanitizedEnv env 白名单 + execFile timeout)而非解释器能力限制；② **输入路径目前没硬锁 clean_data**——validateExtractionInput(registry.ts:114) 只查 mode+扩展名，MCP 的 cleanDataPath 在 run 端点无「必须 resolve 在 clean_data 内」硬校验；pandas 能跑任意 Python，理论上可在代码里读别处文件绕过。duckdb-aggregate 只接 SQL、攻击面小得多，故先上。
+【将来开发要点（捞出时判断）】
+1. **是否采用严格模式（硬锁 clean_data）**——给 run 端点加 source==="ai" 时 inputPath 必须 resolve 在该 workspace clean_data 内的硬校验（与 wiki「红线守卫」卡 line~948 同源，可一并做）；这是 pandas 能否安全开放的前置。
+2. 真沙箱选型（按风险取舍）：RestrictedPython / 子进程 namespace+seccomp / 容器；或退而限定为「只允许 import pandas/numpy 白名单 + 禁网络 + chroot 到输入输出目录」。
+3. 复用：server/tools/_tool_utils.py、loadTools 自动注册、S3 行数护栏（继承，无需重做）。
+依赖：duckdb-aggregate 卡先落地（确立服务端工具+护栏的真实使用基线）。
+【验收（捞出后）】严格模式选定并实现；pandas 工具仅服务端、输入受限 clean_data、产物不含明细行经 S3 护栏；tool-evaluation 可评测；回流总控终审。
+【约束】**入池暂缓，产品代码零起头**（捞出前不建 server/tools/pandas-sandbox/、不接 UI）；不碰数据探索子树；不碰 git。` },
+  { dom: "E", status: "done", title: "【subagents 管理·E·P2】runner onEvent → ws 透传 PiEvent（流式 trace）", brief:
+`✅ 总控加重终审通过（2026-06-17，独立复核代码+复跑门禁）。E 交付：① broadcastSubAgentEvent(index.ts:1773) 经既有 wss(/ws) 广播 {type:"subagent_event",taskId,parentSessionId,workspaceId,traceKind,event,createdAt}；② classifySubAgentTraceEvent 把 PiEvent 归类 thinking/message/tool_call/tool_result/write_report(检测 write+reportDir)/turn/process/other；③ runDelegatedSubAgent onEvent 既广播每个事件**又保留** summaryText 末条捕获(回流行为不破坏)，并广播 subagent_run_start / run_end(success|failed|aborted) 生命周期事件；abort 端点也补播 run_end。
+终审独立复核(红线全过)：① **无 draw_data 泄漏**——subagent 触不到 draw_data(systemPrompt 文件围栏 safeResolve(cleanDir) + P1 duckdb 外部访问锁)，trace 最多含 clean_data(🟡 用户自有数据回显给本人)，非红线；② synthetic 生命周期事件经 PiEvent catch-all 成员 {type:string;[k]:unknown} 类型安全(typecheck 过)；③ 纯后端增量，未碰前端 DelegateSubAgentCard/ChatPane(归 D·P2 卡)、未碰数据探索子树、未碰 git、零新依赖。门禁 server+web typecheck ✅ + build ✅。
+开放点裁决：**trace 事件 schema 不上接缝双侧 types**(E 选保持服务端内部，D·P2 前端自行 typing subagent_event)——认可，减接缝耦合；ws 广播发全 client(本地单用户可接受，payload 带 type+三 id 供前端过滤)。次要(非阻断)：classifySubAgentTraceEvent 纯函数未配单测，可后补。下游 D·P2(卡片消费 subagent_event 流式渲染) 可开工。
+
+— 原始派发 —
+来源：subagents 管理 P2。现状前端只轮询 /api/subagent-tasks/:id 拿 running/success 黑盒；而 onEvent（index.ts:1707）已拿到完整 PiEvent 流，仅留末条 assistant。可观测=透传已有流，非新建采集。
 目标：把子 agent 运行中的 message_*/turn_*/工具调用事件经 ws 推前端，支撑卡片流式 trace。
 【改动范围（E 域）】
 1. runDelegatedSubAgent onEvent 除留末条外，将事件按 taskId 经既有 ws 通道广播（项目已用 Express+ws）；定 trace 事件 schema（思考/工具调用/结果/写报告）。
@@ -1505,8 +1553,13 @@ P3(onto + KG)：
 【验收】server typecheck+build 绿；委派后 ws 实时收到子 agent 事件流；断 ws 时轮询仍可拿终态。
 【约束】trace 不外发、仅本地 ws；事件不含 draw_data 原始行；不碰数据探索子树；不碰 git；回流总控终审。
 【开放点】trace 事件 schema 是否上接缝双侧 types（报总控）。` },
-  { dom: "D", status: "todo", title: "【subagents 管理·D·P2】DelegateSubAgentCard 流式 trace 展开（消费 ws，降级轮询）", brief:
-`来源：subagents 管理 P2 前端侧。DelegateSubAgentCard.tsx（331L）当前只展示终态 reportPath/summary。
+  { dom: "D", status: "done", title: "【subagents 管理·D·P2】DelegateSubAgentCard 流式 trace 展开（消费 ws，降级轮询）", brief:
+`✅ 总控加重终审通过（2026-06-17，独立复核前端代码+复跑 web 门禁）。D 交付：① DelegateSubAgentCard.tsx 订阅 gateway ServerMessage，按 msg.type==="subagent_event" && msg.parentSessionId===sessionId 过滤本会话事件→toTraceRow(traceTitle/traceBody/traceIcon 按 traceKind 归类渲染💡思考/🛠️tool_call/🧮tool_result/📝write_report)，每 task 一条 trace 列表 .slice(-80) 限量、首事件自动展开；② subagent_run_end 时拉 getSubAgentTask 刷新终态；③ **保留 3s 降级轮询**(running 时 setInterval refreshTasks，ws 不可用兜底)；④ web/types.ts 前端侧加 SubAgentTraceKind + ServerMessage 的 subagent_event 变体(**未上 server 接缝**，遵 E·P2 开放点裁决"D 前端自行 typing")。
+终审独立复核：① 无红线——trace 在用户本机浏览器渲染本会话数据，subagent 触不到 draw_data(文件围栏+duckdb 外部锁)，trace 最多含 clean_data(🟡 用户自有)、不外发；② ws 按 session 过滤(server 广播全 client、前端筛)、限量防爆；③ 降级轮询在位。门禁 web typecheck ✅ + build ✅。
+**记账（越界但正确，如实留痕）**：本卡附带改了 server/src/tool-evaluation-api.ts——加 parseParams 让 parseToolEvaluationCases 解析 cases.json 的 params 字段。属 E 域 server 改动、超出本前端卡范围，但**正确且必要**：ToolEvalCase.params/runExtractionToolProcess/evaluation-runner 早已端到端预期 params，唯独 parser 丢弃；不修则 duckdb-aggregate 的安全回归用例(must-fail，需 params.sql)在 eval 框架里拿不到 sql、测错对象。已验证修复后三条 duckdb 用例 params.sql 正确传入。低风险、保留。**至此 subagents P2 可观测闭环**：委派后实时见思考/工具/结果流，断流降级轮询。下游 P3(HITL) 可开工。
+
+— 原始派发 —
+来源：subagents 管理 P2 前端侧。DelegateSubAgentCard.tsx（331L）当前只展示终态 reportPath/summary。
 目标：卡片展开为流式运行日志，让"计算过程"可见：💡思考 / 🛠️工具调用 / 🧮结果 / 📝写报告。
 【改动范围（D 域前端）】
 1. DelegateSubAgentCard.tsx 订阅 E·P2 的 ws trace 事件（按 taskId），结构化折叠渲染；ws 不可用降级轮询终态。
@@ -1514,8 +1567,14 @@ P3(onto + KG)：
 依赖：E·P2 ws 透传卡。
 【验收】web build 绿；运行中实时见思考/工具/结果流；断流降级轮询正常。
 【约束】只渲染 trace、不产新数据、不调 LLM；不碰 server/接缝/数据探索子树/git；回流总控终审。` },
-  { dom: "E", status: "todo", title: "【subagents 管理·E·P3】HITL 后端：自愈重试 + waiting_for_help + 续跑端点", brief:
-`来源：subagents 管理 P3。现状 try-catch 到 failed 即终止（index.ts:1734）。
+  { dom: "E", status: "done", title: "【subagents 管理·E·P3】HITL 后端：自愈重试 + waiting_for_help + 续跑端点", brief:
+`✅ 总控加重终审通过（2026-06-17，独立复核+真实验证；含总控接缝持久化修复）。E 交付：① runDelegatedSubAgent 改重试循环——subAgentEventErrorText 从 tool_result(is_error)/message_end(errorMessage)/stderr/spawn_error 提错误→errorContext；hitlEnabled=template!==undefined(无模板回退旧 failed 终态、向后兼容)，attempt<maxRetries(clamp 0..5)时 buildSubAgentRetryPrompt 原样喂回错误自愈重试(同 piSessionId 续 session、agent 见历史)，耗尽转 waiting_for_help；广播 subagent_retry/run_end 事件；② POST /api/subagent-tasks/:id/resume——isLoopbackRequest 护栏 + status==="waiting_for_help" 校验 + already-running 拒；resumeDelegatedSubAgent 重建**相同红线 systemPrompt(只读指定 clean_data/写 reportDir/摘要/不提问)+ safeResolve 文件围栏 + scoped cwd**，注入人工 correction/correctedResult 续写。
+终审独立复核：① 红线在 retry/resume 路径均保留(systemPrompt 尾注恒定、文件围栏、duckdb 外部锁继承)；② errorContext 只取错误字段、subagent 触不到 draw_data 故不泄红线；③ 重试有界防死循环；④ resume localhost 护栏到位。门禁 server+web typecheck ✅ + build ✅。
+**总控接缝持久化修复(用户裁决 2026-06-17)**：终审发现 SubAgentTask 不存 templateId → resume 只能靠 req.body、而前端 task 对象也无 templateId → resume 几乎必丢模板 toolIds 最小权限+persona(退回全工具/默认人设，削弱 P1 防越权)。总控做接缝修复：双侧 types SubAgentTask 加 templateId?；db/shared.ts subagent_tasks 加 template_id 列(CREATE + 存量库 ALTER，仿 skill_registry 迁移)、SubAgentTaskRow/parseSubAgentTask/createSubAgentTask 透传；delegate 持久化 templateId；resume 默认 templateId=task.templateId(前端可覆盖)。实证：DB create→get templateId 保真、无模板→undefined、存量库补列向后兼容。这也解锁 D·P3(前端从 task.templateId 拿模板)。
+次要(非阻断)：retry/resume 无专项测试(逻辑在 index.ts 难单测，buildSubAgentRetry/ResumePrompt 纯函数可后补)。下游 D·P3(「修正并继续」UI)可开工。
+
+— 原始派发 —
+来源：subagents 管理 P3。现状 try-catch 到 failed 即终止（index.ts:1734）。
 目标：计算工具报错原样喂回触发自愈重试；达 maxRetries 不再 failed，转 waiting_for_help；提供人工续跑端点。
 【改动范围（E 域）】
 1. runDelegatedSubAgent 捕获工具 Error 原样喂回子 agent 重试，计数 ≤ 模板 maxRetries；耗尽则 finishSubAgentTask(status:"waiting_for_help") 并留下出错上下文（如写错的 SQL）。
@@ -1524,8 +1583,13 @@ P3(onto + KG)：
 【验收】server typecheck+build 绿；连错达上限转 waiting_for_help（非 failed）；resume 带修正后续跑成功完成报告。
 【约束】重试有上限防死循环；resume 仅 localhost；不碰数据探索子树；不碰 git；回流总控终审。
 【开放点】maxRetries 默认值（proposal 占位 3）；resume 入参格式（改 SQL/改参数）实现时定。` },
-  { dom: "D", status: "todo", title: "【subagents 管理·D·P3】DelegateSubAgentCard「修正并继续」HITL UI", brief:
-`来源：subagents 管理 P3 前端侧。
+  { dom: "D", status: "done", title: "【subagents 管理·D·P3】DelegateSubAgentCard「修正并继续」HITL UI", brief:
+`✅ 总控加重终审通过（2026-06-17，独立复核前端代码+复跑 web 门禁）。D 交付：① waiting_for_help 态徽章/标签(HelpCircle 琥珀色)；② 每 task 一份 resumeDrafts{correction,correctedResult}，waiting_for_help 卡片展示错误上下文 + 「修正说明」「修正后的 SQL/参数/结果」两输入框 + 「修正并继续」按钮；③ resume(task)→api.resumeSubAgent(taskId,{correction,correctedResult})(engine.ts client)，防并发(resumingTaskId)、回填刷新 task、错误处理 finally 复位。
+终审独立复核：① **正确消费总控接缝修复**——resume 仅传 correction/correctedResult、**不传 templateId**，依赖 E·P3 端点默认 templateId=task.templateId 恢复模板 toolIds 最小权限+persona(接缝持久化生效)；② 无红线——correction/correctedResult 是人工自填文本经 resume 端点→带红线 systemPrompt 的 subagent，前端零 LLM 调用、不外发；③ resume client 在 engine.ts(与 delegateSubAgent 同域)，未碰 server 接缝、未碰数据探索子树、未碰 git。门禁 web typecheck ✅ + build ✅。
+**🎉 至此 subagents 管理主线全闭环**：接缝→P0 模板化(剥离硬编码 prompt+管控面板)→P1(toolIds 细粒度注入 MCP + 唯一闸口聚合护栏 + duckdb-aggregate 工具+外部访问锁)→P2(ws 流式 trace 可观测+降级轮询)→P3(自愈重试+waiting_for_help+人工修正续跑+templateId 持久化)。剩余仅 pandas-sandbox(暂缓·待严格模式判断) 与 进阶入池(博弈/黑板/蒸馏)，均刻意延后。
+
+— 原始派发 —
+来源：subagents 管理 P3 前端侧。
 目标：waiting_for_help 态卡片弹出求助提示 + 人工修正区，点「修正并继续」调 resume 续跑。
 【改动范围（D 域前端）】
 1. DelegateSubAgentCard.tsx 识别 waiting_for_help 态，展示出错上下文（如 Agent 写错的 SQL）+ 可编辑修正框 + 「修正并继续」按钮 → POST /api/subagent-tasks/:id/resume。
@@ -1533,15 +1597,34 @@ P3(onto + KG)：
 依赖：E·P3 HITL 后端卡。
 【验收】web build 绿；waiting_for_help 卡片可见修正区；改 SQL 点续跑 → 任务恢复并完成。
 【约束】只触发既有 resume 端点；不调 LLM；不碰 server/接缝/数据探索子树/git；回流总控终审。` },
-  { dom: "X", status: "todo", title: "【subagents 管理·进阶·入池】多 agent 博弈 / 共享黑板 / 技能蒸馏 → docs/backlog（零残留）", brief:
-`来源：subagents 管理设计 §3.5。proposal 的进阶特性价值未验证、改动面大，按需求池机制（docs/backlog/README.md）先写方案不落产品代码。
-目标：把三项进阶沉淀为 backlog 方案文件，保产品干净、方案不丢。
-【改动范围（X 总控）】
-1. 写 docs/backlog/subagents-advanced.md：① 多 agent 博弈（Planner/Coder/Reviewer 复合单元）；② 共享黑板（口径在并行 agent 间复用）；③ 技能蒸馏/Save as Tool（注记复用 skill-distillation.ts / skill-curator.ts）。
-2. docs/backlog/README.md 在池索引加一行指针。
-依赖：无（独立文档动作）。
-【验收】backlog 文件 + README 索引存在；产品代码零残留（typecheck/build 不受影响）。
-【约束】纯文档；不在产品代码起头任何进阶字面量/路由/占位；不碰 git。` },
+  { dom: "E", status: "todo", title: "【subagents 管理·进阶 A】多 agent 博弈/协作（Planner/Coder/Reviewer 复合单元）", brief:
+`来源：subagents 管理设计 §3.5 进阶项（用户裁决 2026-06-17：不入池，拆成开发 todo 卡，后续开发）。
+目标：复杂分析委派从「单 subagent」升级为「复合工作单元」——Planner 拆解 brief → Coder 写 SQL/计算逻辑 → Reviewer 携业务规则审查后再执行，提升产出严谨性、降低单 agent 犯错率。
+【改动范围（E 域）】
+1. 复用 runDelegatedSubAgent + SubAgentTemplate：每角色一个模板（Planner/Coder/Reviewer 各自 persona + toolIds；Reviewer 配审查规则 persona）。
+2. 新增多角色编排：串行链 Planner→Coder→Reviewer→执行，Reviewer 不通过可打回 Coder（带轮次预算防死循环）。
+依赖：subagents P0–P3（done）。
+【约束】沿用 P1 红线（toolIds 最小权限 + 唯一闸口聚合护栏）、P3 红线 systemPrompt 不破坏；回流总控终审。
+【开放点】① 自编排 vs 复用 multi-agent-runner.ts 工作流 runner；② 回跳轮次预算；③ 多角色任务类型是否上接缝（报总控）。` },
+  { dom: "E", status: "todo", title: "【subagents 管理·进阶 B】共享黑板（Shared Context Blackboard，接缝部分报总控）", brief:
+`来源：subagents 管理设计 §3.5 进阶项（用户裁决 2026-06-17：拆成开发 todo 卡）。
+目标：平行多 subagent 共享只读记忆区——A 算出的口径（如「高净值用户=消费>500」）写入黑板，B 的流失分析默认读取，实现多 agent 业务串联、口径复用。
+【改动范围（E 域 + 接缝）】
+1. 新增 blackboard 存储（按 parentSession/workspace 作用域）；subagent 可写口径条目、读他人条目（注入 systemPrompt 或作为只读工具）。
+2. 黑板条目类型若上双侧 types = 接缝（报总控）。
+**红线注意**：黑板内容会进 LLM → **只能存聚合口径/衍生结论，禁原始明细行**（第一层红线）；写入走聚合度校验（复用 ai-tool-row-guard 思路）。
+依赖：subagents P0–P3。
+【约束】黑板不外发；明细禁入；回流总控终审。
+【开放点】① 结构化口径条目 vs 自由文本；② 作用域（session vs workspace）；③ 写入权限（谁能写/能否互改）。` },
+  { dom: "E", status: "todo", title: "【subagents 管理·进阶 C】技能蒸馏 / Save as Tool（复用 skill-distillation 管道 + D UI）", brief:
+`来源：subagents 管理设计 §3.5 进阶项（用户裁决 2026-06-17：拆成开发 todo 卡）。
+目标：subagent 多次尝试漂亮完成高难计算后，一键「固化为标准计算 Skill/工具」——把成功的 prompt context + SQL/代码打包成可复用确定性节点，从「非确定性算力」沉淀为「确定性资产」。
+【改动范围（E 后端 + D 前端）】
+1. E：复用既有 skill-distillation.ts / skill-curator.ts 蒸馏管道；subagent 成功任务 → 候选 skill（source=distilled/status=candidate，守人审门、绝不自动 active）；若蒸馏成 duckdb-aggregate SQL 模板可固化为计算工具（server/tools/）。
+2. D：DelegateSubAgentCard 成功态加「Save as Skill」按钮 → 触发蒸馏。
+依赖：subagents P0–P3 + 既有 skill 自进化体系（candidate→评测→人审采纳 管道）。
+【约束】**复用既有人审门，不绕过、不自动 active**；不重造蒸馏管道；回流总控终审。
+【开放点】固化为 skill vs 固化为 ExtractionTool 的判定口径；蒸馏输入（trace + 报告 + 成功 SQL）取舍。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──

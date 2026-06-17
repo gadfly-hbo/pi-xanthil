@@ -67,6 +67,12 @@ export const engineApi = {
     fetch(`/api/subagent-tasks/${taskId}`).then(json<SubAgentTask>),
   abortSubAgent: (taskId: string) =>
     fetch(`/api/subagent-tasks/${taskId}/abort`, { method: "POST" }).then(json<{ ok: true }>),
+  resumeSubAgent: (taskId: string, input: { correction?: string; correctedResult?: string; model?: string; templateId?: string }) =>
+    fetch(`/api/subagent-tasks/${taskId}/resume`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then(json<{ ok: true; task: SubAgentTask }>),
 
   // ---- Skill Registry（D 域 SkillManagementPane 跨域调 E 端点；端点以卡2 为契约） ----
   listSkillRegistry: (workspaceId: string, status?: SkillStatus) => {

@@ -1,0 +1,33 @@
+{
+  "id": "duckdb-aggregate",
+  "name": "DuckDB SQL 聚合查询",
+  "version": "1.0.0",
+  "description": "在服务端 DuckDB 实例中对 CSV/TSV/Parquet/JSON/JSONL 数据执行只读 SELECT 聚合 SQL。输入文件或目录会注册为 input_data 视图，SQL 必须输出聚合结果，不得输出原始明细行。",
+  "entry": "duckdb_aggregate.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv", ".tsv", ".parquet", ".json", ".jsonl"],
+    "modes": ["file", "directory"]
+  },
+  "output": [".md", ".json"],
+  "riskLevel": "L1",
+  "allowedUse": "对已登记 clean_data 聚合/衍生数据执行只读 DuckDB SELECT 聚合查询，例如 GROUP BY、COUNT、SUM、AVG、窗口前聚合等。结果可回灌 LLM，但必须是聚合层。",
+  "forbiddenUse": "禁止输出原始明细行、用户级/订单级/事件级完整列表；禁止 SELECT * 直接回传明细；禁止 DDL/DML、COPY/EXPORT、ATTACH、INSTALL、LOAD、读写外部路径或访问未登记数据。",
+  "failureHandling": "缺 duckdb Python 包时返回依赖缺失错误；非 SELECT 或包含危险 SQL 关键字时拒绝执行；结果超 AI 行数上限时由 /api/extraction-tools/:id/run 的 source=ai 闸口截断并要求 GROUP BY/COUNT 聚合。",
+  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "resultColumns": [
+    { "key": "rowCount", "label": "结果行数" },
+    { "key": "columnCount", "label": "结果列数" },
+    { "key": "sourceFiles", "label": "输入文件数" }
+  ],
+  "parameters": [
+    {
+      "name": "sql",
+      "label": "SQL",
+      "type": "string",
+      "required": true,
+      "description": "只读 SELECT 查询。输入数据视图名固定为 input_data；必须输出聚合结果，禁止明细行。"
+    }
+  ]
+}

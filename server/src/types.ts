@@ -1130,7 +1130,8 @@ export interface ForkBranch {
   createdAt: number;
 }
 
-export type SubAgentTaskStatus = "running" | "success" | "failed" | "aborted";
+// "waiting_for_help"：自愈重试耗尽后挂起求助（P3 HITL），人工修正后 resume 续跑，非终态 failed。
+export type SubAgentTaskStatus = "running" | "success" | "failed" | "aborted" | "waiting_for_help";
 
 export interface SubAgentTask {
   id: string;
@@ -1139,6 +1140,7 @@ export interface SubAgentTask {
   dataFiles: string[]; // 020_clean 标准目录内的相对/绝对路径
   model?: string;
   status: SubAgentTaskStatus;
+  templateId?: string; // 委派时所用模板（持久化，供 resume/retry 恢复 toolIds 最小权限 + persona）
   summary?: string; // 子 agent 末条结论（供回流预填）
   reportPath?: string; // 060_reports 内产报告（供回流引用）
   error?: string;
@@ -1150,6 +1152,20 @@ export interface SubAgentTaskInput {
   brief: string;
   dataFiles: string[];
   model?: string;
+  templateId?: string; // 指定子 agent 模板（缺省=回退引擎默认 systemPrompt，行为同现状）
+}
+
+// 子 agent 模板：剥离 runner 硬编码 systemPrompt 的图形化配置（subagents.json）。
+// dataScope 锁死 "clean_data" 字面量 —— **不得放开 draw_data**（AGENTS.md §一红线，编译期堵死）。
+export interface SubAgentTemplate {
+  id: string;
+  name: string;
+  enabled: boolean;
+  persona: string; // 角色 prompt，替换 runner 中硬编码角色段；引擎红线尾注恒定追加、不可被其覆盖
+  toolIds: string[]; // 挂载的 ExtractionTool id 白名单子集（细粒度装配；空=不挂计算工具）
+  dataScope: "clean_data"; // 数据域沙箱，恒为 clean_data
+  maxRetries: number; // 自愈重试上限（P3），耗尽转 waiting_for_help
+  source: "custom";
 }
 
 // ---- Knowledge Graph ----

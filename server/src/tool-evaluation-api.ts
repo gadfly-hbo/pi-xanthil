@@ -39,6 +39,7 @@ export function parseToolEvaluationCases(value: unknown): ToolEvalCase[] {
     const inputPath = String(raw.inputPath ?? "").trim();
     const expected = parseExpectation(raw.expected);
     const timeoutMs = Number(raw.timeoutMs ?? 0);
+    const params = parseParams(raw.params);
     if (!inputPath || !expected) continue;
     seen.add(id);
     cases.push({
@@ -46,10 +47,24 @@ export function parseToolEvaluationCases(value: unknown): ToolEvalCase[] {
       name,
       inputPath,
       expected,
+      ...(params ? { params } : {}),
       ...(Number.isInteger(timeoutMs) && timeoutMs > 0 ? { timeoutMs } : {}),
     });
   }
   return cases;
+}
+
+function parseParams(value: unknown): Record<string, string | number | boolean> | null {
+  if (typeof value !== "object" || value === null || Array.isArray(value)) return null;
+  const params: Record<string, string | number | boolean> = {};
+  for (const [key, raw] of Object.entries(value as Record<string, unknown>)) {
+    const name = key.trim();
+    if (!name) continue;
+    if (typeof raw === "string" || typeof raw === "number" || typeof raw === "boolean") {
+      params[name] = raw;
+    }
+  }
+  return Object.keys(params).length > 0 ? params : null;
 }
 
 export function resolveToolEvaluationCasePaths(cases: ToolEvalCase[], rootPath: string): ToolEvalCase[] {

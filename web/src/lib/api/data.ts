@@ -21,6 +21,7 @@ import type {
   Hook,
   HookTriggerRecord,
   XanCommand,
+  SubAgentTemplate,
 } from "@/types";
 
 // 插件管理：pi 已加载扩展/包清单条目（模块本地类型，仅本域消费故不上提接缝层）。
@@ -128,4 +129,16 @@ export const dataApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(commands),
     }).then(json<XanCommand[]>),
+
+  // ---- 计算工具 · subagents 管理（subagents.json 模板表，server coerce 真源）----
+  // 全量覆盖式 PUT；server coerceSubAgentTemplate 会丢弃非法项（id/name/persona 必填、persona 含外链拒收、
+  // dataScope 强制为 "clean_data"、source 强制为 "custom"、maxRetries clamp 到 0~5、toolIds 去重）。
+  listSubAgents: () => fetch("/api/subagents").then(json<SubAgentTemplate[]>),
+
+  saveSubAgents: (templates: SubAgentTemplate[]) =>
+    fetch("/api/subagents", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(templates),
+    }).then(json<SubAgentTemplate[]>),
 };

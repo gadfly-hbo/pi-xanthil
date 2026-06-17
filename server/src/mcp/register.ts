@@ -12,10 +12,16 @@ import { fileURLToPath } from "node:url";
 import { PORT } from "../config.ts";
 import { listWorkspaces } from "../db.ts";
 
-const SERVER_KEY = "xanthil-data-tools";
+export const MCP_SERVER_KEY = "xanthil-data-tools";
 const MCP_ENTRY = fileURLToPath(new URL("./extraction-tools-mcp.ts", import.meta.url));
 
 interface McpConfig { mcpServers?: Record<string, unknown> }
+
+export function buildExtractionToolsMcpServer(workspaceId: string, allowedToolIds?: string[]): Record<string, unknown> {
+  const args = ["--experimental-strip-types", MCP_ENTRY, "--workspace", workspaceId, "--api", `http://localhost:${PORT}`];
+  if (allowedToolIds) args.push("--tools", allowedToolIds.join(","));
+  return { command: process.execPath, args };
+}
 
 /** Idempotently write/refresh our MCP server entry into `<rootPath>/.mcp.json`, preserving other servers. */
 export function ensureWorkspaceMcpConfig(rootPath: string, workspaceId: string): void {
@@ -25,10 +31,7 @@ export function ensureWorkspaceMcpConfig(rootPath: string, workspaceId: string):
     try { config = JSON.parse(readFileSync(file, "utf8")) as McpConfig; } catch { config = {}; }
   }
   const servers = config.mcpServers ?? {};
-  servers[SERVER_KEY] = {
-    command: process.execPath,
-    args: ["--experimental-strip-types", MCP_ENTRY, "--workspace", workspaceId, "--api", `http://localhost:${PORT}`],
-  };
+  servers[MCP_SERVER_KEY] = buildExtractionToolsMcpServer(workspaceId);
   config.mcpServers = servers;
   writeFileSync(file, JSON.stringify(config, null, 2));
 }

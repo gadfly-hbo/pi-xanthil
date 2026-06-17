@@ -18,11 +18,16 @@
 
 ## 1. 三处必须校正的错位
 
-### 1.1 前端 duckdb-wasm 回喂 LLM —— 违反 AGENTS.md §一
+### 1.1 不能复用「数据探索」前端 duckdb 实例回喂 LLM
 
-proposal 设想「duckdb_query_tool 在前端 Wasm 执行后返回给 Subagent」。但前端 duckdb（`web/src/components/DataExplorationPane.tsx` 子树）是 **AGENTS.md §一 永久禁 LLM 区**：禁止把任何数据内容/列名/结果送 LLM。
+proposal 设想「duckdb_query_tool 在前端 Wasm 执行后返回给 Subagent」。这里要分清 AGENTS.md §一的**两层**红线：
 
-**校正**：计算工具要把结果回喂 Agent，只能走**服务端**链路。把 `duckdb_query` 做成一个**服务端 ExtractionTool**，经既有 `POST /api/extraction-tools/:id/run?source=ai` 执行——这条链路已是 AI 工具调用的唯一闸口，工具对产物是否含原始行负责。
+- **第一层 · 数据级**：原始明细行禁直接进 LLM；**聚合/衍生产物（不含原始行）允许进 LLM**。即「明细禁、聚合可」——聚合结果回 LLM **本身合法**。
+- **第二层 · 模块级**：「数据探索」tab（`web/src/components/DataExplorationPane.tsx` 子树）这个**前端 duckdb 实例**被整体划为 LLM-free 隔离区（它直接握着 `draw_data` 原始明细，用「整模块禁」换零判断成本的安全）。
+
+proposal 的错位**不在「duckdb 算聚合 → 回 LLM」这件事本身**（第一层允许），而在**复用了探索模块那个 LLM-free 前端实例**——那会污染第二层隔离。
+
+**校正**：把 `duckdb_query` 做成一个**独立的服务端 ExtractionTool**（不碰探索模块的前端实例），经既有 `POST /api/extraction-tools/:id/run?source=ai` 执行——这条链路是 AI 工具调用的唯一闸口，配合聚合度护栏（行数上限）在隔离通道里执行第一层「明细禁/聚合可」红线，工具对产物是否含原始行负责。
 
 ### 1.2 「计算工具」要新造 —— 底座已存在
 
@@ -119,14 +124,14 @@ proposal 想在「任何计算工具输出端」加 >100 行截断。现状 `/ap
 # 数据探索子树仍无 LLM API 调用
 grep -rE "(generate|chat|extract|clarify|sink|distill).*api\." \
   web/src/components/DataExplorationPane.tsx web/src/components/data-exploration/
-# duckdb 计算工具仅服务端、经 source=ai 闸口（人工确认无前端回喂）
+# duckdb 计算工具走独立服务端实例、经 source=ai 闸口（人工确认未复用探索模块前端 duckdb 实例）
 ```
 
 ---
 
 ## 5. 关键设计取舍
 
-- **为什么不做前端 duckdb 回 LLM**：违反 AGENTS.md §一永久红线，无商量空间。
+- **为什么 duckdb 走独立服务端通道而非复用探索模块前端实例**：聚合结果回 LLM 本身合法（第一层「明细禁/聚合可」允许）；但探索模块那个前端 duckdb 实例是 LLM-free 隔离区（第二层模块级），复用它会污染隔离。故走独立服务端 ExtractionTool + 聚合护栏，在隔离通道里执行第一层红线。
 - **为什么复用 ExtractionTool 而非新抽象**：免费继承 riskLevel/trace/评测/MCP 闸口，最小改动，避免第二套工具治理。
 - **为什么护栏放 run 端点而非各工具/各 hook**：唯一 AI 闸口，一处覆盖全部；引擎级硬编码符合项目红线偏好。
 - **为什么进阶入池**：博弈/黑板/蒸馏价值未验证、改动面大，按需求池机制保产品干净、方案不丢。

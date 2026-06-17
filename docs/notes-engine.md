@@ -7,33 +7,27 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-16 · G 卡：skill 可观测面板（A 激活趋势 + ROI + C 回归徽章/重测/时间线）前端落地。
+- 最近更新：2026-06-17 · subagents 管理 D·P3：DelegateSubAgentCard HITL 前端 UI（含 P2 trace 流作为必要依赖）。
 - 进度：
-  - **后端历史查询**：`server/src/db/engine.ts` 新增 `listSkillRegistryEvalHistory`（workspace 必传，slug/registryId 可选，limit 默认 200 封顶 1000），参数化查询无注入风险。
-  - **后端历史端点**：`GET /api/workspaces/:id/skill-registry/eval-history` 只读返回 `{ workspaceId, items }`。
-  - **前端客户端方法**：`web/src/lib/api/engine.ts` 新增 `retestActiveSkills` 与 `listSkillEvalHistory`。
-  - **前端类型**：`web/src/types.ts` 新增 `SkillRegistryRetestTrigger`、`SkillRegistryEvalHistoryEntry`、`SkillRegistryEvalHistoryResult`、`SkillRegistryRetestActiveResult`。
-  - **可观测面板子组件**：`web/src/components/skill-management/ObservabilityDashboard.tsx`（293 行），纯渲染零 API 调用。三 KPI 仪表盘（生产激活率 / 评测期省 token / 回归 skill 数）+ 折叠标题 + slug 筛选评测时间线（触发标签、回归徽章、Δscore/Δactivation 涨跌色）。数据全部由父组件 `SkillManagementPane` 计算后传入。
-  - **父组件改造**：`SkillManagementPane.tsx` 新增 dashboard 状态（`dashboardOpen`/`evaluations`/`history`/`historyLoading`/`historySlug`/`retesting`/`retestMsg`）；`refresh()` 并行拉 `listSkillEvaluations` + `listSkillEvalHistory({limit:200})`；`dashboard` memo 按 active skill 聚合生产激活率/ROI/回归数；`retestAllActive(triggerKind)` 含 `window.confirm` 弹窗（显示 active 数、tasks×2 调用估算、模型名、evalSet 名）；工具栏「重测 active (N)」按钮（rose 主题，retesting 时 pulse）；表格新增「回归」列（colSpan 10→11），回归行 rose 浅底，徽章 tooltip 含 reason+Δ，点击联动 `setHistorySlug(slug)+setDashboardOpen(true)+scrollIntoView`。
-  - **子组件拆分**：将 dashboard UI 从 `SkillManagementPane.tsx` 抽到独立文件 `ObservabilityDashboard.tsx`，避免父组件超长。移除了父组件中已搬到子组件的 `fmtTimeShort`/`fmtDeltaPct`/`fmtDeltaScore`/`TRIGGER_LABEL` 及未用 lucide imports。
-  - **server 类型修复**：`listSkillRegistryEvalHistory` 的 `params` 类型从 `unknown[]` 修为 `(string|number)[]`。
-  - **代码审查修复**：清理子组件两处死注释（STUB MARKER / ensure helpers）；回归徽章点击加 `scrollIntoView({ behavior: "smooth" })`。
+  - **D·P2 trace 流**（本 session 作为 P3 前置依赖一并实现）：`DelegateSubAgentCard` 通过 `gateway.subscribe` 消费 `subagent_event` WebSocket 消息，按 `taskId` 聚合 trace rows，折叠渲染思考/工具调用/结果/写报告。`SubAgentTraceKind` 已进入前端 `ServerMessage` union（`web/src/types.ts`）。trace rows 每 task 上限 `.slice(-80)`；`subagent_run_end` 事件触发单 task `getSubAgentTask` 刷新。运行中自动展开 trace，终态后仍可手动折叠/展开。
+  - **D·P3 HITL UI**：`DelegateSubAgentCard` 识别 `waiting_for_help` 态，展示琥珀色修正区（含错误上下文 `<pre>`、修正说明 textarea、正确结果/SQL textarea），点「修正并继续」→ `POST /api/subagent-tasks/:id/resume`（`correction` + `correctedResult`）。续跑后 task 状态更新为 `running`，自动触发 3s 轮询与 WS trace 订阅。
+  - **API slot**：`web/src/lib/api/engine.ts` 新增 `resumeSubAgent(taskId, { correction?, correctedResult?, model?, templateId? })`，返回 `{ ok, task }`。
+  - **状态清理**：`resumeDrafts` 通过 `useEffect` 监听 `tasks` 变化，自动清理已离开 `waiting_for_help` 态的条目，防止内存残留。
+  - **本次范围**：改动集中在 `web/src/components/DelegateSubAgentCard.tsx` 与 `web/src/lib/api/engine.ts`；未触碰 server、数据探索子树、DB schema、git。
 - 校验：
-  - `web && npm run typecheck` ✅
-  - `web && npm run build` ✅（仅原有 chunk-size warning）
-  - `server && npm run typecheck` ✅
-  - 数据探索隔离 grep ✅（无 LLM API 调用）
-  - 零新依赖；未执行 git add/commit/push。
+  - `npm run typecheck` ✅（server + web）
+  - `npm run build` ✅（仅既有 Vite chunk-size/dynamic import warning）
+  - 数据探索 LLM 隔离 grep ✅（无匹配）
+  - code review 五轴通过（正确性/可读性/架构/安全/性能）
 - 下一步：
-  - **E2E UI smoke**：启动本地浏览器点验可观测面板三 KPI 数值、时间线筛选/清除筛选、回归徽章点击联动、重测 active 按钮 confirm 弹窗与执行。
-  - **真实数据验证**：在有 active skill + 评测历史 + 回归记录的 workspace 中验证 dashboard 数值与表格回归列正确。
-  - **ROI 口径验证**：确认 `evalById` 匹配逻辑（`entry.lastEvaluationId` → `evalDoc.variantSummaries` 中 `variantId === entry.id`）在真实数据下正确。
-  - **时间线分页**：当前 `filteredHistory` 从 200 条窗口内过滤后截断 30 条；如需要全量 slug 历史，后续可加 `?slug=xxx` 参数直调 API。
+  - **真实 pi E2E**：用真实子 agent + MCP 工具制造一次可修复工具错误，验证自愈重试、耗尽挂起、人工 resume 后写报告、summary 回流全链路。
+  - **总控终审**：确认 P2 trace 流 + P3 HITL UI 的前端实现是否满足验收标准；确认 `resumeDrafts` 清理策略是否可接受。
+  - **持久化结构是否升级**：当前未扩 DB schema，后续如需审计多轮错误/人工修正历史，可由总控决定新增 `subagent_task_events` 或 JSON context 字段。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/用户拍板）：
-  - 可观测面板是否需要在其他 tab（如实验室）复用，还是仅 skill 管理页。
-  - ROI 覆盖度（`evalCovered/activeCount`）低于阈值时是否需要显式警告。
-  - 时间线是否需要支持按 `triggerKind` 或时间范围筛选。
+  - `maxRetries` 默认值是否正式定为 `3`，以及显式 `0` 是否继续表示禁用自愈、直接挂起/失败。
+  - resume 入参是否需要收敛为结构化 schema（例如 `{ correction, correctedResult }`），还是保留当前兼容 `params/sql/result` 的宽松格式。
+  - 是否需要把 HITL 错误上下文、人工修正、重试次数持久化为独立审计记录，而不是复用 `subagent_tasks.error`。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -138,6 +132,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 2026-06-16 command 发送入口决策：除了普通 session chat，flow chat 也接入 command 展开，防止同一个 `/cmd` 在不同聊天入口行为分叉。历史消息仍保存用户原文，原因是 command 是用户输入意图，展开 prompt 是 pi 执行细节；如果后续 UI 要展示展开结果，应新增显式 preview/trace，不应覆盖 transcript。
 - 2026-06-16 command 向导前端决策：参数表单提交后直接发送 `/cmd --key=value`，而不是先回填输入框等待二次点击。原因是“口径2”价值核心是直奔结构化向导、降低 prompt 工程学习成本；服务端仍会保存原始 command text 并单源展开，前端没有新增协议字段。无参命令保留为插入输入框，是为了兼容位置参数/自由补充文本。
 - 2026-06-16 覆盖缺口检测决策：缺口建议先做**只读列表 + 手动蒸馏**，不进治理队列。原因是本卡目标是“where to evolve”的发现层，填补由 B 蒸馏链路负责；若直接持久化治理状态，会扩大到队列表、状态机、审计和 UI 分类，超出 E 卡最小闭环。后续如总控要求治理化，应新增 gap proposal 表或复用既有治理队列，但不得绕过 B 的 distilled candidate 与人审门。
+- 2026-06-16 subagents 管理 P0 决策：`GET/PUT /api/subagents` 暂放在 legacy `index.ts` 的委派 runner 邻近位置，而不是先拆到 `routes/engine.ts`。原因是本卡直接改 `runDelegatedSubAgent`，路由与 runner 共享 `coerce/read/write/resolvePersona` helper 最小改动；是否迁移到 E router 留给总控统一裁决。P0 也不改 `subagent_tasks` schema：`templateId` 只透传到当次 runner，不持久化，避免扩大 X 接缝和 DB migration。
 - 画布**纯预览只读**（`nodesDraggable=false` 等），所有变更经「pi 对话」自然语言完成。
 - `workflow.json` 不存在时从**目录树自动推断节点**（数字前缀排序/单目录包裹展开，标 `inferred:true`）。
 - 创建视图三区（架构+进度+对话）；黑板**正名融合**——把唯一真实价值（`{{id}}` 传递关系）显示在执行流节点卡，删重复输出汇总。
@@ -165,6 +160,16 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 业务需求版本恢复依赖 `structured.version.requirementInput`：后端生成版本必须写入原始 draft 输入，手动编辑 markdown 时必须保留已有 requirementInput；前端打开历史版本/刷新恢复左侧 draft 时只读该字段，旧 JSON 缺字段时不应臆造完整业务背景。
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
+- **subagent 模板化 prompt 红线（2026-06-16 E·P0）**：模板只能替换 runner 的 persona 角色段；只读指定 `clean_data` 文件、只写 `reportDir`、末条摘要、不提问自主完成等硬性约束必须由引擎在 persona 后恒定追加，不能放进可编辑模板。无模板、模板 disabled、配置缺失或损坏时必须回退 `DEFAULT_SUBAGENT_PERSONA`，保持旧委派行为。`dataFiles` 必须继续走 `safeResolve(cleanDir, basename(f))`，不得因为模板化而放宽到路径直读。
+- **subagent 配置安全边界（2026-06-16 E·P0）**：`subagents.json` 是本地模板注册表，不是 shell/webhook 执行配置。CRUD coerce 必须白名单字段、未知字段丢弃；`source` 固定 `custom`，`dataScope` 固定 `clean_data`；persona 视为 prompt 文本，禁止通过外部 URL/外发配置引入联网动作。`toolIds` P0 仅保存清洗结果，不代表工具已挂载。
+- **subagent MCP 注入边界（2026-06-17 E·P1）**：模板 `toolIds` 已成为 runner 注入 MCP 工具的实际 allowlist。普通 workspace `.mcp.json` 仍注册全部 analysis 工具；指定模板的子 agent 不改 workspace 根配置，而是以 `<workspace>/sessions/<parentSessionId>/.subagent-cwd/<taskId>` 为 cwd，并在该 cwd 写 scoped `.mcp.json`（`--tools id,id`）。无模板委派保持旧行为，模板 `toolIds: []` 表示无 extraction tool 暴露。该设计避免共享 `.mcp.json` 并发 clobber；代价是子 agent MCP 工具产物默认落在独立 cwd 的 `tool_runs` 下，报告仍必须写入引擎注入的 `reportDir`。
+- **subagent WS trace 透传（2026-06-17 E·P2）**：子 agent 可观测性复用 `runDelegatedSubAgent` 已有 `onEvent`，不新建采集链路。后端广播本地 WS runtime 消息 `subagent_event`，字段为 `taskId/parentSessionId/workspaceId/traceKind/event/createdAt`，其中 `event` 保留原始 `PiEvent`，`traceKind` 只做展示辅助粗分。轮询端点仍是终态降级通道；本轮未扩双侧 `ServerMessage` 接缝，是否上正式类型由总控拍板。当前实现广播给所有本地 open clients，D 卡必须按 `taskId`/`parentSessionId` 过滤。
+- **subagent HITL 自愈语义（2026-06-17 E·P3）**：HITL 只对“指定 enabled template 的委派”生效；无模板委派保持旧默认，失败仍 `failed`。模板 `maxRetries` 缺省 `3`、显式值 clamp `0..5`，其中 `0` 表示不自动重试，首次可识别错误即进入 `waiting_for_help`。runner 捕获 `tool_result.is_error` / `message.errorMessage` / `stderr` / `spawn_error`，把原始错误上下文喂回同一 `subagent-${taskId}` pi session 自愈；耗尽后复用 `subagent_tasks.error` 存最后错误上下文，不扩 DB schema。`POST /api/subagent-tasks/:id/resume` 仅 loopback，可把人工 `correction` 和 `correctedResult/params/sql` 作为下一轮输入续跑，同一 session、同一 reportDir，成功转 `success`，失败继续 `waiting_for_help`。
+- **subagent trace 前端消费（2026-06-17 D·P2）**：`DelegateSubAgentCard` 通过 `gateway.subscribe` 消费 `subagent_event`，按 `taskId` 聚合 trace rows，折叠渲染思考/工具调用/结果/写报告。`SubAgentTraceKind` 正式进入前端 `ServerMessage` union（`web/src/types.ts`），与后端 `classifySubAgentTraceEvent` 的 8 种归类完全对齐。trace rows 每 task 上限 `.slice(-80)` 防内存膨胀；`toTraceRow` id 用模块级递增计数器而非 `Math.random()` 消除理论碰撞。`gateway.connect()` 在 subscribe effect 中幂等调用；`subagent_run_end` 事件触发单 task `getSubAgentTask` 刷新（非全量 `listSubAgentTasks`），WS 不可用时保留原有 3s 轮询作为终态降级。运行中自动展开 trace，终态后仍可手动折叠/展开。
+- **subagent HITL 前端 UI（2026-06-17 D·P3）**：`DelegateSubAgentCard` 识别 `waiting_for_help` 态，展示琥珀色修正区：错误上下文 `<pre>` + 修正说明 textarea + 正确结果/SQL textarea（monospace），点「修正并继续」→ `engineApi.resumeSubAgent(taskId, { correction, correctedResult })`。续跑后 task 状态更新为 `running`，自动触发 3s 轮询与 WS trace 订阅。`resumeDrafts` 通过 `useEffect` 监听 `tasks` 变化，自动清理已离开 `waiting_for_help` 态的条目。API slot 在 `web/src/lib/api/engine.ts`，不调 LLM、不碰 server/数据探索子树。P2 trace 流作为 P3 前置依赖一并实现（续跑后用户需要看到 agent 进度）。
+- **ExtractionTool AI 聚合度唯一闸口（2026-06-17 E·P1）**：所有 AI/MCP 工具调用都必须经 `POST /api/extraction-tools/:id/run` 且 `source:"ai"`；行数上限护栏只能放在这个 run 端点，不散落到各工具。默认阈值 `100`，env `XANTHIL_AI_TOOL_MAX_ROWS` 可调；不按 `riskLevel` 分档。超限时必须截断响应 summary 并返回 `400` + 「结果超 N 行，疑似明细输出，请加 GROUP BY/COUNT 聚合」。人工 `source !== "ai"` 不受此闸影响。
+- **duckdb-aggregate 服务端工具边界（2026-06-17 E·P1）**：DuckDB 聚合工具必须作为独立服务端 ExtractionTool 运行，不能复用数据探索 tab 的前端 `duckdb-wasm` 实例。工具必须先把授权输入物化为 `input_data` 临时内存表，再关闭 DuckDB `enable_external_access`，然后才执行用户 SQL；禁止使用 `CREATE TEMP VIEW` 这类惰性视图承接输入，因为用户 SQL 仍可在同一连接内调用 `read_*` 表函数绕过 `inputPath` 沙箱。工具可以返回聚合结果给 LLM，但明细输出必须由工具 forbiddenUse + `/api/extraction-tools/:id/run` 的 `source:"ai"` 行数闸口共同拦截。该边界对应 AGENTS.md 的两层红线：数据级允许聚合产物，模块级仍保持数据探索前端实例 LLM-free。
+- **tool-evaluation case params（2026-06-17 E·P1）**：`tests/cases.json` 支持可选 `params`（string/number/boolean），runner 将其映射到 manifest 参数的 `--param-*` CLI；若 case 未给 params，仍沿用 manifest default，保持旧工具评测兼容。带必填运行参数的工具（如 `duckdb-aggregate` 的 `sql`）应在 case 中显式提供 params，避免为了评测给 manifest 塞不合理默认值。
 - Phase 2b 数据分析工具展示采用**事件容错层而非深绑 pi-adapter 类型**：E 侧只认 `tool_call`/`tool_result` 事件和 pi `tool_use`/`tool_result` content block，不改 `pi-adapter/index.ts/types`。这样 X 可继续收敛总控契约，前端只在 `App.tsx` 映射层适配字段差异。
 - ExtractionTool 结果产物预览**复用现有工具预览端点** `/api/extraction-tools/preview`，不新增 ChatPane 专属 artifact API。结果卡从 `results[].outputs` 提取产物路径；若工具 summary 不含该字段，只展示原始 JSON。
 
@@ -187,6 +192,9 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **node.skillPaths 三态不要混淆**：`undefined` 是继承 workflow 默认，`[]` 是明确禁用默认 skill，非空数组是指定子集。前端 patch 时如果想恢复继承必须把字段设为 `undefined`，不能写空数组。
 - **工具事件重复显示风险**：pi 可能先流式透传 `tool_call/tool_result`，最终 `message_end` 又带完整 `tool_use/tool_result` content。ChatPane 必须按 `id/tool_use_id` 去重，否则用户会看到两套工具卡。
 - **ExtractionTool skill 不是红线本体**：skill 文字只能引导模型选择 clean_data；真正防泄漏必须依赖后端 `POST /api/extraction-tools/:id/run` 的 `source=ai`、`workspaceId` 和已登记 `clean_data` 校验。不要在前端或 skill 文案里把软约束误认为安全边界。
+- **AI 行数护栏不能把 `items` key 一律当明细**（2026-06-17 E·P1）：`market-basket` 的聚合项集结构是 `{ items: string[], size, support }`，若把所有 `items` 数组按明细截断，会把一个项集内部的商品列表截坏。护栏应优先识别明确明细 key（`rows/records/data`）、对象数组、以及 `rowCount/totalRows` 类计数字段；不要把任意数组都当原始行。
+- **递归 guard 的返回对象求值顺序坑**（2026-06-17 E·P1）：`return { blocked, summary: visit(value) }` 会先读取旧 `blocked=false`，再执行 `visit()` 的副作用，导致 summary 被截断但状态仍返回未阻断。必须先 `const summary = visit(value)`，再 `return { blocked, summary, maxRowsSeen }`。后续有副作用递归聚合状态时同理。
+- **Python 工具依赖与 py_compile 的本地差异（2026-06-17 E·P1）**：`duckdb-aggregate` 依赖 Python 包 `duckdb`，新环境需按 `server/tools/requirements.txt` 安装；缺依赖时工具应给出明确错误而不是吞异常。macOS/sandbox 下直接 `python3 -m py_compile ...` 可能尝试写系统 pycache 被拒，验证 Python 工具语法时可设置 `PYTHONPYCACHEPREFIX=/tmp/pi-xanthil-pycache`。
 - **SQL loop 不能让 tool 节点非零退出**：普通 tool node 失败会在 runner 中立即 `return { code }`，下游 gate 不会执行。SQL loop 的可修复失败必须编码进 `run_sql` JSON 的 `code/success/error`，workflow 层保持 `code:0`，由 `sql_gate` block 并写入 `sql_error`。
 - **SQL 关键字段校验依赖结果 columns，不依赖首行 row key**：空结果时 rows 无法提供字段信息；后续若要支持“空结果但 schema 字段完整”的场景，需要总控明确是否允许 `rowCount=0` pass。目前 T-E4 验收要求结果非空，所以 `rowCount=0` 一律 block。
 - **设计页运行态恢复不是跨进程恢复**：`chat-runtime` 只反映当前 server 进程里的 `activeFlowRuns`。如果 server 重启或 pi 已异常退出，前端只能看到历史消息/已落盘 workflow，不能继续上一轮生成。不要把该能力描述成“断点续跑”。

@@ -1,0 +1,44 @@
+{
+  "cases": [
+    {
+      "id": "duckdb-aggregate-region-sum",
+      "name": "Aggregates CSV by region",
+      "inputPath": "tests/fixtures/sales.csv",
+      "timeoutMs": 60000,
+      "params": {
+        "sql": "SELECT region, SUM(amount) AS total_amount FROM input_data GROUP BY region ORDER BY total_amount DESC"
+      },
+      "expected": {
+        "kind": "field-presence",
+        "jsonPath": "*.json",
+        "requiredKeys": ["sql", "columns", "rows", "rowCount", "sourceFiles"]
+      }
+    },
+    {
+      "id": "duckdb-aggregate-rejects-external-read",
+      "name": "Rejects external file read (data-scope sandbox)",
+      "inputPath": "tests/fixtures/sales.csv",
+      "timeoutMs": 60000,
+      "params": {
+        "sql": "SELECT count(*) AS c FROM read_csv_auto('/etc/hosts')"
+      },
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "禁止关键字"
+      }
+    },
+    {
+      "id": "duckdb-aggregate-rejects-select-star",
+      "name": "Rejects SELECT * detail output",
+      "inputPath": "tests/fixtures/sales.csv",
+      "timeoutMs": 60000,
+      "params": {
+        "sql": "SELECT * FROM input_data"
+      },
+      "expected": {
+        "kind": "must-fail",
+        "expectedErrorPattern": "SELECT \\*|明细"
+      }
+    }
+  ]
+}

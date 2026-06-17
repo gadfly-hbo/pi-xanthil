@@ -20,6 +20,7 @@ export interface ToolEvalCase {
   inputPath: string;
   expected: ToolExpectation;
   timeoutMs?: number;
+  params?: Record<string, string | number | boolean>;
 }
 
 export interface ToolEvaluationRunnerOptions {
@@ -40,6 +41,7 @@ export interface ToolEvalRunToolOptions {
   outputPath: string;
   summaryPath: string;
   timeoutMs: number;
+  params?: Record<string, string | number | boolean>;
 }
 
 export interface ToolEvalToolRun {
@@ -184,6 +186,7 @@ async function runToolCase(
       outputPath,
       summaryPath,
       timeoutMs,
+      params: testCase.params,
     });
     const summary = readToolSummary(summaryPath);
     const error = await evaluateExpectation(testCase.expected, {
@@ -252,6 +255,10 @@ export function runExtractionToolProcess(options: ToolEvalRunToolOptions): Promi
       "--json-summary",
       options.summaryPath,
     ];
+    for (const param of options.tool.parameters ?? []) {
+      const value = options.params?.[param.name] ?? param.default;
+      if (value !== undefined && value !== "") args.push(`--param-${param.name}`, String(value));
+    }
     execFile(options.tool.runtime, args, { 
       maxBuffer: 4 * 1024 * 1024, 
       timeout: options.timeoutMs,

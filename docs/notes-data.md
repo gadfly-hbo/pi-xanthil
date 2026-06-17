@@ -8,19 +8,21 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-16 · **Command 管理前端面板（CommandManagementPane）**
+- 最近更新：2026-06-16 · **SubAgentManagementPane（D·P0）——subagents 管理前端面板**
 - 进度：
-  - **Command 管理模块**（aggregate tab → `command_mgmt` 子 tab）：
-    - **接缝 client**（`web/src/lib/api/data.ts`）：`listCommands` / `saveCommands`（GET/PUT `/api/commands`，全量覆盖式，server `coerceCommand` 为最终裁决）
-    - **主 UI**（`web/src/components/CommandManagementPane.tsx` ~700 行）：左列表（/name + 描述 + 启停灯 + p/s 角标）+ 右表单（name/description/argumentHint/template + ParamsEditor 行编辑 key/label/required/type/options/source + SkillSlugsEditor）
-    - **客户端预校验**：`SAFE_NAME_RE` / `select` 必有 options / `param.label` 必填 / name 唯一 / template 必填，错误以红条列出
-    - **skillSlugs 数据源**：有 workspace 时拉 `listSkillRegistry(active)` 给多选下拉；无 workspace 或空时退化为纯文本输入；始终保留手填回退（兼容外部 slug）
-    - **挂接**（`web/src/tabs/DataTabs.tsx`）：aggregate → command_mgmt 替换 Placeholder，传入 `ctx.activeWorkspaceId`
+  - **SubAgentManagementPane**（aggregate tab → `subagents_mgmt` 子 tab，替换原 Placeholder）：
+    - **接缝 client**（`web/src/lib/api/data.ts`）：`listSubAgents` / `saveSubAgents`（GET/PUT `/api/subagents`，全量覆盖式，server `coerceSubAgentTemplate` 为最终裁决）
+    - **主 UI**（`web/src/components/SubAgentManagementPane.tsx` ~704 行）：左列表（启停灯 + persona 摘要 + tool 计数 + maxRetries 角标）+ 右表单（name/enabled/persona/maxRetries 0~5 + dataScope 只读锁 clean_data + ToolPicker）
+    - **ToolPicker**：复用 `api.listExtractionTools()` 拉工具清单，按 `category` 分组，显示 `riskLevel` 徽章，支持过滤、checkbox 多选、文本兜底添加（兼容未注册/外部 toolId）
+    - **前端校验**：id/name/persona 必填、persona 含非 localhost 外链警告、maxRetries 0~5 范围、name 重名警告、未知 toolId 警告
+    - **保存后比对**：`saved.length !== templates.length` 时红条提示 server 丢弃原因（id/name/persona 必填、persona 不能含外链、maxRetries 需为 0~5 整数）
+    - **dataScope 只读**：UI 显示 emerald 锁定条，`updateSelected` 强制覆盖 `dataScope: "clean_data"` / `source: "custom"`，不提供 draw_data 选项
+    - **挂接**（`web/src/tabs/DataTabs.tsx`）：aggregate → subagents_mgmt 替换 Placeholder
     - **code review 修复（本轮）**：
-      - I-1：skill fetch 加 `cancelled` flag，防止 workspace 切换时旧响应覆盖新结果（race condition）
-      - I-2：`save()` 返回后比对 `saved.length !== commands.length`，server 丢弃条目时红色 error 提示命名规则
-      - R-4：`PARAM_TYPE_OPTIONS` 去掉 `text`，下拉仅 `select`/`file` + 空 option 表示 text 默认，消除双 text 选项
-  - **LLM 接入管理前端面板**（前次 session，见下方 v6 增量）
+      - I-1：server 丢弃提示补全为 `id/name/persona 必填、persona 不能含外链、maxRetries 需为 0~5 整数`
+      - S-1：`hasExternalUrl` 加注释标明 "与 server coerceSubAgentTemplate 保持同步；仅前端校验用，最终裁决在 server"
+  - **Command 管理前端面板**（前次 session）
+  - **LLM 接入管理前端面板**（前次 session）
   - **hooks 管理 v2**（前次 session）
   - **skill 管理模块**（前次 session）
 - 校验：
@@ -28,22 +30,22 @@
   - `npm run build`：✅ 全绿
   - 数据探索 LLM 隔离 grep：✅ 空匹配
 - 下一步（接续优先级）：
-  - ① **真机联调**：进「聚合→command管理」验证新建/编辑/启停/删除命令落 commands.json、刷新存活、具名参数编辑（含 select+options / file+source=clean_data）、切换 workspace 后 skillSlugs 下拉刷新
-  - ② **真机联调 LLM 管理**：验证 provider 增删改/模型启用/默认/测试连通全链路，确认 `/api/models` 刷新后 ModelSelect 即时反映
-  - ③ **workflow 节点级 skill 集**（P1，下一卡）：允许 workflow 节点指定 skill 子集，覆盖全局/工作区启用
-  - ④ **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
-  - ⑤ **pi-agent 经 MCP 端到端验证**（D-v2 遗留）
-  - ⑥ **cohort 数据可用性确认**（D-v2 遗留）
-  - ⑦ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截、外发动作（带强告警）；`readTriggers` 改 stream 读取
+  - ① **真机联调 subagents 管理**：进「聚合→subagents管理」验证新建/编辑/启停/删除模板落 subagents.json、刷新存活、toolIds 从真实工具清单选择、dataScope 锁定 clean_data 不可改、server 丢弃非法模板时前端提示
+  - ② **真机联调 command 管理**：验证新建/编辑/启停/删除命令落 commands.json、具名参数编辑、skillSlugs 下拉刷新
+  - ③ **真机联调 LLM 管理**：验证 provider 增删改/模型启用/默认/测试连通全链路
+  - ④ **委派 UI 接模板**：`DelegateSubAgentCard` 拉模板列表，允许用户选择 `templateId` 后随 delegate body 发送
+  - ⑤ **workflow 节点级 skill 集**（P1，下一卡）
+  - ⑥ **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
+  - ⑦ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截
 - 阻塞 / 待总控：
-  - **跨 tab 跳实验室**：受接缝骨架约束（TabContext 仅有 `setActiveSubTab`，无 `setActiveTab`），本卡改为内联评测（在本页调 `/api/skill-registry/:id/evaluate`），结果回写后刷新表格
+  - `templateId` 是否需要进入 `SubAgentTask` 持久化/返回值，用于历史任务审计与 UI 展示（E 域开放问题，D 域委派 UI 需要知道此决策）
+  - `toolIds` 的实际挂载语义由谁负责：runner 直接注入 extraction tools，还是 D 面板只先做配置占位（E 域开放问题）
 - 开放问题：
-  - command 管理：`template` 占位与 `params[].key` 无交叉校验（模板引用未定义 key 时 server 替换为空串，设计如此；UI 可加 warn 但非阻塞）
+  - `Field` 组件在 `CommandManagementPane` 与 `SubAgentManagementPane` 中重复；下次新增 pane 时建议提为共享组件
+  - `hasExternalUrl` 前端副本与 server `coerceSubAgentTemplate` 需保持同步；server 端升级时需同步更新前端校验
   - command 管理：`validateCommand` 的 `level: "warn"` 字段当前是死字段（所有 issue 用 `"error"`），待有 warn 级校验时启用
-  - apiKey 留空=保留旧的哨兵语义已与后端 coerce 对齐（`""` / `"****"` → 保留旧值），联调确认即可
   - clean_data 路径白名单（Python 端纵深防御是否补强）
-  - cohort-retention 在生产数据上能否实际产出（依赖事件级订单表）
-  - hooks PUT 端点无认证（本地单用户工具可接受，已加注释；若未来 bind 非 localhost 需加 auth 中间件）
+  - hooks PUT 端点无认证（本地单用户工具可接受；若未来 bind 非 localhost 需加 auth 中间件）
   - hooks-triggers.jsonl 大文件全量读（P1 改 stream）
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
@@ -59,6 +61,11 @@
 | 计算工具·tool-use | `ToolUsePane.tsx` | 复用 `server/tools/registry.ts` + `index.ts` `/api/extraction-tools*` |
 | 计算工具·SQL | `SqlConnectPane.tsx` | `sql-connections.ts` |
 | 计算工具·skill 管理 | `SkillManagementPane.tsx` + `CreateSkillModal.tsx` + `EvalSkillModal.tsx` · `SkillSelector.tsx`(增强) | `routes/engine.ts`(E 域端点，D 跨域调) |
+| 计算工具·hooks 管理 | `HooksManagementPane.tsx` | `server/src/index.ts`(legacy) |
+| 计算工具·command 管理 | `CommandManagementPane.tsx` | `routes/engine.ts`(E 域端点，D 跨域调) |
+| 计算工具·subagents 管理 | `SubAgentManagementPane.tsx` | `server/src/index.ts`(legacy，邻近委派 runner) |
+| 计算工具·插件管理 | `PluginManagementPane.tsx` | `server/src/index.ts`(legacy) |
+| 计算工具·LLM 管理 | `LlmManagementPane.tsx` | `server/src/index.ts`(legacy) |
 | 数据探索 | `DataExplorationPane.tsx` + `data-exploration/*` · `lib/{duckdb,profiling,insights,joins}.ts` | 仅二进制文件流，**零 LLM** |
 | 指标/业务环境/rules/案例 | `IndicatorsPane` `BusinessContextPane` `RulesPane` `CasesPane` | `db/data.ts`(新) · `memory-injection.ts` |
 | Xan数据库 | `WeatherPane`(前端直连) · `IndustryPane`/`CompetitorPane`(经后端 pi) + 待建[商圈/the-crowd] | 天气=外部 API 前端直连；行业/竞品=`routes/data.ts` 的 `*/analyze` 经 `runPiPrompt` |
@@ -67,7 +74,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 
 > **导航变更（2026-06-10 快修，脚手架）**：
 > - **规则记忆 6 大模块**：`rules`→偏好记忆 / `indicators`→指标记忆 / `cases`→项目记忆（仅 label 改，id 与后端不动）；新增 `failure_memory`失败记忆 / `field_memory`字段记忆 / `process_memory`流程记忆（**占位 Placeholder**，后端 db/路由/api/pane + 记忆注入待补，参照 rules/indicators/cases 并接入 `App.tsx refreshRulesPromptInfo` 合计）。业务环境/trace/知识图谱保留并列。
-> - **计算工具**新增二级 `tool_use`（tool-use，2026-06-12 Phase 1 落地，见 §0）；新增二级 `skills_mgmt`（skill 管理，2026-06-14 落地，见 §0）。
+> - **计算工具**新增二级 `tool_use`（tool-use，2026-06-12 Phase 1 落地，见 §0）；新增二级 `skills_mgmt`（skill 管理，2026-06-14 落地，见 §0）；新增二级 `command_mgmt`（command 管理，2026-06-16 落地）；新增二级 `subagents_mgmt`（subagents 管理，2026-06-16 落地）。
 > - **探索·工作视图红线只读栏**：新增 `components/CleanDataDocsColumn.tsx`，在 explore+view 左侧列 `clean_data` 文档并支持预览 + 一键复制内容。**红线范式：展示聚合数据仅走只读路径 API**（`list*Paths`/`workspacePathTree`/`workspacePathFileGet`），零 LLM、无写入、无删除——可作后续"只读展示 clean_data"的安全模板。导航接缝细节见 `notes-infra §四`。
 
 ---
@@ -190,6 +197,8 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **裸 `except Exception` 吞异常信息（2026-06-13）**：`clustering.py` 和 `churn_risk.py` 的 fallback 路径用裸 `except Exception`，不记录任何诊断信息，用户只能看到 `fallback=true` 但不知道原因。**修复**：改为 `except (ValueError, RuntimeError) as e` + 记录 `fallback_reasons` / `fallback_reason` 到输出。**通用约定**：工具 fallback 路径必须记录失败原因，方便用户和后续维护者排查。
 - **opencode write 工具大小限制（2026-06-14 第三次触发）**：单次 `write` / `edit` 约 16K char 上限，超大 TSX 会被 JSON parser 截断报 `Unterminated string`。本次 HooksManagementPane（676 行）用分 5 个片段 `write` + `cat` 拼接落地。**通用 workaround**：① 分多个小 `write` 写片段 ② `cat` 拼接 ③ 或用 `bash` heredoc 追加。
 - **opencode write 工具大小限制（2026-06-16 第五次触发）**：CommandManagementPane（696 行）分 6 个 `cat >> file <<'EOF'` heredoc 片段拼接落地，每块 < 4K char。与第四次（LlmManagementPane）模式相同。**经验**：含大量 Tailwind class 的 TSX 组件 > 500 行基本必超，预估时直接按 4K/块 分段。
+- **opencode write 工具大小限制（2026-06-16 第六次触发）**：SubAgentManagementPane（704 行）本次改用 **先 write 极简骨架（stub + void 标记），再多次小段 edit 逐函数替换** 的策略，比 heredoc 拼接更可控。**推荐策略**：> 500 行 TSX 新文件 → ① write 骨架（~20 行）→ ② 逐函数 edit 替换（每段 < 200 行）→ ③ 最后 edit 追加尾部子组件。edit 的 oldString 匹配比 heredoc 拼接更安全（不会因引号/转义导致内容损坏）。
+- **subagents 管理 D·P0 前端决策（2026-06-16）**：SubAgentManagementPane 仿 CommandManagementPane 的左列表 + 右表单 + 全量覆盖式 PUT 模式。ToolPicker 复用 `api.listExtractionTools()` 拉工具清单，按 `category` 分组、`riskLevel` 徽章，支持过滤 + checkbox 多选 + 文本兜底。`hasExternalUrl` 是 server `coerceSubAgentTemplate` 逻辑的前端副本（仅 UX 校验，最终裁决在 server），注释标明同步要求。`Field` 组件在 CommandManagementPane 与 SubAgentManagementPane 中重复——按 "third use" 原则暂不提取，下次新增 pane 时提为共享组件。dataScope UI 不提供 draw_data 选项，`updateSelected` 强制覆盖 `dataScope: "clean_data"` / `source: "custom"`。
 
 ---
 

@@ -40,6 +40,7 @@ export function initSharedTables(): void {
       brief             TEXT NOT NULL,
       data_files        TEXT NOT NULL DEFAULT '[]',
       model             TEXT,
+      template_id       TEXT,
       status            TEXT NOT NULL DEFAULT 'running',
       summary           TEXT,
       report_path       TEXT,
@@ -112,6 +113,12 @@ export function initSharedTables(): void {
   if (!skillCols.some((c) => c.name === "last_evaluation_id")) {
     db.exec("ALTER TABLE skill_registry ADD COLUMN last_evaluation_id TEXT");
   }
+  // subagents 管理 P3（2026-06-17，总控接缝持久化）：委派模板 id 持久化，供 resume/retry
+  // 恢复 toolIds 最小权限 + persona（否则 resume 退回全工具/默认人设）；存量库补列、旧任务 NULL=无模板。
+  const subagentCols = db.prepare("PRAGMA table_info(subagent_tasks)").all() as Array<{ name: string }>;
+  if (!subagentCols.some((c) => c.name === "template_id")) {
+    db.exec("ALTER TABLE subagent_tasks ADD COLUMN template_id TEXT");
+  }
 }
 
 // ---- Fork 分支 CRUD ----
@@ -163,6 +170,7 @@ export function setForkBranchStatus(branchSessionId: string, status: ForkBranch[
 
 interface SubAgentTaskRow {
   id: string; parent_session_id: string; brief: string; data_files: string; model: string | null;
+  template_id: string | null;
   status: string; summary: string | null; report_path: string | null; error: string | null;
   created_at: number; ended_at: number | null;
 }
@@ -172,19 +180,19 @@ function parseSubAgentTask(r: SubAgentTaskRow): SubAgentTask {
   try { dataFiles = JSON.parse(r.data_files) as string[]; } catch { dataFiles = []; }
   return {
     id: r.id, parentSessionId: r.parent_session_id, brief: r.brief, dataFiles,
-    model: r.model ?? undefined, status: r.status as SubAgentTaskStatus,
+    model: r.model ?? undefined, templateId: r.template_id ?? undefined, status: r.status as SubAgentTaskStatus,
     summary: r.summary ?? undefined, reportPath: r.report_path ?? undefined, error: r.error ?? undefined,
     createdAt: r.created_at, endedAt: r.ended_at ?? undefined,
   };
 }
 
-export function createSubAgentTask(parentSessionId: string, brief: string, dataFiles: string[], model?: string): SubAgentTask {
+export function createSubAgentTask(parentSessionId: string, brief: string, dataFiles: string[], model?: string, templateId?: string): SubAgentTask {
   const id = randomUUID();
   const now = Date.now();
   db.prepare(
-    "INSERT INTO subagent_tasks (id, parent_session_id, brief, data_files, model, status, created_at) VALUES (?, ?, ?, ?, ?, 'running', ?)",
-  ).run(id, parentSessionId, brief, JSON.stringify(dataFiles), model ?? null, now);
-  return { id, parentSessionId, brief, dataFiles, model, status: "running", createdAt: now };
+    "INSERT INTO subagent_tasks (id, parent_session_id, brief, data_files, model, template_id, status, created_at) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
+  ).run(id, parentSessionId, brief, JSON.stringify(dataFiles), model ?? null, templateId ?? null, now);
+  return { id, parentSessionId, brief, dataFiles, model, templateId, status: "running", createdAt: now };
 }
 
 export function listSubAgentTasks(parentSessionId: string): SubAgentTask[] {

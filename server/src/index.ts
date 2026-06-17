@@ -1,6 +1,6 @@
 import { existsSync, mkdirSync, readdirSync, readFileSync, rmSync, statSync, unlinkSync, writeFileSync } from "node:fs";
 import { execFile, execFileSync } from "node:child_process";
-import { homedir, tmpdir } from "node:os";
+import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { sessionDir, standardDirIn } from "./workspace-dirs.ts";
@@ -25,7 +25,7 @@ import multer from "multer";
 import mammoth from "mammoth";
 import * as XLSX from "xlsx";
 import { WebSocketServer, type WebSocket } from "ws";
-import { BI_DATASETS_ROOT, DIRECT_LLM_ROOT, EXTRACTION_RUNS_ROOT, PORT, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
+import { BI_DATASETS_ROOT, DIRECT_LLM_ROOT, EXTRACTION_RUNS_ROOT, PORT, SUBAGENTS_CONFIG_PATH, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
 import {
   addFlowMessage,
   addMessage,
@@ -189,12 +189,13 @@ import { buildKgPrompt, extractKgEntitiesFromReports, syncKnowledgeGraph } from 
 import { deleteKgEdge, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHidden } from "./db.ts";
 import { buildMemoryInjectionSnapshot, withRulesPrompt } from "./memory-injection.ts";
 import { expandCommand } from "./command-expand.ts";
-import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
+import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentTemplate, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
-import { ensureWorkspaceMcpConfig, registerAllWorkspaceMcp } from "./mcp/register.ts";
+import { buildExtractionToolsMcpServer, ensureWorkspaceMcpConfig, registerAllWorkspaceMcp } from "./mcp/register.ts";
 import { registerChildProcess } from "./child-processes.ts";
 import { buildSanitizedEnv } from "./process-env.ts";
+import { aiToolRowGuardMessage, guardToolRunSummaryForSource, parseAiToolMaxRows } from "./ai-tool-row-guard.ts";
 
 ensureDirs();
 XLSX.set_fs({ readFileSync });
@@ -1627,6 +1628,218 @@ app.get("/api/sessions/:id/artifacts/file", (req, res) => {
 
 const subagentRuns = new Map<string, PiRun>();
 
+const DEFAULT_SUBAGENT_PERSONA = "你是数据分析子 agent，独立完成一项被委派的分析子任务，不依赖主对话历史。";
+const DEFAULT_SUBAGENT_MAX_RETRIES = 3;
+const LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
+
+const asConfigRecord = (v: unknown): Record<string, unknown> => (
+  typeof v === "object" && v !== null ? v as Record<string, unknown> : {}
+);
+
+const asConfigString = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));
+
+function hasExternalUrl(text: string): boolean {
+  const urls = text.match(/https?:\/\/[^\s"'<>）)]+/gi) ?? [];
+  return urls.some((raw) => {
+    try {
+      const host = new URL(raw).hostname;
+      return !LOCALHOST_HOSTS.has(host);
+    } catch {
+      return true;
+    }
+  });
+}
+
+// 本地单用户工具：写端点仅放行 loopback 请求（对齐 command-mgmt /api/commands PUT 范式）。
+function isLoopbackRequest(req: { ip?: string; socket?: { remoteAddress?: string } }): boolean {
+  const addrs = [req.ip, req.socket?.remoteAddress].filter((v): v is string => typeof v === "string");
+  return addrs.some((a) => a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1");
+}
+
+function coerceSubAgentTemplate(input: unknown): SubAgentTemplate | null {
+  const o = asConfigRecord(input);
+  const id = asConfigString(o.id).trim();
+  const name = asConfigString(o.name).trim();
+  const persona = asConfigString(o.persona).trim();
+  if (!id || !name || !persona) return null;
+  if (hasExternalUrl(persona)) return null;
+
+  const toolIds = Array.isArray(o.toolIds)
+    ? Array.from(new Set(o.toolIds.map((x) => asConfigString(x).trim()).filter(Boolean)))
+    : [];
+  const hasMaxRetries = Object.prototype.hasOwnProperty.call(o, "maxRetries");
+  const maxRetriesRaw = Number(o.maxRetries);
+  const maxRetries = hasMaxRetries && Number.isFinite(maxRetriesRaw)
+    ? Math.max(0, Math.min(5, Math.trunc(maxRetriesRaw)))
+    : DEFAULT_SUBAGENT_MAX_RETRIES;
+
+  return {
+    id,
+    name,
+    enabled: o.enabled !== false,
+    persona,
+    toolIds,
+    dataScope: "clean_data",
+    maxRetries,
+    source: "custom",
+  };
+}
+
+function readSubAgentTemplates(): SubAgentTemplate[] {
+  if (!existsSync(SUBAGENTS_CONFIG_PATH)) return [];
+  try {
+    const raw = readFileSync(SUBAGENTS_CONFIG_PATH, "utf8");
+    const parsed = JSON.parse(raw) as unknown;
+    const arr: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { subagents?: unknown })?.subagents)
+        ? (parsed as { subagents: unknown[] }).subagents
+        : Array.isArray((parsed as { templates?: unknown })?.templates)
+          ? (parsed as { templates: unknown[] }).templates
+          : [];
+    return arr.map((it) => coerceSubAgentTemplate(it)).filter((t): t is SubAgentTemplate => t !== null);
+  } catch {
+    return [];
+  }
+}
+
+function writeSubAgentTemplates(templates: SubAgentTemplate[]): void {
+  mkdirSync(dirname(SUBAGENTS_CONFIG_PATH), { recursive: true });
+  writeFileSync(SUBAGENTS_CONFIG_PATH, JSON.stringify(templates, null, 2), "utf8");
+}
+
+function resolveSubAgentPersona(templateId?: string): string {
+  const id = templateId?.trim();
+  if (!id) return DEFAULT_SUBAGENT_PERSONA;
+  const template = readSubAgentTemplates().find((t) => t.id === id && t.enabled);
+  return template?.persona.trim() || DEFAULT_SUBAGENT_PERSONA;
+}
+
+function resolveSubAgentTemplate(templateId?: string): SubAgentTemplate | undefined {
+  const id = templateId?.trim();
+  if (!id) return undefined;
+  return readSubAgentTemplates().find((t) => t.id === id && t.enabled);
+}
+
+function resolveSubAgentCwd(
+  workspaceRoot: string,
+  workspaceId: string,
+  taskId: string,
+  parentSessionId: string,
+  allowedToolIds: string[] | undefined,
+): string {
+  if (allowedToolIds === undefined) return workspaceRoot;
+  const cwd = join(sessionDir(workspaceRoot, parentSessionId), ".subagent-cwd", taskId);
+  mkdirSync(cwd, { recursive: true });
+  writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({
+    mcpServers: {
+      "xanthil-data-tools": buildExtractionToolsMcpServer(workspaceId, allowedToolIds),
+    },
+  }, null, 2), "utf8");
+  return cwd;
+}
+
+type SubAgentTraceKind =
+  | "thinking"
+  | "message"
+  | "tool_call"
+  | "tool_result"
+  | "write_report"
+  | "turn"
+  | "process"
+  | "other";
+
+function eventText(value: unknown): string {
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
+  }
+}
+
+function classifySubAgentTraceEvent(event: PiEvent, reportDir: string): SubAgentTraceKind {
+  const type = String(event.type ?? "");
+  if (type.includes("tool_call")) {
+    const text = eventText(event);
+    if (/\bwrite\b/i.test(text) && text.includes(reportDir)) return "write_report";
+    return "tool_call";
+  }
+  if (type.includes("tool_result")) return "tool_result";
+  if (type.includes("message")) return "message";
+  if (type.includes("turn")) return "turn";
+  if (type.includes("think") || type.includes("reason")) return "thinking";
+  if (type.includes("process") || type === "stderr" || type === "spawn_error") return "process";
+  return "other";
+}
+
+function broadcastSubAgentEvent(
+  taskId: string,
+  parentSessionId: string,
+  workspaceId: string,
+  event: PiEvent,
+  reportDir: string,
+): void {
+  const message = JSON.stringify({
+    type: "subagent_event",
+    taskId,
+    parentSessionId,
+    workspaceId,
+    traceKind: classifySubAgentTraceEvent(event, reportDir),
+    event,
+    createdAt: Date.now(),
+  });
+  for (const client of wss.clients) {
+    if (client.readyState === client.OPEN) client.send(message);
+  }
+}
+
+function subAgentEventErrorText(event: PiEvent): string | undefined {
+  if (event.type === "tool_result" && (event as { is_error?: unknown }).is_error === true) {
+    const text = eventText((event as { content?: unknown }).content ?? event);
+    return text.trim() || "tool_result is_error=true";
+  }
+  if (event.type === "message_end") {
+    const message = (event as Extract<PiEvent, { type: "message_end" }>).message;
+    if (typeof message.errorMessage === "string" && message.errorMessage.trim()) return message.errorMessage.trim();
+  }
+  if (event.type === "stderr") {
+    const text = String((event as { text?: unknown }).text ?? "").trim();
+    return text || undefined;
+  }
+  if (event.type === "spawn_error") {
+    const message = String((event as { message?: unknown }).message ?? "").trim();
+    return message || undefined;
+  }
+  return undefined;
+}
+
+function buildSubAgentRetryPrompt(brief: string, errorContext: string, attempt: number, maxRetries: number): string {
+  return `上一次执行委派任务时工具调用或运行过程失败，请基于以下原始错误自愈重试。
+
+原始委派任务：
+${brief}
+
+失败上下文（请原样参考，不要忽略）：
+${errorContext}
+
+这是第 ${attempt} 次自愈重试，最多 ${maxRetries} 次。请修正 SQL/工具参数/输出路径等问题后继续完成任务，仍必须遵守 system prompt 中的数据与报告目录红线。`;
+}
+
+function buildSubAgentResumePrompt(brief: string, correction: string, correctedResult: string): string {
+  return `人工已介入修正 waiting_for_help 状态的子任务。请基于人工修正继续完成后续分析与报告撰写。
+
+原始委派任务：
+${brief}
+
+人工修正说明：
+${correction || "（无额外说明）"}
+
+人工提供的正确结果/参数/SQL：
+${correctedResult || "（未提供结构化结果；请根据修正说明继续）"}
+
+请不要重新询问用户；直接继续写入报告目录，并在最后一条消息用 2-4 句话给出回流摘要。`;
+}
+
 // Fork：分支是一个真实 session（复用 messages/runtime/send），首轮 handleSend 检测到未播种→用 --fork 播种。
 app.post("/api/sessions/:id/fork", (req, res) => {
   const session = getSession(req.params.id);
@@ -1654,8 +1867,80 @@ app.post("/api/subagent-tasks/:id/abort", (req, res) => {
   const run = subagentRuns.get(req.params.id);
   if (run) run.kill();
   const task = getSubAgentTask(req.params.id);
-  if (task && task.status === "running") finishSubAgentTask(task.id, { status: "aborted" });
+  if (task && task.status === "running") {
+    finishSubAgentTask(task.id, { status: "aborted" });
+    const session = getSession(task.parentSessionId);
+    if (session) {
+      const workspace = getWorkspace(session.workspaceId);
+      if (workspace) {
+        const reportDir = standardDirIn(sessionDir(workspace.rootPath, session.id), "report");
+        broadcastSubAgentEvent(task.id, task.parentSessionId, workspace.id, {
+          type: "subagent_run_end",
+          code: null,
+          status: "aborted",
+        }, reportDir);
+      }
+    }
+  }
   res.json({ ok: true });
+});
+
+app.post("/api/subagent-tasks/:id/resume", async (req, res) => {
+  if (!isLoopbackRequest(req)) return res.status(403).json({ error: "localhost required" });
+  const task = getSubAgentTask(req.params.id);
+  if (!task) return res.status(404).json({ error: "task not found" });
+  if (task.status !== "waiting_for_help") return res.status(409).json({ error: "task is not waiting_for_help" });
+  if (subagentRuns.get(task.id)?.isRunning()) return res.status(409).json({ error: "task is already running" });
+  const session = getSession(task.parentSessionId);
+  if (!session) return res.status(404).json({ error: "parent session not found" });
+  const workspace = getWorkspace(session.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+
+  const correction = asConfigString(req.body?.correction ?? req.body?.message ?? req.body?.note).trim();
+  const correctedResult = req.body?.correctedResult ?? req.body?.result ?? req.body?.params ?? req.body?.sql ?? "";
+  const correctedResultText = typeof correctedResult === "string" ? correctedResult.trim() : eventText(correctedResult);
+  // 恢复委派时的模板（持久化于 task.templateId）；前端可显式覆盖，否则保留原模板的 toolIds 最小权限 + persona。
+  const templateId = req.body?.templateId ? String(req.body.templateId) : task.templateId;
+  const model = req.body?.model ? String(req.body.model) : task.model;
+
+  finishSubAgentTask(task.id, { status: "running", summary: task.summary, reportPath: task.reportPath, error: task.error });
+  void resumeDelegatedSubAgent(task.id, task.parentSessionId, workspace.id, workspace.rootPath, task.brief, task.dataFiles, correction, correctedResultText, model, templateId);
+  res.json({ ok: true, task: getSubAgentTask(task.id) });
+});
+
+app.get("/api/subagents", (_req, res) => {
+  try {
+    res.json(readSubAgentTemplates());
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+app.put("/api/subagents", (req, res) => {
+  try {
+    if (!isLoopbackRequest(req)) return res.status(403).json({ error: "localhost required" });
+    const body = req.body as unknown;
+    const list: unknown[] = Array.isArray(body)
+      ? body
+      : Array.isArray((body as { subagents?: unknown })?.subagents)
+        ? (body as { subagents: unknown[] }).subagents
+        : Array.isArray((body as { templates?: unknown })?.templates)
+          ? (body as { templates: unknown[] }).templates
+          : [];
+    const cleaned: SubAgentTemplate[] = [];
+    const seen = new Set<string>();
+    for (const it of list) {
+      const template = coerceSubAgentTemplate(it);
+      if (!template) continue;
+      if (seen.has(template.id)) continue;
+      seen.add(template.id);
+      cleaned.push(template);
+    }
+    writeSubAgentTemplates(cleaned);
+    res.json(cleaned);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
 });
 
 app.post("/api/sessions/:id/delegate", (req, res) => {
@@ -1667,8 +1952,9 @@ app.post("/api/sessions/:id/delegate", (req, res) => {
   if (!brief) return res.status(400).json({ error: "brief required" });
   const dataFiles = Array.isArray(req.body?.dataFiles) ? (req.body.dataFiles as unknown[]).map(String) : [];
   const model = req.body?.model ? String(req.body.model) : undefined;
-  const task = createSubAgentTask(session.id, brief, dataFiles, model);
-  void runDelegatedSubAgent(task.id, session.id, workspace.rootPath, brief, dataFiles, model);
+  const templateId = req.body?.templateId ? String(req.body.templateId) : undefined;
+  const task = createSubAgentTask(session.id, brief, dataFiles, model, templateId);
+  void runDelegatedSubAgent(task.id, session.id, workspace.id, workspace.rootPath, brief, dataFiles, model, templateId);
   res.json(task);
 });
 
@@ -1676,10 +1962,12 @@ app.post("/api/sessions/:id/delegate", (req, res) => {
 async function runDelegatedSubAgent(
   taskId: string,
   parentSessionId: string,
+  workspaceId: string,
   workspaceRoot: string,
   brief: string,
   dataFiles: string[],
   model?: string,
+  templateId?: string,
 ): Promise<void> {
   const reportDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "report");
   const cleanDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "clean_data");
@@ -1690,7 +1978,9 @@ async function runDelegatedSubAgent(
     .map((f) => { try { return safeResolve(cleanDir, basename(f)); } catch { return ""; } })
     .filter((abs) => abs !== "" && (() => { try { return statSync(abs).isFile(); } catch { return false; } })());
   const fileList = allowed.length > 0 ? allowed.map((p) => `- ${p}`).join("\n") : "（未指定数据文件，请在报告中说明缺数据）";
-  const systemPrompt = `你是数据分析子 agent，独立完成一项被委派的分析子任务，不依赖主对话历史。
+  const template = resolveSubAgentTemplate(templateId);
+  const persona = template?.persona.trim() || resolveSubAgentPersona(undefined);
+  const systemPrompt = `${persona}
 [硬性约束]
 1. 只允许用 read 工具读取下列指定数据文件，禁止读取其他任何数据或原始明细：
 ${fileList}
@@ -1698,26 +1988,185 @@ ${fileList}
 3. 完成后，最后一条消息用 2-4 句话给出结论摘要（供回流主对话），不要复述报告全文。
 4. 不要提问，自主完成。`;
   let summaryText = "";
+  const subAgentCwd = resolveSubAgentCwd(workspaceRoot, workspaceId, taskId, parentSessionId, template ? template.toolIds : undefined);
+  const maxRetries = template ? template.maxRetries : 0;
+  const hitlEnabled = template !== undefined;
+  let attempt = 0;
+  let textForPi = brief;
   try {
+    broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+      type: "subagent_run_start",
+      cwd: subAgentCwd,
+      reportDir,
+      templateId: template?.id,
+      model,
+      maxRetries,
+    }, reportDir);
+    while (true) {
+      let lastErrorContext = "";
+      let lastMessageError = "";
+      let sawToolError = false;
+      const run = runPiTurn({
+        workspaceRoot: subAgentCwd,
+        piSessionId: `subagent-${taskId}`,
+        text: textForPi,
+        model,
+        systemPrompt,
+        onEvent: (event: PiEvent) => {
+          broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, event, reportDir);
+          const errorText = subAgentEventErrorText(event);
+          if (errorText) {
+            lastErrorContext = errorText;
+            if (event.type === "tool_result") sawToolError = true;
+            if (event.type === "message_end") lastMessageError = errorText;
+          }
+          if (event.type === "message_end") {
+            const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
+            if (m.role === "assistant") {
+              const t = flowMessageText(m.content).trim();
+              if (t) summaryText = t;
+            }
+          }
+        },
+      });
+      subagentRuns.set(taskId, run);
+      const code = await run.done;
+      if (getSubAgentTask(taskId)?.status === "aborted") return;
+      // 取本次新产出报告（mtime ≥ 开始时间，最新者）。
+      let reportPath: string | undefined;
+      try {
+        const newest = readdirSync(reportDir)
+          .map((name) => ({ name, mt: statSync(join(reportDir, name)).mtimeMs }))
+          .filter((f) => f.mt >= startedAt - 1000)
+          .sort((a, b) => b.mt - a.mt)[0];
+        if (newest) reportPath = newest.name;
+      } catch { /* 目录读不到则无报告 */ }
+
+      const errorContext = code !== 0
+        ? lastErrorContext || `pi exited with code ${String(code)}`
+        : lastMessageError || (!reportPath && sawToolError ? lastErrorContext : "");
+      if (!errorContext) {
+        finishSubAgentTask(taskId, {
+          status: "success",
+          summary: summaryText || undefined,
+          reportPath,
+        });
+        broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+          type: "subagent_run_end",
+          code,
+          status: "success",
+          reportPath,
+        }, reportDir);
+        return;
+      }
+
+      if (hitlEnabled && attempt < maxRetries) {
+        attempt += 1;
+        broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+          type: "subagent_retry",
+          attempt,
+          maxRetries,
+          error: errorContext,
+        }, reportDir);
+        textForPi = buildSubAgentRetryPrompt(brief, errorContext, attempt, maxRetries);
+        continue;
+      }
+
+      const status = hitlEnabled ? "waiting_for_help" : "failed";
+      finishSubAgentTask(taskId, {
+        status,
+        summary: summaryText || undefined,
+        reportPath,
+        error: errorContext,
+      });
+      broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+        type: "subagent_run_end",
+        code,
+        status,
+        reportPath,
+        error: errorContext,
+      }, reportDir);
+      return;
+    }
+  } catch (err) {
+    finishSubAgentTask(taskId, { status: hitlEnabled ? "waiting_for_help" : "failed", error: String(err) });
+    broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+      type: "subagent_run_end",
+      code: null,
+      status: hitlEnabled ? "waiting_for_help" : "failed",
+      error: String(err),
+    }, reportDir);
+  } finally {
+    subagentRuns.delete(taskId);
+  }
+}
+
+async function resumeDelegatedSubAgent(
+  taskId: string,
+  parentSessionId: string,
+  workspaceId: string,
+  workspaceRoot: string,
+  brief: string,
+  dataFiles: string[],
+  correction: string,
+  correctedResult: string,
+  model?: string,
+  templateId?: string,
+): Promise<void> {
+  const reportDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "report");
+  const cleanDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "clean_data");
+  mkdirSync(reportDir, { recursive: true });
+  const startedAt = Date.now();
+  const allowed = dataFiles
+    .map((f) => { try { return safeResolve(cleanDir, basename(f)); } catch { return ""; } })
+    .filter((abs) => abs !== "" && (() => { try { return statSync(abs).isFile(); } catch { return false; } })());
+  const fileList = allowed.length > 0 ? allowed.map((p) => `- ${p}`).join("\n") : "（未指定数据文件，请在报告中说明缺数据）";
+  const template = resolveSubAgentTemplate(templateId);
+  const persona = template?.persona.trim() || resolveSubAgentPersona(undefined);
+  const systemPrompt = `${persona}
+[硬性约束]
+1. 只允许用 read 工具读取下列指定数据文件，禁止读取其他任何数据或原始明细：
+${fileList}
+2. 必须把分析报告用 write 工具写入目录：${reportDir}（文件名自拟，建议 .md）。不得写到其他位置。
+3. 完成后，最后一条消息用 2-4 句话给出结论摘要（供回流主对话），不要复述报告全文。
+4. 不要提问，自主完成。`;
+  const subAgentCwd = resolveSubAgentCwd(workspaceRoot, workspaceId, taskId, parentSessionId, template ? template.toolIds : undefined);
+  let summaryText = "";
+  let lastErrorContext = "";
+  let lastMessageError = "";
+  try {
+    broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+      type: "subagent_resume_start",
+      cwd: subAgentCwd,
+      reportDir,
+      templateId: template?.id,
+      model,
+    }, reportDir);
     const run = runPiTurn({
-      workspaceRoot,
+      workspaceRoot: subAgentCwd,
       piSessionId: `subagent-${taskId}`,
-      text: brief,
+      text: buildSubAgentResumePrompt(brief, correction, correctedResult),
       model,
       systemPrompt,
       onEvent: (event: PiEvent) => {
-        if (event.type !== "message_end") return;
-        const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
-        if (m.role === "assistant") {
-          const t = flowMessageText(m.content).trim();
-          if (t) summaryText = t;
+        broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, event, reportDir);
+        const errorText = subAgentEventErrorText(event);
+        if (errorText) {
+          lastErrorContext = errorText;
+          if (event.type === "message_end") lastMessageError = errorText;
+        }
+        if (event.type === "message_end") {
+          const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
+          if (m.role === "assistant") {
+            const t = flowMessageText(m.content).trim();
+            if (t) summaryText = t;
+          }
         }
       },
     });
     subagentRuns.set(taskId, run);
     const code = await run.done;
     if (getSubAgentTask(taskId)?.status === "aborted") return;
-    // 取本次新产出报告（mtime ≥ 开始时间，最新者）。
     let reportPath: string | undefined;
     try {
       const newest = readdirSync(reportDir)
@@ -1726,14 +2175,42 @@ ${fileList}
         .sort((a, b) => b.mt - a.mt)[0];
       if (newest) reportPath = newest.name;
     } catch { /* 目录读不到则无报告 */ }
+    const errorContext = code !== 0 ? lastErrorContext || `pi exited with code ${String(code)}` : lastMessageError;
+    if (errorContext) {
+      finishSubAgentTask(taskId, {
+        status: "waiting_for_help",
+        summary: summaryText || undefined,
+        reportPath,
+        error: `resume failed: ${errorContext}`,
+      });
+      broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+        type: "subagent_run_end",
+        code,
+        status: "waiting_for_help",
+        reportPath,
+        error: errorContext,
+      }, reportDir);
+      return;
+    }
     finishSubAgentTask(taskId, {
-      status: code === 0 ? "success" : "failed",
+      status: "success",
       summary: summaryText || undefined,
       reportPath,
-      error: code === 0 ? undefined : `pi exited with code ${String(code)}`,
     });
+    broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+      type: "subagent_run_end",
+      code,
+      status: "success",
+      reportPath,
+    }, reportDir);
   } catch (err) {
-    finishSubAgentTask(taskId, { status: "failed", error: String(err) });
+    finishSubAgentTask(taskId, { status: "waiting_for_help", error: `resume failed: ${String(err)}` });
+    broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
+      type: "subagent_run_end",
+      code: null,
+      status: "waiting_for_help",
+      error: String(err),
+    }, reportDir);
   } finally {
     subagentRuns.delete(taskId);
   }
@@ -4531,6 +5008,10 @@ app.delete("/api/reports/:id/tags/:tag", (req, res) => {
 });
 
 // ---- registered local extraction tools ----
+const AI_TOOL_MAX_RESULT_ROWS = (() => {
+  return parseAiToolMaxRows(process.env.XANTHIL_AI_TOOL_MAX_ROWS);
+})();
+
 app.get("/api/extraction-tools", (_req, res) => {
   res.json(listExtractionTools());
 });
@@ -4614,6 +5095,9 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
             return absolute === outputPath || absolute.startsWith(normalizedOutputRoot);
           });
         }
+        const rowGuard = guardToolRunSummaryForSource(source, summary, AI_TOOL_MAX_RESULT_ROWS);
+        const guardedSummary = rowGuard.summary as typeof summary;
+        const rowGuardError = rowGuard.blocked ? aiToolRowGuardMessage(AI_TOOL_MAX_RESULT_ROWS) : undefined;
         const durationMs = Date.now() - startMs;
         if (workspaceId) {
           addTraceEvent({
@@ -4622,17 +5106,28 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
             targetId: tool.id,
             type: "tool_run",
             target: tool.name,
-            status: err ? "failed" : "success",
-            detail: `成功 ${summary.success ?? 0} · 失败 ${summary.failed ?? 0} · ${durationMs}ms`,
-            payload: { runId, toolId: tool.id, source, inputPath, outputPath, success: summary.success, failed: summary.failed, durationMs },
+            status: err || rowGuardError ? "failed" : "success",
+            detail: rowGuardError ?? `成功 ${guardedSummary.success ?? 0} · 失败 ${guardedSummary.failed ?? 0} · ${durationMs}ms`,
+            payload: {
+              runId,
+              toolId: tool.id,
+              source,
+              inputPath,
+              outputPath,
+              success: guardedSummary.success,
+              failed: guardedSummary.failed,
+              durationMs,
+              ...(rowGuardError ? { rowLimit: AI_TOOL_MAX_RESULT_ROWS, maxRowsSeen: rowGuard.maxRowsSeen } : {}),
+            },
           });
         }
-        res.status(err ? 400 : 200).json({
+        res.status(err || rowGuardError ? 400 : 200).json({
           runId,
           toolId: tool.id,
           stdout,
           stderr,
-          ...summary,
+          ...guardedSummary,
+          ...(rowGuardError ? { error: rowGuardError, rowLimit: AI_TOOL_MAX_RESULT_ROWS, maxRowsSeen: rowGuard.maxRowsSeen } : {}),
         });
       } catch (summaryError) {
         if (workspaceId) {

@@ -8,7 +8,7 @@
  * 工具对其产物是否含原始行负责，禁止把 draw_data 原始行/明细整体回灌 LLM。本进程自身不读任何数据文件。
  *
  * Transport: newline-delimited JSON-RPC 2.0 over stdin/stdout (MCP stdio standard).
- * Spawned per `.mcp.json`: `node --experimental-strip-types <this> --workspace <id> --api <baseUrl>`.
+ * Spawned per `.mcp.json`: `node --experimental-strip-types <this> --workspace <id> --api <baseUrl> [--tools id,id]`.
  */
 import { createInterface } from "node:readline";
 import { mkdirSync } from "node:fs";
@@ -21,6 +21,10 @@ function argOf(flag: string): string | undefined {
 
 const WORKSPACE_ID = argOf("--workspace") ?? "";
 const API_BASE = (argOf("--api") ?? "http://localhost:8787").replace(/\/$/, "");
+const TOOL_ALLOWLIST_RAW = argOf("--tools");
+const TOOL_ALLOWLIST = TOOL_ALLOWLIST_RAW === undefined
+  ? undefined
+  : new Set(TOOL_ALLOWLIST_RAW.split(",").map((id) => id.trim()).filter(Boolean));
 const PROTOCOL_VERSION = "2024-11-05";
 
 interface ToolParameter { name: string; type?: string; description?: string; required?: boolean; default?: unknown }
@@ -52,7 +56,7 @@ async function fetchTools(): Promise<RemoteTool[]> {
 }
 
 function isAiExposed(tool: RemoteTool): boolean {
-  return tool.category === "analysis";
+  return tool.category === "analysis" && (TOOL_ALLOWLIST === undefined || TOOL_ALLOWLIST.has(tool.id));
 }
 
 /** MCP tool def per ExtractionTool. Input may be any registered data path accepted by the tool. */

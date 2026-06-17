@@ -1,4 +1,4 @@
-import { Database, Store, CircleX, Workflow, Bot } from "lucide-react";
+import { Database, Store, CircleX, Workflow } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
 import { LlmManagementPane } from "@/components/LlmManagementPane";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
@@ -10,6 +10,7 @@ import { ToolUsePane } from "@/components/ToolUsePane";
 import { HooksManagementPane } from "@/components/HooksManagementPane";
 import { CommandManagementPane } from "@/components/CommandManagementPane";
 import { PluginManagementPane } from "@/components/PluginManagementPane";
+import { SubAgentManagementPane } from "@/components/SubAgentManagementPane";
 import { SkillManagementPane } from "@/components/SkillManagementPane";
 import { RulesPane } from "@/components/RulesPane";
 import { BusinessContextPane } from "@/components/BusinessContextPane";
@@ -66,7 +67,7 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <PluginManagementPane />
       )}
       {activeTab === "aggregate" && activeSubTab === "subagents_mgmt" && (
-        <Placeholder icon={Bot} title="subagents管理" hint="管理 subagents 配置，即将推出" />
+        <SubAgentManagementPane />
       )}
       {activeTab === "aggregate" && activeSubTab === "llm_mgmt" && (
         <LlmManagementPane refreshModels={ctx.refreshModels} />
