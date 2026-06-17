@@ -41,10 +41,6 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
           runtimeNotice={ctx.runtimeNotice}
           onCompact={() => void ctx.compactContext()}
           onRefreshRuntime={() => void ctx.refreshRuntime()}
-          canPromoteToWorkflow={ctx.canPromoteToWorkflow}
-          onPromoteToWorkflow={ctx.openPromote}
-          canDistillSkill={ctx.canPromoteToWorkflow}
-          onDistillSkill={ctx.openDistill}
         />
       )}
       {(activeTab === "explore" || activeTab === "multi") && activeSubTab === "business_requirement" && (

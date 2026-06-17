@@ -63,6 +63,14 @@ export const engineApi = {
     }).then(json<SubAgentTask>),
   listSubAgentTasks: (sessionId: string) =>
     fetch(`/api/sessions/${sessionId}/subagent-tasks`).then(json<SubAgentTask[]>),
+  listAllSubAgentTasks: (params?: { limit?: number; workspaceId?: string; status?: SubAgentTask["status"] }) => {
+    const q = new URLSearchParams();
+    if (params?.limit !== undefined) q.set("limit", String(params.limit));
+    if (params?.workspaceId) q.set("workspaceId", params.workspaceId);
+    if (params?.status) q.set("status", params.status);
+    const qs = q.toString();
+    return fetch(`/api/subagent-tasks${qs ? `?${qs}` : ""}`).then(json<SubAgentTask[]>);
+  },
   getSubAgentTask: (taskId: string) =>
     fetch(`/api/subagent-tasks/${taskId}`).then(json<SubAgentTask>),
   abortSubAgent: (taskId: string) =>

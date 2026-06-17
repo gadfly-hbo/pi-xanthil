@@ -38,9 +38,6 @@ export interface TabContext {
   onStop: () => void;
   compactContext: () => void;
   refreshRuntime: () => void;
-  canPromoteToWorkflow: boolean;
-  openPromote: () => void;
-  openDistill: () => void;
 
   // 业务需求 → 数据探索 单向 seed
   exploreSeed: ExploreSeed | null;

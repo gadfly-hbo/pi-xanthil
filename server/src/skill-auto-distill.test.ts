@@ -157,3 +157,48 @@ test("skill auto distill skips high-similarity existing skills", async () => {
     await server.close();
   }
 });
+
+test("skill auto distill ignores high-similarity candidate skills when checking duplicates", async () => {
+  const server = await startEngineRouter();
+  try {
+    const workspace = db.createWorkspace("skill auto distill candidate duplicate");
+    const existing = engineDb.createSkillRegistryEntry(workspace.id, {
+      slug: "candidate-market-sizing-review",
+      name: "candidate-market-sizing-review",
+      source: "distilled",
+      status: "candidate",
+    });
+    const existingPath = join(workspace.rootPath, ".pi", "skills", existing.slug, "SKILL.md");
+    mkdirSync(dirname(existingPath), { recursive: true });
+    writeFileSync(
+      existingPath,
+      [
+        "---",
+        "name: candidate-market-sizing-review",
+        "description: Estimate market size with driver tree assumptions and uncertainty.",
+        "---",
+        "",
+        "Build a market size driver tree, check assumptions, and cite uncertainty.",
+        "",
+      ].join("\n"),
+      "utf8",
+    );
+    const session = db.createSession(workspace.id, "Candidate duplicate task");
+    db.addMessage(session.id, "user", [{ type: "text", text: "duplicate market sizing task" }]);
+    db.addMessage(session.id, "assistant", [{ type: "text", text: "duplicate market sizing complete" }]);
+
+    const result = await json<AutoDistillResponse>(server.baseUrl, `/api/workspaces/${workspace.id}/skill-auto-distill`, {
+      method: "POST",
+      body: JSON.stringify({ since: 0, limit: 1, duplicateThreshold: 0.1, timeoutMs: 10_000 }),
+    });
+
+    assert.equal(result.scanned, 1);
+    assert.equal(result.created, 1);
+    assert.equal(result.skipped, 0);
+    assert.equal(result.results[0]?.status, "created");
+    assert.equal(result.results[0]?.slug, "market-size-review");
+    assert.equal(engineDb.listSkillRegistryEntries(workspace.id).length, 2);
+  } finally {
+    await server.close();
+  }
+});

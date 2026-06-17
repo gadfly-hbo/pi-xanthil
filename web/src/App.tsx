@@ -138,19 +138,6 @@ export default function App() {
   const [exploreSeed, setExploreSeed] = useState<ExploreSeed | null>(null);
   const [pendingRestoreRunId, setPendingRestoreRunId] = useState<string | null>(null);
   const [hasReportPath, setHasReportPath] = useState(false);
-  const [promoteOpen, setPromoteOpen] = useState(false);
-  const [promoteName, setPromoteName] = useState("");
-  const [promoteScope, setPromoteScope] = useState<"latest_task" | "full_conversation">("latest_task");
-  const [promoting, setPromoting] = useState(false);
-  const [promoteError, setPromoteError] = useState("");
-  const [distillOpen, setDistillOpen] = useState(false);
-  const [distillScope, setDistillScope] = useState<"latest_task" | "full_conversation">("latest_task");
-  const [distilling, setDistilling] = useState(false);
-  const [distillContent, setDistillContent] = useState("");
-  const [distillName, setDistillName] = useState("");
-  const [distillError, setDistillError] = useState("");
-  const [distillSaving, setDistillSaving] = useState(false);
-  const [distillSavedPath, setDistillSavedPath] = useState("");
   const [rulesPromptEnabled, setRulesPromptEnabled] = useState(false);
   const [rulesPromptInfo, setRulesPromptInfo] = useState<{ count: number; updatedAt: number | null }>({ count: 0, updatedAt: null });
 
@@ -538,87 +525,7 @@ export default function App() {
   }, [activeSessionId, compacting, running]);
 
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
-  const activeSession = sessions.find((session) => session.id === activeSessionId) ?? null;
   const activeFlow = flows.find((f) => f.id === activeFlowId) ?? null;
-  const canPromoteToWorkflow = !running && messages.some((message) =>
-    message.role === "assistant" && !message.error && textOf(message.content).trim().length > 0,
-  );
-
-  const openPromote = useCallback(() => {
-    if (!activeSession) return;
-    setPromoteName(activeSession.title);
-    setPromoteScope("latest_task");
-    setPromoteError("");
-    setPromoteOpen(true);
-  }, [activeSession]);
-
-  const promoteToWorkflow = useCallback(async () => {
-    if (!activeSession || !promoteName.trim() || promoting) return;
-    setPromoting(true);
-    setPromoteError("");
-    try {
-      const flow = await api.promoteSessionToFlow(activeSession.id, {
-        name: promoteName.trim(),
-        scope: promoteScope,
-        model: model || undefined,
-      });
-      setFlows((current) => [flow, ...current.filter((item) => item.id !== flow.id)]);
-      setActiveFlowId(flow.id);
-      setActiveTab("multi");
-      setActiveSubTab("view");
-      setPromoteOpen(false);
-    } catch (err) {
-      setPromoteError(String(err));
-    } finally {
-      setPromoting(false);
-    }
-  }, [activeSession, model, promoteName, promoteScope, promoting]);
-
-  const openDistill = useCallback(() => {
-    if (!activeSession) return;
-    setDistillScope("latest_task");
-    setDistillContent("");
-    setDistillName("");
-    setDistillError("");
-    setDistillSavedPath("");
-    setDistillOpen(true);
-  }, [activeSession]);
-
-  const runDistill = useCallback(async () => {
-    if (!activeSession || distilling) return;
-    setDistilling(true);
-    setDistillError("");
-    setDistillSavedPath("");
-    try {
-      const result = await api.distillSkill(activeSession.id, {
-        scope: distillScope,
-        model: model || undefined,
-      });
-      setDistillContent(result.content);
-      setDistillName(result.name);
-    } catch (err) {
-      setDistillError(String(err));
-    } finally {
-      setDistilling(false);
-    }
-  }, [activeSession, distillScope, distilling, model]);
-
-  const saveDistilledSkill = useCallback(async () => {
-    if (!activeSession || !distillContent.trim() || !distillName.trim() || distillSaving) return;
-    setDistillSaving(true);
-    setDistillError("");
-    try {
-      const result = await api.saveSkill(activeSession.id, {
-        name: distillName.trim(),
-        content: distillContent,
-      });
-      setDistillSavedPath(result.path);
-    } catch (err) {
-      setDistillError(String(err));
-    } finally {
-      setDistillSaving(false);
-    }
-  }, [activeSession, distillContent, distillName, distillSaving]);
 
   const folderScope = useMemo(() => activeTab === "explore"
     ? (activeSessionId ? { type: "session" as const, sessionId: activeSessionId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null)
@@ -657,7 +564,6 @@ export default function App() {
     model, models, setModel, refreshModels,
     messages, running, runtime, compacting, runtimeNotice,
     onSend, onStop, compactContext, refreshRuntime,
-    canPromoteToWorkflow, openPromote, openDistill,
     exploreSeed, setExploreSeed,
     handleReportPathsChange, setArtifactRefreshKey, refreshRulesPromptInfo,
     activeFlow, flows, rulesPromptEnabled,
@@ -866,130 +772,6 @@ export default function App() {
             ))}
         </div>
       </section>
-      {promoteOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
-          <div className="w-full max-w-md rounded-xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
-            <h2 className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">沉淀为工作流</h2>
-            <p className="mt-1 text-[12px] leading-5 text-neutral-500 dark:text-neutral-400">
-              将已完成任务提炼为可重复执行的多智能体工作流。数据路径和报告目录会参数化，不会复制数据文件。
-            </p>
-            <label className="mt-4 block text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
-              工作流名称
-              <input
-                autoFocus
-                value={promoteName}
-                onChange={(event) => setPromoteName(event.target.value)}
-                className="mt-1 h-9 w-full rounded-md border border-neutral-200 bg-transparent px-3 text-[13px] outline-none focus:border-neutral-400 dark:border-neutral-700 dark:text-neutral-100"
-              />
-            </label>
-            <label className="mt-3 block text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
-              提取范围
-              <select
-                value={promoteScope}
-                onChange={(event) => setPromoteScope(event.target.value as "latest_task" | "full_conversation")}
-                className="mt-1 h-9 w-full rounded-md border border-neutral-200 bg-transparent px-3 text-[13px] outline-none focus:border-neutral-400 dark:border-neutral-700 dark:text-neutral-100"
-              >
-                <option value="latest_task">最近一次任务</option>
-                <option value="full_conversation">完整对话</option>
-              </select>
-            </label>
-            <div className="mt-3 rounded-md bg-neutral-50 px-3 py-2 text-[11.5px] leading-5 text-neutral-500 dark:bg-neutral-800/60 dark:text-neutral-400">
-              路径策略：输入数据使用 {"{{input.data_path}}"}，报告目录使用 {"{{input.report_dir}}"}。
-            </div>
-            {promoteError && <p className="mt-3 text-[12px] text-rose-500">{promoteError}</p>}
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                onClick={() => setPromoteOpen(false)}
-                disabled={promoting}
-                className="h-8 rounded-md px-3 text-[12px] text-neutral-500 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
-              >
-                取消
-              </button>
-              <button
-                onClick={() => void promoteToWorkflow()}
-                disabled={!promoteName.trim() || promoting}
-                className="h-8 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-              >
-                {promoting ? "正在创建..." : "创建工作流"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {distillOpen && (
-        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4">
-          <div className="flex max-h-[88vh] w-full max-w-2xl flex-col rounded-xl border border-neutral-200 bg-white p-5 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
-            <h2 className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">沉淀 skill</h2>
-            <p className="mt-1 text-[12px] leading-5 text-neutral-500 dark:text-neutral-400">
-              参照 skill 提炼方法（案例解构 → 抽象提炼 → 写作 SKILL.md），把本次任务蒸馏为可复用 Skill。具体数字与业务背景会被参数化为 {"{变量}"}。
-            </p>
-            <div className="mt-4 flex items-end gap-3">
-              <label className="block flex-1 text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
-                提取范围
-                <select
-                  value={distillScope}
-                  onChange={(event) => setDistillScope(event.target.value as "latest_task" | "full_conversation")}
-                  disabled={distilling}
-                  className="mt-1 h-9 w-full rounded-md border border-neutral-200 bg-transparent px-3 text-[13px] outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100"
-                >
-                  <option value="latest_task">最近一次任务</option>
-                  <option value="full_conversation">完整对话</option>
-                </select>
-              </label>
-              <button
-                onClick={() => void runDistill()}
-                disabled={distilling}
-                className="h-9 rounded-md border border-neutral-200 px-3 text-[12px] font-medium text-neutral-700 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800"
-              >
-                {distilling ? "正在提炼..." : distillContent ? "重新提炼" : "开始提炼"}
-              </button>
-            </div>
-            {(distillContent || distilling) && (
-              <div className="mt-4 flex min-h-0 flex-1 flex-col">
-                <label className="block text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
-                  Skill 名称（英文 kebab-case）
-                  <input
-                    value={distillName}
-                    onChange={(event) => setDistillName(event.target.value)}
-                    placeholder="例如 sales-anomaly-analysis"
-                    className="mt-1 h-9 w-full rounded-md border border-neutral-200 bg-transparent px-3 text-[13px] outline-none focus:border-neutral-400 dark:border-neutral-700 dark:text-neutral-100"
-                  />
-                </label>
-                <label className="mt-3 block flex min-h-0 flex-1 flex-col text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
-                  SKILL.md 预览（可编辑）
-                  <textarea
-                    value={distillContent}
-                    onChange={(event) => setDistillContent(event.target.value)}
-                    className="scrollbar-thin mt-1 min-h-[240px] w-full flex-1 resize-none rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 font-mono text-[12px] leading-5 text-neutral-800 outline-none focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-800/60 dark:text-neutral-100"
-                  />
-                </label>
-              </div>
-            )}
-            {distillError && <p className="mt-3 text-[12px] text-rose-500">{distillError}</p>}
-            {distillSavedPath && (
-              <p className="mt-3 text-[12px] text-emerald-600 dark:text-emerald-400">
-                已保存到 {distillSavedPath}
-              </p>
-            )}
-            <div className="mt-5 flex justify-end gap-2">
-              <button
-                onClick={() => setDistillOpen(false)}
-                disabled={distilling || distillSaving}
-                className="h-8 rounded-md px-3 text-[12px] text-neutral-500 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
-              >
-                {distillSavedPath ? "关闭" : "取消"}
-              </button>
-              <button
-                onClick={() => void saveDistilledSkill()}
-                disabled={!distillContent.trim() || !distillName.trim() || distilling || distillSaving || !!distillSavedPath}
-                className="h-8 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white"
-              >
-                {distillSaving ? "正在保存..." : "保存 skill"}
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} hiddenTabs={hiddenTabs} toggleTab={toggleTab} />}
     </div>
   );

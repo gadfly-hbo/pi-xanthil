@@ -981,7 +981,7 @@ function parseSkillAutoDistillBody(body: unknown): ParsedSkillAutoDistill {
   if (!Number.isInteger(timeoutMs) || timeoutMs < 10_000 || timeoutMs > 600_000) {
     return { ok: false, error: "timeoutMs must be an integer between 10000 and 600000" };
   }
-  const duplicateThreshold = raw.duplicateThreshold === undefined ? 1.5 : Number(raw.duplicateThreshold);
+  const duplicateThreshold = raw.duplicateThreshold === undefined ? 50 : Number(raw.duplicateThreshold);
   if (!Number.isFinite(duplicateThreshold) || duplicateThreshold <= 0) return { ok: false, error: "duplicateThreshold must be positive" };
   const model = String(raw.model ?? "").trim() || undefined;
   return { ok: true, value: { since: sinceValue, limit, model, dryRun: raw.dryRun === true, timeoutMs, duplicateThreshold } };
@@ -1018,7 +1018,7 @@ function parseSkillCoverageGapDistillBody(body: unknown): ParsedSkillCoverageGap
   if (!Number.isInteger(timeoutMs) || timeoutMs < 10_000 || timeoutMs > 600_000) {
     return { ok: false, error: "timeoutMs must be an integer between 10000 and 600000" };
   }
-  const duplicateThreshold = raw.duplicateThreshold === undefined ? 1.5 : Number(raw.duplicateThreshold);
+  const duplicateThreshold = raw.duplicateThreshold === undefined ? 50 : Number(raw.duplicateThreshold);
   if (!Number.isFinite(duplicateThreshold) || duplicateThreshold <= 0) return { ok: false, error: "duplicateThreshold must be positive" };
   const model = String(raw.model ?? "").trim() || undefined;
   return { ok: true, value: { cluster, model, dryRun: raw.dryRun === true, timeoutMs, duplicateThreshold } };
@@ -1245,7 +1245,13 @@ function findAutoDistillDuplicate(
     };
   }
   if (existsSync(registrySkillPath(workspaceRoot, slug))) return { reason: "skill_file_exists" };
-  const conflicts = detectSkillRegistryConflicts({ workspaceId, workspaceRoot, content }).conflicts;
+  const activeEntries = new Set(
+    listSkillRegistryEntries(workspaceId)
+      .filter((entry) => entry.status === "active")
+      .map((entry) => entry.id),
+  );
+  const conflicts = detectSkillRegistryConflicts({ workspaceId, workspaceRoot, content }).conflicts
+    .filter((conflict) => activeEntries.has(conflict.itemId));
   const duplicate = conflicts.find((conflict) => conflict.score >= duplicateThreshold);
   return duplicate ? { reason: "similar_skill", similarSkill: duplicate } : null;
 }

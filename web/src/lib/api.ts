@@ -296,24 +296,6 @@ const legacyApi = {
     fetch(`/api/sessions/${sessionId}/artifacts/file?path=${encodeURIComponent(path)}`).then(
       json<{ name: string; content?: string; previewable: boolean; truncated: boolean; size: number }>,
     ),
-  promoteSessionToFlow: (sessionId: string, payload: { name: string; scope: "latest_task" | "full_conversation"; model?: string }) =>
-    fetch(`/api/sessions/${sessionId}/promote-to-flow`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    }).then(json<Flow>),
-  distillSkill: (sessionId: string, payload: { scope: "latest_task" | "full_conversation"; model?: string }) =>
-    fetch(`/api/sessions/${sessionId}/distill-skill`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    }).then(json<{ content: string; name: string; model: string }>),
-  saveSkill: (sessionId: string, payload: { name: string; content: string }) =>
-    fetch(`/api/sessions/${sessionId}/save-skill`, {
-      method: "POST",
-      headers: { "content-type": "application/json" },
-      body: JSON.stringify(payload),
-    }).then(json<{ path: string; name: string; slug: string }>),
   renameWorkspace: (id: string, name: string) =>
     fetch(`/api/workspaces/${id}`, {
       method: "PATCH",

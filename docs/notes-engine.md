@@ -7,27 +7,26 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-17 · subagents 管理 D·P3：DelegateSubAgentCard HITL 前端 UI（含 P2 trace 流作为必要依赖）。
+- 最近更新：2026-06-18 · skill 自进化质量1：自动沉淀去重跳过 candidate，阈值回调 50。
 - 进度：
-  - **D·P2 trace 流**（本 session 作为 P3 前置依赖一并实现）：`DelegateSubAgentCard` 通过 `gateway.subscribe` 消费 `subagent_event` WebSocket 消息，按 `taskId` 聚合 trace rows，折叠渲染思考/工具调用/结果/写报告。`SubAgentTraceKind` 已进入前端 `ServerMessage` union（`web/src/types.ts`）。trace rows 每 task 上限 `.slice(-80)`；`subagent_run_end` 事件触发单 task `getSubAgentTask` 刷新。运行中自动展开 trace，终态后仍可手动折叠/展开。
-  - **D·P3 HITL UI**：`DelegateSubAgentCard` 识别 `waiting_for_help` 态，展示琥珀色修正区（含错误上下文 `<pre>`、修正说明 textarea、正确结果/SQL textarea），点「修正并继续」→ `POST /api/subagent-tasks/:id/resume`（`correction` + `correctedResult`）。续跑后 task 状态更新为 `running`，自动触发 3s 轮询与 WS trace 订阅。
-  - **API slot**：`web/src/lib/api/engine.ts` 新增 `resumeSubAgent(taskId, { correction?, correctedResult?, model?, templateId? })`，返回 `{ ok, task }`。
-  - **状态清理**：`resumeDrafts` 通过 `useEffect` 监听 `tasks` 变化，自动清理已离开 `waiting_for_help` 态的条目，防止内存残留。
-  - **本次范围**：改动集中在 `web/src/components/DelegateSubAgentCard.tsx` 与 `web/src/lib/api/engine.ts`；未触碰 server、数据探索子树、DB schema、git。
+  - **最终方案**：选择三选一里的 ②，`findAutoDistillDuplicate()` 的 BM25 相似重复判据只比较 `active` registry skill，跳过 `candidate`。candidate 是待人审候选，候选之间互撞不应阻断继续产出。
+  - **保留硬冲突**：同 slug 或同路径文件已存在仍直接跳过；这类冲突不是 BM25 相似重复，不能靠跳过 candidate 放行。
+  - **阈值回调**：auto-distill sweep 与 coverage-gap distill 的默认 `duplicateThreshold` 从 `100` 回调到 `50`。显式请求体传入阈值仍按调用方值执行。
+  - **边界**：本次只改自动沉淀/覆盖缺口蒸馏共用的去重阻断判据；`/api/workspaces/:id/skill-registry/conflicts` 仍保留“非 archived 全部参与”的人工治理展示口径，不同步改。
+  - **focused test 已补**：`server/src/skill-auto-distill.test.ts` 新增 candidate 高相似不阻断用例；既有 active 高相似跳过用例仍通过。
 - 校验：
+  - `node --experimental-strip-types --test server/src/skill-auto-distill.test.ts` ✅（3/3）
+  - `npm -w server run typecheck` ✅
   - `npm run typecheck` ✅（server + web）
-  - `npm run build` ✅（仅既有 Vite chunk-size/dynamic import warning）
-  - 数据探索 LLM 隔离 grep ✅（无匹配）
-  - code review 五轴通过（正确性/可读性/架构/安全/性能）
+  - `npm run build` ✅（仅既有 Vite chunk-size / dynamic import warning）
 - 下一步：
-  - **真实 pi E2E**：用真实子 agent + MCP 工具制造一次可修复工具错误，验证自愈重试、耗尽挂起、人工 resume 后写报告、summary 回流全链路。
-  - **总控终审**：确认 P2 trace 流 + P3 HITL UI 的前端实现是否满足验收标准；确认 `resumeDrafts` 清理策略是否可接受。
-  - **持久化结构是否升级**：当前未扩 DB schema，后续如需审计多轮错误/人工修正历史，可由总控决定新增 `subagent_task_events` 或 JSON context 字段。
+  - **真实 smoke**：用存在 candidate 超级 skill 的工作区跑一次 auto-distill 或 coverage-gap distill，确认不再误 `skipped: similar_skill`。
+  - **观察阈值 50**：后续真实样本若 active 高相似仍误杀，再考虑 ① 归一化指标；不要继续无依据上调 raw BM25 阈值。
+  - **治理展示后续**：如总控希望 conflicts 面板也弱化 candidate 干扰，可另开卡调整展示/筛选，不和自动阻断判据混改。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/用户拍板）：
-  - `maxRetries` 默认值是否正式定为 `3`，以及显式 `0` 是否继续表示禁用自愈、直接挂起/失败。
-  - resume 入参是否需要收敛为结构化 schema（例如 `{ correction, correctedResult }`），还是保留当前兼容 `params/sql/result` 的宽松格式。
-  - 是否需要把 HITL 错误上下文、人工修正、重试次数持久化为独立审计记录，而不是复用 `subagent_tasks.error`。
+  - `/skill-registry/conflicts` 是否也需要提供“只看 active / 包含 candidate”的筛选口径。
+  - 是否排期实现 ① 归一化相似指标，作为长期替换 raw BM25 阈值的方案。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -70,18 +69,20 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **G 卡子组件拆分踩坑（2026-06-16）**：工具长字符串有总长上限——单次 Write/Edit 大段 TSX（含中文+JSX+多层嵌套）会被截断成 "Unterminated string"。解决方案：先用 Write 极简骨架（stub 函数 + void 标记防 unused 报错），再多次小段 Edit 逐函数替换，最后用 `cat >>` heredoc 追加尾部组件。**未来任何 >200 行的 TSX 新文件都应先写骨架再分块 Edit，不要试图一次 Write 完整文件。**
 - **skill description 触发词优化（2026-06-16，curation v2）**：`skill-curator.ts` 在既有评测 curation prompt 中新增 description 优化维度，输入证据来自两类：① A 生产激活遥测中 `prodInjectedCount >= 3 && prodActivationRate < 0.4` 的 active registry skill；② 本次 evaluation 中非 baseline variant 且 `activation.activated=false` 的 case。prompt 要求优先判断是否只改 frontmatter `description`，让 description 覆盖任务类型、关键词、数据/场景信号与负例边界；输出仍是完整 SKILL.md 的 `SkillCurationProposal`，走既有 proposal queue + 人审 apply，不自动改文件、不自动 active。当前未新增 proposal category 字段，避免扩大接缝；如前端需要单独展示 description 优化，后续再扩。
 - **skill 自进化人审门（2026-06-14 P1 A）**：`candidate` 表示待评测/评测中/低分候选，评测达阈值后自动转 `draft`，`draft` 在 skill registry 语境中表示“达标待人审采纳”。`active` 必须由人审 PATCH 触发；`source=distilled|curated` 置 active 需 `confirmed=true`，禁止全自动 active。
-- **skill 自进化触发口径（2026-06-15 更新）**：普通 pi 任务结束仍**不会 inline 自动产 skill**；新增的自动沉淀是**可调度 sweep**：`POST /api/workspaces/:id/skill-auto-distill` 扫近期完成 session，读取 transcript，跑 `buildSkillDistillationPrompt()`，用 `extractSkillMarkdown()` 清洗，经过 slug/文件/BM25 去重后，落 `<workspace>/.pi/skills/<slug>/SKILL.md` + version snapshot，并创建 registry `source="distilled"`、`status="candidate"`、`originSessionId=session.id`。它不接会话结束 seam，不自动 active，不绕过 distilled/curated 的 `confirmed=true` 人审门。原手动链路仍存在：`POST /api/sessions/:id/distill-skill` 只返回 markdown 供预览/编辑，保存另走 `save-skill`。curation 仍只在「实验室 skill 评测」跑完后生成改进提案，不创建新 skill、不落盘。
+- **skill 自进化触发口径（2026-06-15 更新）**：普通 pi 任务结束仍**不会 inline 自动产 skill**；新增的自动沉淀是**可调度 sweep**：`POST /api/workspaces/:id/skill-auto-distill` 扫近期完成 session，读取 transcript，跑 `buildSkillDistillationPrompt()`，用 `extractSkillMarkdown()` 清洗，经过 slug/文件/BM25 去重后，落 `<workspace>/.pi/skills/<slug>/SKILL.md` + version snapshot，并创建 registry `source="distilled"`、`status="candidate"`、`originSessionId=session.id`。它不接会话结束 seam，不自动 active，不绕过 distilled/curated 的 `confirmed=true` 人审门。**探索-数据分析的手动「沉淀为工作流」/「沉淀 skill」按钮及对应后端端点（`promote-to-flow` / `distill-skill` / `save-skill` + `compileSessionWorkflow` / `buildPromoteTranscript`）已于 2026-06-18 整体移除**（功能不再需要）——蒸馏新 skill 现仅走 auto-distill sweep 与覆盖缺口蒸馏（E 卡），均经 `distillSkillCandidate` 守人审门。curation 仍只在「实验室 skill 评测」跑完后生成改进提案，不创建新 skill、不落盘。
 - **skill auto-distill 调度入口 = 手动一键按钮（2026-06-15 定，撤销定时）**：MVP 调度入口最终选**手动按钮**，不用 cron/`/loop` 定时（session-only 本地定时每日节奏天然易错过、且自动跑会无人值守烧 LLM 额度）。`SkillManagementPane`(D 域前端)工具栏加「自动沉淀」控件组：**limit 下拉(1/3/5，默认 3)** + **模型下拉(默认=继承 pi 配置，否则从 `ctx.models` 按 provider 分组，与 ChatPane ModelSelect 一致)** + 按钮 → `engineApi.runSkillAutoDistill(workspaceId, { limit, model })`(`web/src/lib/api/engine.ts`) → `POST /api/workspaces/:id/skill-auto-distill`(since 仍用端点默认近 7 天)；返回 `SkillAutoDistillResult`(双侧 web types)，前端弹结果横幅(扫描/新增/跳过/失败 + 新候选 slug)并 `refresh()`。注：sweep 后端是 `for..of + await` **顺序执行**非并发，limit 只是单次处理上限/成本闸。**会真实调 LLM 蒸馏，故必须用户显式点击**，不自动触发。后端端点/逻辑/人审门/去重一字未改，只换触发方式与参数入口；`SkillManagementPane` 新增 `models: PiModel[]` prop(DataTabs 传 `ctx.models`)。
 - **skill 覆盖缺口检测（2026-06-16，E 卡）**：缺口检测只负责“发现哪些近期任务反复出现但无高分 skill 命中”，不负责创建新路径。`skill-coverage-gap.ts` 对 session user task 文本调用现有 `retrieveSkills()`，以 `matches.length===0 || topScore < lowScoreThreshold` 判定负空间信号，再用 token overlap/Jaccard 做轻量聚类。默认扫近 14 天、最多 20 个 session，`lowScoreThreshold=1.0`、`minClusterSize=2`、`clusterSimilarityThreshold=0.25`。`POST /api/workspaces/:id/skill-coverage-gaps` 只读返回建议列表；`POST /api/workspaces/:id/skill-coverage-gaps/distill` 把选中 cluster 编成“低命中任务样本” transcript，复用 B 的 `distillSkillCandidate()` / `buildSkillDistillationPrompt()` / duplicate check / registry candidate 写入链路。产物仍是 `source:"distilled"`、`status:"candidate"`，不自动 active、不绕过人审门。前端 `SkillManagementPane` 只展示只读建议 + 手动“蒸馏”按钮；本次不进治理队列、不新增持久化表。
 - **skill 查看/编辑 UI（2026-06-15，D 域 SkillManagementPane）**：① **只读查看**——点名称或操作列「查看」按钮，弹只读 modal 显示 SKILL.md（`getSkillVersionContent` 读版本快照，无快照的老条目给提示不崩）。② **版本更新两模式**：`beginUpdate` 现**载入当前 SKILL.md 原文**到编辑框（非空白模板；无快照回退模板），即「修改原文模式」；CreateSkillModal 在编辑态新增「AI 改写」框——填修改说明 + 选模型 → `POST /api/workspaces/:id/skill-revise`（`buildSkillRevisionPrompt`+`SKILL_REVISE_SYSTEM_PROMPT`，对请求体 `content` 做最小修改、`extractSkillMarkdown` 清洗、返回内容**仅预览不写盘**）→ 回填编辑框，用户可再手改后走既有「保存为新版本」。两模式都不绕过版本链/人审门。usage 记 `targetKind:"skill"`（双侧 TokenUsageTargetKind 新增）。真实 smoke：revise 最小修改、保 name/结构 ✅。
 - **skill registry 启用与 usage 口径**：创建 registry entry 后调用 `enableForOrigin(workspaceId, "skill", id)`，归档调用 `setMemoryEnablement(... false)`。`usageCount` 当前表示“被注入路径使用过”，不是模型真实激活；flow chat 显式 `skillPaths` 与 workflow `defaultSkillPaths/node.skillPaths` 会按 registry path 匹配后累加。
 - **skill 生产激活遥测（A 卡，2026-06-15 总控直做完成）**：`skill_registry` 加 `prod_injected_count`/`prod_activated_count` 两列（`db/shared.ts`，NOT NULL DEFAULT 0 + 存量库 ALTER 补列），双侧 `SkillRegistryEntry` 加 `prodInjectedCount`/`prodActivatedCount` 及**派生** `prodActivationRate`（`mapSkillRegistryRow` 算 `activated/injected`，injected=0 时 `null`，不落列）。语义独立于评测分与 `usageCount`：这两列只记**生产真实运行**的注入/激活，`activationRate`(评测)与 `usageCount`(注入埋点)口径不变、不被覆盖。写入：`db/engine.ts` `recordSkillActivationOutcome(id, activated)`(prod_injected+1 / 激活则 prod_activated+1) + `recordSkillActivationForRun({workspaceId, workspaceRoot, skillPaths, output})`(按 `.pi/skills/<slug>/SKILL.md` 映射回 registry、过滤归档、用 `detectSkillActivation` 的 evidence.skillPath 集判每 skill 激活)。**接线点 = run 完成、成功且非 abort 的三条生产链路**：flow chat(`routes/engine.ts handleSendFlow`，output=capturedText)/ workflow(`handleExecuteMultiAgent`，output=各节点 blackboard 拼接)/ autonomous(`autonomous-runner.ts runAutonomousTask`，output=末条 assistant)。**关键边界：`runMultiAgent` 同被 `evaluation-runner.ts` 调用，故只在 routes 生产处接，不进 runner，评测口径不污染**。createSkillRegistryEntry 的 INSERT 未列这两列、靠 DEFAULT 0，未改写入；usage 注入埋点 `recordSkillRegistryUsageForPaths`(注入时点)保留不动。
 - **skill registry 去重/冲突边界（2026-06-14 P1 A）**：`/api/workspaces/:id/skill-registry/conflicts` 只做即时 BM25 相似度计算，过滤 archived，不自动归档、不落冲突表。返回结构按 RuleConflict 风格给 B/D 展示“疑似重复/建议归档”，最终处理仍走人审。
+- **自动沉淀去重 BM25 阈值不归一化（2026-06-18 质量1裁决）**：`findAutoDistillDuplicate`（auto-distill sweep 与 coverage-gap distill 共用）仍使用 BM25 raw score 做相似度排序，但自动阻断判据已改为**只与 `active` skill 比较，跳过 `candidate`**。原因：candidate 本就是待人审候选，互相撞车不应阻断继续产出；这能消除“超级 candidate skill 万能近邻”造成的新候选误跳过。默认 `duplicateThreshold` 已从临时 `100` 回调到 `50`。同 slug / 同路径文件已存在仍硬跳过。`/skill-registry/conflicts` 是人工治理展示端点，本次保留非 archived 全部参与的展示口径；如要支持“只看 active”需另开 UI/接口筛选。长期若 active 超级 skill 仍误杀，再排期做 BM25 归一化，不要继续简单上调 raw 阈值。
 - **workflow skill 子集配置（2026-06-14 P1 C）**：`WorkflowDef.defaultSkillPaths` 是 workflow 级 fallback；`node.skillPaths === undefined` 继承 workflow 默认，`node.skillPaths = []` 明确禁用默认 skill，非空数组则只注入该节点专属子集。runner 的权威逻辑是 `node.skillPaths ?? workflow.defaultSkillPaths`。
 - **ChatPane 抽屉化布局契约（2026-06-14，2026-06-15 polish）**：三个助手面板（Fork/@工具/委派）不再内联在 composer 列，改为 ChatPane 内部右侧可调宽抽屉。ChatPane 根容器横向 flex（左主列 flex-1 + 右抽屉 shrink-0），不动 App 布局、不动成果面板、不动后端。抽屉宽度 clamp [360px, 容器 60%]，localStorage 持久化（key `chatpane.assistDrawerWidth`），零新依赖；拖拽和 mount/window resize 必须共用同一 clamp 逻辑，避免已存大宽度在窄屏把主列压没。ForkBranchPanel 满高 flex 列（去 max-h-[360px]），分支 tabs/输入 shrink-0，会话区 flex-1 overflow-y-auto。抽屉头是三助手标题唯一显示位置，子组件内不再重复标题；ManualAnalysisToolCard / DelegateSubAgentCard 在抽屉内通过 `embedded` 态去自身外层 border/rounded/bg/padding，避免边框套边框，默认非嵌入 card 样式保持不变。
 - **ChatPane fork/delegate 前端边界**：ChatPane 不能为此改 `App.tsx` 接线；从 `folderScope.type === "session"` 取活跃 session。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
 - **Fork 分支路径作用域回退父 session（2026-06-14 快修2.3）**：fork 分支是独立 session、名下无注册路径。`handleSend` 解析输出/数据路径时必须把作用域回退到父任务 session：`pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id`，用于 `buildRegisteredPathContext` 的 `sessionId` 与 `fallbackOutputDir`。否则 `output-paths.selectOutputPath` 逐级回退（scoped report→scoped clean_data→workspace report→workspace clean_data）会坍缩到 workspace 级最近 clean_data 源目录，导致分支产物写到数据源目录而非任务 `060_reports`。数据安全不受影响：fork 继承的是父 clean_data，`draw_data` 仍被 `buildRegisteredPathContext` 排除且永不作为输出目标。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
+- **subagent ↔ skill 绑定（F 卡，2026-06-16）**：`SubAgentTaskInput.skillPaths?`（双侧 types，三态同 `node.skillPaths`：undefined 继承/[]禁用/非空子集）。delegate 端点(`index.ts /api/sessions/:id/delegate`)用 `skills.ts` 的 **`parseRequestedSkillPaths(workspaceRoot, value, {mode:"strict"})`** 解析（三态 + 数组守卫，复用 `validateSkillPaths`，与 workflow 同校验口径）→ 透传到 `runDelegatedSubAgent` → `runPiTurn({skillPaths})` 经 pi-adapter `--skill` 注入，无新注入机制。前端 `DelegateSubAgentCard` 复用 `SkillSelector` + 三态 `skillMode`。子 agent **成功完成后调 `recordSkillActivationForRun`**，激活进 A 生产遥测（与 flow/workflow/autonomous 同口径）。三态解析有 `skills.test.ts` 单测覆盖。
 - **ChatPane ExtractionTool 展示边界**：前端只展示 X 透传的 tool event / pi content block，不直接触发工具执行；`tool_call` 映射为 running `tool_use`，`tool_result` 回填同 id 卡片，最终 `message_end` 再带同一 tool block 时按 `id/tool_use_id` 去重。真实红线仍在后端 `source=ai` 守卫，前端不得把 `draw_data` 内容或样本送入 LLM。
 - **ExtractionTool skill 桥落盘策略**：生成到 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md`，带 `xanthil-generated-extraction-tool-skill` 标记；只更新带生成标记的文件，遇到用户手写同路径 skill 不覆盖。skill 只描述 MCP 工具契约与 clean_data 限制，不承担安全校验。
 - **工作流活跃前端路径唯一化**：legacy `ExecutionPane` / `AgentFlowPane` / `FlowChatPane` / `FlowWorkflowPane` / `FlowEditorPane` 已删除；新功能只接入 `MultiAgentExecutionPane` 真路径。`execute_flow` WebSocket client message 已从 web types 移除，不得为兼容旧组件重新引入。
@@ -154,8 +155,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - Tool 进 Workflow = 最小 `tool-run` step；tool node 输出进 blackboard，不接 Session artifacts tree。
 
 **探索·对话/skill/业务需求**
-- skill 提炼**压成单次 LLM 调用**（A 解构→B 提炼→C 写 SKILL.md 内嵌进一个 prompt），不做链式三次往返；**先预览可编辑再保存**（两个 API）。源模板 `~/.pi/agent/prompts/skill-distillation-prompts.md`（用户维护的 4-prompt 链式库 A/B/C/D），单次版是其 A+B+C 的折叠；D（多案例融合）对应 curator/版本融合、不在此。
-- **distillation prompt 增强（2026-06-15）**：`buildSkillDistillationPrompt`（`server/src/skill-distillation.ts`，auto-distill 与手动 `/distill-skill` 共用）第三步与自查清单新增两节**必需输出**——① 「关键变量清单」表格（`变量名 | 含义 | 典型取值范围`，逐个列正文 `{变量}`）；② 「常见陷阱与对策」章节（从对话提炼隐性经验/坑→对策，复用价值最高；**有坑才写、无坑省略，禁止硬编占位**）。这两块从用户 prompt 库的 A-E/B 回灌，旧版只在内部思考里提及、不进输出。架构不变（仍单次调用）。真实 smoke 验证（MiniMax-M3，`/distill-skill` 预览）：两节均稳定产出且质量达标（变量表含取值范围、6 条带现象/对策的真实陷阱）。
+- skill 提炼**压成单次 LLM 调用**（A 解构→B 提炼→C 写 SKILL.md 内嵌进一个 prompt），不做链式三次往返。源模板 `~/.pi/agent/prompts/skill-distillation-prompts.md`（用户维护的 4-prompt 链式库 A/B/C/D），单次版是其 A+B+C 的折叠；D（多案例融合）对应 curator/版本融合、不在此。**注：旧的探索「沉淀 skill」手动两段式（distill-skill 预览 + save-skill 保存）已于 2026-06-18 移除**；该 prompt 现仅由 auto-distill / 覆盖缺口蒸馏调用。
+- **distillation prompt 增强（2026-06-15）**：`buildSkillDistillationPrompt`（`server/src/skill-distillation.ts`，由 auto-distill sweep 与覆盖缺口蒸馏共用；手动 `/distill-skill` 入口已于 2026-06-18 移除）第三步与自查清单新增两节**必需输出**——① 「关键变量清单」表格（`变量名 | 含义 | 典型取值范围`，逐个列正文 `{变量}`）；② 「常见陷阱与对策」章节（从对话提炼隐性经验/坑→对策，复用价值最高；**有坑才写、无坑省略，禁止硬编占位**）。这两块从用户 prompt 库的 A-E/B 回灌，旧版只在内部思考里提及、不进输出。架构不变（仍单次调用）。真实 smoke 验证（MiniMax-M3，`/distill-skill` 预览）：两节均稳定产出且质量达标（变量表含取值范围、6 条带现象/对策的真实陷阱）。
 - 业务需求来源引用 = 字段级 `sourceRefs` + quote 最小闭环，**不做字符 offset 定位**；业务需求上下文抽成前端共享 hook（Chat/报告版本/Golden Strategy 复用）。
 - 业务需求版本恢复依赖 `structured.version.requirementInput`：后端生成版本必须写入原始 draft 输入，手动编辑 markdown 时必须保留已有 requirementInput；前端打开历史版本/刷新恢复左侧 draft 时只读该字段，旧 JSON 缺字段时不应臆造完整业务背景。
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
@@ -172,6 +173,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **tool-evaluation case params（2026-06-17 E·P1）**：`tests/cases.json` 支持可选 `params`（string/number/boolean），runner 将其映射到 manifest 参数的 `--param-*` CLI；若 case 未给 params，仍沿用 manifest default，保持旧工具评测兼容。带必填运行参数的工具（如 `duckdb-aggregate` 的 `sql`）应在 case 中显式提供 params，避免为了评测给 manifest 塞不合理默认值。
 - Phase 2b 数据分析工具展示采用**事件容错层而非深绑 pi-adapter 类型**：E 侧只认 `tool_call`/`tool_result` 事件和 pi `tool_use`/`tool_result` content block，不改 `pi-adapter/index.ts/types`。这样 X 可继续收敛总控契约，前端只在 `App.tsx` 映射层适配字段差异。
 - ExtractionTool 结果产物预览**复用现有工具预览端点** `/api/extraction-tools/preview`，不新增 ChatPane 专属 artifact API。结果卡从 `results[].outputs` 提取产物路径；若工具 summary 不含该字段，只展示原始 JSON。
+- **subagent 全局运行看板（2026-06-17 D·看板）**：`listAllSubAgentTasks` JOIN sessions 派生 `workspace_id`，不补 `subagent_tasks` 列、零迁移。`SubAgentTask.workspaceId` 是只读派生字段（JOIN 产出），不是持久化列——workspaceId 是 session 固有属性（单一真源），存进 task 冗余且可能与 session 不一致。看板 ws trace 复用 `subagent_event` 全局广播，按 `workspaceId` 过滤；`subagent_run_start`/`subagent_run_end` 触发全量刷新。前端筛选（工作区/状态/模板）优先走 server 端 status 参数减少传输量，模板筛选纯前端（`templateId` 不在 server 筛选参数中）。
+- **subagent skill 子集绑定（2026-06-17，skill 自进化 F；2026-06-18 收尾修订）**：委派子 agent 复用 workflow `node.skillPaths` 三态语义，双侧 `SubAgentTaskInput.skillPaths?: string[]`：`undefined` 表示继承 pi 默认 skill 策略，`[]` 表示显式禁用 skill，非空数组表示仅注入指定 skill 子集。后端 delegate 入口必须用 `validateSkillPaths(workspace.rootPath, value, { mode:"strict" })` 校验，禁止 slug 直传或路径绕过；校验后的值透传到 `runPiTurn`，由 pi-adapter 生成 `--no-skills --skill <path>` 或空数组禁用。前端 `DelegateSubAgentCard` 用三态按钮表达语义，指定模式复用 `SkillSelector`；**指定模式必须非空才能提交**，不能把“指定但未选择”发送成 `[]`，否则会与“禁用 skill”的协议语义冲突。当前 `skillPaths` 仅为运行时输入，不写 `subagent_tasks`，因此历史看板不展示、resume 不恢复；若要审计/复用需另扩 schema/provenance。
 
 ---
 

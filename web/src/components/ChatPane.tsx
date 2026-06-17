@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Sparkles, Square, Workflow, Wrench, X } from "lucide-react";
+import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Square, Wrench, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
@@ -36,10 +36,6 @@ interface Props {
   runtimeNotice: string;
   onCompact: () => void;
   onRefreshRuntime: () => void;
-  canPromoteToWorkflow: boolean;
-  onPromoteToWorkflow: () => void;
-  canDistillSkill: boolean;
-  onDistillSkill: () => void;
 }
 
 function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (v: string) => void }) {
@@ -534,24 +530,6 @@ export function ChatPane(p: Props) {
           {p.compacting ? "正在整理" : "整理上下文"}
         </button>
         {p.runtimeNotice && <span className="truncate text-[11px] text-neutral-400" title={p.runtimeNotice}>{p.runtimeNotice}</span>}
-        <button
-          onClick={p.onPromoteToWorkflow}
-          disabled={!p.canPromoteToWorkflow}
-          title={p.canPromoteToWorkflow ? "将已完成任务沉淀为可复用工作流" : "任务完成后可沉淀为工作流"}
-          className="ml-auto inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2.5 text-[12px] text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-        >
-          <Workflow className="h-3.5 w-3.5" strokeWidth={1.75} />
-          沉淀为工作流
-        </button>
-        <button
-          onClick={p.onDistillSkill}
-          disabled={!p.canDistillSkill}
-          title={p.canDistillSkill ? "将本次任务提炼为可复用 Skill（SKILL.md）" : "任务完成后可提炼 Skill"}
-          className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2.5 text-[12px] text-neutral-600 transition-colors hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-        >
-          <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />
-          沉淀 skill
-        </button>
       </div>
 
       {/* messages */}

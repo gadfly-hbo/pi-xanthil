@@ -13,6 +13,7 @@ import {
   setForkBranchStatus,
   createSubAgentTask,
   listSubAgentTasks,
+  listAllSubAgentTasks,
   getSubAgentTask,
   finishSubAgentTask,
 } from "./db/shared.ts";
@@ -118,7 +119,6 @@ import {
   setFileAnalysis,
   saveSkillEvaluation,
   saveToolEvaluation,
-  updateFlowGeneration,
   updateFlowSourceName,
   updateSessionRuntime,
   updateSkillEvalSet,
@@ -171,7 +171,7 @@ import { DEFAULT_REVIEW_PROMPT, buildReviewPrompt, buildAutoFixPrompt, AUTO_FIX_
 import { readFlowFile, readTree, safeResolve, writeFlowFile } from "./flow-fs.ts";
 import { compactPiSession, getPiSessionStats, runPiPrompt, runPiTurn, type PiRun } from "./pi-adapter.ts";
 import { send, activeSessionRuns, activeSessionControls, activeFlowRuns, activeMultiAgentRuns, type ActiveMultiAgentRun } from "./runtime.ts";
-import { listConfiguredModelIds, resolveConfiguredModelId, normalizeWorkflowModels, type WorkflowLike } from "./workflow-config.ts";
+import { listConfiguredModelIds, resolveConfiguredModelId } from "./workflow-config.ts";
 import { withWorkspacePathStatuses } from "./workspace-path-status.ts";
 import { traceFlowEvent } from "./flow-trace.ts";
 import { getActiveChatRun, abortChatRun } from "./runtime.ts";
@@ -180,9 +180,9 @@ import { handleSendFlow, handleExecuteMultiAgent, handleAnaxPrecheck, abortAnaxP
 
 import { buildModelLabPrompt, SUPPORTED_MODELS, type ModelLabId } from "./model-lab.ts";
 import { buildRegisteredPathContext, resolveOutputTarget } from "./output-paths.ts";
-import { listSkills, validateSkillPaths } from "./skills.ts";
+import { listSkills, parseRequestedSkillPaths, validateSkillPaths } from "./skills.ts";
+import { recordSkillActivationForRun } from "./db/engine.ts";
 import { retrieveSkills } from "./skill-retrieval.ts";
-import { buildSkillDistillationPrompt, extractSkillMarkdown, parseSkillName, SKILL_DISTILL_SYSTEM_PROMPT, slugifySkillName } from "./skill-distillation.ts";
 import { runAutonomousTask } from "./autonomous-runner.ts";
 import { getSessionTokenStats, getWorkspaceTodayTokenStats, getWorkspaceTokenStats, listWorkspaceTokenUsageStats, trackSessionWorkspaceUsage, trackUsageEvent } from "./cache.ts";
 import { buildKgPrompt, extractKgEntitiesFromReports, syncKnowledgeGraph } from "./knowledge-graph.ts";
@@ -235,7 +235,6 @@ const DEFAULT_GOLDEN_STRATEGY_MODEL = "minimax-cn/MiniMax-M3";
 const DEFAULT_BUSINESS_REQUIREMENT_MODEL = "minimax-cn/MiniMax-M3";
 const MAX_GOLDEN_STRATEGY_BATCH_MODELS = 3;
 
-type PromoteScope = "latest_task" | "full_conversation";
 
 function extractStoredMessageText(content: unknown): string {
   if (!Array.isArray(content)) return "";
@@ -745,115 +744,6 @@ async function generateGoldenStrategyArtifact(params: {
   const outputRelPath = `golden_strategy/${sanitizeFilenamePart(reportName)}-${definition.id}-${timestampForFilename()}.html`;
   writeFlowFile(outputDir, outputRelPath, html.endsWith("\n") ? html : `${html}\n`);
   return { analysisModel: definition.id, nodes, model, path: outputRelPath, html };
-}
-
-function buildPromoteTranscript(sessionId: string, scope: PromoteScope): string {
-  const messages = listMessages(sessionId)
-    .filter((message) => message.role === "user" || message.role === "assistant");
-  const start = scope === "latest_task"
-    ? Math.max(0, messages.findLastIndex((message) => message.role === "user"))
-    : 0;
-  const transcript = messages
-    .slice(start)
-    .map((message) => {
-      const text = extractStoredMessageText(message.content);
-      return text ? `${message.role === "user" ? "用户" : "助手"}:\n${text}` : "";
-    })
-    .filter(Boolean)
-    .join("\n\n");
-  return transcript.slice(-24_000);
-}
-
-function hasLocalAbsolutePath(value: unknown): boolean {
-  if (typeof value === "string") {
-    return /(^|[\s"'`(])\/(?:Users|home|tmp|private|var|Volumes)\//.test(value)
-      || /(^|[\s"'`(])[a-zA-Z]:\\/.test(value);
-  }
-  if (Array.isArray(value)) return value.some(hasLocalAbsolutePath);
-  if (typeof value === "object" && value !== null) return Object.values(value).some(hasLocalAbsolutePath);
-  return false;
-}
-
-function validatePromotedWorkflow(flowRoot: string): void {
-  const raw = readFlowFile(flowRoot, "workflow.json").content;
-  const workflow = normalizeWorkflowModels(JSON.parse(raw) as WorkflowLike & {
-    nodes?: Array<{ id?: unknown; label?: unknown; prompt?: unknown; model?: unknown }>;
-    edges?: unknown;
-  });
-  if (!Array.isArray(workflow.nodes) || workflow.nodes.length === 0) throw new Error("workflow.json must contain at least one node");
-  if (!Array.isArray(workflow.edges)) throw new Error("workflow.json edges must be an array");
-  for (const node of workflow.nodes) {
-    if (typeof node.id !== "string" || !node.id.trim()) throw new Error("workflow node id required");
-    if (typeof node.label !== "string" || !node.label.trim()) throw new Error(`workflow node ${String(node.id)} label required`);
-    if (typeof node.prompt !== "string" || !node.prompt.trim()) throw new Error(`workflow node ${String(node.id)} prompt required`);
-  }
-  if (hasLocalAbsolutePath(workflow)) throw new Error("workflow.json contains a local absolute path; use {{input.*}} placeholders");
-  writeFlowFile(flowRoot, "workflow.json", JSON.stringify(workflow, null, 2));
-}
-
-// 从一段文本解析出合法 workflow（nodes 非空 + edges 为数组），失败返回 null。
-// parseWorkflowCandidate / captureWorkflowFromText 已随 flow handler 迁至 routes/engine.ts（T-C2b）。
-
-// 取 pi 消息内容里的文本部分用于捕获。
-// flowMessageText 已上移至 message-text.ts（接缝层，T-C2b）。
-
-async function compileSessionWorkflow(
-  flowId: string,
-  sessionId: string,
-  scope: PromoteScope,
-  model?: string,
-): Promise<void> {
-  const flow = getFlow(flowId);
-  const session = getSession(sessionId);
-  if (!flow || !session) return;
-  const transcript = buildPromoteTranscript(session.id, scope);
-  const prompt = `请将下面已完成的探索任务沉淀为可重复运行的多智能体工作流。
-
-[硬性要求]
-1. 提取可复用的方法、步骤、判断规则和输出格式，不要复述本次具体结论。
-2. 禁止将本次数据文件路径、报告目录或任何本机绝对路径写入工作流。
-3. 输入数据路径统一使用 {{input.data_path}}，报告输出目录统一使用 {{input.report_dir}}。
-4. 不得复制或读取原始数据文件；仅根据对话文本提炼流程。
-5. 在当前工作目录生成 workflow.json 和 README.md。
-6. workflow.json 格式：
-   { "version": 1, "defaultModel": "", "nodes": [{ "id": "...", "label": "...", "prompt": "...", "model": "", "role": "...", "icon": "...", "desc": "..." }], "edges": [{ "id": "...", "source": "...", "target": "..." }] }
-7. 节点之间通过 edges 串联，后续节点可以使用 {{前序节点id}} 引用前一步产出。
-8. README.md 说明用途、运行参数、输出和注意事项。
-
-[探索对话文本]
-${transcript}`;
-  try {
-    const run = runPiTurn({
-      workspaceRoot: flow.folderPath,
-      piSessionId: `compiler-${flow.id}`,
-      text: prompt,
-      model,
-      systemPrompt: "你是 workflow compiler。只根据提供的对话文本提炼可复用工作流，严格参数化输入和输出路径。直接生成 workflow.json 和 README.md，不要提问。",
-      onEvent: (event: PiEvent) => {
-        trackUsageEvent({
-          workspaceId: flow.workspaceId,
-          targetKind: "workflow_promotion",
-          targetId: flow.id,
-          title: `工作流沉淀：${flow.name}`,
-        }, event);
-        if (event.type !== "message_end") return;
-        const { message } = event as Extract<PiEvent, { type: "message_end" }>;
-        if (message.role !== "user") addFlowMessage(flow.id, message.role, message.content, message.usage ?? null);
-      },
-    });
-    const code = await run.done;
-    if (code !== 0) throw new Error(`workflow compiler exited with code ${String(code)}`);
-    validatePromotedWorkflow(flow.folderPath);
-    if (!existsSync(join(flow.folderPath, "README.md"))) {
-      writeFlowFile(flow.folderPath, "README.md", `# ${flow.name}\n\n## 用途\n\n由探索对话沉淀的可复用工作流。\n\n## 运行参数\n\n- \`{{input.data_path}}\`：聚合数据输入路径\n- \`{{input.report_dir}}\`：报告输出目录\n\n## 注意事项\n\n运行前检查节点 prompt 和路径参数，不要输入原始明细数据。\n`);
-    }
-    updateFlowGeneration(flow.id, "ready");
-    addFlowMessage(flow.id, "assistant", [{ type: "text", text: "工作流已从探索对话生成。请检查节点 prompt、输入参数和报告输出目录后再运行。" }]);
-  } catch (err) {
-    const message = String(err);
-    updateFlowGeneration(flow.id, "failed", message);
-    addFlowMessage(flow.id, "assistant", [{ type: "text", text: `工作流生成失败：${message}` }]);
-  }
 }
 
 // ---- REST: models ----
@@ -1857,6 +1747,17 @@ app.get("/api/sessions/:id/subagent-tasks", (req, res) => {
   res.json(listSubAgentTasks(req.params.id));
 });
 
+app.get("/api/subagent-tasks", (req, res) => {
+  const rawLimit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+  const rawStatus = typeof req.query.status === "string" ? req.query.status : undefined;
+  const status = rawStatus === "running" || rawStatus === "success" || rawStatus === "failed" || rawStatus === "aborted" || rawStatus === "waiting_for_help" ? rawStatus : undefined;
+  res.json(listAllSubAgentTasks({
+    limit: Number.isFinite(rawLimit) ? rawLimit : undefined,
+    workspaceId: typeof req.query.workspaceId === "string" && req.query.workspaceId.trim() ? req.query.workspaceId.trim() : undefined,
+    status,
+  }));
+});
+
 app.get("/api/subagent-tasks/:id", (req, res) => {
   const task = getSubAgentTask(req.params.id);
   if (!task) return res.status(404).json({ error: "task not found" });
@@ -1953,8 +1854,14 @@ app.post("/api/sessions/:id/delegate", (req, res) => {
   const dataFiles = Array.isArray(req.body?.dataFiles) ? (req.body.dataFiles as unknown[]).map(String) : [];
   const model = req.body?.model ? String(req.body.model) : undefined;
   const templateId = req.body?.templateId ? String(req.body.templateId) : undefined;
+  let skillPaths: string[] | undefined;
+  try {
+    skillPaths = parseRequestedSkillPaths(workspace.rootPath, req.body?.skillPaths, { mode: "strict" });
+  } catch (err) {
+    return res.status(400).json({ error: String(err) });
+  }
   const task = createSubAgentTask(session.id, brief, dataFiles, model, templateId);
-  void runDelegatedSubAgent(task.id, session.id, workspace.id, workspace.rootPath, brief, dataFiles, model, templateId);
+  void runDelegatedSubAgent(task.id, session.id, workspace.id, workspace.rootPath, brief, dataFiles, model, templateId, skillPaths);
   res.json(task);
 });
 
@@ -1968,6 +1875,7 @@ async function runDelegatedSubAgent(
   dataFiles: string[],
   model?: string,
   templateId?: string,
+  skillPaths?: string[],
 ): Promise<void> {
   const reportDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "report");
   const cleanDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "clean_data");
@@ -2001,6 +1909,7 @@ ${fileList}
       templateId: template?.id,
       model,
       maxRetries,
+      skillPaths,
     }, reportDir);
     while (true) {
       let lastErrorContext = "";
@@ -2012,6 +1921,7 @@ ${fileList}
         text: textForPi,
         model,
         systemPrompt,
+        skillPaths,
         onEvent: (event: PiEvent) => {
           broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, event, reportDir);
           const errorText = subAgentEventErrorText(event);
@@ -2051,6 +1961,8 @@ ${fileList}
           summary: summaryText || undefined,
           reportPath,
         });
+        // F 卡跟进：子 agent 成功完成后记本次注入 skill 的真实激活（与 flow/workflow/autonomous 同 A 口径）。
+        recordSkillActivationForRun({ workspaceId, workspaceRoot, skillPaths, output: summaryText });
         broadcastSubAgentEvent(taskId, parentSessionId, workspaceId, {
           type: "subagent_run_end",
           code,
@@ -3715,78 +3627,6 @@ app.post("/api/golden-strategy/generate-batch", async (req, res) => {
   } catch (err) {
     return res.status(500).json({ error: String(err) });
   }
-});
-
-app.post("/api/sessions/:id/promote-to-flow", (req, res) => {
-  const session = getSession(req.params.id);
-  if (!session) return res.status(404).json({ error: "session not found" });
-  const name = String(req.body?.name ?? session.title).trim() || session.title;
-  const scope = req.body?.scope === "full_conversation" ? "full_conversation" : "latest_task";
-  const model = String(req.body?.model ?? "").trim() || undefined;
-  const messages = listMessages(session.id);
-  if (!messages.some((message) => message.role === "assistant" && extractStoredMessageText(message.content))) {
-    return res.status(400).json({ error: "session has no completed assistant response" });
-  }
-  const flow = createFlow(session.workspaceId, name, `探索：${session.title}`, "multi", session.id, "generating");
-  addFlowMessage(flow.id, "user", [{ type: "text", text: `从探索会话「${session.title}」沉淀可复用工作流。` }]);
-  res.json(flow);
-  void compileSessionWorkflow(flow.id, session.id, scope, model);
-});
-
-// Distill a completed exploration conversation into a reusable SKILL.md.
-// Returns the generated markdown for preview/editing; saving is a separate step.
-app.post("/api/sessions/:id/distill-skill", async (req, res) => {
-  const session = getSession(req.params.id);
-  if (!session) return res.status(404).json({ error: "session not found" });
-  const workspace = getWorkspace(session.workspaceId);
-  if (!workspace) return res.status(404).json({ error: "workspace not found" });
-  const scope: PromoteScope = req.body?.scope === "full_conversation" ? "full_conversation" : "latest_task";
-  const model = String(req.body?.model ?? "").trim() || undefined;
-  const transcript = buildPromoteTranscript(session.id, scope);
-  if (!transcript.trim()) {
-    return res.status(400).json({ error: "session has no conversation to distill" });
-  }
-  try {
-    const rawOutput = await runPiPrompt({
-      workspaceRoot: workspace.rootPath,
-      text: buildSkillDistillationPrompt(transcript),
-      model,
-      systemPrompt: SKILL_DISTILL_SYSTEM_PROMPT,
-      timeoutMs: 180_000,
-      onEvent: (event) => trackUsageEvent({
-        workspaceId: workspace.id,
-        targetKind: "session",
-        targetId: session.id,
-        title: `沉淀 Skill：${session.title}`,
-      }, event),
-    });
-    const content = extractSkillMarkdown(rawOutput);
-    res.json({ content, name: parseSkillName(content) ?? "", model: model ?? "" });
-  } catch (err) {
-    res.status(500).json({ error: String(err) });
-  }
-});
-
-// Persist an (optionally hand-edited) SKILL.md under <workspace>/.pi/skills/<slug>/
-// so listSkills() can discover it as a project-scoped skill.
-app.post("/api/sessions/:id/save-skill", (req, res) => {
-  const session = getSession(req.params.id);
-  if (!session) return res.status(404).json({ error: "session not found" });
-  const workspace = getWorkspace(session.workspaceId);
-  if (!workspace) return res.status(404).json({ error: "workspace not found" });
-  const content = String(req.body?.content ?? "");
-  if (!content.trim()) return res.status(400).json({ error: "skill content required" });
-  const name = String(req.body?.name ?? "").trim() || parseSkillName(content) || "";
-  if (!name) return res.status(400).json({ error: "skill name required" });
-  const slug = slugifySkillName(name);
-  const skillDir = join(workspace.rootPath, ".pi", "skills", slug);
-  const skillFile = join(skillDir, "SKILL.md");
-  if (existsSync(skillFile)) {
-    return res.status(409).json({ error: `skill already exists: ${slug}` });
-  }
-  mkdirSync(skillDir, { recursive: true });
-  writeFileSync(skillFile, content.endsWith("\n") ? content : `${content}\n`, "utf8");
-  res.json({ path: skillFile, name, slug });
 });
 
 // ---- REST: flows ----

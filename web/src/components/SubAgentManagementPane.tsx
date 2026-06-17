@@ -1,6 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, RefreshCw, Plus, Save, Trash2, AlertTriangle, Lock } from "lucide-react";
+import { Bot, Plus, Save, Trash2, AlertTriangle, Lock, RefreshCw } from "lucide-react";
 import { api } from "@/lib/api";
+import { cn } from "@/lib/cn";
+import { SubAgentBoard } from "@/components/SubAgentBoard";
 import type {
   ExtractionTool,
   ExtractionToolCategory,
@@ -115,6 +117,7 @@ export function SubAgentManagementPane() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [toolsLoading, setToolsLoading] = useState(false);
+  const [view, setView] = useState<"board" | "templates">("board");
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -218,40 +221,60 @@ export function SubAgentManagementPane() {
           计算工具 · subagents 管理
         </h2>
         <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[10.5px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-          子 agent 模板（subagents.json）
+          {view === "board" ? "全局运行看板" : "子 agent 模板（subagents.json）"}
         </span>
         <span className="ml-1 flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
           <Lock className="h-3 w-3" />
           dataScope 锁定 clean_data
         </span>
+        <div className="ml-auto inline-flex rounded-md border border-neutral-200 bg-neutral-50 p-0.5 dark:border-neutral-800 dark:bg-neutral-900">
+          <button
+            type="button"
+            onClick={() => setView("board")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "board" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            运行看板
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("templates")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "templates" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            模板管理
+          </button>
+        </div>
       </div>
 
       <div className="flex-1 overflow-auto bg-neutral-50 dark:bg-neutral-900">
-        <div className="grid h-full grid-cols-[minmax(280px,360px)_1fr] gap-3 p-4">
-          <TemplateList
-            templates={templates}
-            selectedId={selectedId}
-            onSelect={setSelectedId}
-            onAdd={addTemplate}
-            onReload={reload}
-            onSave={save}
-            loading={loading}
-            saving={saving}
-            dirty={dirty}
-          />
-          <TemplateEditor
-            selected={selected}
-            issues={issues}
-            error={error}
-            info={info}
-            tools={tools}
-            toolsLoading={toolsLoading}
-            onReloadTools={reloadTools}
-            onUpdate={updateSelected}
-            onUpdateToolIds={updateToolIds}
-            onRemove={removeSelected}
-          />
-        </div>
+        {view === "board" ? (
+          <SubAgentBoard templates={templates} />
+        ) : (
+          <div className="grid h-full grid-cols-[minmax(280px,360px)_1fr] gap-3 p-4">
+            <TemplateList
+              templates={templates}
+              selectedId={selectedId}
+              onSelect={setSelectedId}
+              onAdd={addTemplate}
+              onReload={reload}
+              onSave={save}
+              loading={loading}
+              saving={saving}
+              dirty={dirty}
+            />
+            <TemplateEditor
+              selected={selected}
+              issues={issues}
+              error={error}
+              info={info}
+              tools={tools}
+              toolsLoading={toolsLoading}
+              onReloadTools={reloadTools}
+              onUpdate={updateSelected}
+              onUpdateToolIds={updateToolIds}
+              onRemove={removeSelected}
+            />
+          </div>
+        )}
       </div>
     </div>
   );

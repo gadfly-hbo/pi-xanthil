@@ -124,6 +124,21 @@ export function validateSkillPaths(
   return validated;
 }
 
+// 把请求体里的 skillPaths 解析成三态契约（与 workflow node.skillPaths 一致）：
+//   undefined → 继承（返回 undefined）；[] → 禁用（返回 []）；非空 → 校验后的子集。
+// 非数组 / 非字符串数组直接抛错。复用 validateSkillPaths 做可用性校验，不另造注入口径。
+export function parseRequestedSkillPaths(
+  workspaceRoot: string,
+  value: unknown,
+  options: ValidateSkillPathOptions = {},
+): string[] | undefined {
+  if (value === undefined) return undefined;
+  if (!Array.isArray(value) || !value.every((item) => typeof item === "string")) {
+    throw new Error("skillPaths must be a string array when provided");
+  }
+  return validateSkillPaths(workspaceRoot, value as string[], options) ?? [];
+}
+
 function projectSkillRoots(workspaceRoot: string): SkillRoot[] {
   const roots: SkillRoot[] = [];
   let current = resolve(workspaceRoot);

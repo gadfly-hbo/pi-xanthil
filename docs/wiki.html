@@ -490,8 +490,13 @@ C. 与数据安全红线对齐：脚本绝不可读 draw_data/原始数据，复
 【不重叠】只负责"发现缺口"，创建走 B、不重造；不改 A/C/D；不碰分发/沙箱。
 【验收】server typecheck+build 绿；给定一批无命中任务输出缺口聚类、可触发 B 蒸馏；focused test；回流总控终审；不碰 git。
 【开放点】聚类粒度/阈值，缺口建议是否进治理队列还是只读列表。` },
-  { dom: "E", status: "todo", title: "【skill 自进化·F】subagent ↔ skill 绑定（复用 node.skillPaths 三态）", brief:
-`来源：2026-06-15 趋势评估 T3（composable skills 按 agent 域化）立卡。
+  { dom: "E", status: "done", title: "【skill 自进化·F】subagent ↔ skill 绑定（复用 node.skillPaths 三态）", brief:
+`✅ 总控回流终审通过（2026-06-16，加重终审独立复跑）。E 全栈交付：① 接缝——双侧 SubAgentTaskInput 加 skillPaths?:string[]（三态注释与 node.skillPaths 一致：undefined 继承/[]禁用/非空子集；总控追认该可选字段=向后兼容、合理）；② delegate 端点(index.ts:1958) parseSubAgentSkillPaths 三态解析——undefined→undefined、非数组/非字符串→400、其余 validateSkillPaths(strict) ?? [] 校验后透传，复用既有 validateSkillPaths（与 workflow 同校验）；③ runDelegatedSubAgent 把 skillPaths 透传到 runPiTurn({...skillPaths})，经既有 pi-adapter --skill 注入子 agent，无新注入机制；④ 前端 DelegateSubAgentCard 复用 SkillSelector + 三态 skillMode(inherit/disabled/specified)，specified 模式要求至少选一个，提交映射 undefined/[]/子集。
+总控终审复核：① 三态语义端到端正确（前端 mode→后端 parse→注入）；② 数据安全红线不受影响——子 agent 仍只读 020_clean 指定文件，skill 是 project skill 非数据；③ 复用 validateSkillPaths/pi-adapter/SkillSelector，不重造。独立门禁：server+web typecheck ✅ build ✅；零新依赖、未碰数据探索子树、未碰 git。notes 待补。
+**两处非阻塞缺口已当快修做掉（2026-06-16，见快修板「F 跟进」）**：① 子 agent 成功完成后已接 recordSkillActivationForRun，skill 激活进 A 遥测；② 三态解析抽到 skills.ts parseRequestedSkillPaths 并补 skills.test 三态单测。F 至此全闭合。
+
+— 原始派发 —
+来源：2026-06-15 趋势评估 T3（composable skills 按 agent 域化）立卡。
 缺口：workflow 已有 node.skillPaths 子集绑定(multi-agent-runner)，但 **subagent 委派(delegateSubAgent / DelegateSubAgentCard)无 skill 子集**，子 agent 拿不到定向 skill。
 目标：给 subagent 委派配 skill 子集，复用 node.skillPaths 三态语义(undefined 继承 / [] 禁用 / 非空=指定子集)，注入子 agent 的 pi turn。
 【改动范围】SubAgentTaskInput 加 skillPaths(双侧 types=接缝层，**开放点报总控**)；delegate 端点透传 + validateSkillPaths 校验；pi-adapter 已支持 skillPaths 注入(无需改)；前端 DelegateSubAgentCard 加 skill 选择器(D/E 前端)。
@@ -523,6 +528,20 @@ C. 与数据安全红线对齐：脚本绝不可读 draw_data/原始数据，复
 【验收】server+web typecheck+build 绿；开关开→3 次串接产出 SKILL.md 且质量≥单次（真实 smoke 对比）；开关关→维持单次现状；回流总控终审；不碰 git。
 【约束】chain=3x 成本/延迟，**仅手动可选、绝不进 auto-sweep**；只读 transcript 不碰原始数据；候选仍走人审门。
 【开放点】① 是否把 A/B 中间产物暴露给用户查看/编辑（链式可视 vs 仅末步产物）；② 前端开关落点与默认值。` },
+  { dom: "E", status: "done", title: "【skill 自进化·质量1】去重 BM25 阈值治本（不归一化→超级 skill 万能近邻）", brief:
+`✅ 总控回流终审通过（2026-06-16，加重终审独立复跑）。E 采纳总控倾向的**方案②**：findAutoDistillDuplicate 的 BM25 相似度比对**只与 active(已采纳) skill 比、跳过 candidate/draft**——activeEntries=listSkillRegistryEntries(ws,"active") 的 id 集，detectSkillRegistryConflicts(...).conflicts 先 filter(activeEntries.has(itemId)) 再判 score≥阈值；同 slug/同文件的精确匹配检查保留(对全状态生效)。默认 duplicateThreshold **100→回调 50**(两处 body parser)。
+总控终审复核：① 治本对——超级 skill 多为 candidate(待人审)，过滤到 active 后不再当万能近邻挡新候选；candidate 互撞本就无意义(都待人审)，语义干净；② 不动 BM25 口径/不需归一化、改动最小；③ 与蒸馏链路(B)/覆盖缺口(E)/人审门不重叠，只改去重判据；④ conflicts 展示端点(/skill-registry/conflicts，采纳弹窗用)**有意不改**——展示是人审参考、列全部相似 skill 合理，只收窄"自动 dedup 闸"。独立门禁：server+web typecheck ✅ build ✅ + 去重相关测试 14 全绿（含新增"high-similarity candidate 被忽略"用例 + 既有"active 高相似仍跳过"用例，阈值 50 下均合理）；零新依赖、未碰数据探索子树、未碰 git。notes-engine §二「⚠️ 已知坑」已更新为治本落地。
+
+— 原始派发 —
+来源：2026-06-16 快修「去重默认阈值 1.5→100」终审衍生。该快修是治标；本卡治本（已记 notes-engine §二「去重/冲突边界」后那条 ⚠️ 已知坑）。
+缺口：findAutoDistillDuplicate（auto-distill sweep 与 coverage-gap distill 共用，routes/engine.ts）用 **BM25 raw score** 比相似度、**无上限归一化**——分数受文档长度与共有词 IDF 加权和驱动。行业通用词密集的「超级 skill」（如 cross-platform-consumer-profile）成「万能近邻」，把任何近主题候选都判撞车→产不出新候选。默认阈值一路上调 1.5→30→50→100 都是在治标，数字越加越脆。
+目标：换掉"raw score ≥ 固定阈值"的去重判据，让去重稳健、不被超级 skill 绑架。
+【治本三选一（总控倾向 ②，开发时定）】① 改归一化指标（score/docLen 或 BM25 归一到 0..1 再比）；② **去重只与 active(已采纳) skill 比、跳过 candidate**（最省事、契合人审门语义——candidate 本就待人审、互撞无意义，且不动 BM25 口径）；③ 拆覆盖面过广的超级 skill（治标对象，非通用解）。
+【改动范围（E 域）】findAutoDistillDuplicate 判据 + 可能调 rankSkillSimilarity 调用面；若选 ② 则过滤 listSkillRegistryEntries 只留 active 再比；阈值默认回调 100→50（notes 已标）。
+依赖：无（纯后端判据改造）。
+【不重叠】只改去重判据，不改蒸馏链路(B)/覆盖缺口(E)/人审门；conflicts 展示端点（/skill-registry/conflicts）口径是否一并改由开发时定。
+【验收】server typecheck+build 绿；构造"超级 skill 存在时新主题候选不再被误撞车"的 focused test；阈值回 50 后 auto-distill 高相似跳过测试仍合理；回流总控终审；不碰 git。
+【开放点】① 三选一最终方案；② conflicts 展示端点是否同步改归一化口径；③ 回调阈值到 50 的时机（工作流跑通后）。` },
   { dom: "E", status: "done", title: "【E 核实·归属】BusinessRequirementPane version.requirementInput 持久化改动（skill 终审旁路发现）", brief:
 `✅ E 认领 + 总控回流终审通过（2026-06-14）。E 认领该改动为 E 域有效成果(业务需求 version 持久化恢复)，并补全完整性：后端 index.ts:2655 生成版本写 requirementInput=requirement、2722 手动编辑保留已有/缺失补 fallback(不臆造)、types index.ts:1858 加字段——前端 openVersion/auto-restore 读的字段后端确实写，**半成品风险消除、闭环成立**。notes-engine §0/§一/§约束已记。门禁 server+web typecheck ✅ build ✅。
 【总控裁决】① 完整性闭环 OK，认领不回滚。② 治理：E 改了 index.ts(接缝/总控持有)写 requirementInput——业务需求生成逻辑仍在 index.ts legacy、足迹小、完整性必需→**追认**(同 repairLooseJson/模板库范式)，后续接缝改动仍应先报总控。③ backfill 开放问题(旧 JSON 无 requirementInput 只恢复框架)→**不强制离线 backfill**，向前生效即可、旧版本降级无害，如需再单议 P2。
@@ -1625,6 +1644,21 @@ P3(onto + KG)：
 依赖：subagents P0–P3 + 既有 skill 自进化体系（candidate→评测→人审采纳 管道）。
 【约束】**复用既有人审门，不绕过、不自动 active**；不重造蒸馏管道；回流总控终审。
 【开放点】固化为 skill vs 固化为 ExtractionTool 的判定口径；蒸馏输入（trace + 报告 + 成功 SQL）取舍。` },
+  { dom: "D", status: "done", title: "【subagents 管理·看板】全局运行看板（跨 session 查看所有 subagent 运行情况）", brief:
+`✅ 总控加重终审通过（2026-06-17，独立复核代码+复跑门禁）。E/D 交付：① E 端点 listAllSubAgentTasks(db/shared.ts:203){limit?,workspaceId?,status?}——JOIN sessions 派生 workspace_id(遵裁决②，未加持久化列、grep 确认 CREATE 段无 workspace_id)、参数化无注入、limit clamp 1..500；GET /api/subagent-tasks(无 session 参数、status 白名单、只读)；② 接缝 SubAgentTask 加 workspaceId?(双侧 types 一致，可选派生字段非列，承载 JOIN 投影，总控认可此最小增量)；③ D 看板 SubAgentBoard.tsx 内嵌 SubAgentManagementPane(模板/运行看板 双视图)：状态分布 5 卡 + workspace/status 筛选 + 复用 ws subagent_event 实时(按 workspaceId 过滤) + 复用 traceRow/TraceList 下钻 + 复用 resumeSubAgent。终审独立复核：无红线(SubAgentBoard grep 无 LLM/draw_data、零外发)、只读看板、未碰数据探索子树/git；门禁 server+web typecheck ✅ + build ✅。开放点(留后续)：分页(已 clamp 500)、telemetry 指标。**至此 subagents 模块=主线 P0–P3 全闭环 + 全局看板**；剩 pandas-sandbox(暂缓) 与 进阶 A/B/C(todo)。
+
+— 原始派发 —
+来源：用户需求（2026-06-17）——subagents 管理模块加一个看板，查看所有 subagents 的运行情况。
+现状缺口：运行视图只有 per-session 的 DelegateSubAgentCard（嵌在 ChatPane，只看当前会话委派）；listSubAgentTasks(db/shared.ts:198) 仅按 parent_session_id 查；无跨 session/全局列表端点。subagents_mgmt tab 当前只渲染 SubAgentManagementPane（模板管理）。
+目标：在 subagents_mgmt tab 内加一个全局运行看板——聚合展示所有委派任务的运行情况（状态分布 + 任务列表 + 下钻 trace/报告），与现有模板管理同 tab 双视图（仿 SkillManagementPane 内嵌 ObservabilityDashboard 的形态）。
+【改动范围】
+1. E（端点）：新增全局只读查询 listAllSubAgentTasks(limit?)（db/shared.ts）——**JOIN sessions 派生 workspace_id**：SELECT t.*, s.workspace_id FROM subagent_tasks t JOIN sessions s ON t.parent_session_id=s.id ORDER BY t.created_at DESC LIMIT ?（subagent_tasks 与 sessions 同库，sessions 表 db.ts:120 有 workspace_id）；+ GET /api/subagent-tasks（无 session 参数，可选 workspaceId/status 筛选）。**不补 SubAgentTask.workspaceId 列、不上接缝**（见裁决②）。
+2. D（看板 UI·主体）：新建 SubAgentBoard 子组件（仿 ObservabilityDashboard），SubAgentManagementPane 内嵌为「运行看板」视图——① 顶部状态分布卡（running/success/failed/waiting_for_help/aborted 计数）；② 任务列表（brief/状态/模板/模型/起止时间/报告链接），按状态/模板筛选；③ 行展开下钻：running 复用 ws subagent_event 流式 trace（复用 DelegateSubAgentCard 的 traceRow/TraceList + ws 订阅）、终态看 summary/reportPath；④ waiting_for_help 行可直接「修正并继续」(复用 resumeSubAgent，或链回会话)。
+3. 实时：复用既有 ws subagent_event/subagent_run_end 广播刷新看板（已全 client 广播，前端按需消费）。
+依赖：subagents P0–P3（done，提供 task 数据/状态/templateId/trace ws）。
+【约束】纯只读看板（除既有 resume/abort 复用），不新增写路径；无红线——展示本机会话自有数据（clean_data 级 trace、报告），前端零 LLM 调用、不外发；不碰数据探索子树；回流总控终审。
+【总控裁决（2026-06-17）】① **范围=全局列出所有 session 任务 + 带 workspace 维度（分组/筛选）**——符合 subagents_mgmt 全局 tab 性质，又让用户聚焦当前项目。② **workspaceId 走 SQL JOIN sessions 派生，不补 SubAgentTask 列、不上接缝、零迁移**——workspaceId 是 session 固有属性（单一真源），存进 task 冗余且可能与 session 不一致；只读看板 JOIN 完全胜任。
+【开放点（留开发）】① 列表分页/上限（任务量大时，listAllSubAgentTasks 带 LIMIT）；② 是否并入 telemetry 指标（调用频次/成功率/token，对应 proposal 附件「Subagent Tool Telemetry」，可后续增量）。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──
@@ -1634,6 +1668,12 @@ P3(onto + KG)：
    status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
    字段: { status, title, brief }（无 dom —— 不指定域）。 */
 const HOTFIX = [
+  { status: "done", title: "【skill 管理·F 跟进】subagent 激活记入 A 遥测 + 三态 parser 单测", brief:
+`✅ 总控自做并自检通过（2026-06-16，F 卡终审标的两处非阻塞缺口当快修做掉）。① 激活记录：runDelegatedSubAgent 成功完成后调 recordSkillActivationForRun({workspaceId,workspaceRoot,skillPaths,output:summaryText})，子 agent 注入的 skill 真实激活现也进 A 生产遥测（与 flow/workflow/autonomous 同口径）；② 可测性重构：三态解析从 index.ts 局部 parseSubAgentSkillPaths 抽到 skills.ts 的 parseRequestedSkillPaths（与 validateSkillPaths 同处、复用之），delegate 端点改调它，删除 index.ts 局部函数；③ 新增 skills.test.ts 用例覆盖三态（undefined→继承 / []→禁用 / 非空→校验子集去重 / strict 不可用→抛 / 非数组·非字符串→抛）。门禁：server+web typecheck ✅ build ✅ + skill 全测试 22 全绿（skills.test 含新三态用例）；零新依赖、未碰数据探索子树、未碰 git。index.ts 新增 import recordSkillActivationForRun(db/engine)；改动局限 delegate 链路。`},
+  { status: "done", title: "【skill 管理】自动沉淀去重默认阈值 1.5→100（超级 skill 万能近邻误撞车）", brief:
+`✅ 总控回流终审通过（2026-06-16）。门禁亲验：server+web typecheck ✅ / build ✅ / 去重相关测试 13 全绿（auto-distill 高相似跳过 + coverage-gap + registry）✅ / 无 console.log 调试残留 ✅ / 未碰 git。
+改动核实：routes/engine.ts 两处 body parser 默认 duplicateThreshold 1.5→100（parseSkillAutoDistillBody:984、coverage-gap distill parser:1021；行号随前序改动微漂，校验 >0/finite 完好），喂 findAutoDistillDuplicate（auto-distill 与 coverage-gap distill 共用去重）。现象正确：BM25 raw score 偏高时 1.5 阈值把任何近主题候选误判撞车→产不出新候选；放开到 100 缓解。
+【架构质量】快修方建议的"BM25 不归一化"根因已采纳，补进 notes-engine §二（去重/冲突边界后）：标为已知坑 + 治本三选一（score/docLen 归一化 / 只比 active 跳过 candidate / 拆超级 skill）+ 标注 100 是临时放开值、工作流跑通后回调 50。**这是治标，治本待排期**（可考虑并入未来 skill 域质量卡）。下次再有人想调阈值，先读 notes 那条，别继续往上加数字。`},
   { status: "done", title: "【探索·黄金策/行动】报告统一化收尾 — workspace 维度 + DecisionTree 同源 + 空态文案", brief:
 `✅ 总控回流终审通过（2026-06-15）。门禁亲验：server+web typecheck ✅ / build ✅ / 数据探索隔离 grep 空 ✅ / types.ts 未动（diff 空）✅。三项逐项核实：
 ① workspace 维度：GoldenStrategyPane/ActionsPane/DecisionTreePane 的 Scope 均加 workspace 分支，loadReports 加 listWorkspacePaths(...,"report")，taskKey/currentScopeId 适配；VizTabs 透传 folderScope.type==="workspace"。**ActionItem.sourceKind 用 fallback**（workspace→"session"，仅元数据标记、不动 ActionSourceKind 类型，遵守卡片"动 types 停下"约束）；GoldenStrategy 的 businessRequirementScope 已支持 workspace（useBusinessRequirementContexts 接受）。后端零改（端点已 scope 无关）。

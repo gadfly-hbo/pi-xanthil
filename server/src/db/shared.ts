@@ -169,7 +169,7 @@ export function setForkBranchStatus(branchSessionId: string, status: ForkBranch[
 // ---- 委派子 agent CRUD ----
 
 interface SubAgentTaskRow {
-  id: string; parent_session_id: string; brief: string; data_files: string; model: string | null;
+  id: string; parent_session_id: string; workspace_id?: string; brief: string; data_files: string; model: string | null;
   template_id: string | null;
   status: string; summary: string | null; report_path: string | null; error: string | null;
   created_at: number; ended_at: number | null;
@@ -179,7 +179,8 @@ function parseSubAgentTask(r: SubAgentTaskRow): SubAgentTask {
   let dataFiles: string[] = [];
   try { dataFiles = JSON.parse(r.data_files) as string[]; } catch { dataFiles = []; }
   return {
-    id: r.id, parentSessionId: r.parent_session_id, brief: r.brief, dataFiles,
+    id: r.id, parentSessionId: r.parent_session_id, workspaceId: r.workspace_id,
+    brief: r.brief, dataFiles,
     model: r.model ?? undefined, templateId: r.template_id ?? undefined, status: r.status as SubAgentTaskStatus,
     summary: r.summary ?? undefined, reportPath: r.report_path ?? undefined, error: r.error ?? undefined,
     createdAt: r.created_at, endedAt: r.ended_at ?? undefined,
@@ -197,6 +198,23 @@ export function createSubAgentTask(parentSessionId: string, brief: string, dataF
 
 export function listSubAgentTasks(parentSessionId: string): SubAgentTask[] {
   return (db.prepare("SELECT * FROM subagent_tasks WHERE parent_session_id = ? ORDER BY created_at DESC").all(parentSessionId) as unknown as SubAgentTaskRow[]).map(parseSubAgentTask);
+}
+
+export function listAllSubAgentTasks(filter: { limit?: number; workspaceId?: string; status?: SubAgentTaskStatus } = {}): SubAgentTask[] {
+  const limit = Math.min(Math.max(Math.floor(filter.limit ?? 200), 1), 500);
+  const where: string[] = [];
+  const params: Array<string | number> = [];
+  if (filter.workspaceId) {
+    where.push("s.workspace_id = ?");
+    params.push(filter.workspaceId);
+  }
+  if (filter.status) {
+    where.push("t.status = ?");
+    params.push(filter.status);
+  }
+  params.push(limit);
+  const sql = `SELECT t.*, s.workspace_id FROM subagent_tasks t JOIN sessions s ON t.parent_session_id = s.id${where.length ? ` WHERE ${where.join(" AND ")}` : ""} ORDER BY t.created_at DESC LIMIT ?`;
+  return (db.prepare(sql).all(...params) as unknown as SubAgentTaskRow[]).map(parseSubAgentTask);
 }
 
 export function getSubAgentTask(id: string): SubAgentTask | undefined {

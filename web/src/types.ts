@@ -924,6 +924,7 @@ export type SubAgentTaskStatus = "running" | "success" | "failed" | "aborted" | 
 export interface SubAgentTask {
   id: string;
   parentSessionId: string;
+  workspaceId?: string;
   brief: string;
   dataFiles: string[]; // 020_clean 标准目录内的相对/绝对路径
   model?: string;
@@ -941,6 +942,7 @@ export interface SubAgentTaskInput {
   dataFiles: string[];
   model?: string;
   templateId?: string; // 指定子 agent 模板（缺省=回退引擎默认 systemPrompt，行为同现状）
+  skillPaths?: string[]; // undefined=继承 pi 默认 skill 策略；[]=禁用；非空=指定子集
 }
 
 // 子 agent 模板：剥离 runner 硬编码 systemPrompt 的图形化配置（subagents.json）。

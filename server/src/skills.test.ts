@@ -3,7 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { validateSkillPaths } from "./skills.ts";
+import { parseRequestedSkillPaths, validateSkillPaths } from "./skills.ts";
 
 function makeWorkspaceWithSkill(): { workspaceRoot: string; availableSkill: string; unavailableSkill: string } {
   const workspaceRoot = mkdtempSync(join(tmpdir(), "pi-xanthil-skills-test-"));
@@ -67,4 +67,23 @@ test("validateSkillPaths lenient mode filters unavailable and unknown skills", (
   );
 
   assert.deepEqual(result, [availableSkill]);
+});
+
+test("parseRequestedSkillPaths resolves the three-state skillPaths contract", () => {
+  const { workspaceRoot, availableSkill } = makeWorkspaceWithSkill();
+
+  // undefined → 继承（pi 默认策略）
+  assert.equal(parseRequestedSkillPaths(workspaceRoot, undefined), undefined);
+  // [] → 禁用
+  assert.deepEqual(parseRequestedSkillPaths(workspaceRoot, []), []);
+  // 非空 → 校验后的子集（去重）
+  assert.deepEqual(parseRequestedSkillPaths(workspaceRoot, [availableSkill, availableSkill]), [availableSkill]);
+  // strict（默认）下含不可用 skill → 抛错
+  assert.throws(
+    () => parseRequestedSkillPaths(workspaceRoot, [join(workspaceRoot, "missing", "SKILL.md")]),
+    /skill is not available:/,
+  );
+  // 非数组 / 非字符串数组 → 抛错
+  assert.throws(() => parseRequestedSkillPaths(workspaceRoot, "not-an-array"), /skillPaths must be a string array/);
+  assert.throws(() => parseRequestedSkillPaths(workspaceRoot, [123]), /skillPaths must be a string array/);
 });

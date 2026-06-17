@@ -164,7 +164,6 @@
   - **Delegate Sub-Agent**：派发子任务给独立 agent。
   - **Manual Analysis Tool**：触发「人工分析工具卡」（清洗 / 指标计算 / RFM / market-basket / churn-risk / clustering / aarrr-flow 等注册工具，由 `/api/extraction-tools/:id/run` 执行，产物聚合后才回灌 LLM）。
 - **运行时**：右上 token / 上下文余量；过载时一键 `compactContext()` 压缩历史。
-- **沉淀**：完成任务后可「沉淀为工作流」（参数化路径）或「沉淀 skill」（提炼 SKILL.md）。
 
 ### 操作步骤
 
