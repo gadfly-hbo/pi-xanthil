@@ -30,7 +30,9 @@ export function FlowListColumn({ flows, activeFlowId, workspaceReady, onSelectFl
   const [pendingDelete, setPendingDelete] = useState<{ id: string; name: string } | null>(null);
   const [templateLibraryOpen, setTemplateLibraryOpen] = useState(false);
 
-  const visible = flows.filter((f) => f.kind === "multi");
+  // 工作流列表只显示用户自建 multi 工作流；AnaX/专题来源的 flow（sourceName 以 "AnaX" 开头）
+  // 是「专题」模块的内部载体，不应出现在工作流列表（既有 AnaX v3.0 泄漏 + 专题 anax-chat flow 一并隐藏）。
+  const visible = flows.filter((f) => f.kind === "multi" && !(f.sourceName ?? "").startsWith("AnaX"));
 
   const commitEdit = () => {
     if (!editing) return;

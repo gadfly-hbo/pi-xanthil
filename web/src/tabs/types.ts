@@ -16,6 +16,10 @@ export type FolderScope =
   | { type: "flow"; flowId: string }
   | null;
 
+export interface ZhuantiSeed {
+  task: string;
+}
+
 export interface TabContext {
   activeTab: Tab;
   activeSubTab: SubTab;
@@ -38,6 +42,22 @@ export interface TabContext {
   onStop: () => void;
   compactContext: () => void;
   refreshRuntime: () => void;
+
+  // 专题 · 对话探索（真实 session + flow scope）
+  zhuantiChatSessionId: string | null;
+  zhuantiChatFolderScope: FolderScope;
+  zhuantiChatMessages: UiMessage[];
+  zhuantiChatRunning: boolean;
+  zhuantiChatRuntime: SessionRuntime | null;
+  zhuantiChatCompacting: boolean;
+  zhuantiChatRuntimeNotice: string;
+  onZhuantiChatSend: (text: string, skillPaths?: string[], businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string }) => void;
+  onZhuantiChatStop: () => void;
+  compactZhuantiChatContext: () => void;
+  refreshZhuantiChatRuntime: () => void;
+  zhuantiSeed: ZhuantiSeed | null;
+  setZhuantiSeed: (seed: ZhuantiSeed | null) => void;
+  pushZhuantiChatSummary: (text: string) => void;
 
   // 业务需求 → 数据探索 单向 seed
   exploreSeed: ExploreSeed | null;

@@ -1,10 +1,11 @@
-import { PanelLeftOpen, Compass, Network, Users, Calculator, BookOpen, Database, FlaskConical, Cpu, type LucideIcon } from "lucide-react";
+import { PanelLeftOpen, Compass, Network, Users, Calculator, BookOpen, Database, FlaskConical, Cpu, Telescope, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type Tab = "explore" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "dashboard" | "onto_xanthil";
+export type Tab = "explore" | "zhuanti" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "dashboard" | "onto_xanthil";
 
 export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "explore", label: "探索", icon: Compass },
+  { id: "zhuanti", label: "专题", icon: Telescope },
   { id: "multi", label: "工作流", icon: Users },
   { id: "aggregate", label: "计算工具", icon: Calculator },
   { id: "rule_memory", label: "规则记忆", icon: BookOpen },

@@ -14,7 +14,7 @@ import {
   addFlowMessage, getFileAnalysesByPathIds, createFlowRun, finishFlowRun,
   recordMemoryInjectionUsage, buildHypothesisLibraryContext, getAnaxGateConfig, upsertAnaxGateConfig,
   upsertHypothesisFromArchive, createChangeProposal,
-  listSessions, listMessages, getSessionRuntime,
+  listSessions, listMessages, getSessionRuntime, createSession, db,
 } from "../db.ts";
 import {
   archiveSkillRegistryEntry,
@@ -76,6 +76,21 @@ import {
  * 禁止：触碰 index.ts（legacy 冻结，归总控）/ 他域 router。
  */
 export const engineRouter = Router();
+
+const ZHUANTI_ANAX_SOURCE_NAME = "AnaX 专题";
+
+function findZhuantiAnaxFlow(workspaceId: string): ReturnType<typeof getFlow> {
+  const row = db.prepare(
+    "SELECT id FROM flows WHERE workspace_id = ? AND source_name = ? ORDER BY updated_at DESC LIMIT 1",
+  ).get(workspaceId, ZHUANTI_ANAX_SOURCE_NAME) as { id: string } | undefined;
+  return row ? getFlow(row.id) : undefined;
+}
+
+function findSessionByWorkflowId(workspaceId: string, workflowId: string): Session | undefined {
+  return db.prepare(
+    "SELECT id, workspace_id AS workspaceId, title, workflow_id AS workflowId, created_at AS createdAt, updated_at AS updatedAt FROM sessions WHERE workspace_id = ? AND workflow_id = ? ORDER BY updated_at DESC LIMIT 1",
+  ).get(workspaceId, workflowId) as Session | undefined;
+}
 
 // ---- flow CRUD / 文件 / run 只读路由（T-C2a 从 index.ts 迁入，只搬不改）----
 
@@ -248,6 +263,18 @@ engineRouter.post("/api/workspaces/:id/anax/instantiate-quick", (req, res) => {
   const flow = createFlow(req.params.id, name, "AnaX v3.0 Quick", "multi", null, "ready");
   writeFlowFile(flow.folderPath, "workflow.json", JSON.stringify(buildAnaxQuickWorkflow(), null, 2));
   res.json(flow);
+});
+engineRouter.post("/api/workspaces/:id/zhuanti/anax-chat", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const flowName = String(req.body?.flowName ?? "专题分析").trim() || "专题分析";
+  const sessionTitle = String(req.body?.sessionTitle ?? "专题对话探索").trim() || "专题对话探索";
+  let flow = findZhuantiAnaxFlow(req.params.id);
+  if (!flow) {
+    flow = createFlow(req.params.id, flowName, ZHUANTI_ANAX_SOURCE_NAME, "multi", null, "ready");
+    writeFlowFile(flow.folderPath, "workflow.json", JSON.stringify(buildAnaxWorkflow(), null, 2));
+  }
+  const session = findSessionByWorkflowId(req.params.id, flow.id) ?? createSession(req.params.id, sessionTitle, flow.id);
+  res.json({ flow, session });
 });
 engineRouter.post("/api/workspaces/:id/sql-loop/instantiate", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });

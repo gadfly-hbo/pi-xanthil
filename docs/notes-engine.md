@@ -7,26 +7,25 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-18 · skill 自进化质量1：自动沉淀去重跳过 candidate，阈值回调 50。
+- 最近更新：2026-06-18 · 专题模块 E seed 闭环：对话 ↔ 流水线双向 seed。
 - 进度：
-  - **最终方案**：选择三选一里的 ②，`findAutoDistillDuplicate()` 的 BM25 相似重复判据只比较 `active` registry skill，跳过 `candidate`。candidate 是待人审候选，候选之间互撞不应阻断继续产出。
-  - **保留硬冲突**：同 slug 或同路径文件已存在仍直接跳过；这类冲突不是 BM25 相似重复，不能靠跳过 candidate 放行。
-  - **阈值回调**：auto-distill sweep 与 coverage-gap distill 的默认 `duplicateThreshold` 从 `100` 回调到 `50`。显式请求体传入阈值仍按调用方值执行。
-  - **边界**：本次只改自动沉淀/覆盖缺口蒸馏共用的去重阻断判据；`/api/workspaces/:id/skill-registry/conflicts` 仍保留“非 archived 全部参与”的人工治理展示口径，不同步改。
-  - **focused test 已补**：`server/src/skill-auto-distill.test.ts` 新增 candidate 高相似不阻断用例；既有 active 高相似跳过用例仍通过。
+  - **对话 → 流水线已完成**：`zhuanti/anax_chat` 顶部新增「启动假设验证流水线」按钮；点击后从最近对话生成“问题陈述 + 初始假设”草稿，弹可编辑确认框；确认后经 App seed 中介写入 `AnaXPane.brief` 并切到 `anax_view`，不自动运行。
+  - **流水线 → 对话已完成**：`AnaXPane` 在 run 终态生成一条本地 assistant 摘要回流专题对话，包含 gate verdict 与 insight/recommend/archive 等关键阶段摘要；默认不触发 LLM turn。
+  - **MVP 架构边界**：专题对话 flow（`sourceName="AnaX 专题"` + 绑定 session）与 AnaX 流水线 flow（`sourceName="AnaX v3.0"` / Quick）不共享同一条 flow，采用文本 seed 传递；未重构 `AnaXPane` flow 自治。
+  - **prompt 微调**：`buildAnaxWorkflow()` 的 plan 节点新增约束：若输入已有初始假设，优先采纳并补全至不超过 12 条，不用全新脑补覆盖。
+  - **安全边界**：seed/回流只取对话文本与流水线衍生结论摘要，不读取 `draw_data`，不夹带原始数据样本；未新增 `ClientMessage` 字段。
 - 校验：
-  - `node --experimental-strip-types --test server/src/skill-auto-distill.test.ts` ✅（3/3）
-  - `npm -w server run typecheck` ✅
   - `npm run typecheck` ✅（server + web）
   - `npm run build` ✅（仅既有 Vite chunk-size / dynamic import warning）
+  - `node --experimental-strip-types --test server/src/anax-gate.test.ts` ✅（15/15）
 - 下一步：
-  - **真实 smoke**：用存在 candidate 超级 skill 的工作区跑一次 auto-distill 或 coverage-gap distill，确认不再误 `skipped: similar_skill`。
-  - **观察阈值 50**：后续真实样本若 active 高相似仍误杀，再考虑 ① 归一化指标；不要继续无依据上调 raw BM25 阈值。
-  - **治理展示后续**：如总控希望 conflicts 面板也弱化 candidate 干扰，可另开卡调整展示/筛选，不和自动阻断判据混改。
+  - **总控终审**：确认本次触碰 `App.tsx` / `web/src/tabs/types.ts` / `EngineTabs.tsx` / `AnaXPane.tsx` / `anax-template.ts` 的 seed 接缝形态可接受。
+  - **真实 UI + LLM smoke**：专题对话聊清问题 → 点「启动假设验证流水线」→ 编辑确认 seed → 自动切到流水线且 brief 填入 → 选择 clean_data → 运行 → plan 假设继承对话 seed → 终态摘要回流对话。
+  - **状态切换验收**：seed 注入后切换 `anax_chat/anax_view` 不重复写入 brief；流水线终态只回流一条摘要；普通探索 chat 不被专题回流污染。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/用户拍板）：
-  - `/skill-registry/conflicts` 是否也需要提供“只看 active / 包含 candidate”的筛选口径。
-  - 是否排期实现 ① 归一化相似指标，作为长期替换 raw BM25 阈值的方案。
+  - 是否排期增强为“专题对话与流水线共享同一专题 flow scope”，这需要把 `AnaXPane` flow 选择参数化，不能在当前 MVP 内顺手改。
+  - 是否增加“一键自动 run”模式；当前故意不自动运行，避免未选数据直接触发 `data_gate` 阻断。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -44,7 +43,7 @@
 
 db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前端方法进 `lib/api/engine.ts`。
 
-> **导航变更（2026-06-10 快修）**：AnaX **一级 tab 已撤销，整体并入「实验室」(research_lab)**。实验室顶部横向 = workflow/skill/tool/model/DLF/**AnaX**；点开 AnaX 时其 4 个二级（工作视图/假设库/变更管理/readme）以**左侧竖栏**呈现。AnaX 4 pane 渲染条件已从 `anax` 改为 `research_lab + {anax_view,hypothesis,change_mgmt,readme}`（见 `EngineTabs.tsx`）；pane 本身与 `anax-template/anax-gate` 后端**逻辑未动**。导航接缝细节见 `notes-infra §四`。
+> **导航变更（2026-06-18 专题迁移）**：AnaX 已从「实验室」(research_lab) 提升到一级「专题」(zhuanti) tab。专题二级 tab 使用 `ZHUANTI_SUB_TABS`：`anax_chat`（对话探索）、`anax_view`（流水线）、`hypothesis`、`change_mgmt`、`readme`。`EngineTabs.tsx` 中 AnaX 四个已有 pane 只挂在 `zhuanti + {anax_view,hypothesis,change_mgmt,readme}`；实验室渲染分支只保留 `workflow/skill/tool/model/DLF`。pane 本身与 `anax-template/anax-gate` 后端逻辑未动。导航接缝细节见 `notes-infra §四`。
 
 ---
 
@@ -79,7 +78,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **自动沉淀去重 BM25 阈值不归一化（2026-06-18 质量1裁决）**：`findAutoDistillDuplicate`（auto-distill sweep 与 coverage-gap distill 共用）仍使用 BM25 raw score 做相似度排序，但自动阻断判据已改为**只与 `active` skill 比较，跳过 `candidate`**。原因：candidate 本就是待人审候选，互相撞车不应阻断继续产出；这能消除“超级 candidate skill 万能近邻”造成的新候选误跳过。默认 `duplicateThreshold` 已从临时 `100` 回调到 `50`。同 slug / 同路径文件已存在仍硬跳过。`/skill-registry/conflicts` 是人工治理展示端点，本次保留非 archived 全部参与的展示口径；如要支持“只看 active”需另开 UI/接口筛选。长期若 active 超级 skill 仍误杀，再排期做 BM25 归一化，不要继续简单上调 raw 阈值。
 - **workflow skill 子集配置（2026-06-14 P1 C）**：`WorkflowDef.defaultSkillPaths` 是 workflow 级 fallback；`node.skillPaths === undefined` 继承 workflow 默认，`node.skillPaths = []` 明确禁用默认 skill，非空数组则只注入该节点专属子集。runner 的权威逻辑是 `node.skillPaths ?? workflow.defaultSkillPaths`。
 - **ChatPane 抽屉化布局契约（2026-06-14，2026-06-15 polish）**：三个助手面板（Fork/@工具/委派）不再内联在 composer 列，改为 ChatPane 内部右侧可调宽抽屉。ChatPane 根容器横向 flex（左主列 flex-1 + 右抽屉 shrink-0），不动 App 布局、不动成果面板、不动后端。抽屉宽度 clamp [360px, 容器 60%]，localStorage 持久化（key `chatpane.assistDrawerWidth`），零新依赖；拖拽和 mount/window resize 必须共用同一 clamp 逻辑，避免已存大宽度在窄屏把主列压没。ForkBranchPanel 满高 flex 列（去 max-h-[360px]），分支 tabs/输入 shrink-0，会话区 flex-1 overflow-y-auto。抽屉头是三助手标题唯一显示位置，子组件内不再重复标题；ManualAnalysisToolCard / DelegateSubAgentCard 在抽屉内通过 `embedded` 态去自身外层 border/rounded/bg/padding，避免边框套边框，默认非嵌入 card 样式保持不变。
-- **ChatPane fork/delegate 前端边界**：ChatPane 不能为此改 `App.tsx` 接线；从 `folderScope.type === "session"` 取活跃 session。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
+- **ChatPane fork/delegate 前端边界**：普通探索 chat 仍从 `folderScope.type === "session"` 取活跃 session；专题 `anax_chat` 是明确例外，App 层提供真实 `zhuantiChatSessionId` 给 ChatPane 的 send/runtime/fork/delegate，同时 `folderScope` 传 `{type:"flow", flowId}` 让 clean_data/report 路径按专题 flow 作用域读取。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
 - **Fork 分支路径作用域回退父 session（2026-06-14 快修2.3）**：fork 分支是独立 session、名下无注册路径。`handleSend` 解析输出/数据路径时必须把作用域回退到父任务 session：`pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id`，用于 `buildRegisteredPathContext` 的 `sessionId` 与 `fallbackOutputDir`。否则 `output-paths.selectOutputPath` 逐级回退（scoped report→scoped clean_data→workspace report→workspace clean_data）会坍缩到 workspace 级最近 clean_data 源目录，导致分支产物写到数据源目录而非任务 `060_reports`。数据安全不受影响：fork 继承的是父 clean_data，`draw_data` 仍被 `buildRegisteredPathContext` 排除且永不作为输出目标。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
 - **subagent ↔ skill 绑定（F 卡，2026-06-16）**：`SubAgentTaskInput.skillPaths?`（双侧 types，三态同 `node.skillPaths`：undefined 继承/[]禁用/非空子集）。delegate 端点(`index.ts /api/sessions/:id/delegate`)用 `skills.ts` 的 **`parseRequestedSkillPaths(workspaceRoot, value, {mode:"strict"})`** 解析（三态 + 数组守卫，复用 `validateSkillPaths`，与 workflow 同校验口径）→ 透传到 `runDelegatedSubAgent` → `runPiTurn({skillPaths})` 经 pi-adapter `--skill` 注入，无新注入机制。前端 `DelegateSubAgentCard` 复用 `SkillSelector` + 三态 `skillMode`。子 agent **成功完成后调 `recordSkillActivationForRun`**，激活进 A 生产遥测（与 flow/workflow/autonomous 同口径）。三态解析有 `skills.test.ts` 单测覆盖。
@@ -142,6 +141,9 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 流程图库 = `@xyflow/react`（React Flow v12）。
 
 **AnaX**（详见记忆 anax-integration）
+- 2026-06-18 专题迁移 E 卡决策：AnaX 提升为一级「专题」tab 时，E 域只迁移 `EngineTabs.tsx` 的四个 pane 渲染条件，不改 pane 内部逻辑、不改 `anax-template/anax-gate`、不扩接缝层。原因是本卡目标是先让“提升为一级”落地可见，保证 `anax_view/hypothesis/change_mgmt/readme` 的 subtab id、props 和行为与迁移前一致；`anax_chat` 等专题新能力必须另开卡处理。
+- 2026-06-18 专题对话探索决策：`anax_chat` 复用 `ChatPane`，但不复用 `handleSendFlow`。原因：`handleSendFlow` 的语义是 workflow 设计/迭代修改，会写 `flow_messages` 并以 flow id 作为 pi session；专题对话要的是开放式数据分析能力，必须保留真实 `sessions/messages/session_runtime`，这样 fork/委派/compact/工具抽屉都可复用。绑定方式采用 `sessions.workflow_id = flow.id`，后端 `handleSend` 在该 session 上切换到 flow-scoped `workspace_paths` 和 flow report 输出目录；这是最小无 schema 接线。当前每 workspace 通过 `sourceName="AnaX 专题"` 幂等定位一个专题 flow，如要多专题实例需另扩 UI/持久标记。
+- 2026-06-18 专题 seed 闭环决策：对话与流水线 MVP 不共享同一条 flow，采用 App/TabContext 的文本 seed 中介。原因：`AnaXPane` 自治选择 `sourceName==="AnaX v3.0"` / Quick flow，run 恢复、历史、gate verdict 恢复都绑定它自己选的 flow；强行复用专题 chat flow 会扩大为高风险重构。对话 → 流水线只把用户确认后的“问题陈述 + 初始假设”写入 `brief`，不自动 run；流水线 → 对话只回流一条本地 assistant 摘要，不自动触发 LLM turn。后续若要产物同目录/单 run 历史，需另开卡参数化 `AnaXPane` flow 选择。
 - = 预置 flow 模板 `buildAnaxWorkflow()` 9 节点线性 DAG（business→plan→data→data_gate→insight→recommend→review_gate→verify→archive），懒加载物化复用现有 flow 引擎。
 - **gate = 节点**：产出 ` ```anax-verdict ``` ` JSON；`evaluateGate` 抽 JSON 后按硬阈值（置信度≥medium/证据≥2/数据质量≥7）**确定性重算 blockers**，模型自报仅参考；缺裁决块=阻断。
 - 并行假设 **fan-out**（`FanOutSpec`，concurrency:3 maxItems:12，与 plan 最多 12 假设一致）；假设库飞轮 + 剪枝（>20 条按关键词评分取 top-10）。

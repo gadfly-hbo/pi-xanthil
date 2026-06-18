@@ -9,7 +9,7 @@ import { FlowListColumn } from "@/components/FlowListColumn";
 import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useTabVisibility } from "@/lib/useTabVisibility";
-import { getSubTabsForTab, LAB_ANAX_SUB_TABS, LAB_ANAX_SUB_IDS, ONTO_SUB_TABS, type SubTab } from "@/lib/constants";
+import { getSubTabsForTab, ONTO_SUB_TABS, type SubTab } from "@/lib/constants";
 import { DataTabs } from "@/tabs/DataTabs";
 import { EngineTabs } from "@/tabs/EngineTabs";
 import { VizTabs } from "@/tabs/VizTabs";
@@ -119,6 +119,14 @@ export default function App() {
   const [messages, setMessages] = useState<UiMessage[]>([]);
   const [report, setReport] = useState("");
   const [running, setRunning] = useState(false);
+  const [zhuantiChatFlowId, setZhuantiChatFlowId] = useState<string | null>(null);
+  const [zhuantiChatSessionId, setZhuantiChatSessionId] = useState<string | null>(null);
+  const [zhuantiChatMessages, setZhuantiChatMessages] = useState<UiMessage[]>([]);
+  const [zhuantiChatRunning, setZhuantiChatRunning] = useState(false);
+  const [zhuantiChatRuntime, setZhuantiChatRuntime] = useState<SessionRuntime | null>(null);
+  const [zhuantiChatCompacting, setZhuantiChatCompacting] = useState(false);
+  const [zhuantiChatRuntimeNotice, setZhuantiChatRuntimeNotice] = useState("");
+  const [zhuantiSeed, setZhuantiSeed] = useState<{ task: string } | null>(null);
   const [model, setModel] = useState("");
   const [models, setModels] = useState<PiModel[]>([]);
   const [totals, setTotals] = useState({ tokens: 0, cost: 0, input: 0, cacheRead: 0, cacheWrite: 0 });
@@ -144,6 +152,8 @@ export default function App() {
   // activeSessionId is read inside the gateway listener — keep a ref in sync.
   const activeRef = useRef<string | null>(null);
   activeRef.current = activeSessionId;
+  const zhuantiChatRef = useRef<string | null>(null);
+  zhuantiChatRef.current = zhuantiChatSessionId;
 
   // 侧边栏「非活动自动收起」：鼠标离开延时收起，拖拽改宽（userSelect=none）时不收。
   const collapseTimer = useRef<number | undefined>(undefined);
@@ -231,6 +241,12 @@ export default function App() {
   // ---- load sessions on workspace change ----
   useEffect(() => {
     if (!activeWorkspaceId) return;
+    setZhuantiChatFlowId(null);
+    setZhuantiChatSessionId(null);
+    setZhuantiChatMessages([]);
+    setZhuantiChatRuntime(null);
+    setZhuantiChatRuntimeNotice("");
+    setZhuantiChatRunning(false);
     api.listSessions(activeWorkspaceId).then((s) => {
       setSessions(s);
       setActiveSessionId(s[0]?.id ?? null);
@@ -242,6 +258,26 @@ export default function App() {
     });
     void refreshRulesPromptInfo();
   }, [activeWorkspaceId, refreshRulesPromptInfo]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeWorkspaceId || activeTab !== "zhuanti") return;
+    api.ensureZhuantiAnaxChat(activeWorkspaceId)
+      .then(({ flow, session }) => {
+        if (cancelled) return;
+        setZhuantiChatFlowId(flow.id);
+        setZhuantiChatSessionId(session.id);
+        setFlows((current) => [flow, ...current.filter((item) => item.id !== flow.id)]);
+      })
+      .catch((err) => {
+        if (!cancelled) {
+          setZhuantiChatMessages((current) => [...current, { id: nextId(), role: "assistant", content: [], error: String(err) }]);
+        }
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [activeWorkspaceId, activeTab]);
 
   // ---- load history on session change ----
   useEffect(() => {
@@ -286,31 +322,74 @@ export default function App() {
     };
   }, [activeSessionId]);
 
+  useEffect(() => {
+    let cancelled = false;
+    if (!zhuantiChatSessionId) {
+      setZhuantiChatMessages([]);
+      setZhuantiChatRuntime(null);
+      setZhuantiChatRuntimeNotice("");
+      setZhuantiChatRunning(false);
+      return;
+    }
+    api.listMessages(zhuantiChatSessionId).then((rows: StoredMessage[]) => {
+      if (cancelled) return;
+      let consecutiveStreamErrors = 0;
+      const msgs: UiMessage[] = rows.map((r) => {
+        consecutiveStreamErrors = r.errorMessage === STREAM_END_ERROR ? consecutiveStreamErrors + 1 : 0;
+        return {
+          id: nextId(),
+          role: r.role,
+          content: asBlocks(r.content),
+          error: r.errorMessage ? displayError(r.errorMessage, consecutiveStreamErrors) : undefined,
+        };
+      });
+      setZhuantiChatMessages(msgs);
+      void refreshTokenTotals();
+    });
+    api.getSessionRunStatus(zhuantiChatSessionId)
+      .then((status) => {
+        if (!cancelled) setZhuantiChatRunning(status.running);
+      })
+      .catch(() => {
+        if (!cancelled) setZhuantiChatRunning(false);
+      });
+    setZhuantiChatRuntimeNotice("");
+    api.getSessionRuntime(zhuantiChatSessionId, true).then(setZhuantiChatRuntime).catch(() => setZhuantiChatRuntime(null));
+    return () => {
+      cancelled = true;
+    };
+  }, [zhuantiChatSessionId, refreshTokenTotals]);
+
   // ---- gateway events ----
   useEffect(() => {
     return gateway.subscribe((msg: ServerMessage) => {
       if (msg.type === "flow_event") return;
       if ("flowId" in msg && msg.flowId) return;
-      if ("sessionId" in msg && msg.sessionId !== activeRef.current) return;
+      const sessionId = "sessionId" in msg ? msg.sessionId : null;
+      if (sessionId && sessionId !== activeRef.current && sessionId !== zhuantiChatRef.current) return;
+      const isZhuantiChat = Boolean(sessionId && sessionId === zhuantiChatRef.current && sessionId !== activeRef.current);
+      const setTargetMessages = isZhuantiChat ? setZhuantiChatMessages : setMessages;
+      const setTargetRunning = isZhuantiChat ? setZhuantiChatRunning : setRunning;
+      const setTargetRuntime = isZhuantiChat ? setZhuantiChatRuntime : setRuntime;
       if (msg.type === "run_start") {
-        setRunning(true);
-        setRuntime((current) => current ? { ...current, status: "running", lastError: null } : current);
+        setTargetRunning(true);
+        setTargetRuntime((current) => current ? { ...current, status: "running", lastError: null } : current);
       }
       else if (msg.type === "run_end") {
-        setRunning(false);
+        setTargetRunning(false);
         setArtifactRefreshKey((current) => current + 1);
-        if (activeRef.current) api.getSessionRuntime(activeRef.current, true).then(setRuntime).catch(() => undefined);
+        if (sessionId) api.getSessionRuntime(sessionId, true).then(setTargetRuntime).catch(() => undefined);
         void refreshTokenTotals();
       }
       else if (msg.type === "error") {
-        setRunning(msg.message.startsWith(SESSION_RUNNING_ERROR));
-        setMessages((m) => [...m, { id: nextId(), role: "assistant", content: [], error: msg.message }]);
+        setTargetRunning(msg.message.startsWith(SESSION_RUNNING_ERROR));
+        setTargetMessages((m) => [...m, { id: nextId(), role: "assistant", content: [], error: msg.message }]);
       } else if (msg.type === "pi_event") {
         const ev = msg.event;
         if (ev.type === "compaction_start") {
-          setRuntime((current) => current ? { ...current, status: "compacting" } : current);
+          setTargetRuntime((current) => current ? { ...current, status: "compacting" } : current);
         } else if (ev.type === "compaction_end") {
-          setRuntime((current) => current ? {
+          setTargetRuntime((current) => current ? {
             ...current,
             status: typeof ev.errorMessage === "string" ? "error" : "running",
             contextTokens: null,
@@ -321,27 +400,27 @@ export default function App() {
           } : current);
         }
         if (ev.type === "tool_call") {
-          setMessages((cur) => appendToolCall(cur, toolCallBlock(ev as Extract<PiEvent, { type: "tool_call" }>)));
+          setTargetMessages((cur) => appendToolCall(cur, toolCallBlock(ev as Extract<PiEvent, { type: "tool_call" }>)));
         } else if (ev.type === "tool_result") {
-          setMessages((cur) => appendToolResult(cur, toolResultBlock(ev as Extract<PiEvent, { type: "tool_result" }>)));
+          setTargetMessages((cur) => appendToolResult(cur, toolResultBlock(ev as Extract<PiEvent, { type: "tool_result" }>)));
           setArtifactRefreshKey((current) => current + 1);
         } else if (ev.type === "message_end") {
           const { message: m } = ev as Extract<PiEvent, { type: "message_end" }>;
           if (m.role === "user") return;
           const blocks = asBlocks(m.content);
           if (m.errorMessage) {
-            setMessages((cur) => {
+            setTargetMessages((cur) => {
               const previous = cur[cur.length - 1]?.error;
               const repeated = previous?.startsWith(STREAM_END_ERROR) ? 2 : 1;
               return [...cur, { id: nextId(), role: m.role, content: blocks, error: displayError(m.errorMessage!, repeated) }];
             });
           } else {
-            setMessages((cur) => {
+            setTargetMessages((cur) => {
               const visibleBlocks = filterDuplicateToolBlocks(blocks, cur);
               return visibleBlocks.length > 0 ? [...cur, { id: nextId(), role: m.role, content: visibleBlocks }] : cur;
             });
             const text = textOf(m.content);
-            if (m.role === "assistant" && text) setReport(text);
+            if (!isZhuantiChat && m.role === "assistant" && text) setReport(text);
           }
           if (m.usage) void refreshTokenTotals();
         }
@@ -452,7 +531,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : tab === "onto_xanthil" ? "onto_readme" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : "view");
   }, []);
 
   const handleRequestRestoreRun = useCallback((runId: string) => {
@@ -524,13 +603,71 @@ export default function App() {
     }
   }, [activeSessionId, compacting, running]);
 
+  const onZhuantiChatSend = useCallback(
+    (text: string, skillPaths?: string[], businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string }) => {
+      if (!zhuantiChatSessionId) return;
+      setZhuantiChatMessages((cur) => [...cur, { id: nextId(), role: "user", content: [{ type: "text", text }] }]);
+      gateway.send({ type: "send", sessionId: zhuantiChatSessionId, text, model: model || undefined, skillPaths, injectRulesPrompt: rulesPromptEnabled, businessRequirementContext });
+    },
+    [zhuantiChatSessionId, model, rulesPromptEnabled],
+  );
+
+  const onZhuantiChatStop = useCallback(() => {
+    if (!zhuantiChatSessionId) return;
+    gateway.send({ type: "abort", sessionId: zhuantiChatSessionId });
+  }, [zhuantiChatSessionId]);
+
+  const compactZhuantiChatContext = useCallback(async () => {
+    if (!zhuantiChatSessionId || zhuantiChatRunning || zhuantiChatCompacting) return;
+    setZhuantiChatCompacting(true);
+    setZhuantiChatRuntimeNotice("");
+    try {
+      const result = await api.compactSession(zhuantiChatSessionId);
+      setZhuantiChatRuntime(result.runtime);
+      setZhuantiChatRuntimeNotice(result.message);
+    } catch (err) {
+      setZhuantiChatRuntime((current) => current ? { ...current, status: "error", lastError: String(err) } : current);
+      setZhuantiChatRuntimeNotice("上下文整理失败");
+    } finally {
+      setZhuantiChatCompacting(false);
+    }
+  }, [zhuantiChatCompacting, zhuantiChatRunning, zhuantiChatSessionId]);
+
+  const refreshZhuantiChatRuntime = useCallback(async () => {
+    if (!zhuantiChatSessionId || zhuantiChatRunning || zhuantiChatCompacting) return;
+    setZhuantiChatRuntimeNotice("");
+    try {
+      const next = await api.getSessionRuntime(zhuantiChatSessionId, true);
+      setZhuantiChatRuntime(next);
+      setZhuantiChatRuntimeNotice(next.status === "error" ? "上下文状态仍未恢复" : "上下文状态已更新");
+    } catch (err) {
+      setZhuantiChatRuntime((current) => current ? { ...current, status: "error", lastError: String(err) } : current);
+      setZhuantiChatRuntimeNotice("上下文状态获取失败");
+    }
+  }, [zhuantiChatCompacting, zhuantiChatRunning, zhuantiChatSessionId]);
+
+  const pushZhuantiChatSummary = useCallback((text: string) => {
+    const summary = text.trim();
+    if (!summary) return;
+    setZhuantiChatMessages((cur) => [...cur, { id: nextId(), role: "assistant", content: [{ type: "text", text: summary }] }]);
+  }, []);
+
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
   const activeFlow = flows.find((f) => f.id === activeFlowId) ?? null;
 
-  const folderScope = useMemo(() => activeTab === "explore"
-    ? (activeSessionId ? { type: "session" as const, sessionId: activeSessionId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null)
-    : (activeFlowId ? { type: "flow" as const, flowId: activeFlowId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null),
-  [activeFlowId, activeSessionId, activeTab, activeWorkspaceId]);
+  const folderScope = useMemo(() => {
+    if (activeTab === "explore") {
+      return activeSessionId ? { type: "session" as const, sessionId: activeSessionId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null;
+    }
+    if (activeTab === "zhuanti") {
+      return zhuantiChatFlowId ? { type: "flow" as const, flowId: zhuantiChatFlowId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null;
+    }
+    return activeFlowId ? { type: "flow" as const, flowId: activeFlowId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null;
+  }, [activeFlowId, activeSessionId, activeTab, activeWorkspaceId, zhuantiChatFlowId]);
+
+  const zhuantiChatFolderScope = useMemo(() => (
+    zhuantiChatFlowId ? { type: "flow" as const, flowId: zhuantiChatFlowId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null
+  ), [activeWorkspaceId, zhuantiChatFlowId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -564,6 +701,10 @@ export default function App() {
     model, models, setModel, refreshModels,
     messages, running, runtime, compacting, runtimeNotice,
     onSend, onStop, compactContext, refreshRuntime,
+    zhuantiChatSessionId, zhuantiChatFolderScope,
+    zhuantiChatMessages, zhuantiChatRunning, zhuantiChatRuntime, zhuantiChatCompacting, zhuantiChatRuntimeNotice,
+    onZhuantiChatSend, onZhuantiChatStop, compactZhuantiChatContext, refreshZhuantiChatRuntime,
+    zhuantiSeed, setZhuantiSeed, pushZhuantiChatSummary,
     exploreSeed, setExploreSeed,
     handleReportPathsChange, setArtifactRefreshKey, refreshRulesPromptInfo,
     activeFlow, flows, rulesPromptEnabled,
@@ -657,9 +798,7 @@ export default function App() {
         {activeTab !== "onto_xanthil" && (
         <div className="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
           {getSubTabsForTab(activeTab).filter((t) => isVisible(activeTab + ":" + t.id)).map((t) => {
-            // 实验室的 AnaX 顶部 tab（id=anax_view）在其任一二级子项激活时保持高亮。
-            const active = t.id === activeSubTab
-              || (activeTab === "research_lab" && t.id === "anax_view" && LAB_ANAX_SUB_IDS.has(activeSubTab));
+            const active = t.id === activeSubTab;
             return (
               <button
                 key={t.id}
@@ -695,28 +834,6 @@ export default function App() {
           {activeTab === "onto_xanthil" && (
             <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
               {ONTO_SUB_TABS.filter((t) => isVisible("onto_xanthil:" + t.id)).map((t) => {
-                const active = t.id === activeSubTab;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveSubTab(t.id)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1.5 text-left text-[12.5px] transition-colors",
-                      active
-                        ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
-                        : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </nav>
-          )}
-          {/* 实验室·AnaX：仅当激活 AnaX 顶部 tab 时，其二级 tab 以左侧竖栏呈现 */}
-          {activeTab === "research_lab" && LAB_ANAX_SUB_IDS.has(activeSubTab) && (
-            <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
-              {LAB_ANAX_SUB_TABS.map((t) => {
                 const active = t.id === activeSubTab;
                 return (
                   <button

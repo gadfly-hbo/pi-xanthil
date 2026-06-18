@@ -1,6 +1,6 @@
 import type { Tab } from '@/components/MainHeader';
 
-export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'readme' | 'hypothesis' | 'extraction' | 'draw_data' | 'clean_data' | 'data_exploration' | 'report' | 'presentation_version' | 'report_review' | 'golden_strategy' | 'decision_tree' | 'toc' | 'skill' | 'tool' | 'model' | 'rules' | 'indicators' | 'cases' | 'trace' | 'token_stats' | 'the-crowd' | 'weather' | 'business_district' | 'industry' | 'competitor' | 'sql_connect' | 'operational_model' | 'change_mgmt' | 'knowledge_graph' | 'model_history' | 'report_history' | 'dlf' | 'quick_notes' | 'tool_use' | 'failure_memory' | 'process_memory' | 'anax_view' | 'hooks_mgmt' | 'skills_mgmt' | 'command_mgmt' | 'plugin_mgmt' | 'subagents_mgmt' | 'llm_mgmt' | 'onto_readme' | 'onto_objects' | 'onto_links' | 'onto_metrics' | 'onto_logic' | 'onto_actions' | 'onto_graph' | 'onto_import' | 'actions';
+export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'readme' | 'hypothesis' | 'extraction' | 'draw_data' | 'clean_data' | 'data_exploration' | 'report' | 'presentation_version' | 'report_review' | 'golden_strategy' | 'decision_tree' | 'toc' | 'skill' | 'tool' | 'model' | 'rules' | 'indicators' | 'cases' | 'trace' | 'token_stats' | 'the-crowd' | 'weather' | 'business_district' | 'industry' | 'competitor' | 'sql_connect' | 'operational_model' | 'change_mgmt' | 'knowledge_graph' | 'model_history' | 'report_history' | 'dlf' | 'quick_notes' | 'tool_use' | 'failure_memory' | 'process_memory' | 'anax_view' | 'anax_chat' | 'hooks_mgmt' | 'skills_mgmt' | 'command_mgmt' | 'plugin_mgmt' | 'subagents_mgmt' | 'llm_mgmt' | 'onto_readme' | 'onto_objects' | 'onto_links' | 'onto_metrics' | 'onto_logic' | 'onto_actions' | 'onto_graph' | 'onto_import' | 'actions';
 
 export const SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }];
 
@@ -17,13 +17,14 @@ export const ONTO_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'onto_readm
 
 export const AGGREGATE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '聚合计算' }, { id: 'extraction', label: '数据提取' }, { id: 'sql_connect', label: 'SQL连接' }, { id: 'tool_use', label: 'tool-use' }, { id: 'hooks_mgmt', label: 'hooks管理' }, { id: 'skills_mgmt', label: 'skills管理' }, { id: 'command_mgmt', label: 'command管理' }, { id: 'plugin_mgmt', label: '插件管理' }, { id: 'subagents_mgmt', label: 'subagents管理' }, { id: 'llm_mgmt', label: 'LLM管理' }, { id: 'readme', label: 'readme' }];
 
-// 实验室 = 原 research_lab 模块 + AnaX 整体并入（AnaX 一级 tab 已移除）。
-// 顶部横向 tab：workflow/skill/tool/model/DLF/AnaX；点开 AnaX 时其 4 个二级以左侧竖栏呈现（LAB_ANAX_SUB_TABS）。
-export const LAB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: 'workflow' }, { id: 'skill', label: 'skill' }, { id: 'tool', label: 'tool' }, { id: 'model', label: 'model' }, { id: 'dlf', label: 'DLF' }, { id: 'anax_view', label: 'AnaX' }];
+// 实验室 = research_lab：workflow/skill/tool/model/DLF。
+// AnaX 已于 2026-06-18 提升为一级「专题」tab（ZHUANTI_SUB_TABS），迁出实验室。
+export const LAB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: 'workflow' }, { id: 'skill', label: 'skill' }, { id: 'tool', label: 'tool' }, { id: 'model', label: 'model' }, { id: 'dlf', label: 'DLF' }];
 
-// AnaX 在实验室内的二级导航（左侧竖栏），仅当 activeSubTab ∈ LAB_ANAX_SUB_IDS 时显示。
-export const LAB_ANAX_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_view', label: '工作视图' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
-export const LAB_ANAX_SUB_IDS = new Set<SubTab>(['anax_view', 'hypothesis', 'change_mgmt', 'readme']);
+// 专题(zhuanti) = AnaX 提升为一级 tab，做成「对话探索 + 流水线」双模并列、互相 seed。
+// 二级：对话探索(anax_chat，复用 ChatPane + flow-scoped session) / 流水线(anax_view，AnaX 工作视图) / 假设库 / 变更管理 / readme。
+export const ZHUANTI_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_chat', label: '对话探索' }, { id: 'anax_view', label: '流水线' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
+export const ZHUANTI_SUB_IDS = new Set<SubTab>(['anax_chat', 'anax_view', 'hypothesis', 'change_mgmt', 'readme']);
 
 // 规则记忆二级 tab：Persona / Knowhow / 项目记忆 / 失败记忆 / 思维模式 + 业务环境 / trace / 知识图谱。
 export const RULE_MEMORY_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'rules', label: 'Persona' }, { id: 'indicators', label: 'Knowhow' }, { id: 'cases', label: '项目记忆' }, { id: 'failure_memory', label: '失败记忆' }, { id: 'process_memory', label: '思维模式' }, { id: 'business_context', label: '业务环境' }, { id: 'trace', label: 'trace' }, { id: 'knowledge_graph', label: '知识图谱' }];
@@ -41,6 +42,7 @@ export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'onto_xanthil') return ONTO_SUB_TABS;
   if (tab === 'explore') return EXPLORE_SUB_TABS;
   if (tab === 'multi') return MULTI_SUB_TABS;
+  if (tab === 'zhuanti') return ZHUANTI_SUB_TABS;
   if (VIEW_ONLY_TABS.has(tab)) return SUB_TABS.slice(0, 1);
   return SUB_TABS;
 }

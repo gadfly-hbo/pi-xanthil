@@ -129,6 +129,7 @@ export function buildAnaxWorkflow(): WorkflowDef {
           "2. 为每个假设指定验证方法、所需数据、优先级",
           "3. 标注需要交叉验证的假设（crossValidate: true）",
           "4. 规划分析路径和依赖关系",
+          "若任务描述或商务问题定义中已经包含初始假设，请优先采纳这些假设并补全至不超过 12 条；不要用全新脑补假设覆盖用户已给出的假设。",
           "",
           "输出分析计划报告（02-spec.md）。",
           HYPOTHESES_BLOCK,

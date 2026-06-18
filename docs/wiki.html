@@ -217,6 +217,87 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "X", status: "done", title: "【专题模块·接缝】顶层「专题」tab + ZHUANTI SubTab 枚举 + AnaX 迁移接缝 + App 装配", brief:
+`✅ 总控自做并自检通过（2026-06-18）。交付：① MainHeader.tsx Tab 加 "zhuanti" + TABS 加 { id:"zhuanti", label:"专题", icon: Telescope }（排 explore 与 multi 间）；② constants.ts SubTab 加 "anax_chat"、新增 ZHUANTI_SUB_TABS[对话探索/流水线/假设库/变更管理/readme] + ZHUANTI_SUB_IDS、getSubTabsForTab 加 zhuanti 分支、LAB_SUB_TABS 去 anax_view、删 LAB_ANAX_SUB_TABS/IDS；③ App.tsx 去 LAB_ANAX import、handleTabChange 专题默认 subtab=anax_chat、删实验室 AnaX 顶部高亮特例 + 左竖栏渲染块（专题二级走标准顶部横条 getSubTabsForTab）。
+关键发现（省卡3 一处接缝改动）：folderScope(App.tsx:530) 非 explore 一律走 flow scope，故专题 tab 自动 flow scope、无需改 folderScope；完整 flow+session 绑定留卡3。门禁 server+web typecheck ✅ + web build ✅（仅既有 chunk-size warning）；零新依赖、未碰数据探索子树、未碰 git。
+中间态说明：AnaX 实验室入口已移除、专题渲染分支待卡2，故专题 tab 内容区暂空——卡2(E 迁移)开工即填。**下游卡2/3/4 前置已解锁，卡2 可开工。**
+
+— 原始派发 —
+来源：2026-06-18 用户确认方案「AnaX 提升为一级专题 + 对话/流水线双模 seed」（详见 plan a-binary-pretzel.md）。按派发惯例拆 4 卡：本卡=X 接缝(总控自做) → E 迁移 → E 对话 pane → E seed 闭环。
+认知澄清（定整套形态）：探索=日常、AnaX=专题、工作流=重复。AnaX 之前误放「实验室」孵化、忘了它本就是"专题"；现把它提升为一级。专题缺口=AnaX 当前只有刚性"跑流水线"一种交互，缺了专题最需要的开放式对话框定/迭代，故专题做成「对话探索 + 流水线」双模并列、互相 seed。
+
+目标：把顶层 tab 与 SubTab 接缝一次性定死、AnaX 从实验室迁出的接缝部分就位，下游 E 渲染卡可开工。
+【接缝交付（X 持有）】
+1. MainHeader.tsx:4 Tab 类型加 "zhuanti"；:6 TABS 数组加 { id:"zhuanti", label:"专题", icon: Telescope }（icon 任选 lucide），位置排在 explore 与 multi 之间（视觉定）。
+2. constants.ts:3 SubTab 加字面量 "anax_chat"；新增 ZHUANTI_SUB_TABS=[对话探索(anax_chat) / 流水线(anax_view) / 假设库(hypothesis) / 变更管理(change_mgmt) / readme] + ZHUANTI_SUB_IDS；:35 getSubTabsForTab 加 tab==="zhuanti" 分支；从 :22 LAB_SUB_TABS 移除 anax_view、退役 :25-26 LAB_ANAX_SUB_TABS/LAB_ANAX_SUB_IDS（AnaX 离开实验室）。
+3. App.tsx：activeTab==="zhuanti" 默认 subtab=anax_chat；tab 切到专题时 folderScope 切到当前专题 flow（{type:"flow"; flowId}）。flow-scoped session 的 messages/onSend 完整 ctx 接线见卡3（联合设计，本卡先铺 tab/subtab/scope 骨架）。
+依赖：无。是卡2/3/4 前置。
+【验收】双侧 typecheck+build 绿；顶部出现「专题」一级 tab；点开走 ZHUANTI_SUB_TABS 五竖栏；实验室 LAB_SUB_TABS 不再含 AnaX，全局无残留引用 LAB_ANAX_*。
+【约束】接缝层归总控铁律，下游不得改 Tab/SubTab 口径；不碰数据探索子树；不碰 git。` },
+  { dom: "E", status: "done", title: "【专题模块·E·迁移】AnaX 三 pane 渲染分支 research_lab→zhuanti（功能零变化）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-18，独立复核 diff + 复跑门禁，不信汇报）。E 交付：EngineTabs.tsx 四处渲染条件 research_lab→zhuanti（anax_view=专题"流水线"竖栏 / hypothesis / change_mgmt / readme→AnaXReadmePane）。
+终审独立复核（全过）：① diff 仅 4 行条件改动，AnaXPane/HypothesisPane/ChangeManagementPane/AnaXReadmePane 的 props 与逻辑零变化；② research_lab 分支只剩 view/skill/tool/model/dlf，grep 确认无 anax 残留；③ readme 归属无冲突——research_lab 的 LAB_SUB_TABS 已无 readme 子 tab 不会误命中 AnaXReadmePane，multi/explore 各有自己的 ReadmePane 按 activeTab 区分。复跑 web typecheck ✅ + build ✅。总控顺手修一处过时注释（EngineTabs:20 AnaX 归属→专题）。
+UX 中间态（已知、卡3 收口）：专题默认 subtab=anax_chat（卡1 设），但对话探索 pane 卡3 才实现，故现在打开专题默认内容区空白；点"流水线/假设库/变更管理/readme"AnaX 四件套可正常用。卡3 做完 anax_chat 即补齐。**卡3（对话探索）为下一站。**
+
+— 原始派发 —
+来源：专题特性，承接 X 接缝卡。AnaX 当前在 EngineTabs.tsx:86-95 以 activeTab==="research_lab" + anax_view/hypothesis/change_mgmt/readme 渲染。
+
+目标：AnaX 整体迁入新「专题」tab，4 pane 平移，行为与迁移前完全一致——先让"提升为一级"落地可见，不掺新功能。
+【改动范围（E 域，EngineTabs.tsx）】
+1. AnaXPane（anax_view，在专题里即"流水线"竖栏，subtab id 仍 anax_view）、HypothesisPane（hypothesis）、ChangeManagementPane（change_mgmt）、AnaXReadmePane（readme）四处渲染条件从 activeTab==="research_lab" 改为 activeTab==="zhuanti"。
+2. 确认 research_lab 渲染分支不再引用 AnaX 四 pane；实验室顶部仅剩 workflow/skill/tool/model/DLF。
+依赖：X 接缝卡（zhuanti tab + ZHUANTI_SUB_TABS）。done 后开工。
+【验收】web typecheck+build 绿；专题 tab 下 AnaX 三功能与迁移前一致；实验室无 AnaX 残留；切 tab 不丢状态。
+【约束】纯 E 渲染分支搬迁，不改 AnaXPane/anax-template/anax-gate 任何逻辑；不碰接缝/数据探索子树/git；回流总控终审。` },
+  { dom: "X", status: "done", delegate: "E", title: "【专题模块·E·对话探索】专题对话 pane（复用 ChatPane + flow-scoped session）", brief:
+`✅ E 代笔 + 总控加重终审通过（2026-06-18，独立复核全 diff + 复跑门禁，不信汇报）。E 交付：① 后端 routes/engine.ts POST /api/workspaces/:id/zhuanti/anax-chat——幂等 ensure 专题 flow(source_name="AnaX 专题", kind=multi, 写 buildAnaxWorkflow) + 绑定 session(workflow_id=flow.id)，复用 createFlow/createSession，返回 {flow,session}；② index.ts handleSend 加 boundFlow 分支——session.workflowId 非空时 contextPrefix 走 flowId scope + flow report 目录作 fallbackOutputDir；③ App.tsx 独立 zhuantiChat* 状态全套(flowId/sessionId/messages/running/runtime/compacting/notice + ref) + ensure effect + history effect + gateway 监听器按 sessionId 分流主/专题 + onZhuantiChatSend/Stop/compact/refresh + folderScope(zhuanti→flow scope) + TabContext 装配；④ types.ts/api.ts 接缝；⑤ EngineTabs zhuanti+anax_chat 挂 ChatPane。
+总控加重终审（逐点核 + 4 项外部依赖实证）：① gateway 路由改造正确隔离——sessionId 分流、isZhuantiChat 用 !==activeRef 兜底、run_end 用 msg.sessionId、setReport 加 !isZhuantiChat 守卫(专题对话不覆盖主报告)；② 数据安全✅——buildRegisteredPathContext(output-paths:101) 对所有 scope 统一 filter(folder!==draw_data)，flow scope 自动继承红线；③ workflow_id 列 + createSession 第三参既有支持(db:864/124)非新概念；④ boundFlow 回归面——实测仅专题 session 走该分支(普通探索 session workflowId=null、fork 继承父 null)，标观察项。
+总控顺手快修(终审发现既有泄漏)：FlowListColumn:33 只按 kind=multi 过滤、不过滤 sourceName → **既有 AnaX v3.0 flow 早已泄漏进工作流列表**，卡3 专题 flow 延续此瑕疵。已加 !(sourceName).startsWith("AnaX") 一并隐藏(不影响 AnaXPane/ChangeManagement/专题对话读 flows state 的 find)。
+复跑 server+web typecheck ✅ + build ✅。**专题三模(对话探索/流水线/假设库/变更管理)闭环可用、UX 中间态消除；卡4(seed 闭环)为下一站、收口双模互通。**
+
+— 原始派发 —
+来源：专题特性的价值核心——给 AnaX 补"像探索一样"的对话式分析能力（用户原话）。本卡碰 App.tsx 接缝故归 X、委派 E 代笔、总控终审。
+背景（定技术路线，关键）：ChatPane.tsx:13-16 的 FolderScope 已原生支持 {type:"flow"; flowId}，workspace_paths 已是 workspace/session/flow 三级 scope。故对话 pane = 复用 ChatPane + 一个绑定到专题 flow scope 的真实 session，白嫖 fork/委派/数据探索/报告/数据安全闸口全套；不用 handleSendFlow（其语义是"改 workflow.json 迭代修改"，勿挪用为数据分析对话，见 notes-engine 工作流设计入口决策）。
+
+目标：专题内"对话探索"竖栏 = 一个 scoped ChatPane，可在专题里做开放式对话数据分析，消息落到该专题 flow scope。
+【改动范围】
+1. 后端（E slot，routes/engine.ts）：专题 = flow + 绑定 session 的创建/查询端点（尽量复用现有 anax instantiate flow + sessions 创建范式，最小化新接缝）。
+2. App.tsx（接缝，X 委派 E 代笔）：为 zhuanti + anax_chat 装配 flow-scoped session 的 messages/onSend/runtime ctx（参照 explore tab 现有 ctx 接线）。
+3. EngineTabs.tsx（E）：zhuanti + anax_chat 挂 ChatPane，props 接法参照 explore tab EngineTabs.tsx:27-45。
+【spike 前置（必做）】先做最小 spike 验证 flow + 绑定 session 的 CRUD 与 ChatPane 接线——App 层 ctx 现以 session 为中心，需确保选中专题时 folderScope/messages/onSend 正确绑定到对应 session，跑通再铺开。
+依赖：X 接缝卡 + E 迁移卡。
+【验收】新建一个专题→在对话里做一轮数据分析（fork/委派/数据探索可用）→消息正确落该专题 flow scope；切 tab 不丢。
+【约束】复用 ChatPane 即自动继承数据安全闸口（draw_data 禁读 / clean_data 受控）；后端 session 创建走现有范式不另起真源；App.tsx 接缝改动 X 终审；不碰数据探索子树；不碰 git。
+【开放点】App 层 flow-session ctx 接线是本特性主要技术风险，spike 定型后回总控确认接缝形态再铺开。` },
+  { dom: "X", status: "done", delegate: "E", title: "【专题模块·E·seed 闭环】对话↔流水线双向 seed（专题收官）", brief:
+`✅ E 代笔 + 总控加重终审通过（2026-06-18，独立复核全 diff + 复跑门禁，不信汇报）。专题特性 4 卡收官。E 交付：① EngineTabs 新增 ZhuantiChatPane 包裹 anax_chat——「启动假设验证流水线」按钮(对话≥1条启用) + buildZhuantiSeedDraft 取末6轮拼"问题陈述+初始假设"模板 + 可编辑摘要 modal，确认→setZhuantiSeed({task})+setActiveSubTab("anax_view")、**不自动 run**；② AnaXPane 接 seed/onSeedConsumed/onBackflowSummary——seed useEffect 写入 brief 后即清空防重注入；run_end 经 backflowRunIdRef 去重，buildBackflowSummary 拼 gate 裁决+insight/recommend/archive 产出摘要(compactText 截断)回流；用 stepStatesRef/gatesRef 镜像避免闭包陈旧；③ App zhuantiSeed state + pushZhuantiChatSummary(只 push assistant 消息、不调 gateway.send) + TabContext 装配；④ types.ts ZhuantiSeed 接口；⑤ anax-template plan 节点加"优先采纳已有假设、补全≤12、勿脑补覆盖"。ChatPane 未污染(按钮在包裹层)。
+总控加重终审(约束逐条核全过)：① 架构裁决遵守——AnaXPane flow 自治未动(仍找 "AnaX v3.0")、seed 只进 brief、数据传递式；② 回流不触发 LLM turn(pushZhuantiChatSummary 只 setMessages)；③ 不新增 ClientMessage 字段(seed 走 App state)；④ 数据安全——seed 取对话文本、回流取节点 output 衍生摘要，不夹带 draw_data，数据探索隔离 grep 空；⑤ 防重——onSeedConsumed 清 seed + backflowRunIdRef 去重 run_end。复跑 server+web typecheck ✅ + build ✅ + anax-gate.test 15/15 ✅ + 隔离 grep 空 ✅。
+**专题模块 4 卡(X 接缝→E 迁移→E 对话探索→E seed 闭环)全部交付闭环**：AnaX 提升为一级「专题」tab、对话探索+流水线双模并列、对话→seed→流水线 brief、流水线产出→回流对话。待用户浏览器实跑点检 + 后续汇总 CHANGELOG 一条版本记录归档本批 4 卡。后续增强(开放点)：对话↔流水线共享同一专题 flow scope、seed 注入后一键自动 run。
+
+— 原始派发/总控细化 —
+【总控细化派发（2026-06-18，基于卡1-3 落地代码厘清）】承接卡3 已交付的专题对话(anax_chat = "AnaX 专题" flow + 绑定 session) 与流水线(anax_view = AnaXPane)。本卡需在 App/TabContext 加 seed 中介(跨 subtab 组件通信)，故碰接缝 → dom X 委派 E 代笔、总控终审。
+
+⚠️ 关键架构裁决（总控拍，省一次大重构）：专题对话与流水线 MVP **不共享同一条 flow**，采用「数据传递式 seed」。实证依据：AnaXPane(AnaXPane.tsx:204-231) 完全自治、硬编码 listFlows 找 sourceName==="AnaX v3.0"(/Quick)，且 run 恢复/历史/gate verdict 恢复逻辑全绑它自己选的 flow；改成接收外部专题 flow 风险高、超 MVP。故当前对话走 "AnaX 专题" flow、流水线走 "AnaX v3.0" flow 两条并存，seed 靠**文本传递**而非共享 scope。共享同一专题 flow(产物同目录) = 后续增强卡(见开放点)。
+
+注入点已定位（照抄，勿另找）：
+· AnaXPane 诉求输入 = brief state(AnaXPane.tsx:115)；run 时 brief→input.task(:381)，selectedData→input.data_files(:384)。
+· buildAnaxWorkflow business 节点已用 {{input.task}}(anax-template.ts:109)、plan 用 {{business}}(:125)——**节点结构无需改**，seed 就是更丰富的 input.task 文本(问题陈述 + 初始假设)。
+
+【改动范围】
+1. 对话→流水线 seed（前端 + 轻接缝）：
+   · 对话 pane(anax_chat) 加「启动假设验证流水线」按钮：提取对话末轮收敛内容，弹**可编辑摘要框**(复用 fork/委派回流范式，notes-engine 已沉淀)让用户确认「问题陈述 + 初始假设」；确认 → 经 App seed 中介传 AnaXPane → 写入 brief → 自动 setActiveSubTab("anax_view")。**不自动 run**：让用户在流水线侧先确认 selectedData 再点运行(避免空数据触发 data_gate 阻断)。
+   · 接缝(X 委派 E)：App.tsx 加 zhuantiSeed:{task:string}|null + setZhuantiSeed；TabContext 暴露；AnaXPane 经 EngineTabs 接 seed/onSeedConsumed prop，useEffect 写入 brief 后即 onSeedConsumed 清空(防重复注入)。
+2. 流水线→对话回流（前端 + 轻接缝）：
+   · AnaXPane run 终态(archive 完成 / gate blocked)后，把关键产出(gate verdict 摘要 / insight 要点 / 假设验证结论)作为**一条 assistant 摘要消息回流对话**：经 App 中介回调 push 到 zhuantiChatMessages。**默认不自动触发 LLM turn**(避免烧 token)；用户可就该结论手动追问(走既有 onZhuantiChatSend)。
+3. anax-template 可选微调(E 域，非必须)：plan 节点 prompt 增一句「若 input.task 已含初始假设，优先采纳并补全至 ≤12 条，勿全脑补覆盖」，让对话假设不被流水线无视。结构不动。
+依赖：卡3(对话 pane + zhuantiChat* ctx)，已 done。
+【验收】对话聊清一个问题 → 点「启动假设验证流水线」→ 弹可编辑摘要(问题+初始假设) → 确认 → 切到流水线 subtab、brief 已填入 → 选数据 → 运行 → plan 节点假设来自对话(非脑补) → 终态产出回流对话一条摘要消息 → 可在对话继续追问；server+web typecheck+build 绿；anax-gate.test.ts 仍过。
+【约束】碰 App/TabContext 接缝(X 委派 E、总控终审)；**不重构 AnaXPane flow 自治**(共享 flow 为后续卡)；回流默认不自动触发 LLM turn；不新增 ClientMessage 字段(seed 走 App state 中介)；seed/回流只取对话与流水线的衍生文本结论、**不夹带 draw_data 样本/列名**，若新增把数据喂 LLM 的链路必重过数据探索隔离 grep(见 AGENTS.md)；不碰 git；回流总控终审。
+【开放点/后续增强卡】① 对话与流水线共享同一专题 flow scope(产物同目录、单一 run 历史) —— 需把 AnaXPane flow 选择参数化，独立排卡；② seed 注入后「一键自动 run」模式(需先解决空数据预检引导)。
+
+— 原始派发 —
+来源：专题特性收官——双模并列、互相 seed（用户拍板）。两个 pane 不能各跑各的，价值在双向互通。
+目标：对话产出→喂流水线 plan 节点；流水线产出→回流对话。复用 fork/委派回流范式（弹可编辑摘要框→主线 onSend，notes-engine 已沉淀）。anax-gate.test.ts 仍通过。` },
   { dom: "X", status: "done", title: "【command 管理·接缝】XanCommand 契约 + 配置常量 + 展开占位语法（含具名参数，为向导铺路）", brief:
 `✅ 总控自做并自检通过（2026-06-16）。交付：① 双侧 types.ts 加 XanCommand{id,name,enabled,description?,argumentHint?,template,params?,skillSlugs?,source:"custom"} + XanCommandParam{key,label,required?,type?:"text"|"select"|"file",options?,source?:"clean_data"}（紧随 HookTriggerRecord 后，含占位语法注释块）；② config.ts 加 COMMANDS_CONFIG_PATH=join(DATA_ROOT,"commands.json")（仿 HOOKS_CONFIG_PATH、单文件不进 ensureDirs、缺失=无命令安全降级）；③ 展开占位语法成文 notes-engine §二：{{args}}/{{1}}{{2}}/{{param.key}} + 命令行编码 /name --key=value（值含空格双引号）、向导传参走现有 text 通道零接缝、服务端单点展开。门禁 server typecheck ✅ + web build ✅；零新依赖、未碰数据探索子树、未碰 git。下游可开工：E 后端卡（依赖本卡类型+常量+语法）→ D 注册表卡 ∥ E 向导卡。
 

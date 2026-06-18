@@ -337,6 +337,11 @@ const legacyApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
     }).then(json<Flow>),
+  ensureZhuantiAnaxChat: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/zhuanti/anax-chat`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+    }).then(json<{ flow: Flow; session: Session }>),
   instantiateSqlLoop: (workspaceId: string, name?: string) =>
     fetch(`/api/workspaces/${workspaceId}/sql-loop/instantiate`, {
       method: "POST",

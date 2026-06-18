@@ -25,6 +25,9 @@ interface Props {
   model: string;
   models: PiModel[];
   rulesPromptEnabled: boolean;
+  seed?: { task: string } | null;
+  onSeedConsumed?: () => void;
+  onBackflowSummary?: (text: string) => void;
 }
 
 type StepStatus = "pending" | "running" | "done" | "failed";
@@ -109,7 +112,41 @@ function hintsForGate(gate: { stage: string; reasons: string[] }): string[] {
   return [...new Set(hints)]; // deduplicate
 }
 
-export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled }: Props) {
+function compactText(text: string, max = 520): string {
+  const normalized = text.replace(/\s+/g, " ").trim();
+  return normalized.length > max ? `${normalized.slice(0, max)}...` : normalized;
+}
+
+function buildBackflowSummary(
+  runId: string | null,
+  gates: Record<string, GateVerdict>,
+  stepStates: Record<string, StepState>,
+): string {
+  const gateLines = Object.values(gates).map((gate) => {
+    const status = gate.verdict === "pass" ? "通过" : "阻断";
+    const reasons = gate.reasons.slice(0, 3).map((reason) => `；${reason}`).join("");
+    return `- ${gate.stage}: ${status}${gate.summary ? `，${gate.summary}` : ""}${reasons}`;
+  });
+  const outputs = ["insight", "recommend", "archive"]
+    .map((id) => {
+      const text = stepStates[id]?.output;
+      return text ? `【${id}】${compactText(text)}` : "";
+    })
+    .filter(Boolean);
+  const fallback = Object.entries(stepStates)
+    .filter(([, state]) => state.output.trim())
+    .slice(-2)
+    .map(([id, state]) => `【${id}】${compactText(state.output)}`);
+  const sections = [
+    "AnaX 流水线已结束，以下为可继续追问的摘要：",
+    runId ? `运行 ID：${runId}` : "",
+    gateLines.length ? ["门禁结果：", ...gateLines].join("\n") : "",
+    outputs.length ? ["关键产出：", ...outputs].join("\n") : fallback.length ? ["关键产出：", ...fallback].join("\n") : "",
+  ].filter(Boolean);
+  return sections.join("\n\n");
+}
+
+export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled, seed, onSeedConsumed, onBackflowSummary }: Props) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [brief, setBrief] = useState("");
@@ -155,6 +192,17 @@ export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled }: Pro
   runIdRef.current = runId;
   const flowIdRef = useRef<string | null>(null);
   flowIdRef.current = flow?.id ?? null;
+  const stepStatesRef = useRef<Record<string, StepState>>({});
+  stepStatesRef.current = stepStates;
+  const gatesRef = useRef<Record<string, GateVerdict>>({});
+  gatesRef.current = gates;
+  const backflowRunIdRef = useRef<string | null>(null);
+
+  useEffect(() => {
+    if (!seed?.task.trim()) return;
+    setBrief(seed.task.trim());
+    onSeedConsumed?.();
+  }, [seed, onSeedConsumed]);
 
   // ---- find an existing AnaX flow for this workspace ----
   const loadWorkflow = useCallback((flowId: string) => {
@@ -308,14 +356,20 @@ export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled }: Pro
       switch (msg.type) {
         case "agent_step_start":
           setActiveNodeId(msg.nodeId);
-          setStepStates((cur) => ({ ...cur, [msg.nodeId]: { status: "running", output: "" } }));
+          setStepStates((cur) => {
+            const next = { ...cur, [msg.nodeId]: { status: "running" as StepStatus, output: "" } };
+            stepStatesRef.current = next;
+            return next;
+          });
           break;
         case "agent_event": {
           const text = extractEventText(msg.event);
           if (text) {
             setStepStates((cur) => {
               const prev = cur[msg.nodeId] ?? { status: "running" as StepStatus, output: "" };
-              return { ...cur, [msg.nodeId]: { ...prev, output: text } };
+              const next = { ...cur, [msg.nodeId]: { ...prev, output: text } };
+              stepStatesRef.current = next;
+              return next;
             });
           }
           break;
@@ -323,22 +377,35 @@ export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled }: Pro
         case "blackboard_update":
           setStepStates((cur) => {
             const prev = cur[msg.key] ?? { status: "done" as StepStatus, output: "" };
-            return { ...cur, [msg.key]: { ...prev, output: msg.value || prev.output } };
+            const next = { ...cur, [msg.key]: { ...prev, output: msg.value || prev.output } };
+            stepStatesRef.current = next;
+            return next;
           });
           break;
         case "agent_step_end":
           setStepStates((cur) => {
             const prev = cur[msg.nodeId] ?? { status: "done" as StepStatus, output: "" };
-            return { ...cur, [msg.nodeId]: { ...prev, status: msg.code === 0 ? "done" : "failed" } };
+            const next = { ...cur, [msg.nodeId]: { ...prev, status: msg.code === 0 ? "done" as StepStatus : "failed" as StepStatus } };
+            stepStatesRef.current = next;
+            return next;
           });
           break;
         case "agent_gate":
-          setGates((cur) => ({ ...cur, [msg.nodeId]: msg.verdict }));
+          setGates((cur) => {
+            const next = { ...cur, [msg.nodeId]: msg.verdict };
+            gatesRef.current = next;
+            return next;
+          });
           if (msg.verdict.verdict === "blocked") setExpanded(msg.nodeId);
           break;
         case "run_end":
           setRunning(false);
           setActiveNodeId(null);
+          if (onBackflowSummary && runIdRef.current && backflowRunIdRef.current !== runIdRef.current) {
+            backflowRunIdRef.current = runIdRef.current;
+            const summary = buildBackflowSummary(runIdRef.current, gatesRef.current, stepStatesRef.current);
+            if (summary.trim()) onBackflowSummary(summary);
+          }
           // Refresh the run list so the newly-finished run appears in history.
           if (flowIdRef.current) {
             api.listFlowRuns(flowIdRef.current).then(setAllRuns).catch(() => undefined);

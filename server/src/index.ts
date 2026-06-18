@@ -5221,6 +5221,7 @@ async function handleSend(
   send(ws, { type: "run_start", sessionId: session.id });
 
   const sessionPaths = listWorkspacePaths(session.workspaceId);
+  const boundFlow = session.workflowId ? getFlow(session.workflowId) : undefined;
   // Fork 分支是独立 session，名下无注册路径。输出/数据路径作用域回退到父任务 session，
   // 否则 selectOutputPath 会逐级回退、坍缩到 workspace 级最近 clean_data 源目录（见 output-paths.ts）。
   const forkBranch = getForkBranchByBranchSession(session.id);
@@ -5228,11 +5229,17 @@ async function handleSend(
   const sessionAnalyses = getFileAnalysesByPathIds(
     sessionPaths.filter((p) => p.folder === "clean_data" && p.kind === "file").map((p) => p.id),
   );
-  const contextPrefix = buildRegisteredPathContext(sessionPaths, {
-    workspaceId: session.workspaceId,
-    sessionId: pathScopeSessionId,
-    fallbackOutputDir: standardDirIn(sessionDir(ws_.rootPath, pathScopeSessionId), "report"),
-  }, sessionAnalyses);
+  const contextPrefix = boundFlow
+    ? buildRegisteredPathContext(sessionPaths, {
+      workspaceId: session.workspaceId,
+      flowId: boundFlow.id,
+      fallbackOutputDir: standardDirIn(boundFlow.folderPath, "report"),
+    }, sessionAnalyses)
+    : buildRegisteredPathContext(sessionPaths, {
+      workspaceId: session.workspaceId,
+      sessionId: pathScopeSessionId,
+      fallbackOutputDir: standardDirIn(sessionDir(ws_.rootPath, pathScopeSessionId), "report"),
+    }, sessionAnalyses);
   let businessRequirementContext = "";
   try {
     businessRequirementContext = loadBusinessRequirementContextForChat(msg.businessRequirementContext);
