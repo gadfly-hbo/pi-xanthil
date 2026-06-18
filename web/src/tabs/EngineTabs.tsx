@@ -63,6 +63,7 @@ function ZhuantiChatPane({ ctx }: { ctx: TabContext }) {
         disabled={!ctx.zhuantiChatSessionId}
         workspaceId={ctx.activeWorkspaceId}
         folderScope={ctx.zhuantiChatFolderScope}
+        sessionId={ctx.zhuantiChatSessionId ?? undefined}
         model={ctx.model}
         models={ctx.models}
         onModelChange={ctx.setModel}
@@ -156,7 +157,7 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
           onRefreshRuntime={() => void ctx.refreshRuntime()}
         />
       )}
-      {(activeTab === "explore" || activeTab === "multi") && activeSubTab === "business_requirement" && (
+      {(activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti") && activeSubTab === "business_requirement" && (
         <BusinessRequirementPane
           scope={ctx.folderScope}
           model={ctx.model}

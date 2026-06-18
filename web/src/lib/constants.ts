@@ -21,10 +21,13 @@ export const AGGREGATE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view'
 // AnaX 已于 2026-06-18 提升为一级「专题」tab（ZHUANTI_SUB_TABS），迁出实验室。
 export const LAB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: 'workflow' }, { id: 'skill', label: 'skill' }, { id: 'tool', label: 'tool' }, { id: 'model', label: 'model' }, { id: 'dlf', label: 'DLF' }];
 
-// 专题(zhuanti) = AnaX 提升为一级 tab，做成「对话探索 + 流水线」双模并列、互相 seed。
-// 二级：对话探索(anax_chat，复用 ChatPane + flow-scoped session) / 流水线(anax_view，AnaX 工作视图) / 假设库 / 变更管理 / readme。
-export const ZHUANTI_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_chat', label: '对话探索' }, { id: 'anax_view', label: '流水线' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
-export const ZHUANTI_SUB_IDS = new Set<SubTab>(['anax_chat', 'anax_view', 'hypothesis', 'change_mgmt', 'readme']);
+// 专题(zhuanti) = AnaX 提升为一级 tab，做成「对话探索 + 流水线」双模并列、互相 seed，并对齐探索的数据/报告链路。
+// 全部 14 个二级 tab（供 getSubTabsForTab / 可见性 / 默认 subtab）。
+// 混合导航(2026-06-18，用户方案C)：左侧竖栏 = ZHUANTI_SIDEBAR_TABS(核心 5 项)；顶部横条 = 其余 9 项数据/报告链路(= 全集排除 ZHUANTI_SIDEBAR_IDS)。
+export const ZHUANTI_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_chat', label: '对话探索' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'anax_view', label: '流水线' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
+// 专题左侧竖栏：核心 5 项（对话探索/流水线/假设库/变更管理/readme）。
+export const ZHUANTI_SIDEBAR_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_chat', label: '对话探索' }, { id: 'anax_view', label: '流水线' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
+export const ZHUANTI_SIDEBAR_IDS = new Set<SubTab>(['anax_chat', 'anax_view', 'hypothesis', 'change_mgmt', 'readme']);
 
 // 规则记忆二级 tab：Persona / Knowhow / 项目记忆 / 失败记忆 / 思维模式 + 业务环境 / trace / 知识图谱。
 export const RULE_MEMORY_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'rules', label: 'Persona' }, { id: 'indicators', label: 'Knowhow' }, { id: 'cases', label: '项目记忆' }, { id: 'failure_memory', label: '失败记忆' }, { id: 'process_memory', label: '思维模式' }, { id: 'business_context', label: '业务环境' }, { id: 'trace', label: 'trace' }, { id: 'knowledge_graph', label: '知识图谱' }];

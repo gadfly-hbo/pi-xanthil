@@ -8,19 +8,14 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-16 · **SubAgentManagementPane（D·P0）——subagents 管理前端面板**
+- 最近更新：2026-06-18 · **专题数据三件套接入 zhuanti tab（D·渲染条件扩展）**
 - 进度：
-  - **SubAgentManagementPane**（aggregate tab → `subagents_mgmt` 子 tab，替换原 Placeholder）：
-    - **接缝 client**（`web/src/lib/api/data.ts`）：`listSubAgents` / `saveSubAgents`（GET/PUT `/api/subagents`，全量覆盖式，server `coerceSubAgentTemplate` 为最终裁决）
-    - **主 UI**（`web/src/components/SubAgentManagementPane.tsx` ~704 行）：左列表（启停灯 + persona 摘要 + tool 计数 + maxRetries 角标）+ 右表单（name/enabled/persona/maxRetries 0~5 + dataScope 只读锁 clean_data + ToolPicker）
-    - **ToolPicker**：复用 `api.listExtractionTools()` 拉工具清单，按 `category` 分组，显示 `riskLevel` 徽章，支持过滤、checkbox 多选、文本兜底添加（兼容未注册/外部 toolId）
-    - **前端校验**：id/name/persona 必填、persona 含非 localhost 外链警告、maxRetries 0~5 范围、name 重名警告、未知 toolId 警告
-    - **保存后比对**：`saved.length !== templates.length` 时红条提示 server 丢弃原因（id/name/persona 必填、persona 不能含外链、maxRetries 需为 0~5 整数）
-    - **dataScope 只读**：UI 显示 emerald 锁定条，`updateSelected` 强制覆盖 `dataScope: "clean_data"` / `source: "custom"`，不提供 draw_data 选项
-    - **挂接**（`web/src/tabs/DataTabs.tsx`）：aggregate → subagents_mgmt 替换 Placeholder
-    - **code review 修复（本轮）**：
-      - I-1：server 丢弃提示补全为 `id/name/persona 必填、persona 不能含外链、maxRetries 需为 0~5 整数`
-      - S-1：`hasExternalUrl` 加注释标明 "与 server coerceSubAgentTemplate 保持同步；仅前端校验用，最终裁决在 server"
+  - **DataTabs.tsx 渲染条件扩展**（`web/src/tabs/DataTabs.tsx:32-43`）：
+    - 新增 `dataScopeTab = exploreOrMulti || activeTab === "zhuanti"`
+    - `draw_data` / `clean_data` / `data_exploration` 三处 pane 渲染条件从 `exploreOrMulti` 改为 `dataScopeTab`
+    - pane 与 scope 表达式不动；`ctx.folderScope` 对 zhuanti 已是 flow scope，无需改
+    - 依赖接缝卡 `ZHUANTI_SUB_TABS`（已含 draw_data/clean_data/data_exploration）
+  - **SubAgentManagementPane**（前次 session）
   - **Command 管理前端面板**（前次 session）
   - **LLM 接入管理前端面板**（前次 session）
   - **hooks 管理 v2**（前次 session）
@@ -30,13 +25,14 @@
   - `npm run build`：✅ 全绿
   - 数据探索 LLM 隔离 grep：✅ 空匹配
 - 下一步（接续优先级）：
-  - ① **真机联调 subagents 管理**：进「聚合→subagents管理」验证新建/编辑/启停/删除模板落 subagents.json、刷新存活、toolIds 从真实工具清单选择、dataScope 锁定 clean_data 不可改、server 丢弃非法模板时前端提示
-  - ② **真机联调 command 管理**：验证新建/编辑/启停/删除命令落 commands.json、具名参数编辑、skillSlugs 下拉刷新
-  - ③ **真机联调 LLM 管理**：验证 provider 增删改/模型启用/默认/测试连通全链路
-  - ④ **委派 UI 接模板**：`DelegateSubAgentCard` 拉模板列表，允许用户选择 `templateId` 后随 delegate body 发送
-  - ⑤ **workflow 节点级 skill 集**（P1，下一卡）
-  - ⑥ **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
-  - ⑦ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截
+  - ① **真机联调专题数据三件套**：进 zhuanti tab 验证原始数据上传/登记 draw_data、聚合数据登记 clean_data、数据探索纯前端可用；数据落专题 flow scope、对话探索/流水线可见
+  - ② **真机联调 subagents 管理**：进「聚合→subagents管理」验证新建/编辑/启停/删除模板落 subagents.json、刷新存活、toolIds 从真实工具清单选择、dataScope 锁定 clean_data 不可改、server 丢弃非法模板时前端提示
+  - ③ **真机联调 command 管理**：验证新建/编辑/启停/删除命令落 commands.json、具名参数编辑、skillSlugs 下拉刷新
+  - ④ **真机联调 LLM 管理**：验证 provider 增删改/模型启用/默认/测试连通全链路
+  - ⑤ **委派 UI 接模板**：`DelegateSubAgentCard` 拉模板列表，允许用户选择 `templateId` 后随 delegate body 发送
+  - ⑥ **workflow 节点级 skill 集**（P1，下一卡）
+  - ⑦ **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
+  - ⑧ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截
 - 阻塞 / 待总控：
   - `templateId` 是否需要进入 `SubAgentTask` 持久化/返回值，用于历史任务审计与 UI 展示（E 域开放问题，D 域委派 UI 需要知道此决策）
   - `toolIds` 的实际挂载语义由谁负责：runner 直接注入 extraction tools，还是 D 面板只先做配置占位（E 域开放问题）

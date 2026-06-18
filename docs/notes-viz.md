@@ -7,21 +7,21 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-15 · 报告输出下拉框收尾（黄金策、行动、决策树统一步伐）
+- 最近更新：2026-06-18 · VizTabs 支持 zhuanti 模式下的报告五件套
 - 进度：
-  - **黄金策/行动补充 Workspace 维度**：`Scope` 增加 `workspace` 分支，前端基于 `api.listWorkspacePaths` / `workspacePathTree` 实现独立工作区维度的报告拉取与展平。
-  - **DecisionTreePane 范式统一**：决策树底层 API 从繁冗的五参数简化为 `pathId / relPath` 两参数；后端重构端点 `/api/decision-tree/generate` 采用 `getWorkspacePath` 进行读文件；前端改造对齐黄金策标准，完成长任务缓存键值的刷新。
-  - **前端空状态强引导**：`PresentationVersionPane`、`ReportReviewPane`、`TocPane` 等全系相关面板的 `emptyHint` 已加上后缀 `（请先在「报告输出」tab 添加文件夹或文件）`，确保引导闭环。
+  - **专题 (zhuanti) 报告链路闭环**：`VizTabs` 中的 `report`, `presentation_version`, `report_review` 均已通过扩展条件 `exploreOrMultiOrZhuanti` 支持专题模式。`golden_strategy` 和 `actions` 面板也增加了专题的特定分支。
+  - **专题 Flow Scope 降级**：通过 `ctx.zhuantiChatFlow?.kind === "multi" ? ctx.zhuantiChatFlow : null` 为 `golden_strategy` 和 `actions` 面板构造并传递了安全的作用域，与 `multi` 分支对齐。
 - 校验：
   - `npm run typecheck`：✅ server + web 全绿。
-  - `npm run build`：✅ 全绿；无数据探索/底层骨架篡改。
+  - `npm run build`：✅ 全绿；无底层骨架篡改。
 - 下一步：
-  - ① 确认 `DecisionTreePane` 的界面入口：核心组件已改造就绪，需在 `VizTabs` 或 `EngineTabs` 中选取合适时机与入口进行挂载。
-  - ② KICKOFF P0-B 看板画布持续推进。
+  - ① 需要总控（Claude）确认：`golden_strategy` 和 `actions` 面板中，若 `ctx.zhuantiChatFlow` 尚在 ensure 中未就绪，降级为 `flow: null` 交给 Pane 自身处理是否足够。
+  - ② 确认 `DecisionTreePane` 的界面入口（上个 session 遗留）。
+  - ③ KICKOFF P0-B 看板画布持续推进。
 - 阻塞 / 待总控：
   - 无代码阻塞。
 - 开放问题：
-  - `DecisionTreePane` 当前未被导入到任何 Tab (`VizTabs` / `EngineTabs`) 中进行挂载，需要总控确认它的上层展现逻辑及优先级。
+  - `ctx.zhuantiChatFlow` 为空或处于 ensure 过程中时，Pane 自身处理 `flow: null` 的行为，是否需要类似 explore 模式补充 session scope 的 fallback 降级？
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -73,6 +73,7 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - 审核历史**物化为 `review_history/*.json` 文件**（按 `pathId+relPath` 过滤），不走数据库。
 - Diff 复用 `BusinessRequirementPane` 的 **LCS 行级算法，前端计算**，不新增后端 API；AI 修改后自动切 Diff tab。
 - **LLM 长任务「切 tab 续跑」范式**（2026-06-11 hotfix 已落）：黄金策 / 审核(含 autoFix) / 汇报版本 / TOC / 决策树 / 业务需求 / 聚合 等 Pane 的「进行中标志 + 结果」一律**不放组件 `useState`**，改用 `web/src/lib/resumableTask.ts` 的 `useResumableTask(key)`（module 层 store，unmount 不 abort，mount 自动 rehydrate）。范式与 key 约定细节见 notes-data 同名条（D 域 canonical）。**落文件的 Pane**（汇报/业务需求/TOC/决策树等）原 `onGenerated`/`loadHistory` 回调**保留**，续传与落库不冲突。新增此类长任务 Pane 一律走此范式，勿再用本地 useState 存 loading/data。
+- **专题 (zhuanti) 报告链路渲染路由**：`VizTabs` 中的报告五件套支持 `zhuanti` tab；其中 `golden_strategy` 与 `actions` 的 scope 强制构造为 `{ type: "flow", flow: ctx.zhuantiChatFlow }`。若 flow 尚处于 ensure 中（未就绪），则通过可选链安全降级为 `flow: null`，交由 Pane 自身去处理渲染逻辑。
 
 **知识图谱 / trace**（可视化部分）
 - 知识图谱挂「规则记忆」二级 tab（非顶栏独立）；Phase A 结构化图谱优先（无 LightRAG 依赖）；摄入 = 手动触发 + 变更累积；注入折叠进 `injectRulesPrompt` 开关；节点**隐藏而非物理删除**。

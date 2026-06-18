@@ -7,25 +7,22 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-18 · 专题模块 E seed 闭环：对话 ↔ 流水线双向 seed。
+- 最近更新：2026-06-18 · 专题数据链路 E：业务需求接入 `zhuanti`。
 - 进度：
-  - **对话 → 流水线已完成**：`zhuanti/anax_chat` 顶部新增「启动假设验证流水线」按钮；点击后从最近对话生成“问题陈述 + 初始假设”草稿，弹可编辑确认框；确认后经 App seed 中介写入 `AnaXPane.brief` 并切到 `anax_view`，不自动运行。
-  - **流水线 → 对话已完成**：`AnaXPane` 在 run 终态生成一条本地 assistant 摘要回流专题对话，包含 gate verdict 与 insight/recommend/archive 等关键阶段摘要；默认不触发 LLM turn。
-  - **MVP 架构边界**：专题对话 flow（`sourceName="AnaX 专题"` + 绑定 session）与 AnaX 流水线 flow（`sourceName="AnaX v3.0"` / Quick）不共享同一条 flow，采用文本 seed 传递；未重构 `AnaXPane` flow 自治。
-  - **prompt 微调**：`buildAnaxWorkflow()` 的 plan 节点新增约束：若输入已有初始假设，优先采纳并补全至不超过 12 条，不用全新脑补覆盖。
-  - **安全边界**：seed/回流只取对话文本与流水线衍生结论摘要，不读取 `draw_data`，不夹带原始数据样本；未新增 `ClientMessage` 字段。
+  - **渲染接入已完成**：`EngineTabs.tsx` 的 `business_requirement` 渲染条件已从 `explore || multi` 扩展为 `explore || multi || zhuanti`。
+  - **scope 口径保持复用**：`BusinessRequirementPane` 本体未改，仍接收 `scope={ctx.folderScope}`；在专题 tab 下该 scope 来自 App 的专题 flow，因此业务需求生成/编辑落在专题 flow 作用域。
+  - **探索跳转保持原行为**：`onExploreFields` 仍只调用 `setActiveSubTab("data_exploration")`；`ZHUANTI_SUB_TABS` 已包含 `data_exploration`，专题内同样可跳转。
+  - **边界保持最小**：未改 `BusinessRequirementPane`、数据探索子树、API/schema、`ClientMessage` 或 AnaX pipeline/chat 逻辑。
 - 校验：
   - `npm run typecheck` ✅（server + web）
   - `npm run build` ✅（仅既有 Vite chunk-size / dynamic import warning）
-  - `node --experimental-strip-types --test server/src/anax-gate.test.ts` ✅（15/15）
 - 下一步：
-  - **总控终审**：确认本次触碰 `App.tsx` / `web/src/tabs/types.ts` / `EngineTabs.tsx` / `AnaXPane.tsx` / `anax-template.ts` 的 seed 接缝形态可接受。
-  - **真实 UI + LLM smoke**：专题对话聊清问题 → 点「启动假设验证流水线」→ 编辑确认 seed → 自动切到流水线且 brief 填入 → 选择 clean_data → 运行 → plan 假设继承对话 seed → 终态摘要回流对话。
-  - **状态切换验收**：seed 注入后切换 `anax_chat/anax_view` 不重复写入 brief；流水线终态只回流一条摘要；普通探索 chat 不被专题回流污染。
+  - **总控/UI smoke**：打开专题 → 业务需求，验证可生成/编辑，产物路径落在专题 flow scope；点击字段探索能切到专题内 `data_exploration`。
+  - **回归关注**：确认探索/工作流两个旧入口的业务需求行为不变，普通 explore/multi 的 `folderScope` 不被专题 flow 污染。
+  - **后续若需要**：业务需求结果 seed 到 `anax_chat` 或 `anax_view` 应另开卡；本次只完成渲染条件与既有 scope 复用。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/用户拍板）：
-  - 是否排期增强为“专题对话与流水线共享同一专题 flow scope”，这需要把 `AnaXPane` flow 选择参数化，不能在当前 MVP 内顺手改。
-  - 是否增加“一键自动 run”模式；当前故意不自动运行，避免未选数据直接触发 `data_gate` 阻断。
+  - 是否需要把业务需求作为专题对话/流水线 seed 来源，目前无定论且不在本卡范围。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -78,7 +75,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **自动沉淀去重 BM25 阈值不归一化（2026-06-18 质量1裁决）**：`findAutoDistillDuplicate`（auto-distill sweep 与 coverage-gap distill 共用）仍使用 BM25 raw score 做相似度排序，但自动阻断判据已改为**只与 `active` skill 比较，跳过 `candidate`**。原因：candidate 本就是待人审候选，互相撞车不应阻断继续产出；这能消除“超级 candidate skill 万能近邻”造成的新候选误跳过。默认 `duplicateThreshold` 已从临时 `100` 回调到 `50`。同 slug / 同路径文件已存在仍硬跳过。`/skill-registry/conflicts` 是人工治理展示端点，本次保留非 archived 全部参与的展示口径；如要支持“只看 active”需另开 UI/接口筛选。长期若 active 超级 skill 仍误杀，再排期做 BM25 归一化，不要继续简单上调 raw 阈值。
 - **workflow skill 子集配置（2026-06-14 P1 C）**：`WorkflowDef.defaultSkillPaths` 是 workflow 级 fallback；`node.skillPaths === undefined` 继承 workflow 默认，`node.skillPaths = []` 明确禁用默认 skill，非空数组则只注入该节点专属子集。runner 的权威逻辑是 `node.skillPaths ?? workflow.defaultSkillPaths`。
 - **ChatPane 抽屉化布局契约（2026-06-14，2026-06-15 polish）**：三个助手面板（Fork/@工具/委派）不再内联在 composer 列，改为 ChatPane 内部右侧可调宽抽屉。ChatPane 根容器横向 flex（左主列 flex-1 + 右抽屉 shrink-0），不动 App 布局、不动成果面板、不动后端。抽屉宽度 clamp [360px, 容器 60%]，localStorage 持久化（key `chatpane.assistDrawerWidth`），零新依赖；拖拽和 mount/window resize 必须共用同一 clamp 逻辑，避免已存大宽度在窄屏把主列压没。ForkBranchPanel 满高 flex 列（去 max-h-[360px]），分支 tabs/输入 shrink-0，会话区 flex-1 overflow-y-auto。抽屉头是三助手标题唯一显示位置，子组件内不再重复标题；ManualAnalysisToolCard / DelegateSubAgentCard 在抽屉内通过 `embedded` 态去自身外层 border/rounded/bg/padding，避免边框套边框，默认非嵌入 card 样式保持不变。
-- **ChatPane fork/delegate 前端边界**：普通探索 chat 仍从 `folderScope.type === "session"` 取活跃 session；专题 `anax_chat` 是明确例外，App 层提供真实 `zhuantiChatSessionId` 给 ChatPane 的 send/runtime/fork/delegate，同时 `folderScope` 传 `{type:"flow", flowId}` 让 clean_data/report 路径按专题 flow 作用域读取。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
+- **ChatPane fork/delegate 前端边界**：普通探索 chat 仍从 `folderScope.type === "session"` 取活跃 session；专题 `anax_chat` 是明确例外：`folderScope` 传 `{type:"flow", flowId}`（让 clean_data/report/数据 tab 按专题 flow 作用域），但 ChatPane 的 session 工具（@工具/Fork/委派）走 `activeSessionId`，默认只从 `folderScope.type==="session"` 推断 → flow scope 下取不到 → 三按钮禁用。**故 flow scope 复用 ChatPane 必须显式传 `sessionId` prop**（`ChatPane:273 activeSessionId = p.sessionId || folderScope 推断`），专题传 `zhuantiChatSessionId`；卡3 初版只传 folderScope+disabled、漏传 sessionId 致三按钮禁用，2026-06-18 总控快修补上（clean_data 加载 `ChatPane:337-344` 早已支持 flow scope，故只缺 sessionId 一处）。send/runtime 仍由 App 层独立 zhuantiChat* 状态驱动。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
 - **Fork 分支路径作用域回退父 session（2026-06-14 快修2.3）**：fork 分支是独立 session、名下无注册路径。`handleSend` 解析输出/数据路径时必须把作用域回退到父任务 session：`pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id`，用于 `buildRegisteredPathContext` 的 `sessionId` 与 `fallbackOutputDir`。否则 `output-paths.selectOutputPath` 逐级回退（scoped report→scoped clean_data→workspace report→workspace clean_data）会坍缩到 workspace 级最近 clean_data 源目录，导致分支产物写到数据源目录而非任务 `060_reports`。数据安全不受影响：fork 继承的是父 clean_data，`draw_data` 仍被 `buildRegisteredPathContext` 排除且永不作为输出目标。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
 - **subagent ↔ skill 绑定（F 卡，2026-06-16）**：`SubAgentTaskInput.skillPaths?`（双侧 types，三态同 `node.skillPaths`：undefined 继承/[]禁用/非空子集）。delegate 端点(`index.ts /api/sessions/:id/delegate`)用 `skills.ts` 的 **`parseRequestedSkillPaths(workspaceRoot, value, {mode:"strict"})`** 解析（三态 + 数组守卫，复用 `validateSkillPaths`，与 workflow 同校验口径）→ 透传到 `runDelegatedSubAgent` → `runPiTurn({skillPaths})` 经 pi-adapter `--skill` 注入，无新注入机制。前端 `DelegateSubAgentCard` 复用 `SkillSelector` + 三态 `skillMode`。子 agent **成功完成后调 `recordSkillActivationForRun`**，激活进 A 生产遥测（与 flow/workflow/autonomous 同口径）。三态解析有 `skills.test.ts` 单测覆盖。
@@ -160,6 +157,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - skill 提炼**压成单次 LLM 调用**（A 解构→B 提炼→C 写 SKILL.md 内嵌进一个 prompt），不做链式三次往返。源模板 `~/.pi/agent/prompts/skill-distillation-prompts.md`（用户维护的 4-prompt 链式库 A/B/C/D），单次版是其 A+B+C 的折叠；D（多案例融合）对应 curator/版本融合、不在此。**注：旧的探索「沉淀 skill」手动两段式（distill-skill 预览 + save-skill 保存）已于 2026-06-18 移除**；该 prompt 现仅由 auto-distill / 覆盖缺口蒸馏调用。
 - **distillation prompt 增强（2026-06-15）**：`buildSkillDistillationPrompt`（`server/src/skill-distillation.ts`，由 auto-distill sweep 与覆盖缺口蒸馏共用；手动 `/distill-skill` 入口已于 2026-06-18 移除）第三步与自查清单新增两节**必需输出**——① 「关键变量清单」表格（`变量名 | 含义 | 典型取值范围`，逐个列正文 `{变量}`）；② 「常见陷阱与对策」章节（从对话提炼隐性经验/坑→对策，复用价值最高；**有坑才写、无坑省略，禁止硬编占位**）。这两块从用户 prompt 库的 A-E/B 回灌，旧版只在内部思考里提及、不进输出。架构不变（仍单次调用）。真实 smoke 验证（MiniMax-M3，`/distill-skill` 预览）：两节均稳定产出且质量达标（变量表含取值范围、6 条带现象/对策的真实陷阱）。
 - 业务需求来源引用 = 字段级 `sourceRefs` + quote 最小闭环，**不做字符 offset 定位**；业务需求上下文抽成前端共享 hook（Chat/报告版本/Golden Strategy 复用）。
+- 2026-06-18 专题业务需求接入决策：`BusinessRequirementPane` 在 `explore` / `multi` / `zhuanti` 三个入口复用同一组件和 props，不 fork pane 逻辑；专题下的作用域由 App 层 `folderScope={type:"flow", flowId:<专题 flow>}` 提供，`EngineTabs.tsx` 只负责把 `business_requirement` 渲染条件加上 `zhuanti`。`onExploreFields` 仍跳 `data_exploration`，不向数据探索子树注入数据或 LLM 链路。
 - 业务需求版本恢复依赖 `structured.version.requirementInput`：后端生成版本必须写入原始 draft 输入，手动编辑 markdown 时必须保留已有 requirementInput；前端打开历史版本/刷新恢复左侧 draft 时只读该字段，旧 JSON 缺字段时不应臆造完整业务背景。
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。

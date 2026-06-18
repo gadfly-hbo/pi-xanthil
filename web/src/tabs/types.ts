@@ -70,6 +70,7 @@ export interface TabContext {
 
   // 工作流 / 引擎
   activeFlow: Flow | null;
+  zhuantiChatFlow: Flow | null;
   flows: Flow[];
   rulesPromptEnabled: boolean;
 

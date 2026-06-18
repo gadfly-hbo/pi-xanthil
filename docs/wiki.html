@@ -217,6 +217,69 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "X", status: "done", title: "【专题修复·X】对话探索 session 工具(@工具/Fork/委派)接 flow scope", brief:
+`✅ 总控快修通过（2026-06-18）。bug：专题→对话探索的 @工具/Fork 分支/委派子 agent 三按钮置灰(tooltip"先选择或新建一个会话")、无法点击。
+根因：ChatPane:273 activeSessionId 只从 folderScope.type==="session" 推断；专题 folderScope 是 flow scope(数据落专题 flow，与流水线共享)→ activeSessionId="" → canUseSessionTools=false → 三按钮 disabled。卡3 复用 ChatPane 时只传 folderScope(flow)+disabled，漏了让 ChatPane 识别专题真实 session(zhuantiChatSessionId)。
+修复 3 处：① ChatPane Props 加可选 sessionId?；② activeSessionId = p.sessionId || (folderScope session 推断)；③ EngineTabs 专题 ChatPane 传 sessionId={ctx.zhuantiChatSessionId ?? undefined}。
+安全性：clean_data 加载(ChatPane:337-344)早已支持 flow scope → 委派/@工具数据候选无碍；探索不传 sessionId → 行为零变化；未碰数据探索子树/clean_data 读写逻辑/draw_data。门禁 web typecheck ✅ + build ✅。已沉淀 notes-engine §二「ChatPane fork/delegate 前端边界」：**flow scope 复用 ChatPane 必须显式传 sessionId prop**。` },
+  { dom: "X", status: "done", title: "【专题数据链路·接缝】ZHUANTI 14 tab 混合导航(核心竖栏+数据顶部) + ctx 暴露 zhuantiChatFlow", brief:
+`✅ 总控自做并自检通过（2026-06-18）。交付：① constants.ts ZHUANTI_SUB_TABS 扩全 14 项(对话探索/业务需求/原始数据/聚合数据/数据探索/流水线/报告输出/汇报版本/报告审核/黄金策/行动/假设库/变更管理/readme) + 新增 ZHUANTI_SIDEBAR_TABS(核心5项)/ZHUANTI_SIDEBAR_IDS、删无用 ZHUANTI_SUB_IDS；② App.tsx 混合导航——顶部横条(:801)加 zhuanti 排除 ZHUANTI_SIDEBAR_IDS(只显 9 项数据/报告)，内容容器内 onto nav 后新增 zhuanti 左竖栏 nav 渲染 ZHUANTI_SIDEBAR_TABS(5项核心，照搬 onto w-40 竖栏样式 + isVisible 过滤)；③ App 算 zhuantiChatFlow=flows.find(zhuantiChatFlowId) + TabContext 装配；④ types.ts TabContext 加 zhuantiChatFlow:Flow|null(供 V 卡 golden_strategy/actions 构造 {type:flow,flow} scope)。默认 subtab=anax_chat(左竖栏首项)沿用。门禁 server+web typecheck ✅ + build ✅；零新依赖、未碰数据探索子树、未碰 git。**D/E/V 三卡前置已解锁，可开工。**
+
+— 原始派发 —
+来源：2026-06-18 用户指出专题「对话探索」无数据接入入口(连上传文档的地方都没有)，无法做数据分析。根因：卡1 定 ZHUANTI_SUB_TABS 只 5 项、漏了探索的数据/报告链路。用户拍板**方案B = 完整对齐探索**。
+好消息(定低成本路线)：这些数据/报告 pane 是 D/E/V 域、统一按 ctx.folderScope 工作，multi(工作流) 已把它们跑在 flow scope，而专题已是 flow scope(卡3 zhuantiChatFolderScope)，故复用 = 渲染条件加 zhuanti。拆 4 卡：本卡 X 接缝 → D 数据三件套 ∥ E 业务需求 ∥ V 报告链路。
+
+目标：扩 ZHUANTI_SUB_TABS 到 14 项 + 为 V 的 golden_strategy/actions 暴露专题 flow 对象。
+【用户布局决策(2026-06-18，方案C·混合导航)】专题 14 个二级 tab 分两处常驻、均为 activeSubTab 单选：
+· **左侧竖栏(5 项核心)**：对话探索(anax_chat) / 流水线(anax_view) / 假设库(hypothesis) / 变更管理(change_mgmt) / readme
+· **顶部横条(9 项数据/报告)**：业务需求(business_requirement) / 原始数据(draw_data) / 聚合数据(clean_data) / 数据探索(data_exploration) / 报告输出(report) / 汇报版本(presentation_version) / 报告审核(report_review) / 黄金策(golden_strategy) / 行动(actions)
+理由：14 项顶部横条会挤(探索 11 项已横向滚)；核心模式放左竖栏、数据/报告链路放顶部，更清晰。
+【接缝交付(X)】
+1. constants.ts：ZHUANTI_SUB_TABS 保持全 14 项(getSubTabsForTab 返回，供可见性/默认 subtab/SettingsModal) + 新增 ZHUANTI_SIDEBAR_TABS(上述左竖栏 5 项) + ZHUANTI_SIDEBAR_IDS(Set)。顶部横条 = 全集排除 sidebar = 9 项。默认 subtab=anax_chat(handleTabChange 已设)。
+2. App.tsx 导航渲染(混合·两处同时常驻)：① 顶部横条(App.tsx:800 getSubTabsForTab(activeTab).filter)：zhuanti 时额外 .filter 排除 ZHUANTI_SIDEBAR_IDS(只显示 9 项数据/报告)；② 左侧竖栏：在内容容器(App.tsx:832)内、onto nav(835-855)之后新增 zhuanti 左竖栏 nav 渲染 ZHUANTI_SIDEBAR_TABS(5 项)，照搬 onto nav 样式(w-40 竖栏 + isVisible 过滤)；active 高亮按 activeSubTab。注意 onto 是「顶部隐藏+全竖栏」、zhuanti 是「顶部留 9 项 + 左竖栏 5 项」，两者不同，勿套 onto 的顶部隐藏分支。
+3. App.tsx + tabs/types.ts：TabContext 暴露 zhuantiChatFlow: Flow|null（App 算 flows.find(f=>f.id===zhuantiChatFlowId)）——供 V 卡 golden_strategy/actions 构造 {type:"flow", flow} scope(scope 形态特殊、非 folderScope 直传，见 VizTabs:40/46)。
+依赖：专题 1-4 卡(已 done)。是 D/E/V 三卡前置。
+【验收】双侧 typecheck+build 绿；专题二级条出现 14 个 tab；ctx.zhuantiChatFlow 正确指向 "AnaX 专题" flow。
+【约束】接缝层归总控；不改 D/E/V pane 渲染逻辑(下游卡做)；不碰数据探索子树;不碰 git。` },
+  { dom: "D", status: "done", title: "【专题数据链路·D】DataTabs 数据三件套接 zhuanti（原始/聚合/数据探索）", brief:
+`✅ D 完成 + 总控终审通过（2026-06-18，独立复核 diff + 复跑门禁 + 红线隔离 grep）。D 交付：DataTabs.tsx 加 const dataScopeTab = exploreOrMulti || zhuanti，draw_data/clean_data(FolderPathsPane)/data_exploration(DataExplorationPane) 三处渲染条件 exploreOrMulti→dataScopeTab；pane 与 scope={ctx.folderScope} 表达式零变化(专题已 flow scope，数据落专题 flow)。
+终审复核(全过)：① diff 仅 4 行(1 新变量 + 3 条件)，DataExplorationPane / data-exploration/ 子树零改动(git diff stat 空)；② 红线域隔离 grep 空、draw_data/data_exploration 纯前端零 LLM 性质不变；③ exploreOrMulti 仍被 dataScopeTab 定义引用、无 unused。复跑 web typecheck ✅ + build ✅ + 隔离 grep ✅。专题「原始数据/聚合数据/数据探索」三件套可用、作用域=专题 flow。
+
+— 原始派发 —
+来源：专题补全数据接入，承接接缝卡。DataTabs.tsx:32 exploreOrMulti=explore||multi；draw_data/clean_data(FolderPathsPane)/data_exploration(DataExplorationPane) 均 scope={ctx.folderScope}(line 35/38/41)。
+
+目标：数据三件套在 zhuanti tab 渲染，scope 自动用专题 flow(ctx.folderScope 对 zhuanti 已是 flow scope，无需改 scope)。
+【改动范围(D)】DataTabs.tsx 把 draw_data/clean_data/data_exploration 三处渲染条件从 exploreOrMulti 扩到含 zhuanti(建议加 const，如 dataScopeTab = explore||multi||zhuanti)。pane 与 scope 表达式不动。
+依赖：接缝卡(ZHUANTI_SUB_TABS)。
+【验收】web typecheck+build 绿；专题「原始数据」可上传/登记 draw_data、「聚合数据」登记 clean_data、「数据探索」纯前端可用；数据落专题 flow scope、对话探索/流水线可见；**数据探索隔离 grep 空**。
+【约束】纯 D 渲染条件扩展；draw_data/data_exploration 红线域性质不变(纯前端零 LLM)；改完必跑隔离 grep(见 AGENTS.md)；不碰 git；回流总控终审。` },
+  { dom: "E", status: "done", title: "【专题数据链路·E】EngineTabs 业务需求接 zhuanti", brief:
+`✅ E 完成 + 总控终审通过（2026-06-18，复核 diff + 复跑门禁）。E 交付：EngineTabs.tsx:159 business_requirement 渲染条件加 || activeTab==="zhuanti"，BusinessRequirementPane scope={ctx.folderScope} 不变(专题 flow scope)。终审：1 行条件改动、pane 未动(BusinessRequirementPane 零改动)、onExploreFields 跳 data_exploration 在专题可用(D 卡已接 data_exploration)。web typecheck ✅ + build ✅。专题「业务需求」可用、作用域=专题 flow。
+
+— 原始派发 —
+来源：专题补全，承接接缝卡。EngineTabs.tsx:159 (explore||multi)&&business_requirement → BusinessRequirementPane scope={ctx.folderScope}。
+
+目标：业务需求 tab 在 zhuanti 渲染，scope 用专题 flow。
+【改动范围(E)】EngineTabs.tsx business_requirement 渲染条件加 zhuanti。pane 不动；onExploreFields 跳 data_exploration(setActiveSubTab) 在专题同样可用。
+依赖：接缝卡。
+【验收】web typecheck+build 绿；专题「业务需求」可生成/编辑，作用域=专题 flow。
+【约束】纯 E 渲染条件；不碰数据探索子树/git；回流总控终审。` },
+  { dom: "V", status: "done", title: "【专题数据链路·V】VizTabs 报告链路接 zhuanti（报告/汇报/审核/黄金策/行动）", brief:
+`✅ V 完成 + 总控终审通过（2026-06-18，独立复核 diff + 复跑门禁）。专题数据链路 4 卡收官。V 交付：VizTabs.tsx ① report/presentation_version/report_review 渲染条件 exploreOrMulti→exploreOrMultiOrZhuanti、scope={ctx.folderScope} 不变(专题 flow scope)；② golden_strategy/actions 新增 zhuanti 分支，scope = folderScope.type==="workspace" ? folderScope : {type:"flow", flow: ctx.zhuantiChatFlow?.kind==="multi"?zhuantiChatFlow:null}(用接缝卡暴露的专题 flow，参照 multi 分支范式)。
+终审(全过)：① 5 tab 全接、scope 接对专题 flow；② golden/actions 在 zhuantiChatFlow 未就绪时 flow=null 安全降级；③ GoldenStrategy/Actions/Presentation/ReportReview pane 零改动。复跑 server+web typecheck ✅ + build ✅。
+**专题数据链路 4 卡(接缝→D→E→V)全部交付**：专题 14 tab 混合导航(左竖栏 5 核心 + 顶部 9 数据/报告)，业务需求/原始数据/聚合数据/数据探索/报告输出/汇报版本/报告审核/黄金策/行动 全可用、作用域=专题 flow，与对话探索/流水线同 scope 闭环。专题=完整分析工作台落地。待用户浏览器实跑点检。
+
+— 原始派发 —
+来源：专题补全报告链路，承接接缝卡。VizTabs.tsx:23 exploreOrMulti。report(FolderPathsPane)/presentation_version/report_review 均 scope={ctx.folderScope}(line 27/30/33)；golden_strategy(36/39)/actions(42/45) 分 explore/multi 两分支、scope 形态特殊 {type:"flow", flow:activeFlow}。
+
+目标：报告五件套在 zhuanti 渲染、作用域=专题 flow。
+【改动范围(V)】
+1. report/presentation_version/report_review：渲染条件 exploreOrMulti 扩到含 zhuanti，scope={ctx.folderScope}(专题已 flow scope)直接复用。
+2. golden_strategy/actions：加 zhuanti 分支，scope 构造 {type:"flow", flow: ctx.zhuantiChatFlow}（用接缝卡暴露的专题 flow 对象，参照 multi 分支 VizTabs:40/46；专题 flow kind=multi 满足条件）。
+依赖：接缝卡(含 ctx.zhuantiChatFlow)。
+【验收】web typecheck+build 绿；专题 报告输出/汇报版本/报告审核/黄金策/行动 均可用、作用域=专题 flow；与流水线 archive 报告同 flow 目录。
+【约束】纯 V 渲染条件 + golden/actions 专题 scope 构造；不碰数据探索子树/git；回流总控终审。
+【开放点】golden_strategy/actions 若 ctx.zhuantiChatFlow 未就绪(专题 ensure 中)应安全降级(flow=null → pane 自身处理)。` },
   { dom: "X", status: "done", title: "【专题模块·接缝】顶层「专题」tab + ZHUANTI SubTab 枚举 + AnaX 迁移接缝 + App 装配", brief:
 `✅ 总控自做并自检通过（2026-06-18）。交付：① MainHeader.tsx Tab 加 "zhuanti" + TABS 加 { id:"zhuanti", label:"专题", icon: Telescope }（排 explore 与 multi 间）；② constants.ts SubTab 加 "anax_chat"、新增 ZHUANTI_SUB_TABS[对话探索/流水线/假设库/变更管理/readme] + ZHUANTI_SUB_IDS、getSubTabsForTab 加 zhuanti 分支、LAB_SUB_TABS 去 anax_view、删 LAB_ANAX_SUB_TABS/IDS；③ App.tsx 去 LAB_ANAX import、handleTabChange 专题默认 subtab=anax_chat、删实验室 AnaX 顶部高亮特例 + 左竖栏渲染块（专题二级走标准顶部横条 getSubTabsForTab）。
 关键发现（省卡3 一处接缝改动）：folderScope(App.tsx:530) 非 explore 一律走 flow scope，故专题 tab 自动 flow scope、无需改 folderScope；完整 flow+session 绑定留卡3。门禁 server+web typecheck ✅ + web build ✅（仅既有 chunk-size warning）；零新依赖、未碰数据探索子树、未碰 git。

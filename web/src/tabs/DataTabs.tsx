@@ -30,15 +30,16 @@ import type { TabContext } from "./types";
 export function DataTabs({ ctx }: { ctx: TabContext }) {
   const { activeTab, activeSubTab } = ctx;
   const exploreOrMulti = activeTab === "explore" || activeTab === "multi";
+  const dataScopeTab = exploreOrMulti || activeTab === "zhuanti";
   return (
     <>
-      {exploreOrMulti && activeSubTab === "draw_data" && (
+      {dataScopeTab && activeSubTab === "draw_data" && (
         <FolderPathsPane scope={ctx.folderScope} folder="draw_data" />
       )}
-      {exploreOrMulti && activeSubTab === "clean_data" && (
+      {dataScopeTab && activeSubTab === "clean_data" && (
         <FolderPathsPane scope={ctx.folderScope} folder="clean_data" />
       )}
-      {exploreOrMulti && activeSubTab === "data_exploration" && (
+      {dataScopeTab && activeSubTab === "data_exploration" && (
         <DataExplorationPane scope={ctx.folderScope} seed={ctx.exploreSeed} onSeedDismiss={() => ctx.setExploreSeed(null)} />
       )}
 

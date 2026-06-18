@@ -20,17 +20,17 @@ import type { TabContext } from "./types";
  */
 export function VizTabs({ ctx }: { ctx: TabContext }) {
   const { activeTab, activeSubTab } = ctx;
-  const exploreOrMulti = activeTab === "explore" || activeTab === "multi";
+  const exploreOrMultiOrZhuanti = activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti";
   const bump = () => ctx.setArtifactRefreshKey((current) => current + 1);
   return (
     <>
-      {exploreOrMulti && activeSubTab === "report" && (
+      {exploreOrMultiOrZhuanti && activeSubTab === "report" && (
         <FolderPathsPane scope={ctx.folderScope} folder="report" onPathsChange={ctx.handleReportPathsChange} />
       )}
-      {exploreOrMulti && activeSubTab === "presentation_version" && (
+      {exploreOrMultiOrZhuanti && activeSubTab === "presentation_version" && (
         <PresentationVersionPane scope={ctx.folderScope} model={ctx.model} onGenerated={bump} />
       )}
-      {exploreOrMulti && activeSubTab === "report_review" && (
+      {exploreOrMultiOrZhuanti && activeSubTab === "report_review" && (
         <ReportReviewPane scope={ctx.folderScope} model={ctx.model} models={ctx.models} onGenerated={bump} />
       )}
       {activeTab === "explore" && activeSubTab === "golden_strategy" && (
@@ -39,11 +39,17 @@ export function VizTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "multi" && activeSubTab === "golden_strategy" && (
         <GoldenStrategyPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : { type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} onGenerated={bump} onNavigateToActions={() => ctx.setActiveSubTab("actions")} />
       )}
+      {activeTab === "zhuanti" && activeSubTab === "golden_strategy" && (
+        <GoldenStrategyPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : { type: "flow", flow: ctx.zhuantiChatFlow?.kind === "multi" ? ctx.zhuantiChatFlow : null }} models={ctx.models} onGenerated={bump} onNavigateToActions={() => ctx.setActiveSubTab("actions")} />
+      )}
       {activeTab === "explore" && activeSubTab === "actions" && (
         <ActionsPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : ctx.folderScope?.type === "session" ? ctx.folderScope : { type: "session", sessionId: ctx.activeSessionId }} models={ctx.models} />
       )}
       {activeTab === "multi" && activeSubTab === "actions" && (
         <ActionsPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : { type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }} models={ctx.models} />
+      )}
+      {activeTab === "zhuanti" && activeSubTab === "actions" && (
+        <ActionsPane scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : { type: "flow", flow: ctx.zhuantiChatFlow?.kind === "multi" ? ctx.zhuantiChatFlow : null }} models={ctx.models} />
       )}
 
       {activeTab === "rule_memory" && activeSubTab === "trace" && (
