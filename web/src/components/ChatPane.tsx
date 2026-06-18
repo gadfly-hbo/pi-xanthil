@@ -26,7 +26,7 @@ interface Props {
   disabled: boolean;
   workspaceId: string | null;
   folderScope: FolderScope | null;
-  /** 显式会话 id：folderScope 为 flow scope（如专题对话）时，session 工具(@工具/Fork/委派)用它识别活跃 session。探索场景不传，从 folderScope 的 session scope 推断。 */
+  /** 显式会话 id：folderScope 为 flow scope（如专题对话）时，session 工具(@工具/Fork/委派)用它识别活跃 session。日常场景不传，从 folderScope 的 session scope 推断。 */
   sessionId?: string;
   model: string;
   models: PiModel[];

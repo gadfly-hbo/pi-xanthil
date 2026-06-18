@@ -11,10 +11,14 @@
             "id": "a7c9b17065d3b10e",
             "type": "leaf",
             "state": {
-              "type": "empty",
-              "state": {},
+              "type": "markdown",
+              "state": {
+                "file": "docs/notes-data.md",
+                "mode": "source",
+                "source": false
+              },
               "icon": "lucide-file",
-              "title": "新标签页"
+              "title": "notes-data"
             }
           }
         ]

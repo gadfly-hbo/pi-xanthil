@@ -370,7 +370,7 @@ export function CreationPane(p: Props) {
       {generationRunning && (
         <div className="flex shrink-0 items-center gap-2 border-b border-amber-200 bg-amber-50 px-4 py-2 text-[11.5px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
-          正在根据探索对话生成工作流，输入路径和报告目录会自动参数化。
+          正在根据日常对话生成工作流，输入路径和报告目录会自动参数化。
         </div>
       )}
       {flowState.generationStatus === "failed" && (
@@ -701,7 +701,7 @@ export function CreationPane(p: Props) {
                   }
                 }}
                 rows={1}
-                placeholder={canReplyDuringGeneration ? "回复 pi 的问题，Shift+Enter 发送" : generationRunning ? "正在从探索对话生成工作流..." : p.inputPlaceholder ?? "描述需求或告诉 pi 修复问题，Shift+Enter 发送"}
+                placeholder={canReplyDuringGeneration ? "回复 pi 的问题，Shift+Enter 发送" : generationRunning ? "正在从日常对话生成工作流..." : p.inputPlaceholder ?? "描述需求或告诉 pi 修复问题，Shift+Enter 发送"}
                 className="min-h-[30px] w-full resize-none bg-transparent px-3 py-1.5 text-[12.5px] leading-5 text-neutral-900 outline-none placeholder:text-neutral-400 disabled:opacity-50 dark:text-neutral-100 dark:placeholder:text-neutral-500"
               />
             </div>

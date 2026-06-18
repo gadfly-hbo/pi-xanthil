@@ -20,6 +20,8 @@ import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
 import { asBlocks, textOf, type ContentBlock, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
 
+type ZhuantiTask = { flow: Flow; session: Session };
+
 let uid = 0;
 const nextId = () => `m${++uid}`;
 
@@ -121,6 +123,7 @@ export default function App() {
   const [running, setRunning] = useState(false);
   const [zhuantiChatFlowId, setZhuantiChatFlowId] = useState<string | null>(null);
   const [zhuantiChatSessionId, setZhuantiChatSessionId] = useState<string | null>(null);
+  const [zhuantiTasks, setZhuantiTasks] = useState<ZhuantiTask[]>([]);
   const [zhuantiChatMessages, setZhuantiChatMessages] = useState<UiMessage[]>([]);
   const [zhuantiChatRunning, setZhuantiChatRunning] = useState(false);
   const [zhuantiChatRuntime, setZhuantiChatRuntime] = useState<SessionRuntime | null>(null);
@@ -154,6 +157,12 @@ export default function App() {
   activeRef.current = activeSessionId;
   const zhuantiChatRef = useRef<string | null>(null);
   zhuantiChatRef.current = zhuantiChatSessionId;
+
+  const selectZhuantiTaskData = useCallback((task: ZhuantiTask) => {
+    setZhuantiChatFlowId(task.flow.id);
+    setZhuantiChatSessionId(task.session.id);
+    setFlows((current) => [task.flow, ...current.filter((item) => item.id !== task.flow.id)]);
+  }, []);
 
   // 侧边栏「非活动自动收起」：鼠标离开延时收起，拖拽改宽（userSelect=none）时不收。
   const collapseTimer = useRef<number | undefined>(undefined);
@@ -247,6 +256,7 @@ export default function App() {
     setZhuantiChatRuntime(null);
     setZhuantiChatRuntimeNotice("");
     setZhuantiChatRunning(false);
+    setZhuantiTasks([]);
     api.listSessions(activeWorkspaceId).then((s) => {
       setSessions(s);
       setActiveSessionId(s[0]?.id ?? null);
@@ -256,18 +266,28 @@ export default function App() {
       const relevant = f.filter((fl) => fl.kind === "multi");
       setActiveFlowId(relevant[0]?.id ?? null);
     });
+    api.listZhuantiTasks(activeWorkspaceId).then((tasks) => {
+      setZhuantiTasks(tasks);
+      setFlows((current) => {
+        const byId = new Map(current.map((flow) => [flow.id, flow]));
+        for (const task of tasks) byId.set(task.flow.id, task.flow);
+        return Array.from(byId.values()).sort((a, b) => b.updatedAt - a.updatedAt);
+      });
+    }).catch(() => setZhuantiTasks([]));
     void refreshRulesPromptInfo();
   }, [activeWorkspaceId, refreshRulesPromptInfo]);
 
   useEffect(() => {
     let cancelled = false;
     if (!activeWorkspaceId || activeTab !== "zhuanti") return;
-    api.ensureZhuantiAnaxChat(activeWorkspaceId)
-      .then(({ flow, session }) => {
+    api.listZhuantiTasks(activeWorkspaceId)
+      .then(async (tasks) => {
         if (cancelled) return;
-        setZhuantiChatFlowId(flow.id);
-        setZhuantiChatSessionId(session.id);
-        setFlows((current) => [flow, ...current.filter((item) => item.id !== flow.id)]);
+        const nextTasks = tasks.length > 0 ? tasks : [await api.newZhuantiTask(activeWorkspaceId, "专题分析")];
+        if (cancelled) return;
+        setZhuantiTasks(nextTasks);
+        const latest = nextTasks[0];
+        if (latest) selectZhuantiTaskData(latest);
       })
       .catch((err) => {
         if (!cancelled) {
@@ -277,7 +297,7 @@ export default function App() {
     return () => {
       cancelled = true;
     };
-  }, [activeWorkspaceId, activeTab]);
+  }, [activeWorkspaceId, activeTab, selectZhuantiTaskData]);
 
   // ---- load history on session change ----
   useEffect(() => {
@@ -484,6 +504,55 @@ export default function App() {
     [activeSessionId],
   );
 
+  const newZhuantiTask = useCallback(async () => {
+    if (!activeWorkspaceId) return;
+    const task = await api.newZhuantiTask(activeWorkspaceId, `专题 ${new Date().toLocaleString("zh-CN")}`);
+    setZhuantiTasks((cur) => [task, ...cur.filter((item) => item.flow.id !== task.flow.id)]);
+    selectZhuantiTaskData(task);
+    setActiveTab("zhuanti");
+    setActiveSubTab("anax_chat");
+  }, [activeWorkspaceId, selectZhuantiTaskData]);
+
+  const handleSelectZhuantiTask = useCallback((flowId: string) => {
+    const task = zhuantiTasks.find((item) => item.flow.id === flowId);
+    if (!task) return;
+    selectZhuantiTaskData(task);
+    setActiveTab("zhuanti");
+    setActiveSubTab("anax_chat");
+  }, [selectZhuantiTaskData, zhuantiTasks]);
+
+  const renameZhuantiTask = useCallback(async (flowId: string, name: string) => {
+    await api.renameFlow(flowId, name);
+    setZhuantiTasks((cur) => cur.map((task) => (
+      task.flow.id === flowId ? { ...task, flow: { ...task.flow, name } } : task
+    )));
+    setFlows((cur) => cur.map((flow) => (flow.id === flowId ? { ...flow, name } : flow)));
+  }, []);
+
+  const deleteZhuantiTask = useCallback(
+    async (flowId: string, deleteFiles = false) => {
+      const task = zhuantiTasks.find((item) => item.flow.id === flowId);
+      await api.deleteFlow(flowId, deleteFiles);
+      if (task) await api.deleteSession(task.session.id, false);
+      const next = zhuantiTasks.filter((item) => item.flow.id !== flowId);
+      setZhuantiTasks(next);
+      setFlows((cur) => cur.filter((flow) => flow.id !== flowId));
+      if (zhuantiChatFlowId === flowId) {
+        const fallback = next[0] ?? null;
+        if (fallback) selectZhuantiTaskData(fallback);
+        else {
+          setZhuantiChatFlowId(null);
+          setZhuantiChatSessionId(null);
+          setZhuantiChatMessages([]);
+          setZhuantiChatRuntime(null);
+          setZhuantiChatRuntimeNotice("");
+          setZhuantiChatRunning(false);
+        }
+      }
+    },
+    [selectZhuantiTaskData, zhuantiChatFlowId, zhuantiTasks],
+  );
+
   const newFlow = useCallback(async (kind: FlowKind) => {
     if (!activeWorkspaceId) return;
     const f = await api.createFlow(activeWorkspaceId, `工作流 ${new Date().toLocaleString("zh-CN")}`, kind);
@@ -532,7 +601,13 @@ export default function App() {
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
     setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : "view");
-  }, []);
+    if (tab === "explore") {
+      setActiveSessionId(sessions[0]?.id ?? null);
+    }
+    if (tab === "zhuanti" && zhuantiTasks[0]) {
+      selectZhuantiTaskData(zhuantiTasks[0]);
+    }
+  }, [selectZhuantiTaskData, sessions, zhuantiTasks]);
 
   const handleRequestRestoreRun = useCallback((runId: string) => {
     setPendingRestoreRunId(runId);
@@ -728,14 +803,20 @@ export default function App() {
               activeWorkspaceId={activeWorkspaceId}
               sessions={sessions}
               activeSessionId={activeSessionId}
+              zhuantiTasks={zhuantiTasks}
+              activeZhuantiTaskId={zhuantiChatFlowId}
               onSelectWorkspace={setActiveWorkspaceId}
               onSelectSession={handleSelectSession}
+              onSelectZhuantiTask={handleSelectZhuantiTask}
               onNewWorkspace={newWorkspace}
               onNewSession={newSession}
+              onNewZhuantiTask={newZhuantiTask}
               onRenameWorkspace={renameWorkspace}
               onDeleteWorkspace={deleteWorkspace}
               onRenameSession={renameSession}
               onDeleteSession={deleteSession}
+              onRenameZhuantiTask={renameZhuantiTask}
+              onDeleteZhuantiTask={deleteZhuantiTask}
               onCollapse={() => setSidebarOpen(false)}
               onOpenSettings={() => setSettingsOpen(true)}
             />
@@ -754,14 +835,20 @@ export default function App() {
               activeWorkspaceId={activeWorkspaceId}
               sessions={sessions}
               activeSessionId={activeSessionId}
+              zhuantiTasks={zhuantiTasks}
+              activeZhuantiTaskId={zhuantiChatFlowId}
               onSelectWorkspace={setActiveWorkspaceId}
               onSelectSession={handleSelectSession}
+              onSelectZhuantiTask={handleSelectZhuantiTask}
               onNewWorkspace={newWorkspace}
               onNewSession={newSession}
+              onNewZhuantiTask={newZhuantiTask}
               onRenameWorkspace={renameWorkspace}
               onDeleteWorkspace={deleteWorkspace}
               onRenameSession={renameSession}
               onDeleteSession={deleteSession}
+              onRenameZhuantiTask={renameZhuantiTask}
+              onDeleteZhuantiTask={deleteZhuantiTask}
               onCollapse={() => setSidebarOpen(false)}
               onOpenSettings={() => setSettingsOpen(true)}
             />
@@ -878,6 +965,10 @@ export default function App() {
           {/* 探索·工作视图：左侧「聚合数据」只读文档竖栏（红线域，纯读取+复制） */}
           {activeTab === "explore" && activeSubTab === "view" && (
             <CleanDataDocsColumn scope={folderScope} />
+          )}
+          {/* 专题·对话探索：左侧「聚合数据」只读文档竖栏（复用探索范式，scope=专题 flow） */}
+          {activeTab === "zhuanti" && activeSubTab === "anax_chat" && (
+            <CleanDataDocsColumn scope={zhuantiChatFolderScope} />
           )}
           {/* 工作流·工作视图：左侧工作流列表竖栏（由原侧边栏迁入） */}
           {activeTab === "multi" && activeSubTab === "view" && (

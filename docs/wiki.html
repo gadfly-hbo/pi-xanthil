@@ -217,6 +217,92 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  { dom: "E", status: "done", title: "【模块改名·文案·E】UI 展示文案精准点改（探索→日常 / 工作流→重复）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-18，独立复核 diff + 重点查误伤 + 复跑门禁）。E 交付(精准点改，非全局替换)：TokenStatsPane(session "探索"→"日常"、说明"探索、工作流"→"日常、重复")、TocPane:390(当前探索任务→日常任务)、WorkflowReadmePane(工作流模块→重复模块 / 一次性探索问题→日常问题)、FlowListColumn(标题/收起提示→重复)、Sidebar/EngineTabs/ChatPane 邻近注释、notes-engine 指代 + 模块命名映射引用 §〇。
+终审复核(边界拿捏准、误伤防线全过)：① **产物名正确保留**——TokenStatsPane flow"工作流聊天/执行"、FlowListColumn"新建/删除工作流"、WorkflowReadmePane 工作流概念正文、TocPane flow 分支"工作流"均未改(产物≠模块名，符合用户决策)；② **不动清单零误伤**——data_exploration「数据探索」label、专题「对话探索」、EDA、内部 id explore/multi、路由/DB 全未动；③ **后端零改动**(git diff server 空)；④ notes-engine 明确写"保留边界(数据探索/对话探索/EDA/workflow引擎/产物名)"，边界意识到位。
+总控顺手补(接缝层归 X、E 无权碰的注释残留)：constants.ts:7/10 + 双侧 types.ts:818/1403 注释里"探索 tab/工作流模块"→"日常/重复"。复跑 server+web typecheck ✅ + build ✅。
+**模块改名全闭环**：MainHeader label(总控) + 命名映射权威 Orchestration §〇(总控) + UI 文案精准点改(E) + 接缝注释补全(总控)；产物名与模块名解耦、零误伤、后端零改动。
+
+— 原始派发 —
+来源：模块改名②展示文案统一。承接改名卡(MainHeader label 已改 + Orchestration §〇 命名映射权威已立)。纯 UI 文案点改，派 E。
+⚠️ **开工前必读 Orchestration.md §〇「模块命名映射」的改名边界**。只改"指代 explore/multi 模块入口的展示文案"→日常/重复；**绝不动**：数据探索(data_exploration)、对话探索(zhuanti anax_chat)、EDA 探索性分析、workflow 引擎/workflow.json、multi 产物「工作流/flow」叫法(用户决策保留)、任何内部 id。
+
+【精准清单(grep 已定位，逐点判断"是否指模块入口名")】
+· TokenStatsPane.tsx:24 session:"探索"→"日常"；:118 "覆盖探索、工作流、TOC…"→"日常、重复、TOC…"(token 来源标签/说明，用户可见，改)
+· FlowListColumn.tsx:59 <span>工作流</span>→"重复"(列表标题，改)；同文件注释"工作流列表"指代可同步
+· WorkflowReadmePane.tsx:190 等正文：指"工作流模块"处→"重复"，但"工作流产物/流程/门禁"语义**逐句判断保留**
+· TocPane.tsx:390 "当前探索任务…"→"当前日常任务"(指 explore 任务则改)
+· Sidebar.tsx:201 注释"会话/探索"→同步
+· 其余 grep "探索"/"工作流" 命中**逐个判断**：模块入口名才改；数据探索/对话探索/workflow引擎/flow产物 一律不改
+· E 域 notes-engine.md 内"探索/工作流模块"指代同步更新 + 留一句改名记录指向 Orchestration §〇
+
+【明确不改(防误伤清单)】CreationPane 的"设计工作流/工作流节点/工作流架构"(flow 产物概念)、index.ts EDA prompt、DataExplorationPane 整树、data_exploration tab label「数据探索」、专题「对话探索」、workflow-config/multi-agent-runner 技术术语。
+依赖：改名卡(label+映射权威)已 done。
+【验收】web typecheck+build 绿；UI 无指代旧模块名的"探索/工作流"残留(数据探索/对话探索/flow 产物保留)；与 Orchestration §〇 一致。
+【约束】纯 E UI 文案；禁改 Tab id/路由/DB/产物概念名；改前逐条对照 §〇 边界；不碰数据探索子树逻辑/git；回流总控终审(终审重点查误伤：数据探索/对话探索/flow 产物是否被误改)。` },
+  { dom: "X", status: "done", title: "【模块改名·X】探索→日常 / 工作流→重复（label + 命名映射权威）", brief:
+`✅ 总控自做并自检通过（2026-06-18）。MainHeader.tsx TABS：explore label "探索"→"日常"、multi label "工作流"→"重复"，zhuanti "专题"不变；Tab id explore/multi/zhuanti 与 DB kind 全不动(零迁移)。
+**命名映射权威已立**(防新旧名混用误解)：Orchestration.md §〇「模块命名映射」表(id↔显示名↔曾用名 + 改名边界) + MainHeader TABS 上方代码注释。
+用户拍板 2 决策：① multi 产物保留「工作流/flow」叫法(产物≠模块名，否则文案更绕)；② 映射权威放 Orchestration §〇 + wiki。
+**关键边界(防误伤)**：只改"模块入口展示名"；绝不动 数据探索(data_exploration)/对话探索/EDA/workflow 引擎/flow 产物/内部 id。后端无"模块 tab 名"用户串(grep 确认其"工作流"均为 workflow 技术概念/flow 默认名)→**后端零改动**。UI 展示文案精准点改**另派 E**(见「模块改名·文案·E」卡)。门禁 web typecheck ✅ + build ✅；未碰路由/数据探索子树/git。
+
+— 原始派发 —
+来源：2026-06-18 用户改造①模块改名。仅改 MainHeader TABS 展示 label，内部 id 与 DB kind 不动(零迁移，复用 command 管理"更名仅改 label、id 不动"先例)。本卡碰接缝(MainHeader)，dom X 委派 E 代笔、总控终审。
+
+改动(MainHeader.tsx:7/9)：explore 的 label "探索"→"日常"；multi 的 label "工作流"→"重复"；zhuanti "专题"不变。**Tab id explore/multi/zhuanti 全不动**(路由/getSubTabsForTab/DB kind 依赖 id)。
+注意：仅 tab 顶部展示名；ExploreReadmePane/WorkflowReadmePane 等正文内"探索/工作流"字样本卡不改(文案后续按需另卡)。
+依赖：无。
+【验收】web typecheck+build 绿；顶部 tab 显示「日常/专题/重复/计算工具…」；切 tab 行为/路由不变。
+【约束】只改 TABS label 字符串，禁改 Tab id / DB kind / 路由；不碰 git；回流总控终审。` },
+  { dom: "E", status: "done", title: "【工作区任务·E·后端】专题任务多实例 CRUD（list/new 专题 flow+session）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-18，独立复核实现 + 复跑门禁）。E 交付(routes/engine.ts + api.ts)：① ZhuantiTask{flow,session}；② listZhuantiAnaxFlows(列全部 source_name="AnaX 专题" flow，updated_at/created_at desc)；③ createZhuantiTask(createFlow "AnaX 专题"/multi + writeFlowFile buildAnaxWorkflow + createSession workflow_id=flow.id)；④ listZhuantiTasks(map flow→{flow,session}，session 缺失时 createSession 兜底)；⑤ ensureLatestZhuantiTask(取最新无则建，anax-chat 旧入口复用)；⑥ 路由 GET/POST /api/workspaces/:id/zhuanti/tasks + anax-chat 改 ensureLatest；⑦ api.ts listZhuantiTasks/newZhuantiTask client。
+终审复核：① CRUD 主体正确、source_name 恒 "AnaX 专题"/kind multi、未扩 types 接缝、日常 listSessions(workflow_id IS NULL) 不受影响；② server+web typecheck ✅ + build ✅。
+**观察项(转下游「任务区分」卡处理，非阻断)**：① fork 分支 session 继承父 workflow_id(index.ts:1738)，findSessionByWorkflowId 用 LIMIT 1 ORDER BY updated_at DESC **可能取到 fork 分支而非主对话 session**——任务区分卡选取专题 session 时应排除 fork 分支(查 fork_branches)或改取最早 created_at 主 session；② listZhuantiTasks(GET) 的 createSession 兜底有写副作用(自愈逻辑、罕触发)，可接受。
+
+— 原始派发 —
+来源：用户改造②的后端底座——专题从「每 workspace 单例」升级为「多专题任务」。现 routes/engine.ts ensureZhuantiAnaxChat 是单例(找/建 source_name="AnaX 专题" flow + 绑定 session)。日常任务 = listSessions(db.ts:879 已 WHERE workflow_id IS NULL)，无需改。
+
+目标：支持列出/新建多条专题任务(每条 = 1 AnaX 专题 flow + 1 绑定 session)。
+【改动范围(E, routes/engine.ts + lib/api.ts)】
+1. listZhuantiTasks(workspaceId)：返回所有 source_name="AnaX 专题" flow + 各自绑定 session({flow, session}[]，按 flow.updated_at desc)。复用现有 findZhuantiAnaxFlow 思路改为列全部 + findSessionByWorkflowId 逐条取。
+2. newZhuantiTask(workspaceId, name?)：createFlow(...,"AnaX 专题","multi") + writeFlowFile buildAnaxWorkflow + createSession(workflow_id=flow.id)，返回 {flow, session}。
+3. ensureZhuantiAnaxChat 改为「取最新专题任务，无则新建」(供点专题模块默认关联最新)。
+4. lib/api.ts 加 listZhuantiTasks/newZhuantiTask client(仿 ensureZhuantiAnaxChat)。
+依赖：无(专题特性已 done)。是工作区任务区分卡前置。
+【验收】server typecheck+build 绿；listZhuantiTasks 返回多条、newZhuantiTask 建新专题 flow+session、日常 listSessions 不受影响。
+【约束】纯 E(routes/engine.ts + api client)；专题 flow source_name 恒 "AnaX 专题"、kind=multi；不扩 types 接缝；不碰数据探索子树/git；回流总控终审。` },
+  { dom: "X", status: "done", delegate: "E", title: "【工作区任务·X→E】任务区分(日常/专题)+模块绑定+默认关联最新", brief:
+`✅ E 代笔 + 总控加重终审通过（2026-06-18，独立复核全 diff + 复跑门禁）。含临时增的「任务折叠」一并审。
+E 交付：① Sidebar.tsx 任务区拆「日常任务」(sessions)+「专题任务」(zhuantiTasks)两组——各自 SectionHeader + 折叠(ChevronDown/Right, dailyCollapsed/zhuantiCollapsed) + 新建 + 列表 + 重命名/删除；**两组分开渲染、各绑各回调=不互窜**；删除确认按 ws/session/zhuanti 区分文案；Props 加 zhuantiTasks/activeZhuantiTaskId/onSelect|onNew|onRename|onDeleteZhuantiTask。② App.tsx：zhuantiTasks state + load(listZhuantiTasks)；selectZhuantiTaskData(设 flowId/SessionId+载消息)；newZhuantiTask(建+选+切zhuanti/anax_chat)；handleSelectZhuantiTask(选+切zhuanti)；renameZhuantiTask；deleteZhuantiTask(deleteFlow+连带 deleteSession+fallback next[0])；**handleTabChange 默认关联最新**(切 explore→sessions[0]、切 zhuanti→zhuantiTasks[0])；Sidebar 装配全套。
+终审复核：① 不互窜✅(点日常切 explore、点专题切 zhuanti)；② 默认关联最新✅；③ 折叠功能独立合理、不破坏现有；④ 删除语义正确(专题删 flow+主 session+产物)。
+**总控顺手修(落实前两卡转来的 fork 观察项)**：findSessionByWorkflowId 由 ORDER BY updated_at DESC → **created_at ASC LIMIT 1**——取该 flow 最早建的「主」对话 session，稳定排除继承父 workflow_id 的 fork 分支(index.ts:1738)，避免专题任务误关联到分支对话。复跑 server+web typecheck ✅ + build ✅。
+**工作区任务区分全闭环**：后端多实例 CRUD + 前端 日常/专题分组(不互窜)+折叠+默认关联最新 + fork 分支隐患修复。
+
+— 原始派发 —
+来源：用户改造②工作区任务区分。本卡碰 App/Sidebar 接缝，dom X 委派 E 代笔、总控终审。
+现状：Sidebar「任务」单列 = p.sessions = 日常(workflow_id null)；专题 session 由 App ensureZhuantiAnaxChat 单例管。App: sessions+activeSessionId(日常)、zhuantiChatFlowId/SessionId(专题单例)。
+目标：任务分「日常/专题」两组、各绑各模块、**不互窜**、点模块默认关联最新对应任务。
+
+【改动范围】
+1. App.tsx：① 加 zhuantiTasks state({flow,session}[]) + load(api.listZhuantiTasks，workspace 切换/进专题时)；现 ensureZhuantiAnaxChat effect(App.tsx:262-280) 改为 listZhuantiTasks→选最新(无则 newZhuantiTask)；② zhuantiChatFlowId/SessionId = 当前选中专题任务；③ handleTabChange：切 explore→activeSessionId=sessions[0](最新日常)、切 zhuanti→选 zhuantiTasks[0](最新专题)；④ onSelectZhuantiTask(flowId)/onNewZhuantiTask handler；点日常任务 = onSelectSession + setActiveTab("explore")，点专题任务 = onSelectZhuantiTask + setActiveTab("zhuanti")。
+2. Sidebar.tsx(:201-258 任务区)：拆两组——「日常任务」(sessions，+ onNewSession、点 onSelectSession→explore) +「专题任务」(zhuantiTasks，+ onNewZhuantiTask、点 onSelectZhuantiTask→zhuanti)；各组重命名/删除。两组分开渲染 = 不互窜。activeSessionId 高亮日常、activeZhuantiTaskId(=zhuantiChatFlowId) 高亮专题。
+3. 接缝 props：Sidebar 加 zhuantiTasks/activeZhuantiTaskId/onSelectZhuantiTask/onNewZhuantiTask；App 装配。
+依赖：卡「工作区任务·E·后端」(listZhuantiTasks/newZhuantiTask)。
+【验收】web typecheck+build 绿；Sidebar 两组任务；点日常任务→切探索+关联、点专题任务→切专题+关联；点探索 tab→默认最新日常、点专题 tab→默认最新专题；日常/专题不互窜。
+【约束】碰 App/Sidebar 接缝(X 委派 E、总控终审)；专题任务删除走 flow 删除(连带 session/产物)需参照日常 session 删除范式谨慎确认；不碰数据探索子树/git；回流总控终审。
+【开放点】专题任务删除语义(删 flow+绑定 session+产物目录)实现时定。` },
+  { dom: "X", status: "done", title: "【专题对话·X】anax_chat 增「聚合数据」左竖栏（复用 CleanDataDocsColumn）", brief:
+`✅ 总控自做并自检通过（2026-06-18）。App.tsx 内容容器探索 CleanDataDocsColumn 旁加 activeTab==="zhuanti" && activeSubTab==="anax_chat" → CleanDataDocsColumn scope={zhuantiChatFolderScope}；复用组件不改、布局 = zhuanti 导航 | 聚合数据 | 对话。门禁 web typecheck ✅ + build ✅；红线域(只读+复制)性质不变、未碰数据探索子树/git。
+
+— 原始派发 —
+来源：用户改造③专题对话探索加聚合数据左竖栏，参考探索-数据分析左侧聚合数据栏。本卡碰 App 内容容器接缝，dom X 委派 E 代笔、总控终审。
+现状：探索 view 左侧聚合数据栏 = App.tsx:856 activeTab==="explore" && activeSubTab==="view" → CleanDataDocsColumn scope={folderScope}。专题 anax_chat 内容区 = 左导航竖栏(5项) + ZhuantiChatPane(EngineTabs)。
+
+目标：专题 anax_chat 内容区在「导航竖栏」与「对话」之间加 CleanDataDocsColumn(复用组件)，scope=专题 flow。
+【改动范围(App.tsx 内容容器)】在 zhuanti 左导航 nav 之后、EngineTabs(ZhuantiChatPane) 并列处加：activeTab==="zhuanti" && activeSubTab==="anax_chat" → CleanDataDocsColumn scope={zhuantiChatFolderScope}。布局变为：导航 | 聚合数据 | 对话。CleanDataDocsColumn 组件不改。
+依赖：无(可与改名卡并行)。
+【验收】web typecheck+build 绿；专题对话探索左侧出现聚合数据只读文档栏(同探索 view)，scope=专题 flow、读专题 clean_data；红线域(只读+复制)性质不变。
+【约束】碰 App 接缝(X 委派 E)；复用 CleanDataDocsColumn 不改组件；scope 用 zhuantiChatFolderScope(flow)；不碰数据探索子树/git；回流总控终审。` },
   { dom: "X", status: "done", title: "【专题修复·X】对话探索 session 工具(@工具/Fork/委派)接 flow scope", brief:
 `✅ 总控快修通过（2026-06-18）。bug：专题→对话探索的 @工具/Fork 分支/委派子 agent 三按钮置灰(tooltip"先选择或新建一个会话")、无法点击。
 根因：ChatPane:273 activeSessionId 只从 folderScope.type==="session" 推断；专题 folderScope 是 flow scope(数据落专题 flow，与流水线共享)→ activeSessionId="" → canUseSessionTools=false → 三按钮 disabled。卡3 复用 ChatPane 时只传 folderScope(flow)+disabled，漏了让 ChatPane 识别专题真实 session(zhuantiChatSessionId)。

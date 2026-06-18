@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  ChevronDown,
+  ChevronRight,
   Folder,
   MessageSquarePlus,
   PanelLeftClose,
@@ -13,23 +15,33 @@ import {
 import { cn } from "@/lib/cn";
 import { useTheme } from "@/lib/theme";
 import { ConfirmDeleteDialog } from "@/components/ConfirmDeleteDialog";
-import type { Session, Workspace } from "@/types";
+import type { Flow, Session, Workspace } from "@/types";
 
-type PendingDelete = { kind: "ws"; id: string; name: string } | { kind: "session"; id: string; name: string };
+type ZhuantiTask = { flow: Flow; session: Session };
+type PendingDelete =
+  | { kind: "ws"; id: string; name: string }
+  | { kind: "session"; id: string; name: string }
+  | { kind: "zhuanti"; id: string; name: string };
 
 interface Props {
   workspaces: Workspace[];
   activeWorkspaceId: string | null;
   sessions: Session[];
   activeSessionId: string | null;
+  zhuantiTasks: ZhuantiTask[];
+  activeZhuantiTaskId: string | null;
   onSelectWorkspace: (id: string) => void;
   onSelectSession: (id: string) => void;
+  onSelectZhuantiTask: (flowId: string) => void;
   onNewWorkspace: (name: string) => void;
   onNewSession: () => void;
+  onNewZhuantiTask: () => void;
   onRenameWorkspace: (id: string, name: string) => void;
   onDeleteWorkspace: (id: string, deleteFiles: boolean) => void;
   onRenameSession: (id: string, title: string) => void;
   onDeleteSession: (id: string, deleteFiles: boolean) => void;
+  onRenameZhuantiTask: (flowId: string, name: string) => void;
+  onDeleteZhuantiTask: (flowId: string, deleteFiles: boolean) => void;
   onCollapse: () => void;
   onOpenSettings: () => void;
 }
@@ -61,8 +73,10 @@ export function Sidebar(p: Props) {
   const [theme, toggleTheme] = useTheme();
   const [adding, setAdding] = useState(false);
   const [name, setName] = useState("");
-  const [editing, setEditing] = useState<{ kind: "ws" | "session"; id: string; value: string } | null>(null);
+  const [editing, setEditing] = useState<{ kind: "ws" | "session" | "zhuanti"; id: string; value: string } | null>(null);
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
+  const [dailyCollapsed, setDailyCollapsed] = useState(false);
+  const [zhuantiCollapsed, setZhuantiCollapsed] = useState(false);
 
   const [width, setWidth] = useState(() => Number(localStorage.getItem("xanthil-sidebar-w")) || 264);
   const dragging = useRef(false);
@@ -101,7 +115,8 @@ export function Sidebar(p: Props) {
     const v = editing.value.trim();
     if (v) {
       if (editing.kind === "ws") p.onRenameWorkspace(editing.id, v);
-      else p.onRenameSession(editing.id, v);
+      else if (editing.kind === "session") p.onRenameSession(editing.id, v);
+      else p.onRenameZhuantiTask(editing.id, v);
     }
     setEditing(null);
   }
@@ -198,63 +213,140 @@ export function Sidebar(p: Props) {
           </div>
         </section>
 
-        {/* tasks (= 会话/探索，每个会话即一个任务) */}
+        {/* tasks: 日常(session) 与专题(flow+session) 分组，不互窜 */}
         {p.activeWorkspaceId && (
           <section className="pt-3">
-            <SectionHeader label="任务">
-              <button className={iconBtn} title="新建会话" onClick={p.onNewSession}>
+            <SectionHeader label="日常任务">
+              <button
+                className={iconBtn}
+                title={dailyCollapsed ? "展开日常任务" : "折叠日常任务"}
+                onClick={() => setDailyCollapsed((current) => !current)}
+              >
+                {dailyCollapsed ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={ICON} /> : <ChevronDown className="h-3.5 w-3.5" strokeWidth={ICON} />}
+              </button>
+              <button className={iconBtn} title="新建日常任务" onClick={p.onNewSession}>
                 <MessageSquarePlus className="h-3.5 w-3.5" strokeWidth={ICON} />
               </button>
             </SectionHeader>
-            <div className="space-y-0.5">
-              {p.sessions.map((s) =>
-                editing?.kind === "session" && editing.id === s.id ? (
-                  <div key={s.id} className="px-2 py-0.5">
-                    <input
-                      autoFocus
-                      value={editing.value}
-                      onChange={(e) => setEditing({ ...editing, value: e.target.value })}
-                      onKeyDown={(e) => {
-                        if (e.key === "Enter") commitEdit();
-                        if (e.key === "Escape") setEditing(null);
-                      }}
-                      onBlur={commitEdit}
-                      className={editInput}
-                    />
-                  </div>
-                ) : (
-                  <div
-                    key={s.id}
-                    className={cn(
-                      "group flex items-center rounded-md",
-                      s.id === p.activeSessionId ? "bg-neutral-200/70 dark:bg-neutral-800" : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60",
-                    )}
-                  >
-                    <button onClick={() => p.onSelectSession(s.id)} className="block min-w-0 flex-1 px-2 py-1 text-left">
-                      <div className="truncate text-[12.5px] text-neutral-900 dark:text-neutral-100">{s.title}</div>
-                      <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                        {new Date(s.updatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
-                      </div>
-                    </button>
-                    <div className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100">
-                      <button className={rowActionBtn} title="重命名" onClick={() => setEditing({ kind: "session", id: s.id, value: s.title })}>
-                        <Pencil className="h-3.5 w-3.5" strokeWidth={ICON} />
-                      </button>
-                      <button
-                        className={rowActionBtn}
-                        title="删除"
-                        onClick={() => setPendingDelete({ kind: "session", id: s.id, name: s.title })}
-                      >
-                        <Trash2 className="h-3.5 w-3.5" strokeWidth={ICON} />
-                      </button>
+            {!dailyCollapsed && (
+              <div className="space-y-0.5">
+                {p.sessions.map((s) =>
+                  editing?.kind === "session" && editing.id === s.id ? (
+                    <div key={s.id} className="px-2 py-0.5">
+                      <input
+                        autoFocus
+                        value={editing.value}
+                        onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitEdit();
+                          if (e.key === "Escape") setEditing(null);
+                        }}
+                        onBlur={commitEdit}
+                        className={editInput}
+                      />
                     </div>
-                  </div>
-                ),
-              )}
-              {p.sessions.length === 0 && (
-                <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">还没有会话，点上方 + 新建。</div>
-              )}
-            </div>
+                  ) : (
+                    <div
+                      key={s.id}
+                      className={cn(
+                        "group flex items-center rounded-md",
+                        s.id === p.activeSessionId ? "bg-neutral-200/70 dark:bg-neutral-800" : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60",
+                      )}
+                    >
+                      <button onClick={() => p.onSelectSession(s.id)} className="block min-w-0 flex-1 px-2 py-1 text-left">
+                        <div className="truncate text-[12.5px] text-neutral-900 dark:text-neutral-100">{s.title}</div>
+                        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                          {new Date(s.updatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </button>
+                      <div className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button className={rowActionBtn} title="重命名" onClick={() => setEditing({ kind: "session", id: s.id, value: s.title })}>
+                          <Pencil className="h-3.5 w-3.5" strokeWidth={ICON} />
+                        </button>
+                        <button
+                          className={rowActionBtn}
+                          title="删除"
+                          onClick={() => setPendingDelete({ kind: "session", id: s.id, name: s.title })}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" strokeWidth={ICON} />
+                        </button>
+                      </div>
+                    </div>
+                  ),
+                )}
+                {p.sessions.length === 0 && (
+                  <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">还没有日常任务，点上方 + 新建。</div>
+                )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {p.activeWorkspaceId && (
+          <section className="pt-3">
+            <SectionHeader label="专题任务">
+              <button
+                className={iconBtn}
+                title={zhuantiCollapsed ? "展开专题任务" : "折叠专题任务"}
+                onClick={() => setZhuantiCollapsed((current) => !current)}
+              >
+                {zhuantiCollapsed ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={ICON} /> : <ChevronDown className="h-3.5 w-3.5" strokeWidth={ICON} />}
+              </button>
+              <button className={iconBtn} title="新建专题任务" onClick={p.onNewZhuantiTask}>
+                <MessageSquarePlus className="h-3.5 w-3.5" strokeWidth={ICON} />
+              </button>
+            </SectionHeader>
+            {!zhuantiCollapsed && (
+              <div className="space-y-0.5">
+                {p.zhuantiTasks.map((task) =>
+                  editing?.kind === "zhuanti" && editing.id === task.flow.id ? (
+                    <div key={task.flow.id} className="px-2 py-0.5">
+                      <input
+                        autoFocus
+                        value={editing.value}
+                        onChange={(e) => setEditing({ ...editing, value: e.target.value })}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") commitEdit();
+                          if (e.key === "Escape") setEditing(null);
+                        }}
+                        onBlur={commitEdit}
+                        className={editInput}
+                      />
+                    </div>
+                  ) : (
+                    <div
+                      key={task.flow.id}
+                      className={cn(
+                        "group flex items-center rounded-md",
+                        task.flow.id === p.activeZhuantiTaskId ? "bg-neutral-200/70 dark:bg-neutral-800" : "hover:bg-neutral-100 dark:hover:bg-neutral-800/60",
+                      )}
+                    >
+                      <button onClick={() => p.onSelectZhuantiTask(task.flow.id)} className="block min-w-0 flex-1 px-2 py-1 text-left">
+                        <div className="truncate text-[12.5px] text-neutral-900 dark:text-neutral-100">{task.flow.name}</div>
+                        <div className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                          {new Date(task.flow.updatedAt).toLocaleString("zh-CN", { month: "numeric", day: "numeric", hour: "2-digit", minute: "2-digit" })}
+                        </div>
+                      </button>
+                      <div className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100">
+                        <button className={rowActionBtn} title="重命名" onClick={() => setEditing({ kind: "zhuanti", id: task.flow.id, value: task.flow.name })}>
+                          <Pencil className="h-3.5 w-3.5" strokeWidth={ICON} />
+                        </button>
+                        <button
+                          className={rowActionBtn}
+                          title="删除"
+                          onClick={() => setPendingDelete({ kind: "zhuanti", id: task.flow.id, name: task.flow.name })}
+                        >
+                          <Trash2 className="h-3.5 w-3.5" strokeWidth={ICON} />
+                        </button>
+                      </div>
+                    </div>
+                  ),
+                )}
+                {p.zhuantiTasks.length === 0 && (
+                  <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">还没有专题任务，点上方 + 新建。</div>
+                )}
+              </div>
+            )}
           </section>
         )}
 
@@ -285,14 +377,19 @@ export function Sidebar(p: Props) {
         <ConfirmDeleteDialog
           title={pendingDelete.kind === "ws"
             ? `删除工作区「${pendingDelete.name}」及其全部会话记录？`
-            : `删除会话「${pendingDelete.name}」？`}
+            : pendingDelete.kind === "zhuanti"
+              ? `删除专题任务「${pendingDelete.name}」？`
+              : `删除日常任务「${pendingDelete.name}」？`}
           fileToggleLabel={pendingDelete.kind === "ws"
             ? "同时删除该工作区的文档（含其下所有任务文件夹）"
-            : "同时删除该会话的文档文件夹"}
+            : pendingDelete.kind === "zhuanti"
+              ? "同时删除该专题任务的 flow 产物文件夹"
+              : "同时删除该日常任务的文档文件夹"}
           onCancel={() => setPendingDelete(null)}
           onConfirm={(deleteFiles) => {
             if (pendingDelete.kind === "ws") p.onDeleteWorkspace(pendingDelete.id, deleteFiles);
-            else p.onDeleteSession(pendingDelete.id, deleteFiles);
+            else if (pendingDelete.kind === "session") p.onDeleteSession(pendingDelete.id, deleteFiles);
+            else p.onDeleteZhuantiTask(pendingDelete.id, deleteFiles);
             setPendingDelete(null);
           }}
         />

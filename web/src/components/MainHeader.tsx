@@ -3,10 +3,12 @@ import { cn } from "@/lib/cn";
 
 export type Tab = "explore" | "zhuanti" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "dashboard" | "onto_xanthil";
 
+// 模块命名映射（2026-06-18 改名，权威见 Orchestration.md §〇）：explore=「日常」(曾"探索") · multi=「重复」(曾"工作流"，产物仍称 工作流/flow) · zhuanti=「专题」。
+// ⚠️ 仅 label 展示名可改；Tab id / DB kind="multi" / 路由不可改（零迁移）。
 export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
-  { id: "explore", label: "探索", icon: Compass },
+  { id: "explore", label: "日常", icon: Compass },
   { id: "zhuanti", label: "专题", icon: Telescope },
-  { id: "multi", label: "工作流", icon: Users },
+  { id: "multi", label: "重复", icon: Users },
   { id: "aggregate", label: "计算工具", icon: Calculator },
   { id: "rule_memory", label: "规则记忆", icon: BookOpen },
   { id: "research_lab", label: "实验室", icon: FlaskConical },

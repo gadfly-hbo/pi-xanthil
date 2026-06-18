@@ -21,7 +21,7 @@ function pct(n: number): string {
 
 function kindLabel(kind: TokenUsageTargetKind): string {
   const labels: Record<TokenUsageTargetKind, string> = {
-    session: "探索",
+    session: "日常",
     flow: "工作流聊天",
     flow_run: "工作流执行",
     toc: "TOC",
@@ -115,7 +115,7 @@ export function TokenStatsPane({ workspaceId }: { workspaceId: string | null }) 
               <BarChart3 className="h-4 w-4" /> Token 使用统计
             </h1>
             <p className="mt-1 text-[12.5px] text-neutral-500">
-              全工作区 token 消耗概览，覆盖探索、工作流、TOC、决策树和实验室等来源
+              全工作区 token 消耗概览，覆盖日常、重复、TOC、决策树和实验室等来源
             </p>
           </div>
           <button

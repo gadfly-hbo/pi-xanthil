@@ -6,7 +6,7 @@ import { WorkflowTemplateLibraryPane, type WorkflowTemplate } from "@/components
 import type { Flow } from "@/types";
 
 /**
- * 工作流列表 —— 由左侧主栏迁入「工作流 · 工作视图」内的左竖栏（owner: Claude 总控）。
+ * 工作流列表 —— 由左侧主栏迁入「重复 · 工作视图」内的左竖栏（owner: Claude 总控）。
  * 仅负责工作流的选择 / 新建 / 重命名 / 删除；精选收藏已下线，故无星标。
  */
 
@@ -45,7 +45,7 @@ export function FlowListColumn({ flows, activeFlowId, workspaceReady, onSelectFl
     return (
       <button
         onClick={() => setCollapsed(false)}
-        title="展开工作流列表"
+        title="展开重复列表"
         className="flex w-9 shrink-0 items-center justify-center border-r border-neutral-200 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
       >
         <ChevronRight className="h-4 w-4" strokeWidth={1.75} />
@@ -56,7 +56,7 @@ export function FlowListColumn({ flows, activeFlowId, workspaceReady, onSelectFl
   return (
     <aside className="flex w-60 shrink-0 flex-col border-r border-neutral-200 bg-neutral-50/40 dark:border-neutral-800 dark:bg-neutral-950/40">
       <div className="flex h-9 shrink-0 items-center gap-1.5 border-b border-neutral-200 px-3 dark:border-neutral-800">
-        <span className="flex-1 text-[12px] font-medium uppercase tracking-[0.04em] text-neutral-500/90 dark:text-neutral-400/80">工作流</span>
+        <span className="flex-1 text-[12px] font-medium uppercase tracking-[0.04em] text-neutral-500/90 dark:text-neutral-400/80">重复</span>
         <button
           onClick={() => onNewFlow("multi")}
           title="新建工作流"

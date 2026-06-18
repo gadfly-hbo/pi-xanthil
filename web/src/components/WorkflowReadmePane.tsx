@@ -1,7 +1,7 @@
 import { ArrowDown, Bot, Wrench, TrafficCone, RefreshCw, ShieldAlert } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-// 工作流模块操作说明（结合案例）。与 server/src/multi-agent-runner.ts（runner）、
+// 重复模块操作说明（结合案例）。与 server/src/multi-agent-runner.ts（runner）、
 // sql-loop-template.ts（SQL 修复 loop 预置模板）、docs/工作流-onblock契约.md（闭环口径）保持一致。
 // 工作流 = 把一次分析固化成「可重复执行的多智能体节点图(DAG)」：每个节点是一个独立 AI 子任务或工具调用，
 // 上游产出经黑板(blackboard)传给下游，门禁节点可拦截不合格的中间结果，失败还能带着原因自动回跳重试。
@@ -187,7 +187,7 @@ export function WorkflowReadmePane() {
         </div>
 
         <p className="mt-8 text-[11.5px] leading-5 text-neutral-400">
-          提示：工作流适合“多步骤、有明确验证标准、需要重复跑”的分析；一次性的探索问题用普通「数据分析」对话更轻。门禁拦下不是出错，而是流程在保护结果质量。
+          提示：工作流适合“多步骤、有明确验证标准、需要重复跑”的分析；一次性的日常问题用普通「数据分析」对话更轻。门禁拦下不是出错，而是流程在保护结果质量。
         </p>
       </div>
     </div>

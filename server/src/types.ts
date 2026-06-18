@@ -1400,7 +1400,7 @@ export interface OntoActionInput {
 }
 
 // ─── actions（分析→行动→执行 闭环）──────────────────────────────
-// 探索 tab「黄金策」后的「行动」二级 tab：报告 →①提取行动项 →②采纳建任务 →③执行反馈 → 回流知识。
+// 日常(explore) tab「黄金策」后的「行动」二级 tab：报告 →①提取行动项 →②采纳建任务 →③执行反馈 → 回流知识。
 export type ActionScene = "开业" | "日常" | "假日" | "大促"; // 单店模型场景运营
 export type ActionLifecycle = "A获取" | "A激活" | "R培育" | "R复购" | "R裂变"; // 会员运营 AARRR SOP
 export type ActionPriority = "high" | "medium" | "low";

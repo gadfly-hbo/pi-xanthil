@@ -342,6 +342,14 @@ const legacyApi = {
       method: "POST",
       headers: { "content-type": "application/json" },
     }).then(json<{ flow: Flow; session: Session }>),
+  listZhuantiTasks: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/zhuanti/tasks`).then(json<Array<{ flow: Flow; session: Session }>>),
+  newZhuantiTask: (workspaceId: string, name?: string) =>
+    fetch(`/api/workspaces/${workspaceId}/zhuanti/tasks`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then(json<{ flow: Flow; session: Session }>),
   instantiateSqlLoop: (workspaceId: string, name?: string) =>
     fetch(`/api/workspaces/${workspaceId}/sql-loop/instantiate`, {
       method: "POST",

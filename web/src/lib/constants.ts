@@ -4,10 +4,10 @@ export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'rea
 
 export const SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }];
 
-// 探索 tab 专用排序：view 改名「数据分析」并移至数据探索之后（multi/工作流 仍用 SUB_TABS，工作视图保持首位）。
+// 日常(explore) tab 专用排序：view 改名「数据分析」并移至数据探索之后（重复(multi) 仍用 SUB_TABS，工作视图保持首位）。
 export const EXPLORE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'view', label: '数据分析' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }, { id: 'readme', label: 'readme' }];
 
-// 工作流(multi) tab 专用：在 SUB_TABS 基础上追加「readme」操作说明二级 tab（结合案例讲解工作流模块）。
+// 重复(multi) tab 专用：在 SUB_TABS 基础上追加「readme」操作说明二级 tab（结合案例讲解重复模块；其产物仍称工作流）。
 export const MULTI_SUB_TABS: { id: SubTab; label: string }[] = [...SUB_TABS, { id: 'readme', label: 'readme' }];
 
 export const VIEW_ONLY_TABS = new Set<Tab>(['aggregate', 'research_lab', 'dashboard']);

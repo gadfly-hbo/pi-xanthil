@@ -127,7 +127,7 @@ function ZhuantiChatPane({ ctx }: { ctx: TabContext }) {
 
 /**
  * 【Agent-E · 智能引擎域】tab 渲染模块 —— owner: codex(GPT-5.5)
- * 覆盖：探索→对话/业务需求 · 工作流 · 实验室(skill/tool/model/DLF) · 专题(AnaX 对话探索/流水线/假设库/变更管理/readme)。
+ * 覆盖：日常→对话/业务需求 · 重复 · 实验室(skill/tool/model/DLF) · 专题(AnaX 对话探索/流水线/假设库/变更管理/readme)。
  * 新增/调整本域 pane 渲染只改本文件；需要的上下文字段从 TabContext 读取。
  */
 export function EngineTabs({ ctx }: { ctx: TabContext }) {
