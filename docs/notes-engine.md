@@ -7,23 +7,27 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-18 · 工作区任务区分：日常/专题分组、模块绑定、默认最新关联。
+- 最近更新：2026-06-18 · 记忆重构 E-DISTILL：`memory-consolidation` trace 蒸馏 runner + 显式触发端点。
 - 进度：
-  - **Sidebar 分组已完成**：任务区拆成「日常任务」与「专题任务」两组，各自支持新增、选择、高亮、重命名、删除，并各自可折叠，避免任务多时列表过长。
-  - **模块绑定已完成**：点日常任务会选中该 session 并切到 `explore/view`；点专题任务会选中该 `{flow, session}` 并切到 `zhuanti/anax_chat`，两类任务不互窜。
-  - **默认最新关联已完成**：切到「日常」tab 时默认关联最新日常 session；切到「专题」tab 时默认关联最新专题任务；若专题任务为空，进入专题时自动创建一条默认专题任务。
-  - **删除语义已落地**：专题任务删除走前端组合操作：删除 flow，并补删绑定 session；删除文件开关只传给 flow 产物文件夹，避免 session 目录语义不清。
-  - **边界保持**：未改后端、`types.ts`、`constants.ts`、数据探索子树或 git；本次触碰 `App.tsx` / `Sidebar.tsx` 为 X 委派 E 代笔，待总控终审。
+  - **E-DISTILL 已完成**：新增 `server/src/memory-consolidation.ts`，从 `session | flow | flow_run` trace timeline + `generateTraceRuleSuggestions` 信号构造 prompt，LLM 输出严格 coerce 为 `MemoryCandidate[]`。
+  - **D API 写入边界已落地**：runner 不 import `db/data.ts`，非 dry-run 通过 `postMemoryCandidateToDIngest()` POST 到 D 路由；当前默认使用现有 `/api/workspaces/:id/memory/items`，候选转 `source:"trace"` 的 memory item。
+  - **显式触发端点已接入**：`POST /api/workspaces/:id/memory/consolidate` 支持 `targetKind/targetId/model/dryRun/timeoutMs/maxCandidates/ingestPath`，主验收路径走显式调用。
+  - **自动 hook 默认关闭**：flow chat 与 multi-agent run 成功完成后接了 `maybeTriggerFlowMemoryConsolidation()`，但只有 `XANTHIL_MEMORY_CONSOLIDATION_AUTO=1` 时才 fire-and-forget 触发；session 完成逻辑在 `index.ts`，本卡按约束未碰。
+  - **回归测试已补**：`memory-consolidation.test.ts` 覆盖候选 shape、风险/置信度 coerce、dryRun、不跨域 fake ingest，以及真实 `dataRouter` 本地 HTTP POST 到 D memory item API 成功落库。
+  - **边界保持**：只改 E slot 新 runner、E router 和测试；未碰 `index.ts` / `db.ts` / `types.ts` / `api.ts` / `constants.ts` / `App.tsx`，未碰数据探索子树或 git。
 - 校验：
+  - `node --experimental-strip-types --test server/src/memory-consolidation.test.ts server/src/memory-evaluation.test.ts server/src/memory-retrieval.test.ts` ✅（14 tests）
   - `npm run typecheck` ✅（server + web）
   - `npm run build` ✅（仅既有 Vite chunk-size / dynamic import warning）
 - 下一步：
-  - **总控/UI smoke**：验证 Sidebar 两组任务、折叠、点击切模块、切模块默认最新、日常/专题消息与 scope 不互窜。
-  - **删除终审**：确认专题任务删除当前“flow 删除 + 绑定 session 删除”的前端组合语义是否作为 MVP 保留；如需后端原子删除，应另开 E 后端卡。
-  - **刷新持久化**：当前“选中专题任务”仅为 App state；刷新后按最新专题关联。如果需要持久记住用户最后选中的专题任务，需要另扩状态存储。
+  - **总控终审**：确认在 D-INGEST 专用端点缺席时，E 先 POST 现有 D `/memory/items` API 的联调口径是否作为阶段2临时方案保留。
+  - **真实 LLM smoke**：用一个有 trace 的 session/flow 调 `POST /api/workspaces/:id/memory/consolidate`，确认真实模型输出可解析、候选有质量、POST D API 成功；本 session 未启动真实 pi。
+  - **D-INGEST 对接**：D 专用 ingest/门禁端点回流后，把端点默认 `ingestPath` 从 `/memory/items` 切到新端点，保留本地 absolute API path 限制。
+  - **session 完成 hook**：普通 session 完成逻辑仍在 `index.ts`，本卡未碰；若要自动从 session 结束沉淀，需要总控在接缝层补 hook 或迁移到 E router。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/用户拍板）：
-  - 是否需要把专题任务删除收敛为后端原子端点（删 flow + session + 文件语义统一），当前未做。
+  - D-INGEST 专用端点缺席期间，是否允许继续把候选逐条 POST 到 `/api/workspaces/:id/memory/items`，还是必须默认 `dryRun` 等 D-INGEST 回流后再写入。
+  - 是否由总控在 `index.ts` 的 session `run_end` 成功路径接 session 自动沉淀 hook；E 当前只能提供显式端点和 flow 侧 env-gated hook。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -166,6 +170,9 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 业务需求版本恢复依赖 `structured.version.requirementInput`：后端生成版本必须写入原始 draft 输入，手动编辑 markdown 时必须保留已有 requirementInput；前端打开历史版本/刷新恢复左侧 draft 时只读该字段，旧 JSON 缺字段时不应臆造完整业务背景。
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
+- **memory evaluation runner 检索上下文单一真源（2026-06-18 E-EVAL）**：baseline vs memory 评估必须用同一 evaluation prompt 构造 `RetrievalContext`（当前 `query = prompt.trim()`），并把同一个 ctx 同时传给 `buildMemoryInjectionSnapshot(..., {}, ctx)` 与 `buildMemoryPrompt(..., {}, ctx)`。否则 snapshot 中看到的候选/命中可能与实际 pi system prompt 不一致，评估数据会失真。baseline candidate 仍只记录 `requested:false` snapshot，不注入 memory；memory candidate 走 `memory_item` 新检索。runner 读记忆只经 `memory-injection.ts`，不要为了评估直接 import D 的 db CRUD。
+- **memory consolidation 写入边界（2026-06-18 E-DISTILL）**：`memory-consolidation.ts` 负责 trace→`MemoryCandidate[]` 蒸馏与候选 coerce，但**不直接 import D 的 `db/data.ts` 写表**；非 dry-run 只能通过 D HTTP API 写入。D-INGEST 专用端点尚未回流时，临时默认 POST `/api/workspaces/:id/memory/items`，发送 `source:"trace"` + candidate 字段；后续 D-INGEST 回流后只切默认 `ingestPath`，runner 结构不变。`ingestPath` 必须是本地 absolute API path，禁止外部 URL，避免把 server 变成任意 POST 代理。
+- **memory consolidation 自动触发口径（2026-06-18 E-DISTILL）**：显式端点 `POST /api/workspaces/:id/memory/consolidate` 是主验收路径；flow chat / multi-agent 成功完成后的自动 hook 默认关闭，仅 `XANTHIL_MEMORY_CONSOLIDATION_AUTO=1` 才 fire-and-forget 触发。普通 session 完成逻辑仍在 `index.ts`，E 卡未碰接缝层；若要 session 结束自动沉淀，需要总控接 hook 或迁移 session send 逻辑。
 - **subagent 模板化 prompt 红线（2026-06-16 E·P0）**：模板只能替换 runner 的 persona 角色段；只读指定 `clean_data` 文件、只写 `reportDir`、末条摘要、不提问自主完成等硬性约束必须由引擎在 persona 后恒定追加，不能放进可编辑模板。无模板、模板 disabled、配置缺失或损坏时必须回退 `DEFAULT_SUBAGENT_PERSONA`，保持旧委派行为。`dataFiles` 必须继续走 `safeResolve(cleanDir, basename(f))`，不得因为模板化而放宽到路径直读。
 - **subagent 配置安全边界（2026-06-16 E·P0）**：`subagents.json` 是本地模板注册表，不是 shell/webhook 执行配置。CRUD coerce 必须白名单字段、未知字段丢弃；`source` 固定 `custom`，`dataScope` 固定 `clean_data`；persona 视为 prompt 文本，禁止通过外部 URL/外发配置引入联网动作。`toolIds` P0 仅保存清洗结果，不代表工具已挂载。
 - **subagent MCP 注入边界（2026-06-17 E·P1）**：模板 `toolIds` 已成为 runner 注入 MCP 工具的实际 allowlist。普通 workspace `.mcp.json` 仍注册全部 analysis 工具；指定模板的子 agent 不改 workspace 根配置，而是以 `<workspace>/sessions/<parentSessionId>/.subagent-cwd/<taskId>` 为 cwd，并在该 cwd 写 scoped `.mcp.json`（`--tools id,id`）。无模板委派保持旧行为，模板 `toolIds: []` 表示无 extraction tool 暴露。该设计避免共享 `.mcp.json` 并发 clobber；代价是子 agent MCP 工具产物默认落在独立 cwd 的 `tool_runs` 下，报告仍必须写入引擎注入的 `reportDir`。

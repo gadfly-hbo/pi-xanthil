@@ -42,10 +42,12 @@ test("buildMemoryInjectionSnapshot records five memory sources and stable hashes
   const snapshot = memory.buildMemoryInjectionSnapshot(workspace.id, true, "chat");
   assert.equal(snapshot.requested, true);
   assert.equal(snapshot.injected, true);
-  assert.equal(snapshot.sources.length, 5);
+  // D-RETRIEVAL 阶段1：在原 5 类源之间插入 memory_item（多信号召回），共 6 个 kind。
+  assert.equal(snapshot.sources.length, 6);
   assert.deepEqual(snapshot.sources.map((source) => source.kind), [
     "businessContext",
     "rules",
+    "memory_item",
     "standards",
     "cases",
     "knowledgeGraph",

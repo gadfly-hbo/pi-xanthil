@@ -217,6 +217,182 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 规则记忆模块重构（clean-slate 重建 · 2026-06-18 派发）详见 docs/记忆重构-任务派发.md ════
+  // 根因：旧模块以手工维护为中心、注入静态选择 → 从未用起来。范式升级：经验记忆 + 多信号检索 + 治理防漂移 + 可观测闭环。
+  // 锁定默认：relevance=词法+信号混合(零新依赖)；沉淀=高置信低危自动入库+其余复核；旧表 drop&rebuild；metric_definitions/business_contexts 不动。
+  // 派发顺序：先 X-CONTRACT(总控自做) → 契约绿后放行阶段1(D-DATA→D-RETRIEVAL ∥ E-EVAL) → 阶段2 沉淀闭环 → 阶段3 面板+可观测 → X-FINAL 终审。
+  { dom: "X", status: "done", title: "【记忆重构·X·契约期】统一 MemoryItem 契约 + memory_items 迁移 + 注入签名口径（阻塞全部）", brief:
+`✅ 总控自做并自检通过（2026-06-18）。采用「加法式契约」(机制 A 单目录顺序下避免长 build 红)：
+① types.ts 双侧新增 MemoryItem(constraint/experience/episode)+MemoryItemInput+MemoryCandidate+MemoryRiskFlag+RetrievalContext，MemoryItemKind 加 'memory_item'；
+② db/data.ts initDataTables 建 memory_items 表(总控审定 schema，CRUD 留 D-DATA)；
+③ memory-injection.ts 三函数(buildMemoryInjectionSnapshot/buildMemoryPrompt/withRulesPrompt)冻结签名——ctx?:RetrievalContext 追加为末位可选参(因 memory-injection.test.ts:162 已把 policy 当第3位传，ctx 不能插 policy 前)，ctx undefined 时行为不变；
+④ index.ts chat 注入点(:5214/:5252)对齐新签名，传 {query:msg.text}。
+口径调整(D/E 按此实装)：(a) ctx 为末位参数而非 policy 前；(b) 旧表/旧类型 drop 延到各域替代物落地后的清理步——本卡只加不删保 build 全程绿，RuleMemory/MemoryProposal/RuleConflict/AnalysisCase/MemoryUsageStats 暂留。
+门禁：server+web typecheck ✅ + build ✅ + 记忆 4 套件 12/12 ✅(memory_items 建表随测试 init 校验通过)；未碰他域逻辑、prompt-blocks 缓存稳定前缀不变。**阶段1 D/E 卡前置已解锁。**
+
+— 原始派发 —
+来源：规则记忆模块重构（用户决策 clean-slate 重建）。本卡碰接缝层(types.ts/db migration/index.ts legacy/constants/prompt-blocks)，总控自做、不可委派（架构决策，Orchestration §六.1）。是全部域卡的前置。
+目标：写死统一记忆模型契约 + 建新表 drop 旧表 + 冻结注入签名口径，解锁 D/E/V 实装。
+
+【改动范围(总控自做)】
+1. types.ts 双侧：定 MemoryItem(type: constraint|experience|episode + 治理元数据 source/confidence/riskFlags/validFrom/validUntil/supersedesId/usedCount/正负信号/staleAfterDays/scope) + MemoryCandidate(蒸馏候选) + RetrievalContext(query/recentMessages/dataPaths) + RiskFlag；删旧跨域类型 RuleMemory/MemoryProposal/RuleConflict/AnalysisCase/MemoryUsageStats。
+2. db migration：memory_items 建表 DDL 注册 MIGRATIONS(递增版本)；drop rule_memories/memory_proposals/rule_conflicts/analysis_cases/memory_usage_stats。保留 workspace_memory_enablements(itemKind 泛化)/metric_definitions/business_contexts/memory_failure_attributions。
+3. 签名口径(写死，D 实装/E 对齐)：buildMemoryInjectionSnapshot(workspaceId,requested,targetScope,ctx?:RetrievalContext,policy?)、buildMemoryPrompt(...)、withRulesPrompt(workspaceId,targetScope,systemPrompt?,ctx?)。
+4. index.ts chat 注入点(:5214/:5252) 随新签名同步改(总控自改 legacy)。
+5. prompt-blocks.ts 缓存约束复核：记忆注入仍在动态尾部、稳定前缀字节不变。
+依赖：无（最前置）。
+【验收】契约无歧义、双侧对齐无重声明、memory_items schema 不撞他域；server+web typecheck（允许 D/E 实装前的预期 stub 缺口）。
+【约束】总控自做，不委派；不擅装依赖；旧表 drop 前确认无 metric_definitions/business_contexts 误伤。` },
+
+  { dom: "D", status: "done", title: "【记忆重构·D·数据层】memory_items CRUD 下沉 + fact adapter + 统一 API（阶段1）", brief:
+`✅ D 完成 + 总控终审通过（2026-06-18，独立复核全 diff + 复跑门禁 + 全量 140 测试绿）。
+D 交付：① db/data.ts memory_items CRUD(create/get/list/listEnabled/update 列级 patch/delete 级联 enablement/recordItemFeedback/recordItemUsed)，启用沿用 workspace_memory_enablements(item_kind='memory_item')；② fact adapter——ProjectedFactItem(D 域私有类型，避污染接缝)投影 business_context/metric_definition/reference_file(仅元数据不读正文，守红线)，id=fact:<kind>:<sourceId>；③ routes/data.ts 新增 /memory/items*(GET list 带 type/enabledOnly/includeFacts + POST + GET one + PATCH + DELETE + feedback + _/injections)，完整入参校验 + workspace 归属 404/403。
+终审复核：① 接缝层零触碰(只动 db/data.ts/routes/data.ts/notes-data.md)；② 单一真源(类型全 import types.ts，无本地重声明)；③ 红线净(reference_file 仅 statSync 取 size 不读正文、路由不读 draw_data)；④ 路由 _/injections 段数≠:itemId 无冲突；⑤ server+web typecheck ✅ + build ✅ + 全量 140 测试 ✅。
+总控顺手补(X-CONTRACT 收尾·解锁 D-RETRIEVAL)：双侧 MemorySourceKind 加 'memory_item'(纯加法、无穷尽 switch、typecheck 绿)——D-RETRIEVAL 可直接把召回 memory_items 写入 snapshot.sources。
+3 个回流决策(总控)：① 不加 'fact' 进 MemoryItemType(投影只读、生命周期不同；需共享类型后续加 RetrievedMemory 联合，不污染存储类型)；② legacy /memory/feedback+/injections 暂共存，随旧表 drop 同批清理；③ memory_item 维度已加(见上)。
+未做项确认合理：未碰 legacy recordMemoryFeedback(保 V/E 行为不变)、未补单测(卡片只要求门禁绿，140 现有测试全绿)——均接受。**待用户提交。D-RETRIEVAL 前置已解锁。**
+
+— 原始派发 —
+来源：记忆重构阶段1 数据底座。承接 X-CONTRACT。
+目标：把记忆数据层按新模型落到 D 域 slot，并把既有事实源适配为统一记忆。
+
+【改动范围(D, db/data.ts + routes/data.ts)】
+1. db/data.ts：memory_items CRUD（从 db.ts 下沉，按 MemoryItem 新模型）。
+2. fact adapter：把 business_contexts + metric_definitions + reference 文件实时投影为统一 MemoryItem(type=fact) 参与检索——不写表、不接管其生命周期。
+3. 泛化 enablement：复用 db/shared.ts listEnabledItemIds/setMemoryEnablement/enableForOrigin，itemKind 收敛到统一 item。
+4. routes/data.ts：统一 /api/workspaces/:id/memory/items CRUD + /memory/feedback(接 recordMemoryFeedback 语义) + /memory/injections(历史快照)。
+依赖：X-CONTRACT。是 D-RETRIEVAL/D-INGEST/D-PANEL 与 E/V 读记忆的前置。
+【验收】CRUD + adapter 投影正确、feedback 落库；server typecheck+build 绿。
+【约束】不碰接缝层(types/db.ts 注册表/index.ts)；metric_definitions/business_contexts 只读投影不改；不碰数据探索子树/git；回流总控终审。` },
+
+  { dom: "D", status: "done", title: "【记忆重构·D·检索引擎】memory-injection 多信号打分召回 + 治理过滤（阶段1）", brief:
+`✅ D 完成 + 总控终审通过（2026-06-18，含 1 处总控收敛 + 复跑门禁 + 147 测试绿）。
+D 交付(memory-injection.ts)：① 新增 memory_item 源(priority 25，介于 rules/standards)，对 listEnabledMemoryItems ∪ fact 投影做多信号打分召回——relevance(词法重叠/query 命中率)·recency(半衰期 30d)·feedback(正负信号归一)·typePriority(约束1.0>事实0.85>经验0.6>情景0.4)，权重 0.45/0.2/0.2/0.15；② 治理过滤先行——scope 不匹配/suppressed(neg≥pos+3)/expired(validUntil 或 staleAfterDays)/poison(high riskFlag)/superseded(被 supersedesId 指向)全剔除；③ top-K(默认8)+ token 预算二次裁剪；④ snapshot 结构保留 + meta(candidateCount/survived/filtered/topScore)；⑤ 新增 memory-retrieval.test.ts 7 用例(relevance/governance/recency/stale/负反馈/snapshot/topK)。签名仍是 X-CONTRACT 冻结口径(ctx 末位)，ctx undefined 时仅按 recency/feedback/typePriority 打分不崩。
+总控终审收敛(1 处·已修)：**fact 重复注入**——memory_item 源原纳入 listProjectedFacts，而 business_context/metric/reference 同时被 legacy businessContext+standards 两源权威注入→system prompt 双发。改：阶段1 置 INCLUDE_PROJECTED_FACTS=false，fact 仍由 legacy 两源注入，memory_item 暂只收 constraint/experience/episode；待 legacy 退役(清理步)一行翻开关切到统一路径(adapter 已就绪)。
+终审复核：接缝层零触碰(只动 memory-injection.ts+其测试+notes-data)、签名未改冻结口径、5 维治理齐全、ctx 健壮、server+web typecheck ✅ + build ✅ + 全量 147 测试 ✅。
+未做项(确认合理·非阻断)：item 级 used_count/last_used_at 未接注入命中(recency 用 updatedAt，recordMemoryItemUsed 已备待 E-WIRING/后续接)；memory_item 源走 recordMemoryInjectionUsage 写 memory_usage_stats(source 级)与 item 级正负信号双轨，打分读 item 级为准、无害。
+**待用户提交(注意 git add 新文件 memory-retrieval.test.ts)。阶段1 D 卡全部 done；可进阶段2/阶段3。**
+
+— 原始派发 —
+来源：记忆重构阶段1 核心——替代固定优先级(10~50)+4000token 静态选择。承接 D-DATA。
+目标：按当前任务上下文动态打分召回 top-K，并在召回处做治理过滤。
+
+【改动范围(D, memory-injection.ts)】
+1. 重写选择逻辑为多信号打分：score = w_rel·relevance(ctx 词法+信号混合，复用 knowledge-graph 词汇重叠思路) + w_rec·recency + w_fb·feedback(正负信号) + w_type·typePriority(约束>事实>经验>情景)。
+2. 治理过滤：剔除 suppressed(负反馈阈值)/expired(validUntil)/poison(高危 riskFlag)/superseded(supersedesId)；top-K 按质量在 token 预算内填充。
+3. 时序：validUntil/staleAfterDays 过期不召回；状态变更走 supersedesId 链不原地改写(防 semantic drift)。
+4. 保留 MemoryInjectionSnapshot(每条带 score/selected/omittedReason)，遵 X-CONTRACT 冻结签名(含 ctx 入参)。
+依赖：X-CONTRACT + D-DATA。
+【验收】单测覆盖打分召回/治理过滤/时序衰减/负反馈压制；snapshot 结构不破坏；server typecheck+build+测试绿。
+【约束】relevance 本轮用词法+信号混合(零新依赖，embedding 后续可插拔)；不碰接缝层签名口径(只实装)；回流总控终审。` },
+
+  { dom: "E", status: "done", title: "【记忆重构·E·评估工具】memory-evaluation-runner 适配新模型/签名（阶段1·可并行）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-18，独立复核 + 复跑门禁 + 148 测试绿，一次过无收敛）。
+E 交付(memory-evaluation-runner.ts)：① 新增 buildMemoryEvaluationRetrievalContext(prompt)→{query:prompt.trim()}；② baseline/memory 两候选的 buildMemoryInjectionSnapshot + buildMemoryPrompt 均传 retrievalContext(签名严格对齐 X-CONTRACT 冻结口径 policy={}/ctx 末位)，memory 变体走 ctx-aware 多信号检索、baseline 不注入；③ 透传 retrievalContext 到 runPi。新增 memory-evaluation.test.ts 用例：建匹配 constraint(复购自然月)+无关 episode，验证 memory 变体召回命中目标项、baseline 不注入。
+终审复核：接缝层零触碰(只动 memory-evaluation-runner.ts + 其测试 + notes-engine)、签名未改冻结口径、端到端验证重建效果可量化、server+web typecheck ✅ + build ✅ + 全量 148 测试 ✅。
+**待用户提交(注意 git add 无新文件，memory-evaluation.test.ts 为既有改)。阶段1 全部 done(X-CONTRACT/D-DATA/D-RETRIEVAL/E-EVAL)，可进阶段2/3。**
+
+— 原始派发 —
+来源：记忆重构阶段1，回归验证工具。承接 X-CONTRACT，可与 D 并行。
+目标：让 baseline vs memory 评估在新 MemoryItem 模型 + 新注入签名下可跑，作为验证重建效果的回归工具(也补 KICKOFF-P0 的 E2E smoke 缺口)。
+
+【改动范围(E, memory-evaluation-runner.ts)】适配新 MemoryItem 模型 + buildMemoryInjectionSnapshot 的 ctx 入参(:57)；baseline(无记忆) vs memory(新检索) 两候选对照可跑。
+依赖：X-CONTRACT。
+【验收】评估 runner 在新模型下跑出 baseline/memory 对照数据；server typecheck+build 绿。
+【约束】纯 E slot；读记忆走 D 暴露 API 不跨域 import db；不碰接缝层/git；回流总控终审。` },
+
+  { dom: "E", status: "done", title: "【记忆重构·E·沉淀】memory-consolidation 蒸馏 runner + 触发端点（阶段2）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-18，独立复核 + 复跑门禁 + 152 测试绿，无收敛）。
+E 交付：① 新建 memory-consolidation.ts(仿 skill-distillation 范式)——runMemoryConsolidation(DI 设计：distillText/ingestCandidate 可注入 + dryRun)：collectMemoryConsolidationTrace(getTraceTimeline 末80 + generateTraceRuleSuggestions 过滤) → buildMemoryConsolidationPrompt(安全框定:禁 PII/原始数据/一次性结论 + JSON schema) → parseMemoryCandidates(健壮解析:剥围栏/子串兜底/校验 type·scope/截断/clamp confidence) → applyHeuristicGovernance(预标 weak_evidence/instruction_injection/pii/overbroad + 高危 capping confidence≤0.5)；postMemoryCandidateToDIngest(默认 HTTP ingester，§五.3 跨域走 API 不直接 import D)。② routes/engine.ts：POST /memory/consolidate(入参全校验) + maybeTriggerFlowMemoryConsolidation 接到 flow(:2104)/flow_run(:2248) 两处成功完成点(code===0 && !aborted)，env XANTHIL_MEMORY_CONSOLIDATION_AUTO 门控默认关、fire-and-forget+catch→trace。③ memory-consolidation.test.ts 4 用例(dryRun/注入 ingest 边界/parse 契约/postToDIngest)。
+终审复核：接缝层零触碰(只动 memory-consolidation.ts/其测试/routes/engine.ts·E slot/notes-engine)、MemoryCandidate 用 X-CONTRACT 契约、trace 复用现有基建、触发置于成功完成点、server+web typecheck ✅ + build ✅ + 152 测试 ✅。
+⚠️ 传 D-INGEST 的依赖：当前默认 ingestPath=/memory/items(D-DATA 直接 create，无门禁)因 D-INGEST 端点未建；**D-INGEST 必须 ① 建门禁端点(dedup/风险/置信度→自动 or 复核) ② 让 engine 默认 ingestPath 翻到它**；E 的 applyHeuristicGovernance 是预标信号，D-INGEST 应做权威门禁不盲信。所幸自动 env 默认关 + 手动须显式调用，默认不改生产行为，可接受为过渡。
+**待用户提交(git add 新文件 memory-consolidation.ts + memory-consolidation.test.ts)。**
+
+— 原始派发 —
+来源：记忆重构阶段2——解决"没用起来"的根因：让记忆成为工作副产物，自动从 trace 沉淀。承接 X-CONTRACT + D-DATA。
+目标：session/flow 结束自动从 trace 蒸馏候选记忆，交 D 门禁入库（仿 skill-distillation 范式）。
+
+【改动范围(E, 新建 memory-consolidation.ts + routes/engine.ts)】
+1. memory-consolidation.ts：读 trace events → LLM 蒸馏候选(constraint/experience/episode，输出 MemoryCandidate) → POST 到 D 的 ingest 端点。复用现有 trace→规则建议(from-trace-rules)与风险/置信度计算作为起点。
+2. routes/engine.ts：沉淀触发端点 + flow/session 完成钩子(显式触发亦可)。
+依赖：X-CONTRACT + D-DATA(ingest 端点由 D-INGEST 提供，可先按候选 shape 联调)。
+【验收】trace→候选蒸馏可跑、候选合 MemoryCandidate 契约、POST D ingest 成功；server typecheck+build 绿。
+【约束】写记忆走 D API 不直接写 D 表(§五.3)；不碰接缝层/数据探索子树/git；回流总控终审。` },
+
+  { dom: "D", status: "done", title: "【记忆重构·D·门禁】候选 ingest 端点 + 治理门禁 + 自动/复核分流（阶段2）", brief:
+`✅ D 完成 + 总控终审通过（2026-06-19，独立复核 + 复跑门禁 + 164 测试绿 + 总控顺手翻 ingestPath）。
+D 交付：① 新表 memory_reviews(review 队列：type/title/body/scope/confidence/risk_flags/target/reason/status[pending|accepted|rejected]/decided_item_id；总控终审批准 schema，无碰撞)；② ingestMemoryCandidate 门禁主入口——detectMemoryCandidateRisk **自做权威风险检测**(不盲信 E 预标) → 高危拒(400) / 高置信(≥阈值)无中危自动入库(source:derived，dedup 命中则 supersede 旧条目+关旧 enabled) / 其余进 review 队列(medium 风险·低置信·dedup 待确认)；③ findMemoryItemDuplicate(标题正规化+子串containment)；④ routes/data.ts POST /memory/ingest(accepted→200 顶层 id 对齐 E 契约 / review→200 reviewId / rejected→400) + GET /memory/reviews + accept/reject(404/403/409 守卫)；⑤ memory-ingest-gate.test.ts 12 用例(自动/高危/PII/弱证据·低置信→复核/dedup supersede×2/accept·reject/HTTP 契约/完整 review 闭环)。
+门禁类型(MemoryReview/MemoryIngestInput/MemoryIngestVerdict)域私有于 db/data.ts，不污染接缝；与 D-RETRIEVAL superseded 过滤打通。
+总控协调(顺手·解锁闭环)：engine 默认 ingestPath 两处 /memory/items→/memory/ingest(maybeTriggerFlowMemoryConsolidation + parseMemoryConsolidationBody)，沉淀候选现默认走门禁。D 未碰 engine(守界，留注释提醒总控)。
+终审复核：接缝层零触碰(D 只动 db/data.ts/routes/data.ts/其测试/notes-data)、新表 schema 审过、门禁自做风险检测、HTTP 契约对齐 E、server+web typecheck ✅ + build ✅ + 全量 164 测试 ✅。
+非阻断 follow-up：E 沉淀遥测里 review=ok:true 无 itemId、reject=400=ok:false 像错误(语义略糊，可后续让 E 区分 verdict kind)；auto env 默认关、影响小。
+**待用户提交(git add 新文件 memory-ingest-gate.test.ts)。阶段2 沉淀闭环主链(E-DISTILL→D-INGEST)打通，余 E-WIRING 接线。**
+
+— 原始派发 —
+来源：记忆重构阶段2 沉淀闭环的入库关口。承接 E-DISTILL 候选 + D-DATA。
+目标：候选记忆经治理门禁后高置信低危自动入库、其余进复核队列。
+
+【改动范围(D, routes/data.ts + db/data.ts)】
+1. routes/data.ts：候选 ingest 端点(供 E 蒸馏 runner POST MemoryCandidate)。
+2. 门禁：riskFlag 检测(instruction_injection/pii/weak_evidence/overbroad) + 冲突/重复 dedup(泛化 detectRuleConflicts 到 constraint+experience) + 置信度。
+3. 分流：高置信低危 → 自动入库(source:derived，落库即 enableForOrigin)；其余 → review 队列(供 D-PANEL 一键采纳/拒绝)。
+依赖：E-DISTILL(已 done) + D-DATA。
+【E-DISTILL 对接契约(已定)】E 的 ingester POST body = {...MemoryCandidate, source:"trace", targetKind, targetId}；engine 默认 ingestPath 当前=/memory/items(无门禁过渡态)，**本卡须新建门禁端点(建议 POST /api/workspaces/:id/memory/ingest)并通知总控把 engine 默认 ingestPath 翻到它**(engine 调用点归 E，总控协调一行改)。门禁返回 {id} 表入库成功(E 据此记 itemId)、{error} 表拒绝。E 候选已带 applyHeuristicGovernance 预标 riskFlags+confidence，本卡做权威门禁(dedup/高危拒/置信度阈值→自动入库 or review 队列)，不盲信 E 预标。
+【验收】门禁拦高危、dedup 去重、自动/复核分流正确；单测覆盖；server typecheck+build 绿。
+【约束】不碰接缝层；不擅装依赖；回流总控终审。` },
+
+  { dom: "E", status: "todo", title: "【记忆重构·E·接线】注入调用点对齐新签名 + flow 完成触发沉淀（阶段2）", brief:
+`来源：记忆重构阶段2，把新检索与沉淀接到工作流主流程。承接 X-CONTRACT + D-RETRIEVAL。
+目标：workflow 注入用新检索(带真实 RetrievalContext)，flow 完成自动触发沉淀。
+
+【改动范围(E, routes/engine.ts)】
+1. 注入调用点(:1918/:1941/:2058) 对齐新签名，传入真实 RetrievalContext(当前 query/最近消息)。
+2. flow/session 完成 → 触发 E-DISTILL 沉淀。
+依赖：X-CONTRACT(签名) + D-RETRIEVAL(检索实装) + E-DISTILL(沉淀)。
+【验收】workflow 注入走新检索；flow 完成触发沉淀；不配/无记忆时行为不破坏；server typecheck+build 绿。
+【约束】只改 routes/engine.ts 调用点(不碰 index.ts legacy=总控)；回流总控终审。` },
+
+  { dom: "D", status: "todo", title: "【记忆重构·D·面板】RulesPane 重建为统一记忆管理面板 + review 队列（阶段3）", brief:
+`来源：记忆重构阶段3 前端。承接 D-DATA/D-RETRIEVAL。
+目标：把割裂的规则/案例管理重建为统一记忆面板，含注入预览、反馈入口、候选复核。
+
+【改动范围(D, RulesPane.tsx + lib/api/data.ts + DataTabs)】
+1. RulesPane 重建：按 type 列 memory_items + CRUD + 启用勾选 + 注入预览(调 buildMemoryPrompt 预览) + 反馈入口(helpful/wrong) + review 队列 UI(D-INGEST 候选一键采纳/拒绝)。
+2. CasesPane 退役(cases 并入 experience)；IndicatorsPane/BusinessContextPane 作 fact 源不动。
+依赖：D-DATA/D-RETRIEVAL/D-INGEST。
+【验收】面板可管理统一记忆 + 预览注入 + 反馈 + 复核候选；web typecheck+build 绿；数据探索隔离 grep 净。
+【约束】不碰接缝层(App/constants 如需调 subtab 报总控)；不碰数据探索子树/git；回流总控终审。` },
+
+  { dom: "E", status: "todo", title: "【记忆重构·E·反馈】ChatPane 内联记忆反馈入口（阶段3）", brief:
+`来源：记忆重构阶段3 可观测闭环(接通断裂的反馈)。承接 D-DATA feedback API。
+目标：聊天中每条被注入的记忆可一键标 helpful/wrong，回填正负信号影响下次打分。
+
+【改动范围(E, ChatPane.tsx + 专题/flow chat + lib/api/engine.ts)】每条被注入记忆提供 helpful/wrong 入口 → POST D 的 /memory/feedback。
+依赖：D-DATA(feedback 端点)。
+【验收】内联反馈可提交、回填信号；web typecheck+build 绿。
+【约束】纯 E 前端；不碰数据探索子树/接缝层/git；回流总控终审。` },
+
+  { dom: "V", status: "todo", title: "【记忆重构·V·可观测】KG 关系层 + 注入检查器(Trace) + 检索失败诊断（阶段3）", brief:
+`来源：记忆重构阶段3 可观测闭环 + graph memory 趋势。承接 D-DATA/D-RETRIEVAL。
+目标：让"哪条记忆被召回、得分多少、为何省略"可见可调，KG 升级为统一记忆的关系层。
+
+【改动范围(V, knowledge-graph.ts + TracePane + KnowledgeGraphPane)】
+1. knowledge-graph.ts：改为 memory_items 之上的关系/投影层(graph memory)，并向 D 检索暴露 relevance 信号(经 GET，不跨域 import)。
+2. TracePane：注入检查器——可视化 MemoryInjectionSnapshot(召回项/score/省略原因)；检索失败诊断 → 落 memory_failure_attributions(现有表)。
+3. KnowledgeGraphPane：跟随统一 item 投影。
+依赖：D-DATA/D-RETRIEVAL。
+【验收】trace 内可见注入明细 + 失败诊断；KG 投影统一 item；web typecheck+build 绿。
+【约束】读 D 记忆走 GET 不跨域 import db；不碰接缝层/git；回流总控终审。` },
+
+  { dom: "X", status: "todo", title: "【记忆重构·X·终审】跨域集成 + baseline/memory 回归 + 闭环 E2E（收尾）", brief:
+`来源：记忆重构收尾，总控质量关口。贯穿/收尾。
+目标：三域产物拼合验证 + 实跑门禁。
+
+【改动范围(总控)】rebase 各域产物、接口对接、逐行核 types.ts 单一真源、typecheck/build 全绿。
+实跑门禁(吸取 P0-C 教训)：① 用 memory-evaluation-runner 跑 baseline vs memory(新检索) 对照；② 真机走一次「沉淀→召回→注入→反馈→影响下次打分」闭环；③ 缓存命中率不回退(稳定前缀字节不变)。
+依赖：全部域卡 done。
+【验收】跨域集成全绿 + 回归对照有数据 + 闭环 E2E 收敛 + 缓存不回退。` },
+
   { dom: "E", status: "done", title: "【模块改名·文案·E】UI 展示文案精准点改（探索→日常 / 工作流→重复）", brief:
 `✅ E 完成 + 总控终审通过（2026-06-18，独立复核 diff + 重点查误伤 + 复跑门禁）。E 交付(精准点改，非全局替换)：TokenStatsPane(session "探索"→"日常"、说明"探索、工作流"→"日常、重复")、TocPane:390(当前探索任务→日常任务)、WorkflowReadmePane(工作流模块→重复模块 / 一次性探索问题→日常问题)、FlowListColumn(标题/收起提示→重复)、Sidebar/EngineTabs/ChatPane 邻近注释、notes-engine 指代 + 模块命名映射引用 §〇。
 终审复核(边界拿捏准、误伤防线全过)：① **产物名正确保留**——TokenStatsPane flow"工作流聊天/执行"、FlowListColumn"新建/删除工作流"、WorkflowReadmePane 工作流概念正文、TocPane flow 分支"工作流"均未改(产物≠模块名，符合用户决策)；② **不动清单零误伤**——data_exploration「数据探索」label、专题「对话探索」、EDA、内部 id explore/multi、路由/DB 全未动；③ **后端零改动**(git diff server 空)；④ notes-engine 明确写"保留边界(数据探索/对话探索/EDA/workflow引擎/产物名)"，边界意识到位。

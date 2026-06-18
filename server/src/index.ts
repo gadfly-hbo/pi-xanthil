@@ -5211,7 +5211,7 @@ async function handleSend(
     return send(ws, { type: "error", sessionId: session.id, message: String(err) });
   }
 
-  const memoryInjection = buildMemoryInjectionSnapshot(session.workspaceId, msg.injectRulesPrompt, "chat");
+  const memoryInjection = buildMemoryInjectionSnapshot(session.workspaceId, msg.injectRulesPrompt, "chat", {}, { query: msg.text });
   recordMemoryInjectionUsage(session.workspaceId, memoryInjection);
 
   // Persist the user turn immediately (original text, without injected context).
@@ -5249,7 +5249,7 @@ async function handleSend(
   const textForPi = `${contextPrefix}${businessRequirementContext}${commandExpansion.expandedText}`;
 
   const systemPrompt = msg.injectRulesPrompt
-    ? withRulesPrompt(session.workspaceId, "chat", session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined)
+    ? withRulesPrompt(session.workspaceId, "chat", session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined, { query: msg.text })
     : session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined;
 
   // Fork 分支：若本 session 是未播种的分支，首轮用 --fork 从父 session 播种历史。

@@ -11,7 +11,11 @@ import { runPiTurn } from "./pi-adapter.ts";
 import { buildMemoryInjectionSnapshot, buildMemoryPrompt } from "./memory-injection.ts";
 import { collectEvent, emptyMetrics, runJudge, type EvaluationMetrics } from "./evaluation-common.ts";
 import { evaluationError, unknownEvaluationError } from "./evaluation-errors.ts";
-import type { MemoryEvaluationResult } from "./types.ts";
+import type { MemoryEvaluationResult, RetrievalContext } from "./types.ts";
+
+export function buildMemoryEvaluationRetrievalContext(prompt: string): RetrievalContext {
+  return { query: prompt.trim() };
+}
 
 export async function runMemoryEvaluation(evaluationId: string): Promise<void> {
   const evaluation = getMemoryEvaluation(evaluationId);
@@ -54,10 +58,11 @@ async function runCandidate(
   const runDir = join(evaluationRoot, result.id);
   mkdirSync(runDir, { recursive: true });
   const memoryRequested = result.variant === "memory";
-  const memorySnapshot = buildMemoryInjectionSnapshot(workspaceId, memoryRequested, targetScope);
+  const retrievalContext = buildMemoryEvaluationRetrievalContext(prompt);
+  const memorySnapshot = buildMemoryInjectionSnapshot(workspaceId, memoryRequested, targetScope, {}, retrievalContext);
 
   try {
-    const metrics = await runPi(runDir, result.id, workspaceId, result.variant, prompt, model, targetScope, memoryRequested);
+    const metrics = await runPi(runDir, result.id, workspaceId, result.variant, prompt, model, targetScope, memoryRequested, retrievalContext);
     updateMemoryEvaluationResult(result.id, {
       status: "success",
       endedAt: Date.now(),
@@ -89,10 +94,11 @@ async function runPi(
   model: string,
   targetScope: "chat" | "workflow",
   memoryRequested: boolean,
+  retrievalContext: RetrievalContext,
 ): Promise<EvaluationMetrics> {
   const metrics = emptyMetrics();
   const contextPrefix = buildOutputPathInstructions(runDir, "记忆评估运行目录");
-  const systemPrompt = memoryRequested ? buildMemoryPrompt(workspaceId, targetScope) || undefined : undefined;
+  const systemPrompt = memoryRequested ? buildMemoryPrompt(workspaceId, targetScope, {}, retrievalContext) || undefined : undefined;
   const run = runPiTurn({
     workspaceRoot: runDir,
     piSessionId: resultId,

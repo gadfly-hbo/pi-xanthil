@@ -728,7 +728,8 @@ export interface TraceTrendPoint {
   events: number;
 }
 
-export type MemorySourceKind = "businessContext" | "rules" | "standards" | "cases" | "knowledgeGraph";
+// "memory_item"：规则记忆重构 v2 统一记忆维度（D-RETRIEVAL 把召回的 memory_items 写入 snapshot.sources）。
+export type MemorySourceKind = "businessContext" | "rules" | "standards" | "cases" | "knowledgeGraph" | "memory_item";
 
 export interface MemorySourceSnapshot {
   kind: MemorySourceKind;
@@ -852,6 +853,7 @@ export type MemoryItemKind =
   | "metric"           // metric_definitions 指标记忆
   | "ontology"         // onto-xanthil：启用粒度=本体整体（P3 落地）
   | "skill"            // skill_registry 项目级 skill（全局池 + 按工作区启用）
+  | "memory_item"      // 统一记忆 memory_items（规则记忆重构 v2，全局池 + 按工作区启用）
   | "failure" | "field" | "process"; // 预留占位模块（失败/字段/流程记忆）
 
 export interface WorkspaceMemoryEnablement {
@@ -884,6 +886,79 @@ export interface MemoryFailureAttribution {
   sourceId: string | null;
   note: string;
   createdAt: number;
+}
+
+// ============================================================================
+// 统一记忆模型（规则记忆重构 v2 契约 · 2026-06-18 · 总控 X-CONTRACT）
+// clean-slate 重建：constraint/experience/episode 三类入 memory_items 表；
+// fact 由 adapter 从 business_contexts / metric_definitions / reference 文件投影，不入表。
+// 旧类型(RuleMemory/MemoryProposal/RuleConflict/AnalysisCase/MemoryUsageStats)在各域替代物落地后清理。
+// ============================================================================
+export type MemoryItemType = "constraint" | "experience" | "episode";
+export type MemoryItemSource = "manual" | "trace" | "derived";
+
+export interface MemoryRiskFlag {
+  code: "instruction_injection" | "pii" | "weak_evidence" | "overbroad";
+  severity: "low" | "medium" | "high";
+  message: string;
+}
+
+export interface MemoryItem {
+  id: string;
+  workspaceId: string;
+  type: MemoryItemType;
+  title: string;
+  body: string;
+  source: MemoryItemSource;
+  sourceEventIds: string[];
+  confidence: number;            // [0,1]
+  riskFlags: MemoryRiskFlag[];
+  validFrom: number;
+  validUntil: number | null;     // 时序衰减：过期不召回
+  supersedesId: string | null;   // 状态演化：取代旧条目（防 semantic drift）
+  usedCount: number;
+  lastUsedAt: number | null;
+  positiveSignals: number;
+  negativeSignals: number;
+  staleAfterDays: number;
+  scope: "global" | "chat" | "workflow";
+  enabled: boolean;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MemoryItemInput {
+  workspaceId: string;
+  type: MemoryItemType;
+  title: string;
+  body: string;
+  source?: MemoryItemSource;
+  sourceEventIds?: string[];
+  confidence?: number;
+  riskFlags?: MemoryRiskFlag[];
+  validUntil?: number | null;
+  supersedesId?: string | null;
+  staleAfterDays?: number;
+  scope?: "global" | "chat" | "workflow";
+}
+
+// 沉淀蒸馏候选：E 蒸馏 runner 产出 → D 门禁(风险/dedup/置信度)入库
+export interface MemoryCandidate {
+  type: MemoryItemType;
+  title: string;
+  body: string;
+  scope: "global" | "chat" | "workflow";
+  sourceEventIds: string[];
+  confidence: number;
+  riskFlags: MemoryRiskFlag[];
+}
+
+// 多信号检索入参：D-RETRIEVAL 实装打分召回。契约期冻结为注入函数末位可选参，
+// ctx 为 undefined 时注入行为不变（D 实装前的向后兼容）。
+export interface RetrievalContext {
+  query: string;
+  recentMessages?: string[];
+  dataPaths?: string[];
 }
 
 // ---- analysis standards (指标体系) ----

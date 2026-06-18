@@ -8,41 +8,44 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-18 · **专题数据三件套接入 zhuanti tab（D·渲染条件扩展）**
+- 最近更新：2026-06-19 · **记忆重构阶段2：D-INGEST 候选入库门禁 + 自动/复核分流**
 - 进度：
-  - **DataTabs.tsx 渲染条件扩展**（`web/src/tabs/DataTabs.tsx:32-43`）：
-    - 新增 `dataScopeTab = exploreOrMulti || activeTab === "zhuanti"`
-    - `draw_data` / `clean_data` / `data_exploration` 三处 pane 渲染条件从 `exploreOrMulti` 改为 `dataScopeTab`
-    - pane 与 scope 表达式不动；`ctx.folderScope` 对 zhuanti 已是 flow scope，无需改
-    - 依赖接缝卡 `ZHUANTI_SUB_TABS`（已含 draw_data/clean_data/data_exploration）
-  - **SubAgentManagementPane**（前次 session）
-  - **Command 管理前端面板**（前次 session）
-  - **LLM 接入管理前端面板**（前次 session）
-  - **hooks 管理 v2**（前次 session）
-  - **skill 管理模块**（前次 session）
+  - **D-INGEST**（本期完成）：
+    - `db/data.ts` 新增 `memory_reviews` 表（候选复核队列，供 D-PANEL 一键采纳/拒绝）
+    - 权威风险检测 `detectMemoryCandidateRisk`：覆盖 instruction_injection/pii/weak_evidence/overbroad 四类，不盲信 E 预标，本层重算
+    - dedup `findMemoryItemDuplicate`：normalize-title 同主题 + 同 type → supersede 逻辑，跳过已禁用条目
+    - 门禁主入口 `ingestMemoryCandidate`：
+      - 高危（任一 high）→ 拒绝，不写表
+      - confidence ≥ 0.75 且无 medium 风险 → 自动入库（source='derived'，enableForOrigin）
+      - 其余 → 写 memory_reviews(status='pending')
+    - review CRUD：`listMemoryReviews` / `getMemoryReview` / `acceptMemoryReview` / `rejectMemoryReview`
+    - `routes/data.ts` 新增端点：
+      - `POST /api/workspaces/:id/memory/ingest`：accepted 顶层返回 `id`（对齐 E ingester 契约）；review 返回 `reviewId`；高危返 400
+      - `GET /memory/reviews` / `POST /memory/reviews/:id/accept` / `POST /memory/reviews/:id/reject`
+    - 测试 `memory-ingest-gate.test.ts`：12 条单测覆盖 auto/reject(pii+injection)/review(weak_evidence+lowconf)/dedup(2chain+3chain)/accept/reject + 3 条 HTTP 端到端
+    - code review 修复：`findMemoryItemDuplicate` 跳过 `enabled=false` 条目，防止 3+ 候选链匹配到已禁用的旧条目
+  - **D-RETRIEVAL**（上期完成，见 git log）
+  - **D-DATA**（上期完成，见 git log）
 - 校验：
-  - `npm run typecheck`：✅ 全绿
-  - `npm run build`：✅ 全绿
+  - `npm run typecheck`：✅ 全绿（server + web）
+  - `npm run build`：✅
   - 数据探索 LLM 隔离 grep：✅ 空匹配
+  - 新测 12/12 绿；相关老测（memory-consolidation 4/4 + memory-governance 3/3）无回归
 - 下一步（接续优先级）：
-  - ① **真机联调专题数据三件套**：进 zhuanti tab 验证原始数据上传/登记 draw_data、聚合数据登记 clean_data、数据探索纯前端可用；数据落专题 flow scope、对话探索/流水线可见
-  - ② **真机联调 subagents 管理**：进「聚合→subagents管理」验证新建/编辑/启停/删除模板落 subagents.json、刷新存活、toolIds 从真实工具清单选择、dataScope 锁定 clean_data 不可改、server 丢弃非法模板时前端提示
-  - ③ **真机联调 command 管理**：验证新建/编辑/启停/删除命令落 commands.json、具名参数编辑、skillSlugs 下拉刷新
-  - ④ **真机联调 LLM 管理**：验证 provider 增删改/模型启用/默认/测试连通全链路
-  - ⑤ **委派 UI 接模板**：`DelegateSubAgentCard` 拉模板列表，允许用户选择 `templateId` 后随 delegate body 发送
-  - ⑥ **workflow 节点级 skill 集**（P1，下一卡）
-  - ⑦ **真机回归 ToolLab + tool-use 列表**（D-v2 遗留）
-  - ⑧ **hooks 管理 P1**：trace-kernel 趋势聚合、hook 按 workspace 分组、tool_call 拦截
+  - ① **总控一行改**：engine 默认 ingestPath 翻到 `/api/workspaces/:id/memory/ingest`（`routes/engine.ts:156` + `routes/engine.ts:1194`）
+  - ② **D-PANEL**：记忆管理面板（memory_items 列表/编辑/启用/反馈 UI + review 队列 UI）
+  - ③ **E-DISTILL / E-WIRING**：蒸馏 runner + 调用点对齐（依赖 D-RETRIEVAL + D-INGEST 完成）
+  - ④ **fact adapter 补强**：reference 文件若需读正文摘要（当前仅元数据）
+  - ⑤ **真机联调专题数据三件套**（前次遗留）
+  - ⑥ **真机联调 subagents/command/LLM 管理**（前次遗留）
 - 阻塞 / 待总控：
-  - `templateId` 是否需要进入 `SubAgentTask` 持久化/返回值，用于历史任务审计与 UI 展示（E 域开放问题，D 域委派 UI 需要知道此决策）
-  - `toolIds` 的实际挂载语义由谁负责：runner 直接注入 extraction tools，还是 D 面板只先做配置占位（E 域开放问题）
+  - `MemoryItemType` 联合需加 `'fact'`：当前 fact adapter 用 D 域内部 `ProjectedFactItem` 规避
+  - legacy `/memory/feedback` `/memory/injections` 与新 `/memory/items*` 共存：合并时机交总控终审
 - 开放问题：
-  - `Field` 组件在 `CommandManagementPane` 与 `SubAgentManagementPane` 中重复；下次新增 pane 时建议提为共享组件
-  - `hasExternalUrl` 前端副本与 server `coerceSubAgentTemplate` 需保持同步；server 端升级时需同步更新前端校验
-  - command 管理：`validateCommand` 的 `level: "warn"` 字段当前是死字段（所有 issue 用 `"error"`），待有 warn 级校验时启用
-  - clean_data 路径白名单（Python 端纵深防御是否补强）
-  - hooks PUT 端点无认证（本地单用户工具可接受；若未来 bind 非 localhost 需加 auth 中间件）
-  - hooks-triggers.jsonl 大文件全量读（P1 改 stream）
+  - `listMemoryReviews` 无分页（与 `listMemoryItems` 一致）；review 队列积累多时需加 `LIMIT ? OFFSET ?`
+  - `acceptMemoryReview` 与 `ingestMemoryCandidate` 共享 "create item + supersede" 模式（2 个调用点，YAGNI 暂不提取）
+  - `ProjectedFactItem` 与 `MemoryItem` 重叠字段多但类型不兼容
+  - clean_data 路径白名单 / hooks PUT 无认证 / hooks-triggers.jsonl 大文件全量读（前次遗留）
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -64,6 +67,7 @@
 | 计算工具·LLM 管理 | `LlmManagementPane.tsx` | `server/src/index.ts`(legacy) |
 | 数据探索 | `DataExplorationPane.tsx` + `data-exploration/*` · `lib/{duckdb,profiling,insights,joins}.ts` | 仅二进制文件流，**零 LLM** |
 | 指标/业务环境/rules/案例 | `IndicatorsPane` `BusinessContextPane` `RulesPane` `CasesPane` | `db/data.ts`(新) · `memory-injection.ts` |
+| 统一记忆 memory_items（v2 重构） | 待建 D-PANEL | `db/data.ts`(CRUD+fact adapter) · `routes/data.ts`(/memory/items*) |
 | Xan数据库 | `WeatherPane`(前端直连) · `IndustryPane`/`CompetitorPane`(经后端 pi) + 待建[商圈/the-crowd] | 天气=外部 API 前端直连；行业/竞品=`routes/data.ts` 的 `*/analyze` 经 `runPiPrompt` |
 
 db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端方法进 `lib/api/data.ts`。
@@ -161,6 +165,35 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - AI 提取跳过逻辑用专属列 `kg_nodes.ai_extracted_hash`（仿 `hidden` 列），不用 `tags`（sync 会覆写 tags）。
 - 知识图谱 Phase B 用原生 TS + `runPiPrompt`，放弃 LightRAG Python sidecar；图存储继续 SQLite，不迁 Kuzu。
 - 记忆注入五源：`biz_ctx → rules → standards → cases → KG`。
+- **memory_items CRUD（v2 重构阶段1, 2026-06-18）**：
+  - 全局池 + 按工作区启用：与 rule/standard/case/metric 同范式，走 `workspace_memory_enablements(item_kind='memory_item')`。`enableForOrigin` 创建时默认启用。
+  - feedback/usage 解耦：直接落 memory_items 表 `positive_signals`/`negative_signals`/`used_count`/`last_used_at` 列，不再与旧 `memory_usage_stats` 合表（item 维度自治）。
+  - `updateMemoryItem` 的 `enabled` 字段**必须**联动 `setMemoryEnablement` 同步 enablement 表——`listEnabledMemoryItems` 读的是 enablement 表，不是 item 自身 enabled 列。漏同步会导致禁用不生效。
+  - `listEnabledMemoryItems` 必须传 `workspaceId` 到 `listMemoryItems` 利用索引过滤——否则全表扫描后内存筛。
+- **fact adapter（v2 重构阶段1, 2026-06-18）**：
+  - 设计原则：实时投影、不写表、不接管生命周期。business_contexts/metric_definitions/reference 文件投影为统一 `ProjectedFactItem` 形态参与检索。
+  - 数据安全：仅投影元数据（title/content/formula/caliber/filePath/fileSize），不读 draw_data 原始行、不读 reference 文件正文。
+  - `ProjectedFactItem` 是 D 域内部类型（type='fact' 暂不入 `MemoryItemType` 联合），回流总控决议后收敛。
+  - `listProjectedFacts` 每次调用触发 6 次 DB 查询（3 类 × 各 2 次）；本地 SQLite 数据量小可接受，上生产需加缓存。
+- **/memory/items* 路由策略（v2 重构阶段1, 2026-06-18）**：
+  - 新路径 `/memory/items*` 承载 memory_item 维度 CRUD + 反馈 + 历史快照；legacy `/memory/feedback` `/memory/injections` 仍在 index.ts 不动。
+  - `/memory/items/_/injections` 用 `_` 占位段避免与 `/:itemId` 冲突；当前与 legacy 同源（trace_events 中 MemoryInjectionSnapshot），D-RETRIEVAL 写入 'memory_item' 维度后自动贯通。
+  - `parseRiskFlags` / `coerceRiskFlags` 已补 severity 白名单校验（`low|medium|high`），与 code 白名单同层；路由层复用 `coerceRiskFlags` 而非重复实现。
+  - `recordMemoryItemFeedback` 用两分支分别写死列名（`positive_signals` / `negative_signals`），避免动态 SQL 拼接——项目 SQL 风格统一用 `?` 占位符。
+- **D-RETRIEVAL 多信号检索引擎（v2 重构阶段1, 2026-06-18）**：
+  - 打分公式：`score = 0.45·relevance + 0.2·recency + 0.2·feedback + 0.15·typePriority`。权重内置常量，后续可经 `MemorySelectionPolicy` 注入。
+  - relevance：query token ∩ (title+body) token / |query|。复用 `knowledge-graph.ts` 的 `extractWords`/`sharedWordCount` 词法重叠思路（中英文 stopword + 长度≥2 过滤），零新依赖。embedding 作为后续可插拔增强。
+  - recency：半衰期 30d 指数衰减 `0.5^(age/halfLife)`。
+  - feedback：(pos-neg)/(pos+neg+1) → [0,1]，neutral=0.5。
+  - typePriority：constraint(1.0) > fact(0.85) > experience(0.6) > episode(0.4)。
+  - 治理过滤（打分前执行，不参与 score）：expired(validUntil < now 或 staleAfterDays 超时)、poison(含 high severity riskFlag)、superseded(被另一条 supersedesId 指向)、suppressed(neg ≥ pos+3)。
+  - 候选池 = `listEnabledMemoryItems`(constraint/experience/episode) ∪ `listProjectedFacts`(business_context/metric_definition/reference_file)。
+  - scope 过滤：global 通吃所有 targetScope，chat/workflow 只匹配同 scope。与旧 rules 的 scope 过滤同口径。
+  - memory_item 作为第 6 个 source kind（priority=25，介于 rules(20) 与 standards(30) 之间），prompt 块格式 `<xanthil-memory-items>...`。
+  - `MemorySelectionPolicy.memoryItemTopK` 默认 8；实际入注入数受 token 预算二次裁剪。
+  - snapshot.sources 恒定 6 项，每条 source 含 `selected/omittedReason/itemIds`；`memory_item.meta` 暴露 `candidateCount/survivedCount/filteredCount/topK/topScore` 供 V-OBS 观测。
+  - `ScoredCandidate.signals` 已计算但未暴露到 snapshot.meta——V-OBS 阶段3 注入检查器需要 per-candidate 分数时补。
+  - source 级负反馈压制与 item 级统一用 `SUPPRESS_NEG_DELTA` 常量（=3）。
 
 **Xan数据库**
 - 天气直连 Open-Meteo 公开 API（CORS 开放，无需后端代理/Key）；`echarts-for-react` 出图；预置城市 + Geocoding 双模式选城。

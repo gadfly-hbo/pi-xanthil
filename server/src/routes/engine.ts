@@ -1,4 +1,4 @@
-import express, { Router } from "express";
+import express, { Router, type Request } from "express";
 import multer from "multer";
 import type { WebSocket } from "ws";
 import { dirname, resolve, join, sep } from "node:path";
@@ -39,6 +39,7 @@ import { buildRegisteredPathContext } from "../output-paths.ts";
 import { standardDirIn } from "../workspace-dirs.ts";
 import { readWorkflow, runMultiAgent, topoOrder } from "../multi-agent-runner.ts";
 import { runPiPrompt, runPiTurn } from "../pi-adapter.ts";
+import { postMemoryCandidateToDIngest, runMemoryConsolidation, type MemoryConsolidationTargetKind } from "../memory-consolidation.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
 import type { ClientMessage, Flow, PiEvent, Session } from "../types.ts";
@@ -52,7 +53,7 @@ import { autoTriggerCuration } from "../skill-curator.ts";
 import { retrieveSkills, rankSkillSimilarity } from "../skill-retrieval.ts";
 import { analyzeSkillCoverageGaps, type SkillCoverageGapCluster, type SkillCoverageTask } from "../skill-coverage-gap.ts";
 import { expandCommand } from "../command-expand.ts";
-import { COMMANDS_CONFIG_PATH, FAVORITES_ROOT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
+import { COMMANDS_CONFIG_PATH, FAVORITES_ROOT, PORT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
 import type { SkillRegistryConflict, SkillRegistryConflictsResult, SkillRegistryEntry, SkillSource, SkillStatus, XanCommand, XanCommandParam, XanCommandParamType } from "../types.ts";
 import {
   maybeRunSkillVersionRetest,
@@ -130,6 +131,42 @@ function ensureLatestZhuantiTask(workspaceId: string, name?: string, sessionTitl
     flow,
     session: findSessionByWorkflowId(workspaceId, flow.id) ?? createSession(workspaceId, `${flow.name} · 对话探索`, flow.id),
   };
+}
+
+function memoryConsolidationAutoEnabled(): boolean {
+  return process.env.XANTHIL_MEMORY_CONSOLIDATION_AUTO === "1";
+}
+
+function maybeTriggerFlowMemoryConsolidation(input: {
+  workspace: { id: string; rootPath: string };
+  flow: Flow;
+  targetKind: Extract<MemoryConsolidationTargetKind, "flow" | "flow_run">;
+  targetId: string;
+  traceRunId?: string;
+}): void {
+  if (!memoryConsolidationAutoEnabled()) return;
+  const baseUrl = `http://127.0.0.1:${PORT}`;
+  void runMemoryConsolidation({
+    workspaceId: input.workspace.id,
+    workspaceRoot: input.workspace.rootPath,
+    targetKind: input.targetKind,
+    targetId: input.targetId,
+    dryRun: false,
+    timeoutMs: 180_000,
+    // 总控协调（D-INGEST 落地后）：默认走门禁端点 /memory/ingest（风险/dedup/置信度→自动入库 or review），不再直写 /memory/items。
+    ingestCandidate: (candidate, context) => postMemoryCandidateToDIngest(baseUrl, "/api/workspaces/:id/memory/ingest", candidate, context),
+    onEvent: (event) => trackUsageEvent({
+      workspaceId: input.workspace.id,
+      targetKind: input.targetKind,
+      targetId: input.targetId,
+      title: `自动记忆沉淀：${input.flow.name}`,
+    }, event),
+  }).catch((err) => {
+    traceFlowEvent(input.flow.id, "memory_consolidation_failed", "failed", String(err), {
+      targetKind: input.targetKind,
+      targetId: input.targetId,
+    }, input.traceRunId);
+  });
 }
 
 // ---- flow CRUD / 文件 / run 只读路由（T-C2a 从 index.ts 迁入，只搬不改）----
@@ -710,6 +747,36 @@ engineRouter.post("/api/workspaces/:id/skill-coverage-gaps/distill", async (req,
   res.json({ workspaceId: workspace.id, clusterId: parsed.value.cluster.id, dryRun: parsed.value.dryRun, result });
 });
 
+engineRouter.post("/api/workspaces/:id/memory/consolidate", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseMemoryConsolidationBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const baseUrl = requestBaseUrl(req);
+  try {
+    const result = await runMemoryConsolidation({
+      workspaceId: workspace.id,
+      workspaceRoot: workspace.rootPath,
+      targetKind: parsed.value.targetKind,
+      targetId: parsed.value.targetId,
+      model: parsed.value.model,
+      dryRun: parsed.value.dryRun,
+      timeoutMs: parsed.value.timeoutMs,
+      maxCandidates: parsed.value.maxCandidates,
+      onEvent: (event) => trackUsageEvent({
+        workspaceId: workspace.id,
+        targetKind: parsed.value.targetKind,
+        targetId: parsed.value.targetId,
+        title: `记忆沉淀：${parsed.value.targetKind}`,
+      }, event),
+      ingestCandidate: (candidate, context) => postMemoryCandidateToDIngest(baseUrl, parsed.value.ingestPath, candidate, context),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
 // 方式2：AI 改写——基于用户「修改说明」对给定 SKILL.md 内容做最小修改，返回改写结果供预览，
 // 不写盘/不建版本（保存仍走既有「保存为新版本」）。operate on 请求体提供的 content（即编辑框当前文本），
 // 既可改原文也可改用户未保存的草稿。
@@ -1035,6 +1102,21 @@ type ParsedSkillCoverageGapDistill =
   }
   | { ok: false; error: string };
 
+type ParsedMemoryConsolidation =
+  | {
+    ok: true;
+    value: {
+      targetKind: MemoryConsolidationTargetKind;
+      targetId: string;
+      model?: string;
+      dryRun: boolean;
+      timeoutMs: number;
+      maxCandidates: number;
+      ingestPath: string;
+    };
+  }
+  | { ok: false; error: string };
+
 function parseSkillAutoDistillBody(body: unknown): ParsedSkillAutoDistill {
   const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
   const now = Date.now();
@@ -1092,6 +1174,46 @@ function parseSkillCoverageGapDistillBody(body: unknown): ParsedSkillCoverageGap
   if (!Number.isFinite(duplicateThreshold) || duplicateThreshold <= 0) return { ok: false, error: "duplicateThreshold must be positive" };
   const model = String(raw.model ?? "").trim() || undefined;
   return { ok: true, value: { cluster, model, dryRun: raw.dryRun === true, timeoutMs, duplicateThreshold } };
+}
+
+function parseMemoryConsolidationBody(body: unknown): ParsedMemoryConsolidation {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  const targetKind = raw.targetKind;
+  if (targetKind !== "session" && targetKind !== "flow" && targetKind !== "flow_run") {
+    return { ok: false, error: "targetKind must be session | flow | flow_run" };
+  }
+  const targetId = String(raw.targetId ?? "").trim();
+  if (!targetId) return { ok: false, error: "targetId is required" };
+  const timeoutMs = raw.timeoutMs === undefined ? 180_000 : Number(raw.timeoutMs);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 10_000 || timeoutMs > 600_000) {
+    return { ok: false, error: "timeoutMs must be an integer between 10000 and 600000" };
+  }
+  const maxCandidates = raw.maxCandidates === undefined ? 6 : Number(raw.maxCandidates);
+  if (!Number.isInteger(maxCandidates) || maxCandidates < 1 || maxCandidates > 12) {
+    return { ok: false, error: "maxCandidates must be an integer between 1 and 12" };
+  }
+  const ingestPath = String(raw.ingestPath ?? "").trim() || "/api/workspaces/:id/memory/ingest";
+  if (!ingestPath.startsWith("/") || ingestPath.startsWith("//")) {
+    return { ok: false, error: "ingestPath must be a local absolute API path" };
+  }
+  const model = String(raw.model ?? "").trim() || undefined;
+  return {
+    ok: true,
+    value: {
+      targetKind,
+      targetId,
+      model,
+      dryRun: raw.dryRun === true,
+      timeoutMs,
+      maxCandidates,
+      ingestPath,
+    },
+  };
+}
+
+function requestBaseUrl(req: Request): string {
+  const host = req.get("host") || `127.0.0.1:${PORT}`;
+  return `${req.protocol || "http"}://${host}`;
 }
 
 function parseSince(value: unknown, fallback: number): number {
@@ -1979,6 +2101,9 @@ export async function handleSendFlow(
     }
     traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : code === 0 ? "success" : "failed", code === 0 ? null : `pi exited with code ${String(code)}`, { code, aborted: active.aborted });
     send(ws, { type: "run_end", flowId: flow.id, code, aborted: active.aborted });
+    if (code === 0 && !active.aborted && workspace) {
+      maybeTriggerFlowMemoryConsolidation({ workspace, flow, targetKind: "flow", targetId: flow.id });
+    }
   } finally {
     if (activeFlowRuns.get(flow.id) === active) activeFlowRuns.delete(flow.id);
   }
@@ -2120,6 +2245,9 @@ export async function handleExecuteMultiAgent(
     }
     traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : result.code === 0 ? "success" : "failed", result.code === 0 ? null : `multi-agent exited with code ${String(result.code)}`, { code: result.code, aborted: active.aborted }, runRow.id);
     send(ws, { type: "run_end", flowId: flow.id, runId: clientRunId, code: result.code, aborted: active.aborted });
+    if (result.code === 0 && !active.aborted && workspace) {
+      maybeTriggerFlowMemoryConsolidation({ workspace, flow, targetKind: "flow_run", targetId: runRow.id, traceRunId: runRow.id });
+    }
   } catch (err) {
     if (activeMultiAgentRuns.get(clientRunId) === active) activeMultiAgentRuns.delete(clientRunId);
     finishFlowRun(runRow.id, active.aborted ? "aborted" : "failed");

@@ -2,7 +2,26 @@ import { Router } from "express";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { extname, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { listWorkspacePaths, getWorkspacePath, getWorkspace } from "../db.ts";
+import { listWorkspacePaths, getWorkspacePath, getWorkspace, listMemoryInjectionRecords } from "../db.ts";
+import {
+  createMemoryItem,
+  getMemoryItem,
+  listMemoryItems,
+  listEnabledMemoryItems,
+  updateMemoryItem,
+  deleteMemoryItem,
+  recordMemoryItemFeedback,
+  listProjectedFacts,
+  coerceRiskFlags,
+  ingestMemoryCandidate,
+  listMemoryReviews,
+  getMemoryReview,
+  acceptMemoryReview,
+  rejectMemoryReview,
+  type MemoryItemPatch,
+  type MemoryIngestInput,
+  type MemoryReview,
+} from "../db/data.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
@@ -19,6 +38,8 @@ import type {
   HookActionKind,
   HookMatch,
   HookTriggerRecord,
+  MemoryItemInput,
+  MemoryItemType,
 } from "../types.ts";
 
 /**
@@ -628,4 +649,270 @@ dataRouter.get("/api/hooks/triggers", (req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err) });
   }
+});
+
+// ── 统一记忆 memory_items（规则记忆重构 v2 · D-DATA 实装） ──
+//
+// 路径策略：legacy /memory/feedback /memory/injections 仍挂在 index.ts 不动；本卡新增
+// /memory/items* 系列承载新模型 memory_item 维度的 CRUD + 反馈 + 历史快照。等 D-RETRIEVAL
+// 把 'memory_item' 写入 MemoryInjectionSnapshot.sources 后，本端点自然贯通。
+//
+// 数据安全：memory_items 已是 LLM 可读的衍生记忆条目，title/body 由 D-INGEST 风险门禁
+// 把关；本路由不读 draw_data。fact adapter 投影同样不接触原始数据。
+
+const VALID_MEM_TYPES: ReadonlySet<MemoryItemType> = new Set(["constraint", "experience", "episode"]);
+
+function asStringArr(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : [];
+}
+
+function parseMemoryItemInput(workspaceId: string, body: unknown): { ok: true; value: MemoryItemInput } | { ok: false; error: string } {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const type = b.type;
+  if (typeof type !== "string" || !VALID_MEM_TYPES.has(type as MemoryItemType)) {
+    return { ok: false, error: "type must be one of: constraint | experience | episode" };
+  }
+  const title = typeof b.title === "string" ? b.title.trim() : "";
+  if (!title) return { ok: false, error: "title required" };
+  const bodyText = typeof b.body === "string" ? b.body : "";
+  const source = b.source === "trace" || b.source === "derived" || b.source === "manual" ? b.source : undefined;
+  const scope = b.scope === "chat" || b.scope === "workflow" || b.scope === "global" ? b.scope : undefined;
+  const confidence = typeof b.confidence === "number" ? b.confidence : undefined;
+  const validUntil = b.validUntil === null ? null : (typeof b.validUntil === "number" ? b.validUntil : undefined);
+  const supersedesId = b.supersedesId === null ? null : (typeof b.supersedesId === "string" ? b.supersedesId : undefined);
+  const staleAfterDays = typeof b.staleAfterDays === "number" ? b.staleAfterDays : undefined;
+  return {
+    ok: true,
+    value: {
+      workspaceId,
+      type: type as MemoryItemType,
+      title,
+      body: bodyText,
+      source,
+      sourceEventIds: asStringArr(b.sourceEventIds),
+      confidence,
+      riskFlags: coerceRiskFlags(b.riskFlags),
+      validUntil,
+      supersedesId,
+      staleAfterDays,
+      scope,
+    },
+  };
+}
+
+dataRouter.get("/api/workspaces/:id/memory/items", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const typeQ = typeof req.query.type === "string" ? req.query.type : undefined;
+  const type = typeQ && VALID_MEM_TYPES.has(typeQ as MemoryItemType) ? (typeQ as MemoryItemType) : undefined;
+  const enabledOnly = req.query.enabledOnly === "1" || req.query.enabledOnly === "true";
+  const includeFacts = req.query.includeFacts === "1" || req.query.includeFacts === "true";
+  const items = enabledOnly
+    ? listEnabledMemoryItems(req.params.id, type)
+    : listMemoryItems({ workspaceId: req.params.id, type });
+  // fact 投影由 query 控；默认不混入，避免 PANEL 误把投影当作可写 item。
+  const facts = includeFacts ? listProjectedFacts(req.params.id) : [];
+  res.json({ items, facts });
+});
+
+dataRouter.post("/api/workspaces/:id/memory/items", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseMemoryItemInput(req.params.id, req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    res.json(createMemoryItem(parsed.value));
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/memory/items/:itemId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const item = getMemoryItem(req.params.itemId);
+  if (!item) return res.status(404).json({ error: "memory item not found" });
+  if (item.workspaceId !== req.params.id) return res.status(403).json({ error: "memory item belongs to another workspace" });
+  res.json(item);
+});
+
+dataRouter.patch("/api/workspaces/:id/memory/items/:itemId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getMemoryItem(req.params.itemId);
+  if (!existing) return res.status(404).json({ error: "memory item not found" });
+  if (existing.workspaceId !== req.params.id) return res.status(403).json({ error: "memory item belongs to another workspace" });
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const patch: MemoryItemPatch = {};
+  if (typeof b.title === "string") patch.title = b.title;
+  if (typeof b.body === "string") patch.body = b.body;
+  if (typeof b.type === "string") {
+    if (!VALID_MEM_TYPES.has(b.type as MemoryItemType)) {
+      return res.status(400).json({ error: "invalid type" });
+    }
+    patch.type = b.type as MemoryItemType;
+  }
+  if (typeof b.confidence === "number") patch.confidence = b.confidence;
+  if (Array.isArray(b.riskFlags)) patch.riskFlags = coerceRiskFlags(b.riskFlags);
+  if (Array.isArray(b.sourceEventIds)) patch.sourceEventIds = asStringArr(b.sourceEventIds);
+  if (b.validUntil === null || typeof b.validUntil === "number") patch.validUntil = b.validUntil;
+  if (b.supersedesId === null || typeof b.supersedesId === "string") patch.supersedesId = b.supersedesId;
+  if (typeof b.staleAfterDays === "number") patch.staleAfterDays = b.staleAfterDays;
+  if (b.scope === "global" || b.scope === "chat" || b.scope === "workflow") patch.scope = b.scope;
+  if (typeof b.enabled === "boolean") patch.enabled = b.enabled;
+  try {
+    const updated = updateMemoryItem(req.params.itemId, patch);
+    if (!updated) return res.status(404).json({ error: "memory item not found" });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.delete("/api/workspaces/:id/memory/items/:itemId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getMemoryItem(req.params.itemId);
+  if (!existing) return res.status(404).json({ error: "memory item not found" });
+  if (existing.workspaceId !== req.params.id) return res.status(403).json({ error: "memory item belongs to another workspace" });
+  const ok = deleteMemoryItem(req.params.itemId);
+  res.json({ ok });
+});
+
+// /memory/items/:itemId/feedback —— 接 recordMemoryFeedback 语义但目标维度=memory_item
+// （旧 sourceKind 维度仍由 index.ts 的 legacy /memory/feedback 处理）。
+dataRouter.post("/api/workspaces/:id/memory/items/:itemId/feedback", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getMemoryItem(req.params.itemId);
+  if (!existing) return res.status(404).json({ error: "memory item not found" });
+  if (existing.workspaceId !== req.params.id) return res.status(403).json({ error: "memory item belongs to another workspace" });
+  const signal = req.body?.signal;
+  if (signal !== "positive" && signal !== "negative") {
+    return res.status(400).json({ error: "signal must be positive or negative" });
+  }
+  const updated = recordMemoryItemFeedback(req.params.itemId, signal);
+  if (!updated) return res.status(404).json({ error: "memory item not found" });
+  res.json(updated);
+});
+
+// /memory/items/_/injections —— 历史快照。当前与 legacy /memory/injections 同源（trace_events 中
+// MemoryInjectionSnapshot），D-RETRIEVAL 把 memory_item 写进 snapshot.sources 后即贯通。
+// 路径中以 `_` 占位避免与 /memory/items/:itemId 冲突。
+dataRouter.get("/api/workspaces/:id/memory/items/_/injections", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50) || 50));
+  res.json(listMemoryInjectionRecords(req.params.id, limit));
+});
+
+
+// ============================================================================
+// 候选记忆入库门禁端点（D-INGEST · 阶段2）
+// ----------------------------------------------------------------------------
+// E 蒸馏 runner 通过本端点写入候选, 门禁返回:
+//   - 200 + { id, ... }       自动入库 (E 据此记 itemId)
+//   - 200 + { reviewId, ... } 进入复核队列 (E 视为治理保留, 不算失败)
+//   - 400 + { error }         高危拒绝 / 字段非法
+//
+// 总控协调: 把 engine 默认 ingestPath 翻到 /api/workspaces/:id/memory/ingest
+// (engine 调用点归 E, 见 routes/engine.ts:156 + 1194 默认值).
+// ============================================================================
+
+const VALID_TYPES_INGEST: ReadonlySet<MemoryItemType> = new Set(["constraint", "experience", "episode"]);
+const VALID_SCOPES_INGEST = new Set(["global", "chat", "workflow"] as const);
+
+function parseIngestBody(workspaceId: string, body: unknown): { ok: true; value: MemoryIngestInput } | { ok: false; error: string } {
+  const b = (body ?? {}) as Record<string, unknown>;
+  const type = b.type;
+  if (typeof type !== "string" || !VALID_TYPES_INGEST.has(type as MemoryItemType)) {
+    return { ok: false, error: "type must be one of: constraint | experience | episode" };
+  }
+  const title = typeof b.title === "string" ? b.title.trim() : "";
+  if (!title) return { ok: false, error: "title required" };
+  const bodyText = typeof b.body === "string" ? b.body : "";
+  if (!bodyText.trim()) return { ok: false, error: "body required" };
+  const scopeRaw = typeof b.scope === "string" ? b.scope : "global";
+  const scope = (VALID_SCOPES_INGEST as ReadonlySet<string>).has(scopeRaw)
+    ? (scopeRaw as MemoryIngestInput["scope"])
+    : "global";
+  const sourceEventIds = Array.isArray(b.sourceEventIds)
+    ? b.sourceEventIds.filter((x): x is string => typeof x === "string")
+    : [];
+  const confidence = typeof b.confidence === "number" && Number.isFinite(b.confidence)
+    ? Math.max(0, Math.min(1, b.confidence))
+    : 0.5;
+  const targetKind = typeof b.targetKind === "string" ? b.targetKind : null;
+  const targetId = typeof b.targetId === "string" ? b.targetId : null;
+  return {
+    ok: true,
+    value: {
+      workspaceId,
+      type: type as MemoryItemType,
+      title,
+      body: bodyText,
+      scope,
+      sourceEventIds,
+      confidence,
+      riskFlags: coerceRiskFlags(b.riskFlags),
+      targetKind,
+      targetId,
+    },
+  };
+}
+
+dataRouter.post("/api/workspaces/:id/memory/ingest", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseIngestBody(req.params.id, req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const verdict = ingestMemoryCandidate(parsed.value);
+    if (verdict.kind === "rejected") {
+      return res.status(400).json({ error: verdict.reason, riskFlags: verdict.riskFlags });
+    }
+    if (verdict.kind === "review") {
+      return res.json({
+        status: "review",
+        reviewId: verdict.review.id,
+        review: verdict.review,
+      });
+    }
+    // accepted —— 与 E ingester 契约对齐: 顶层 id = memory_item.id
+    return res.json({
+      id: verdict.item.id,
+      status: "accepted",
+      item: verdict.item,
+      supersededId: verdict.supersededId,
+      riskFlags: verdict.riskFlags,
+      confidence: verdict.confidence,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+// ---- review 队列端点 (供 D-PANEL 一键采纳/拒绝) ----
+
+dataRouter.get("/api/workspaces/:id/memory/reviews", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const statusQ = typeof req.query.status === "string" ? req.query.status : undefined;
+  const status: MemoryReview["status"] | undefined =
+    statusQ === "pending" || statusQ === "accepted" || statusQ === "rejected" ? statusQ : undefined;
+  res.json(listMemoryReviews(req.params.id, status));
+});
+
+dataRouter.post("/api/workspaces/:id/memory/reviews/:reviewId/accept", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getMemoryReview(req.params.reviewId);
+  if (!existing) return res.status(404).json({ error: "review not found" });
+  if (existing.workspaceId !== req.params.id) return res.status(403).json({ error: "review belongs to another workspace" });
+  if (existing.status !== "pending") return res.status(409).json({ error: `review already ${existing.status}` });
+  const out = acceptMemoryReview(req.params.reviewId);
+  if (!out) return res.status(500).json({ error: "failed to accept review" });
+  res.json(out);
+});
+
+dataRouter.post("/api/workspaces/:id/memory/reviews/:reviewId/reject", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getMemoryReview(req.params.reviewId);
+  if (!existing) return res.status(404).json({ error: "review not found" });
+  if (existing.workspaceId !== req.params.id) return res.status(403).json({ error: "review belongs to another workspace" });
+  if (existing.status !== "pending") return res.status(409).json({ error: `review already ${existing.status}` });
+  const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
+  const out = rejectMemoryReview(req.params.reviewId, reason);
+  if (!out) return res.status(500).json({ error: "failed to reject review" });
+  res.json(out);
 });
