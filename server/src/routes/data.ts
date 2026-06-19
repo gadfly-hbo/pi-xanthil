@@ -24,6 +24,7 @@ import {
 } from "../db/data.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
+import { buildMemoryPrompt } from "../memory-injection.ts";
 import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
 import type {
   BiAggregationDataset,
@@ -797,6 +798,34 @@ dataRouter.get("/api/workspaces/:id/memory/items/_/injections", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   const limit = Math.min(200, Math.max(1, Number(req.query.limit ?? 50) || 50));
   res.json(listMemoryInjectionRecords(req.params.id, limit));
+});
+
+// /memory/preview —— D-PANEL 注入预览：薄壳调 buildMemoryPrompt，返回字符数 + token 估算 + 启用条目数。
+// 用于面板侧实时预览"如果现在发起一次 chat / workflow 会注入什么"，不写库不发 LLM。
+dataRouter.get("/api/workspaces/:id/memory/preview", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const targetScopeRaw = typeof req.query.targetScope === "string" ? req.query.targetScope : "chat";
+  const targetScope: "chat" | "workflow" = targetScopeRaw === "workflow" ? "workflow" : "chat";
+  const query = typeof req.query.query === "string" ? req.query.query : "";
+  const ctx = query ? { query } : undefined;
+  let prompt: string;
+  try {
+    prompt = buildMemoryPrompt(req.params.id, targetScope, {}, ctx);
+  } catch (err) {
+    return res.status(500).json({ error: "failed to build memory prompt" });
+  }
+  const charCount = prompt.length;
+  // 与 memory-injection.ts 估算口径一致：~4 chars/token（粗算，仅用于 UI 展示）。
+  const tokenEstimate = Math.ceil(charCount / 4);
+  const enabled = listEnabledMemoryItems(req.params.id);
+  const facts = listProjectedFacts(req.params.id);
+  res.json({
+    prompt,
+    charCount,
+    tokenEstimate,
+    itemCount: enabled.length,
+    factCount: facts.filter((f) => f.enabled).length,
+  });
 });
 
 

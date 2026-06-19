@@ -7,27 +7,21 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-18 · 记忆重构 E-DISTILL：`memory-consolidation` trace 蒸馏 runner + 显式触发端点。
+- 最近更新：2026-06-19 · 记忆重构 E 阶段3：KG 投影层重构 + 可观测 Trace 面板补齐
 - 进度：
-  - **E-DISTILL 已完成**：新增 `server/src/memory-consolidation.ts`，从 `session | flow | flow_run` trace timeline + `generateTraceRuleSuggestions` 信号构造 prompt，LLM 输出严格 coerce 为 `MemoryCandidate[]`。
-  - **D API 写入边界已落地**：runner 不 import `db/data.ts`，非 dry-run 通过 `postMemoryCandidateToDIngest()` POST 到 D 路由；当前默认使用现有 `/api/workspaces/:id/memory/items`，候选转 `source:"trace"` 的 memory item。
-  - **显式触发端点已接入**：`POST /api/workspaces/:id/memory/consolidate` 支持 `targetKind/targetId/model/dryRun/timeoutMs/maxCandidates/ingestPath`，主验收路径走显式调用。
-  - **自动 hook 默认关闭**：flow chat 与 multi-agent run 成功完成后接了 `maybeTriggerFlowMemoryConsolidation()`，但只有 `XANTHIL_MEMORY_CONSOLIDATION_AUTO=1` 时才 fire-and-forget 触发；session 完成逻辑在 `index.ts`，本卡按约束未碰。
-  - **回归测试已补**：`memory-consolidation.test.ts` 覆盖候选 shape、风险/置信度 coerce、dryRun、不跨域 fake ingest，以及真实 `dataRouter` 本地 HTTP POST 到 D memory item API 成功落库。
-  - **边界保持**：只改 E slot 新 runner、E router 和测试；未碰 `index.ts` / `db.ts` / `types.ts` / `api.ts` / `constants.ts` / `App.tsx`，未碰数据探索子树或 git。
+  - **KG 作为 memory_items 纯投影**：`syncKnowledgeGraph` 已修改，KG 现在不再是孤立的单点状态，而是被重构成了 `memory_items` 的关系映射（projection layer）。
+  - **D/E 隔离查询与内部接口**：通过 `routes/engine.ts` 暴露了 `/api/workspaces/:id/kg/relevance` 和 `/api/workspaces/:id/kg/prompt` 端点。D 层需要 KG 打分信号或 Prompt 时，强制走内部 GET 请求，彻底避免了跨域直接 import db 造成的循环依赖问题。
+  - **Trace 面板诊断闭环**：在 `TracePane.tsx` 中补齐了「记忆注入检查器」(`MemoryInjectionSnapshot`) 和「检索失败诊断」(`MemoryFailureAttributions`)。这两类数据可视化与原有的 Trace Timeline 和 Rule Extraction 并列展示，统一了 UI 的网格结构，解除了重构初期的 DOM 异常。
 - 校验：
-  - `node --experimental-strip-types --test server/src/memory-consolidation.test.ts server/src/memory-evaluation.test.ts server/src/memory-retrieval.test.ts` ✅（14 tests）
   - `npm run typecheck` ✅（server + web）
-  - `npm run build` ✅（仅既有 Vite chunk-size / dynamic import warning）
+  - `npm run build` ✅（构建成功）
 - 下一步：
-  - **总控终审**：确认在 D-INGEST 专用端点缺席时，E 先 POST 现有 D `/memory/items` API 的联调口径是否作为阶段2临时方案保留。
-  - **真实 LLM smoke**：用一个有 trace 的 session/flow 调 `POST /api/workspaces/:id/memory/consolidate`，确认真实模型输出可解析、候选有质量、POST D API 成功；本 session 未启动真实 pi。
-  - **D-INGEST 对接**：D 专用 ingest/门禁端点回流后，把端点默认 `ingestPath` 从 `/memory/items` 切到新端点，保留本地 absolute API path 限制。
-  - **session 完成 hook**：普通 session 完成逻辑仍在 `index.ts`，本卡未碰；若要自动从 session 结束沉淀，需要总控在接缝层补 hook 或迁移到 E router。
+  - **总控终审**：复核 KG 重构模式与 Trace 视觉呈现是否完全符合预期；检查 D 域读取 E 域内部端点这一解耦方案是否满足长效架构约定。
+  - **全面 E2E 测试**：结合更新的检索诊断面板，进行真实复杂的对话/Workflow 推理，看各种 edge cases 下的失败归因和 topScore 分布能否在 Trace 面板被清晰溯源。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/用户拍板）：
-  - D-INGEST 专用端点缺席期间，是否允许继续把候选逐条 POST 到 `/api/workspaces/:id/memory/items`，还是必须默认 `dryRun` 等 D-INGEST 回流后再写入。
-  - 是否由总控在 `index.ts` 的 session `run_end` 成功路径接 session 自动沉淀 hook；E 当前只能提供显式端点和 flow 侧 env-gated hook。
+  - 目前 D 层向 E 层获取 `kg/relevance` 采用了带 URL 参数的 HTTP GET 接口。如果是高并发或极大量的 query 请求，这种方式的 overhead 可能会显现。未来是否需要一个更高性能的本地跨域消息总线（在不破坏领域边界的前提下）？
+  - KG 删除/同步时的安全兜底策略已通过 `safe-sync` 控制，如果遇到大量 memory_items 并发增删的场景，同步任务可能会拥堵，是否需要引入防抖或队列调度？
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -104,6 +98,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **command 管理契约（2026-06-16，X 接缝卡 / 详见 docs/wiki.html「command 管理」卡）**：实证 pi 在 `-p` positional 模式**不展开** prompt 里的 `/command`（slash 是交互式 TUI/RPC 特性、`ctx.hasUI` 在 `-p` 为 false），故 command = **pi-xanthil 自有注册表 + 服务端 prompt 展开器**，不依赖 pi 扩展。真源 `COMMANDS_CONFIG_PATH=commands.json`（与 hooks.json 同为单文件、不进 `ensureDirs`、缺失=无命令安全降级）。双侧 `types.ts` 契约：`XanCommand{id,name,enabled,description?,argumentHint?,template,params?,skillSlugs?,source:"custom"}` + `XanCommandParam{key,label,required?,type?,options?,source?}`。**展开占位语法（注册表UI/展开器/向导前端三方共用，不得各拍）**：`{{args}}`=参数原文、`{{1}}{{2}}`=位置参（空白切分、引号整体）、`{{param.key}}`=具名参；**具名参数命令行编码** `/name --key=value`（值含空格用双引号），未提供占位替换为空串。**接缝边界**：向导传参走现有 `text` 通道编码、**不新增 `ClientMessage` 字段**；展开在服务端单点（`command-expand.ts`，E 后端卡），前端不自行展开。下游：E 后端卡（展开器+`/api/commands`+`index.ts:4900` 集成）、D 注册表卡（`CommandManagementPane`）、E 向导卡（ChatPane `/` 补全+表单）。
 - **command 后端实现边界（2026-06-16，E 卡）**：`command-expand.ts` 是展开唯一纯函数；普通 chat 与 flow chat 都必须在拼接 context 后的用户原文位置替换为 `expandedText`，但 transcript/trace 继续保存原始 `/cmd`，保持 UI 行为可追溯。`skillSlugs` 不是 pi 参数，必须先解析为 workspace project skill 路径 `<workspace>/.pi/skills/<slug>/SKILL.md`，再和显式 `skillPaths` 合并走 `validateSkillPaths`；禁止把 slug 直接传给 pi。`/api/commands` 写入端只收 `source:"custom"` 和白名单字段，`template` 只作为 prompt 文本存储，不执行 shell；`PUT` 限 localhost 来源。
 - **command 向导前端边界（2026-06-16，E 卡）**：ChatPane `/` 补全只能消费 `GET /api/commands` 的 enabled commands，不在前端构造/展开 prompt。无 `params` 命令只插入 `/${name} `；有 `params` 命令弹 React 表单并在提交时编码为现有 text：`/name --key=value`。`type:"file" + source:"clean_data"` 只拉登记路径列表并提交 `WorkspacePath.path`，不读取文件内容、不发送数据样本/列名/剖析结果给任何 LLM。表单 required 校验是用户体验层，权威展开仍是 server `command-expand.ts`。
+- **跨域数据查询隔离规范（2026-06-19）**：为了避免子系统之间相互引用 DB 文件导致的循环依赖与类型接缝污染，D 域等其他域查询 E 域的记忆特征（如 `knowledge-graph` 的打分与 Prompt）时，**禁止跨域 import** `server/src/knowledge-graph.ts` 的底层读写函数。统一规范通过暴露内网 GET API 接口（如 `/api/workspaces/:id/kg/relevance`）并通过 `fetch` 进行跨域通信，这确保了各域可独立测试，且边界坚固。
 
 ---
 
@@ -171,8 +166,10 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
 - **memory evaluation runner 检索上下文单一真源（2026-06-18 E-EVAL）**：baseline vs memory 评估必须用同一 evaluation prompt 构造 `RetrievalContext`（当前 `query = prompt.trim()`），并把同一个 ctx 同时传给 `buildMemoryInjectionSnapshot(..., {}, ctx)` 与 `buildMemoryPrompt(..., {}, ctx)`。否则 snapshot 中看到的候选/命中可能与实际 pi system prompt 不一致，评估数据会失真。baseline candidate 仍只记录 `requested:false` snapshot，不注入 memory；memory candidate 走 `memory_item` 新检索。runner 读记忆只经 `memory-injection.ts`，不要为了评估直接 import D 的 db CRUD。
-- **memory consolidation 写入边界（2026-06-18 E-DISTILL）**：`memory-consolidation.ts` 负责 trace→`MemoryCandidate[]` 蒸馏与候选 coerce，但**不直接 import D 的 `db/data.ts` 写表**；非 dry-run 只能通过 D HTTP API 写入。D-INGEST 专用端点尚未回流时，临时默认 POST `/api/workspaces/:id/memory/items`，发送 `source:"trace"` + candidate 字段；后续 D-INGEST 回流后只切默认 `ingestPath`，runner 结构不变。`ingestPath` 必须是本地 absolute API path，禁止外部 URL，避免把 server 变成任意 POST 代理。
-- **memory consolidation 自动触发口径（2026-06-18 E-DISTILL）**：显式端点 `POST /api/workspaces/:id/memory/consolidate` 是主验收路径；flow chat / multi-agent 成功完成后的自动 hook 默认关闭，仅 `XANTHIL_MEMORY_CONSOLIDATION_AUTO=1` 才 fire-and-forget 触发。普通 session 完成逻辑仍在 `index.ts`，E 卡未碰接缝层；若要 session 结束自动沉淀，需要总控接 hook 或迁移 session send 逻辑。
+- **memory consolidation 写入边界（2026-06-19 E-DISTILL）**：`memory-consolidation.ts` 负责 trace→`MemoryCandidate[]` 蒸馏与候选 coerce，但**不直接 import D 的 `db/data.ts` 写表**；非 dry-run 只能通过 D HTTP API 写入。显式端点与自动 hook 默认 POST `/api/workspaces/:id/memory/ingest`，由 D 负责 risk/dedup/confidence 门禁；`ingestPath` 必须是本地 absolute API path，禁止外部 URL，避免把 server 变成任意 POST 代理。
+- **workflow memory ctx 与自动沉淀口径（2026-06-19 E-WIRE）**：同一次 run 的注入审计 snapshot 与实际 system prompt 必须共用同一个 `RetrievalContext`，否则命中记录和真实注入会漂移。flow chat 的 query 取 command 展开后文本，multi-agent 取本轮 inputs，二者附最近 8 条非空 flow messages。成功且非 abort 的 flow / flow_run 完成后无条件 fire-and-forget 蒸馏，失败只记 trace、不反向破坏主 run；普通 session 完成仍在 `index.ts` legacy，由总控接 hook。
+- **聊天内联 memory feedback 边界（2026-06-19 E-FEEDBACK）**：逐条统一记忆反馈必须 POST D 的 `/api/workspaces/:id/memory/items/:itemId/feedback`，payload 为 `{ signal: "positive" | "negative" }`；不要复用 legacy `/memory/feedback`，后者只支持旧 sourceKind 级统计且不接受 `memory_item`。UI 只展示 snapshot 中 `kind="memory_item" && injected=true` 的 `itemIds`，不能把当前启用列表冒充本轮实际注入。
+- **injection 与消息关联限制（2026-06-19 E-FEEDBACK）**：`UiMessage` 当前没有持久化时间戳或 injection event ID，在不扩 `App.tsx/types.ts` 接缝时无法可靠把历史 run_start snapshot 绑定到每条 assistant message。当前确认口径是按 `targetKind + targetId` 取最近一轮 snapshot，run 期间隐藏、结束后刷新；若产品要求历史逐消息反馈，必须由总控扩正式关联契约，禁止前端按数组位置或本地生成 message id 猜配。
 - **subagent 模板化 prompt 红线（2026-06-16 E·P0）**：模板只能替换 runner 的 persona 角色段；只读指定 `clean_data` 文件、只写 `reportDir`、末条摘要、不提问自主完成等硬性约束必须由引擎在 persona 后恒定追加，不能放进可编辑模板。无模板、模板 disabled、配置缺失或损坏时必须回退 `DEFAULT_SUBAGENT_PERSONA`，保持旧委派行为。`dataFiles` 必须继续走 `safeResolve(cleanDir, basename(f))`，不得因为模板化而放宽到路径直读。
 - **subagent 配置安全边界（2026-06-16 E·P0）**：`subagents.json` 是本地模板注册表，不是 shell/webhook 执行配置。CRUD coerce 必须白名单字段、未知字段丢弃；`source` 固定 `custom`，`dataScope` 固定 `clean_data`；persona 视为 prompt 文本，禁止通过外部 URL/外发配置引入联网动作。`toolIds` P0 仅保存清洗结果，不代表工具已挂载。
 - **subagent MCP 注入边界（2026-06-17 E·P1）**：模板 `toolIds` 已成为 runner 注入 MCP 工具的实际 allowlist。普通 workspace `.mcp.json` 仍注册全部 analysis 工具；指定模板的子 agent 不改 workspace 根配置，而是以 `<workspace>/sessions/<parentSessionId>/.subagent-cwd/<taskId>` 为 cwd，并在该 cwd 写 scoped `.mcp.json`（`--tools id,id`）。无模板委派保持旧行为，模板 `toolIds: []` 表示无 extraction tool 暴露。该设计避免共享 `.mcp.json` 并发 clobber；代价是子 agent MCP 工具产物默认落在独立 cwd 的 `tool_runs` 下，报告仍必须写入引擎注入的 `reportDir`。

@@ -8,32 +8,48 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-19 · **记忆重构阶段2：D-INGEST 候选入库门禁 + 自动/复核分流**
+- 最近更新：2026-06-19 · **记忆重构阶段3：D-PANEL 统一记忆面板 + review 队列**
 - 进度：
-  - **D-INGEST**（本期完成）：
-    - `db/data.ts` 新增 `memory_reviews` 表（候选复核队列，供 D-PANEL 一键采纳/拒绝）
-    - 权威风险检测 `detectMemoryCandidateRisk`：覆盖 instruction_injection/pii/weak_evidence/overbroad 四类，不盲信 E 预标，本层重算
-    - dedup `findMemoryItemDuplicate`：normalize-title 同主题 + 同 type → supersede 逻辑，跳过已禁用条目
-    - 门禁主入口 `ingestMemoryCandidate`：
-      - 高危（任一 high）→ 拒绝，不写表
-      - confidence ≥ 0.75 且无 medium 风险 → 自动入库（source='derived'，enableForOrigin）
-      - 其余 → 写 memory_reviews(status='pending')
-    - review CRUD：`listMemoryReviews` / `getMemoryReview` / `acceptMemoryReview` / `rejectMemoryReview`
-    - `routes/data.ts` 新增端点：
-      - `POST /api/workspaces/:id/memory/ingest`：accepted 顶层返回 `id`（对齐 E ingester 契约）；review 返回 `reviewId`；高危返 400
-      - `GET /memory/reviews` / `POST /memory/reviews/:id/accept` / `POST /memory/reviews/:id/reject`
-    - 测试 `memory-ingest-gate.test.ts`：12 条单测覆盖 auto/reject(pii+injection)/review(weak_evidence+lowconf)/dedup(2chain+3chain)/accept/reject + 3 条 HTTP 端到端
-    - code review 修复：`findMemoryItemDuplicate` 跳过 `enabled=false` 条目，防止 3+ 候选链匹配到已禁用的旧条目
+  - **D-PANEL**（本期完成）：
+    - `RulesPane.tsx` 完全重建为统一记忆面板：5 个 tab（constraint / experience / episode / fact 投影 / review 复核）
+    - CRUD：新建（type/scope/title/body）、编辑、删除，`busyId` 防并发
+    - 启用/停用：checkbox toggle，调 `updateMemoryItem(enabled)` 联动后端
+    - 注入预览：`GET /memory/preview` 实时展示 chat/workflow scope 下 `buildMemoryPrompt` 产物 + char/token/item/fact 计数
+    - 反馈入口：thumbs up/down → `recordMemoryItemFeedback`，即时更新 positiveSignals/negativeSignals
+    - review 复核队列：`listMemoryReviews(pending)` + 一键采纳/拒绝，采纳后 item 自动入列表
+    - fact 投影 tab：只读展示 business_context / metric_definition / reference_file 投影
+    - 风险标签 `RiskBadge`：按 severity 着色展示 instruction_injection/pii/weak_evidence/overbroad
+    - 过期检测：`validUntil < Date.now()` 显示"已过期"徽章
+    - supersedes 链：显示"supersedes"徽章
+  - **Types 增量**（`web/src/types.ts`）：
+    - `MemoryReview` / `MemoryReviewStatus`：复核队列条目类型
+    - `ProjectedFactItem` / `ProjectedFactKind`：fact adapter 投影类型（前端展示用）
+    - `MemoryItemListResponse`：`{ items, facts }` 联合响应
+    - `MemoryPromptPreview`：注入预览响应 `{ prompt, charCount, tokenEstimate, itemCount, factCount }`
+  - **dataApi 增量**（`web/src/lib/api/data.ts`）：9 个新方法
+    - `listMemoryItems` / `createMemoryItem` / `updateMemoryItem` / `deleteMemoryItem`
+    - `recordMemoryItemFeedback` / `previewMemoryPrompt`
+    - `listMemoryReviews` / `acceptMemoryReview` / `rejectMemoryReview`
+  - **Server 增量**（`server/src/routes/data.ts`）：
+    - `GET /api/workspaces/:id/memory/preview`：薄壳调 `buildMemoryPrompt`，返回 prompt + 统计
+    - try/catch 守卫防止 `buildMemoryPrompt` 异常泄露 500
+  - **CasesPane 退役**（`web/src/tabs/DataTabs.tsx`）：
+    - `rule_memory.cases` 子 tab 渲染替换为 Placeholder（"案例已并入 experience"）
+    - `CasesPane.tsx` 文件保留，子 tab 列表不动等总控下线
+  - **Code Review 修复**（本期）：
+    - `acceptReview` 加 `if (!out)` 守卫（防止已处理 review 导致崩溃）
+    - `rejectReview` 处理 `window.prompt` 取消（`null` 时提前 return）
+    - `refresh` 拆分为 `refreshData`（items + reviews，仅依赖 workspaceId）和 `refreshPreview`（preview，依赖 workspaceId + previewScope），避免切换 scope 时重取 items
+  - **D-INGEST**（上期完成，见 git log）
   - **D-RETRIEVAL**（上期完成，见 git log）
   - **D-DATA**（上期完成，见 git log）
 - 校验：
   - `npm run typecheck`：✅ 全绿（server + web）
   - `npm run build`：✅
   - 数据探索 LLM 隔离 grep：✅ 空匹配
-  - 新测 12/12 绿；相关老测（memory-consolidation 4/4 + memory-governance 3/3）无回归
 - 下一步（接续优先级）：
   - ① **总控一行改**：engine 默认 ingestPath 翻到 `/api/workspaces/:id/memory/ingest`（`routes/engine.ts:156` + `routes/engine.ts:1194`）
-  - ② **D-PANEL**：记忆管理面板（memory_items 列表/编辑/启用/反馈 UI + review 队列 UI）
+  - ② **总控终审**：`rule_memory.cases` 子 tab 正式下线（`constants.ts` 移除 + `CasesPane.tsx` 删除）
   - ③ **E-DISTILL / E-WIRING**：蒸馏 runner + 调用点对齐（依赖 D-RETRIEVAL + D-INGEST 完成）
   - ④ **fact adapter 补强**：reference 文件若需读正文摘要（当前仅元数据）
   - ⑤ **真机联调专题数据三件套**（前次遗留）
@@ -41,11 +57,13 @@
 - 阻塞 / 待总控：
   - `MemoryItemType` 联合需加 `'fact'`：当前 fact adapter 用 D 域内部 `ProjectedFactItem` 规避
   - legacy `/memory/feedback` `/memory/injections` 与新 `/memory/items*` 共存：合并时机交总控终审
+  - `rule_memory.cases` 子 tab 正式下线：`constants.ts` 归总控，D 域不动
 - 开放问题：
   - `listMemoryReviews` 无分页（与 `listMemoryItems` 一致）；review 队列积累多时需加 `LIMIT ? OFFSET ?`
   - `acceptMemoryReview` 与 `ingestMemoryCandidate` 共享 "create item + supersede" 模式（2 个调用点，YAGNI 暂不提取）
   - `ProjectedFactItem` 与 `MemoryItem` 重叠字段多但类型不兼容
   - clean_data 路径白名单 / hooks PUT 无认证 / hooks-triggers.jsonl 大文件全量读（前次遗留）
+  - `RulesPane.tsx` 455 行，后续可拆 `MemoryItemCard` / `ReviewCard` / `FactCard` 子组件
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -226,8 +244,17 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **裸 `except Exception` 吞异常信息（2026-06-13）**：`clustering.py` 和 `churn_risk.py` 的 fallback 路径用裸 `except Exception`，不记录任何诊断信息，用户只能看到 `fallback=true` 但不知道原因。**修复**：改为 `except (ValueError, RuntimeError) as e` + 记录 `fallback_reasons` / `fallback_reason` 到输出。**通用约定**：工具 fallback 路径必须记录失败原因，方便用户和后续维护者排查。
 - **opencode write 工具大小限制（2026-06-14 第三次触发）**：单次 `write` / `edit` 约 16K char 上限，超大 TSX 会被 JSON parser 截断报 `Unterminated string`。本次 HooksManagementPane（676 行）用分 5 个片段 `write` + `cat` 拼接落地。**通用 workaround**：① 分多个小 `write` 写片段 ② `cat` 拼接 ③ 或用 `bash` heredoc 追加。
 - **opencode write 工具大小限制（2026-06-16 第五次触发）**：CommandManagementPane（696 行）分 6 个 `cat >> file <<'EOF'` heredoc 片段拼接落地，每块 < 4K char。与第四次（LlmManagementPane）模式相同。**经验**：含大量 Tailwind class 的 TSX 组件 > 500 行基本必超，预估时直接按 4K/块 分段。
-- **opencode write 工具大小限制（2026-06-16 第六次触发）**：SubAgentManagementPane（704 行）本次改用 **先 write 极简骨架（stub + void 标记），再多次小段 edit 逐函数替换** 的策略，比 heredoc 拼接更可控。**推荐策略**：> 500 行 TSX 新文件 → ① write 骨架（~20 行）→ ② 逐函数 edit 替换（每段 < 200 行）→ ③ 最后 edit 追加尾部子组件。edit 的 oldString 匹配比 heredoc 拼接更安全（不会因引号/转义导致内容损坏）。
+- **opencode write 工具大小限制（2026-06-19 第七次触发）**：RulesPane 重建（455 行 TSX + 中文）远超 16K char 上限，单次 `write` / `edit` / `bash heredoc` 均被 JSON parser 截断报 `Unterminated string`。**workaround**：分 3 个 `write` 写到临时文件（`_render_part1/2/3.txt`），再用 `cat` 拼接 `>>` 追加到目标文件。**通用策略**：> 400 行 TSX 新文件 → ① write 骨架（~20 行）→ ② 逐函数 edit 替换（每段 < 200 行）→ ③ 最后 edit 追加尾部子组件。edit 的 oldString 匹配比 heredoc 拼接更安全。
 - **subagents 管理 D·P0 前端决策（2026-06-16）**：SubAgentManagementPane 仿 CommandManagementPane 的左列表 + 右表单 + 全量覆盖式 PUT 模式。ToolPicker 复用 `api.listExtractionTools()` 拉工具清单，按 `category` 分组、`riskLevel` 徽章，支持过滤 + checkbox 多选 + 文本兜底。`hasExternalUrl` 是 server `coerceSubAgentTemplate` 逻辑的前端副本（仅 UX 校验，最终裁决在 server），注释标明同步要求。`Field` 组件在 CommandManagementPane 与 SubAgentManagementPane 中重复——按 "third use" 原则暂不提取，下次新增 pane 时提为共享组件。dataScope UI 不提供 draw_data 选项，`updateSelected` 强制覆盖 `dataScope: "clean_data"` / `source: "custom"`。
+
+**统一记忆面板 D-PANEL（v2 重构阶段3, 2026-06-19）**
+- **RulesPane 重建为多 tab 面板**：5 个 tab（constraint/experience/episode/fact 投影/review 复核），每个 tab 独立渲染，用 `activeTab` state 切换。tab 标签带计数徽章（`grouped.get(type)?.length` / `facts.filter(enabled).length` / `reviews.length`）。
+- **busyId 防并发模式**：所有异步操作（toggle/save/delete/feedback/create/accept/reject）共享 `busyId` state，操作中禁用同条目按钮，防止双击重复请求。`submitCreate` 用哨兵值 `"__create__"` 避免与真实 id 冲突。
+- **refresh 拆分策略**：`refreshData`（items + reviews，仅依赖 workspaceId）与 `refreshPreview`（preview，依赖 workspaceId + previewScope）独立 `useCallback` + `useEffect`，避免切换 chat↔workflow scope 时重取 items。各 CRUD 操作后调 `refreshPreview()` 保持预览即时更新。
+- **acceptReview 空守卫**：`api.acceptMemoryReview` 可能返回 `undefined`（review 已被另一 tab/session 处理），必须 `if (!out)` 检查并清理 stale review。
+- **rejectReview 取消处理**：`window.prompt` 返回 `null` 时（用户点取消）应提前 return，不发送空 reason 请求。
+- **server /memory/preview try/catch**：`buildMemoryPrompt` 可能抛异常（如 workspace 无 memory_items 表），必须 try/catch 返回 500 而非裸异常泄露。
+- **CasesPane 退役策略**：`DataTabs.tsx` 中 `rule_memory.cases` 子 tab 渲染替换为 Placeholder，`CasesPane.tsx` 文件保留、子 tab 列表（`constants.ts`）不动——接缝层归总控，D 域只改渲染。
 
 ---
 

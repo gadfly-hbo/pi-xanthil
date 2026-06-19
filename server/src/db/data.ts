@@ -17,7 +17,12 @@ import type {
   MemoryItemType,
   MemoryItemSource,
   MemoryRiskFlag,
+  MemoryReview,
+  ProjectedFactItem,
 } from "../types.ts";
+// 规则记忆 v2 跨 server/web 契约统一在 types.ts（总控终审 D-PANEL 时收敛）；
+// 下游（routes/data.ts·memory-injection.ts）仍从本文件 import，故此处再导出保持兼容。
+export type { MemoryReview, ProjectedFactItem, ProjectedFactKind, MemoryReviewStatus } from "../types.ts";
 
 /**
  * 【Agent-D · 数据基座域】db 表 slot —— owner: opencode(deepseek/glm)
@@ -357,28 +362,7 @@ export function recordMemoryItemUsed(id: string, usedAt = Date.now()): MemoryIte
 //     检索层视其为只读召回结果。
 // ============================================================================
 
-export type ProjectedFactKind = "business_context" | "metric_definition" | "reference_file";
-
-export interface ProjectedFactItem {
-  /** 形如 fact:business_context:<id> / fact:metric_definition:<id> / fact:reference_file:<standard_id>。 */
-  id: string;
-  workspaceId: string;
-  type: "fact";
-  factKind: ProjectedFactKind;
-  /** 原始源条目 id，便于回查/反馈路由。 */
-  sourceId: string;
-  title: string;
-  body: string;
-  /** 元数据：路径/口径/分类等，供 RETRIEVAL 打分与展示。 */
-  meta: Record<string, string | number | null>;
-  enabled: boolean;
-  /** 投影对齐 MemoryItem 的最小字段（D-RETRIEVAL 打分需要）。 */
-  confidence: number;
-  validFrom: number;
-  validUntil: number | null;
-  createdAt: number;
-  updatedAt: number;
-}
+// ProjectedFactKind / ProjectedFactItem 已上移至 types.ts（双侧契约），见顶部 re-export。
 
 /** business_contexts 投影：title=title, body=content。 */
 export function projectBusinessContextsAsFacts(workspaceId: string): ProjectedFactItem[] {
@@ -507,25 +491,7 @@ export function listProjectedFacts(workspaceId: string): ProjectedFactItem[] {
 
 const AUTO_CONFIDENCE_THRESHOLD = 0.75;
 
-export interface MemoryReview {
-  id: string;
-  workspaceId: string;
-  type: MemoryItemType;
-  title: string;
-  body: string;
-  scope: MemoryItem["scope"];
-  sourceEventIds: string[];
-  confidence: number;
-  riskFlags: MemoryRiskFlag[];
-  targetKind: string | null;
-  targetId: string | null;
-  reason: string;
-  status: "pending" | "accepted" | "rejected";
-  decidedItemId: string | null;
-  decidedReason: string;
-  createdAt: number;
-  updatedAt: number;
-}
+// MemoryReview 已上移至 types.ts（双侧契约），见顶部 re-export。
 
 export interface MemoryIngestInput {
   workspaceId: string;

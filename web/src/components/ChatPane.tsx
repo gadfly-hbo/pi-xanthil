@@ -3,6 +3,7 @@ import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranc
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
+import { MemoryFeedbackInline } from "@/components/MemoryFeedbackInline";
 import { hasToolBlocks, hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
@@ -551,6 +552,16 @@ export function ChatPane(p: Props) {
           {visibleMessages.map((m) => (
             <MessageRow key={m.id} m={m} showTrace={showTrace} />
           ))}
+
+          {activeSessionId && (
+            <MemoryFeedbackInline
+              workspaceId={p.workspaceId}
+              targetKind="session"
+              targetId={activeSessionId}
+              refreshKey={`${p.messages.length}:${p.running}`}
+              hidden={p.running}
+            />
+          )}
 
           {p.running && (
             <div className="flex items-center gap-2 text-[13px] text-neutral-500 dark:text-neutral-400">

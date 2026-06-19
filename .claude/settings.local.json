@@ -218,7 +218,8 @@
       "Bash(echo \"exit=$?\\(1=空\\)\")",
       "Bash(awk '/^const TASKS = \\\\[/{f=1} f&&/^\\\\];/{print NR\": \"$0; exit}' docs/wiki.html)",
       "Bash(awk '/subagents 管理·看板/{print \"status=\" gensub\\(/.*status: \"\\([a-z_]+\\)\".*/, \"\\\\\\\\1\", \"g\"\\)}' docs/wiki.html)",
-      "Bash(grep -nA8 \"zhuantiSeed\\\\|pushZhuantiChatSummary\\\\|ZhuantiSeed\")"
+      "Bash(grep -nA8 \"zhuantiSeed\\\\|pushZhuantiChatSummary\\\\|ZhuantiSeed\")",
+      "Bash(git checkout *)"
     ]
   }
 }

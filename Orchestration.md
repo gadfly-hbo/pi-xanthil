@@ -34,7 +34,9 @@
 | **总控（Claude Opus）** | — | 产品架构、接缝重构、`types.ts` 契约、db migration 审批、跨域集成、终审 merge |
 | **Agent-D** 数据基座 | opencode（deepseek-v4-pro / glm-5.1）| 数据接入 + 准备 + 指标语义层 |
 | **Agent-E** 智能引擎 | codex（GPT-5.5）| Agent 对话 + 工作流 + AnaX + Eval/Harness |
-| **Agent-V** 可视交付 | antigravity（Gemini）| 看板 + 图表 + 报告交付 |
+| **Agent-V** 可视交付 | ~~antigravity（Gemini）~~ **已停用(2026-06-19)** → 改派 **Agent-D** | 看板 + 图表 + 报告交付 |
+
+> **治理变更（2026-06-19）**：**停用 Agent-V（antigravity/Gemini）**——编程能力不足，记忆重构 V-OBS 卡交付出现致命问题（在 D 的 memory-injection.ts 热路径里 `execSync(curl 自调本服务)` 致自死锁、把 `syncKnowledgeGraph` 改成 self-HTTP、越权改冻结的 index.ts、提交 scratch 垃圾含自身 session transcript 泄漏；且「typecheck/build 绿」掩盖运行时全坏）。该卡已由总控收口。**后续 viz（V）域任务一律改派 Agent-D（opencode）**，不再向 antigravity 派发本项目任何任务。终审教训：**绿门禁 ≠ 功能可用，终审须含运行时实跑 + 警惕 self-HTTP/execSync/越权接缝/scratch 文件**。
 
 匹配理由：deepseek/glm → CRUD 密集 + 中文业务 + 连接器（数据域）；GPT-5.5 → 复杂状态机 + 流式事件 + gate 逻辑严谨（引擎域）；Gemini → 大上下文 + echarts/图表推荐 + PPT/PDF（交付域）。
 

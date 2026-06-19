@@ -568,6 +568,60 @@ export interface MemoryCandidate {
   riskFlags: MemoryRiskFlag[];
 }
 
+// D-INGEST 复核队列条目（候选未自动入库时进入，等待 D-PANEL 一键采纳/拒绝）。
+export type MemoryReviewStatus = "pending" | "accepted" | "rejected";
+export interface MemoryReview {
+  id: string;
+  workspaceId: string;
+  type: MemoryItemType;
+  title: string;
+  body: string;
+  scope: "global" | "chat" | "workflow";
+  sourceEventIds: string[];
+  confidence: number;
+  riskFlags: MemoryRiskFlag[];
+  targetKind: string | null;
+  targetId: string | null;
+  reason: string;
+  status: MemoryReviewStatus;
+  decidedItemId: string | null;
+  decidedReason: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+// fact adapter 投影（business_context / metric_definition / reference_file），仅前端展示用。
+export type ProjectedFactKind = "business_context" | "metric_definition" | "reference_file";
+export interface ProjectedFactItem {
+  id: string;
+  workspaceId: string;
+  type: "fact";
+  factKind: ProjectedFactKind;
+  sourceId: string;
+  title: string;
+  body: string;
+  meta: Record<string, string | number | null>;
+  enabled: boolean;
+  confidence: number;
+  validFrom: number;
+  validUntil: number | null;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MemoryItemListResponse {
+  items: MemoryItem[];
+  facts: ProjectedFactItem[];
+}
+
+export interface MemoryPromptPreview {
+  prompt: string;
+  charCount: number;
+  tokenEstimate: number;
+  itemCount: number;
+  factCount: number;
+}
+
 // 多信号检索入参：D-RETRIEVAL 实装打分召回。契约期冻结为注入函数末位可选参，
 // ctx 为 undefined 时注入行为不变（D 实装前的向后兼容）。
 export interface RetrievalContext {
@@ -1681,7 +1735,7 @@ export interface ModelLabStats {
 
 // ---- Knowledge Graph ----
 
-export type KgNodeType = "rule" | "metric" | "ref_file" | "biz_ctx" | "report" | "concept";
+export type KgNodeType = "rule" | "metric" | "ref_file" | "biz_ctx" | "report" | "concept" | "constraint" | "experience" | "episode" | "fact";
 export type KgRelation = "related_to" | "references" | "supports" | "derived_from";
 
 export interface KgNode {

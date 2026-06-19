@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Activity, AlertTriangle, BellRing, Bot, CheckCircle2, Clock3, GitBranch, ListTree, MousePointerClick, RefreshCw, Route, ScrollText, ServerCrash, Sparkles, Workflow, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
-import type { MemoryProposal, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint } from "@/types";
+import type { MemoryFailureAttribution, MemoryInjectionRecord, MemoryProposal, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint } from "@/types";
 
 const emptyOverview: TraceOverview = {
   todaySessions: 0,
@@ -60,6 +60,8 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
   const [trend, setTrend] = useState<TraceTrendPoint[]>([]);
   const [rules, setRules] = useState<TraceRuleSuggestion[]>([]);
   const [proposals, setProposals] = useState<MemoryProposal[]>([]);
+  const [injections, setInjections] = useState<MemoryInjectionRecord[]>([]);
+  const [memoryFailures, setMemoryFailures] = useState<MemoryFailureAttribution[]>([]);
   const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>([]);
   const [stagedRules, setStagedRules] = useState<TraceRuleSuggestion[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<TraceEvent | null>(null);
@@ -81,18 +83,22 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
     setLoading(true);
     setError("");
     try {
-      const [nextOverview, nextEvents, nextFailures, nextTrend, nextProposals] = await Promise.all([
+      const [nextOverview, nextEvents, nextFailures, nextTrend, nextProposals, nextInjections, nextMemoryFailures] = await Promise.all([
         api.getTraceOverview(workspaceId),
         api.listTraceRecentEvents(workspaceId, 20),
         api.listTraceFailures(workspaceId, 10),
         api.getTraceTrend(workspaceId, 14),
         api.listMemoryProposals(workspaceId, "pending"),
+        api.listMemoryInjectionRecords(workspaceId, 20),
+        api.listMemoryFailureAttributions(workspaceId),
       ]);
       setOverview(nextOverview);
       setEvents(nextEvents);
       setFailures(nextFailures);
       setTrend(nextTrend);
       setProposals(nextProposals);
+      setInjections(nextInjections);
+      setMemoryFailures(nextMemoryFailures);
     } catch (err) {
       setError(String(err));
     } finally {
@@ -259,6 +265,82 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
         <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
           <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><ScrollText className="h-4 w-4 text-indigo-500" /> Session / Flow Timeline</h2><span className="truncate text-[11px] text-neutral-400">{selectedEvent ? selectedEvent.target : "最近事件预览"}</span></div><div className="mt-4 space-y-4">{timeline.length === 0 ? <div className="py-10 text-center text-[12px] text-neutral-400">暂无 timeline</div> : timeline.map((item, index) => { const Icon = iconForEvent(item.type); return <div key={item.id} className="relative flex gap-3">{index < timeline.length - 1 && <div className="absolute left-[15px] top-8 h-full w-px bg-neutral-200 dark:bg-neutral-800" />}<div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900"><Icon className={`h-4 w-4 ${toneForEvent(item.status)}`} /></div><div className="min-w-0 pt-0.5"><div className="font-mono text-[12px] font-medium text-neutral-800 dark:text-neutral-200">{formatTime(item.time)} · {item.type}</div><div className="mt-0.5 truncate text-[12px] text-neutral-500">{item.title}{item.detail ? ` · ${item.detail}` : ""}</div></div></div>; })}</div></section>
           <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm dark:border-amber-900 dark:bg-amber-950/20"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-[13px] font-semibold text-amber-950 dark:text-amber-100"><Sparkles className="h-4 w-4 text-amber-500" /> 规则提炼</h2><p className="mt-1 text-[12px] text-amber-800/70 dark:text-amber-200/70">用户手动点击后，根据 trace 证据提炼规则候选；候选需通过 guardrails 并人工批准后才写入 rules。</p></div><div className="flex flex-wrap gap-2"><button onClick={copySelectedRules} disabled={selectedRules.length === 0} className="rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-[12px] font-medium text-amber-900 hover:bg-white disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950/40 dark:text-amber-100">{copied ? "已复制" : "复制选中"}</button><button onClick={stageSelectedRules} disabled={selectedRules.length === 0} className="rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-[12px] font-medium text-amber-900 hover:bg-white disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950/40 dark:text-amber-100">暂存选中</button><button onClick={generateRules} disabled={!workspaceId || ruleLoading} className="inline-flex items-center gap-1.5 rounded-md bg-amber-900 px-3 py-2 text-[12px] font-medium text-white hover:bg-amber-800 disabled:opacity-50 dark:bg-amber-200 dark:text-amber-950"><RefreshCw className={`h-3.5 w-3.5 ${ruleLoading ? "animate-spin" : ""}`} /> 更新规则提炼</button></div></div><div className="mt-4 space-y-3">{rules.length === 0 ? <div className="rounded-lg border border-amber-200 bg-white/75 p-8 text-center text-[12px] text-amber-800/70 dark:border-amber-900 dark:bg-neutral-950/50 dark:text-amber-200/70">点击“更新规则提炼”后生成基于 trace 证据的规则建议</div> : rules.map((rule) => { const selected = selectedRuleIds.includes(rule.id); return <button key={rule.id} onClick={() => toggleRule(rule.id)} className={`w-full rounded-lg border p-3 text-left transition-colors ${selected ? "border-amber-400 bg-white dark:border-amber-700 dark:bg-neutral-950/70" : "border-amber-200 bg-white/75 dark:border-amber-900 dark:bg-neutral-950/50"}`}><div className="flex gap-2"><CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${selected ? "text-emerald-500" : "text-neutral-300"}`} /><div><div className="flex flex-wrap items-center gap-2"><p className="text-[12.5px] font-medium leading-5 text-neutral-900 dark:text-neutral-100">{rule.title}</p><span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10.5px] text-amber-800 dark:border-amber-800 dark:text-amber-200">{rule.severity}</span></div><p className="mt-1 text-[11.5px] leading-5 text-neutral-500 dark:text-neutral-400">依据：{rule.evidence}</p></div></div></button>; })}</div>{stagedRules.length > 0 && <div className="mt-4 rounded-lg border border-amber-300 bg-white/80 p-3 dark:border-amber-800 dark:bg-neutral-950/60"><div className="flex items-center justify-between gap-3"><h3 className="text-[12px] font-semibold text-amber-950 dark:text-amber-100">暂存规则 ({stagedRules.length})</h3><button onClick={() => void submitStagedRules()} className="text-[11px] text-amber-700 hover:underline dark:text-amber-300">提交审批</button><button onClick={() => setStagedRules([])} className="text-[11px] text-amber-700 hover:underline dark:text-amber-300">清空</button></div><ol className="mt-2 list-decimal space-y-1 pl-4 text-[11.5px] text-neutral-600 dark:text-neutral-300">{stagedRules.map((rule) => <li key={rule.id}>{rule.title}</li>)}</ol></div>}{proposals.length > 0 && <div className="mt-4 rounded-lg border border-amber-300 bg-white/80 p-3 dark:border-amber-800 dark:bg-neutral-950/60"><h3 className="text-[12px] font-semibold text-amber-950 dark:text-amber-100">待审批候选 ({proposals.length})</h3><div className="mt-2 space-y-2">{proposals.map((proposal) => { const highRisk = proposal.riskFlags.some((flag) => flag.severity === "high"); return <div key={proposal.id} className="rounded-md border border-amber-200 bg-white p-2 dark:border-amber-900 dark:bg-neutral-950/70"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-[12px] font-medium text-neutral-900 dark:text-neutral-100">{proposal.title}</p><p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">confidence {(proposal.confidence * 100).toFixed(0)}% · {proposal.severity}</p>{proposal.riskFlags.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{proposal.riskFlags.map((flag) => <span key={`${proposal.id}-${flag.code}`} title={flag.message} className={`rounded border px-1.5 py-0.5 text-[10px] ${flag.severity === "high" ? "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"}`}>{flag.code}</span>)}</div>}</div><div className="flex shrink-0 gap-1"><button onClick={() => void approveProposal(proposal.id)} disabled={highRisk} className="rounded border border-emerald-200 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 dark:border-emerald-900 dark:text-emerald-300">批准</button><button onClick={() => void rejectProposal(proposal.id)} className="rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-500 hover:bg-neutral-50 dark:border-neutral-800">拒绝</button></div></div></div>; })}</div></div>}</section>
+        </div>
+
+        <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
+          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
+                <Bot className="h-4 w-4 text-sky-500" /> 记忆注入检查器
+              </h2>
+              <span className="text-[11px] text-neutral-400">最近 20 次注入快照</span>
+            </div>
+            <div className="space-y-3">
+              {injections.length === 0 ? (
+                <div className="py-8 text-center text-[12px] text-neutral-400">暂无记忆注入记录</div>
+              ) : (
+                injections.map((inj) => (
+                  <div key={inj.eventId} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                    <div className="flex items-start justify-between">
+                      <div className="font-mono text-[11px] text-neutral-500">{formatTime(inj.createdAt)} · {inj.target}</div>
+                      <StatusPill status={inj.status} />
+                    </div>
+                    <div className="mt-2 text-[12px] text-neutral-700 dark:text-neutral-300">
+                      Total tokens: {inj.snapshot.tokenEstimate} / {inj.snapshot.tokenBudget || 4000} (Sources: {inj.snapshot.sourceCount})
+                    </div>
+                    <div className="mt-2 space-y-1">
+                      {inj.snapshot.sources.map((src, idx) => (
+                        <div key={idx} className={`flex flex-col gap-1 rounded border px-2 py-1.5 text-[11px] ${src.selected ? 'border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/20' : 'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 opacity-60'}`}>
+                          <div className="flex items-center justify-between font-medium">
+                            <span className="text-neutral-700 dark:text-neutral-200">{src.label} ({src.kind})</span>
+                            <span className="text-neutral-500">{src.selected ? '✅ 选中' : '❌ 忽略'}</span>
+                          </div>
+                          <div className="text-neutral-500 font-mono">
+                            Tokens: {src.tokenEstimate} | Items: {src.count}
+                            {typeof src.meta?.topScore === 'number' && ` | Score: ${src.meta.topScore.toFixed(2)}`}
+                          </div>
+                          {src.omittedReason && (
+                            <div className="text-rose-600 dark:text-rose-400">原因: {src.omittedReason}</div>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
+
+          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="mb-3 flex items-center justify-between">
+              <h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
+                <AlertTriangle className="h-4 w-4 text-rose-500" /> 检索失败诊断
+              </h2>
+              <span className="text-[11px] text-neutral-400">最近诊断归因</span>
+            </div>
+            <div className="space-y-3">
+              {memoryFailures.length === 0 ? (
+                <div className="py-8 text-center text-[12px] text-neutral-400">暂无失败归因记录</div>
+              ) : (
+                memoryFailures.map((failure) => (
+                  <div key={failure.id} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                    <div className="flex items-start justify-between">
+                      <div className="font-mono text-[11px] text-neutral-500">{formatTime(failure.createdAt)} · {failure.targetKind}:{failure.targetId}</div>
+                      <span className="rounded border border-rose-200 bg-white px-1.5 py-0.5 font-mono text-[10.5px] text-rose-500 dark:border-rose-900 dark:bg-neutral-900">{failure.cause}</span>
+                    </div>
+                    <div className="mt-2 text-[12px] text-neutral-700 dark:text-neutral-300">
+                      {failure.note}
+                    </div>
+                    {failure.sourceKind && (
+                      <div className="mt-2 text-[11px] text-neutral-500 font-mono">
+                        Source: {failure.sourceKind} {failure.sourceId ? `(${failure.sourceId})` : ""}
+                      </div>
+                    )}
+                  </div>
+                ))
+              )}
+            </div>
+          </section>
         </div>
       </div>
     </div>

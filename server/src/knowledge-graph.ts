@@ -18,6 +18,7 @@ import {
 import type { KgEdgeInput, KgNodeInput } from "./db.ts";
 import { listMetrics } from "./db/viz.ts";
 import { listEnabledItemIds } from "./db/shared.ts";
+import { listEnabledMemoryItems, listProjectedFacts } from "./db/data.ts";
 import { runPiPrompt } from "./pi-adapter.ts";
 import { DIRECT_LLM_ROOT } from "./config.ts";
 import type { KgEdge, KgExtractResult, KgNode, KgRelation, KgSyncResult } from "./types.ts";
@@ -132,6 +133,35 @@ export function syncKnowledgeGraph(workspaceId: string): KgSyncResult {
       summary: ctx.content.slice(0, 400),
       tags: [ctx.category],
       contentHash: hashContent(ctx.title + ctx.content),
+    });
+  }
+
+  // ---- memory_items（规则记忆 v2 统一记忆）投影：constraint/experience/episode + fact ----
+  // 总控完成 V-OBS：进程内投影（不 self-HTTP）；与 metric 同范式先清旧节点（禁用/删除项不留 ghost），再投影本工作区已启用项。
+  for (const t of ["constraint", "experience", "episode", "fact"] as const) {
+    deleteKgNodesByType(workspaceId, t);
+  }
+  for (const item of listEnabledMemoryItems(workspaceId)) {
+    upsertKgNode({
+      workspaceId,
+      type: item.type,
+      sourceKey: `memory_item:${item.id}`,
+      title: item.title,
+      summary: item.body.slice(0, 400),
+      tags: [item.scope].filter(Boolean),
+      contentHash: hashContent(item.title + item.body),
+    });
+  }
+  for (const f of listProjectedFacts(workspaceId)) {
+    if (!f.enabled) continue;
+    upsertKgNode({
+      workspaceId,
+      type: "fact",
+      sourceKey: f.id,
+      title: f.title,
+      summary: f.body.slice(0, 400),
+      tags: [f.factKind],
+      contentHash: hashContent(f.title + f.body),
     });
   }
 

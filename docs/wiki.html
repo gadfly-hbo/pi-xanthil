@@ -341,8 +341,14 @@ D 交付：① 新表 memory_reviews(review 队列：type/title/body/scope/confi
 【验收】门禁拦高危、dedup 去重、自动/复核分流正确；单测覆盖；server typecheck+build 绿。
 【约束】不碰接缝层；不擅装依赖；回流总控终审。` },
 
-  { dom: "E", status: "todo", title: "【记忆重构·E·接线】注入调用点对齐新签名 + flow 完成触发沉淀（阶段2）", brief:
-`来源：记忆重构阶段2，把新检索与沉淀接到工作流主流程。承接 X-CONTRACT + D-RETRIEVAL。
+  { dom: "E", status: "done", title: "【记忆重构·E·接线】注入调用点对齐新签名 + flow 完成触发沉淀（阶段2）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-19，独立复核 + 复跑门禁 + 164 测试绿，一次过无收敛）。
+E 交付(routes/engine.ts)：① 新增 buildFlowMemoryRetrievalContext(flowId,query)——query + recentMessages(末8条 flow 消息 role 前缀)；② 两处 workflow 注入点对齐 X-CONTRACT 冻结签名(policy={}/ctx 末位)传 memoryRetrievalContext——chat-in-flow(buildMemoryInjectionSnapshot+withRulesPrompt，ctx 用 commandExpansion.expandedText)、multi-agent run(buildMemoryInjectionSnapshot+buildMemoryPrompt，ctx 用 msg.inputs 派生 query + flow.name 兜底)。flow/flow_run 完成触发沉淀已在 E-DISTILL 落地(maybeTriggerFlowMemoryConsolidation)。
+终审复核：接缝层零触碰(只动 routes/engine.ts·E slot + notes-engine)、RetrievalContext 只读引用 types.ts、签名未改冻结口径、server+web typecheck ✅ + build ✅ + 全量 164 测试 ✅。
+**至此所有注入点 ctx-aware**(chat=总控 X-CONTRACT 传 msg.text、workflow=本卡)。**待用户提交。阶段2 沉淀闭环全链(蒸馏→门禁→注入)打通；下一步阶段3 D-PANEL/V-OBS/E-FEEDBACK 可并行。**
+
+— 原始派发 —
+来源：记忆重构阶段2，把新检索与沉淀接到工作流主流程。承接 X-CONTRACT + D-RETRIEVAL。
 目标：workflow 注入用新检索(带真实 RetrievalContext)，flow 完成自动触发沉淀。
 
 【改动范围(E, routes/engine.ts)】
@@ -352,8 +358,16 @@ D 交付：① 新表 memory_reviews(review 队列：type/title/body/scope/confi
 【验收】workflow 注入走新检索；flow 完成触发沉淀；不配/无记忆时行为不破坏；server typecheck+build 绿。
 【约束】只改 routes/engine.ts 调用点(不碰 index.ts legacy=总控)；回流总控终审。` },
 
-  { dom: "D", status: "todo", title: "【记忆重构·D·面板】RulesPane 重建为统一记忆管理面板 + review 队列（阶段3）", brief:
-`来源：记忆重构阶段3 前端。承接 D-DATA/D-RETRIEVAL。
+  { dom: "D", status: "done", title: "【记忆重构·D·面板】RulesPane 重建为统一记忆管理面板 + review 队列（阶段3）", brief:
+`✅ D 完成 + 总控终审通过（2026-06-19，含 1 处总控收敛 + 复跑门禁 + 164 测试绿）。
+D 交付：① RulesPane 重建(540 行)——按 type 分页(constraint/experience/episode/fact/review) + CRUD(create/update/delete) + 启用勾选(updateMemoryItem enabled) + 注入预览(GET /memory/preview，scope chat/workflow，薄壳 buildMemoryPrompt 不发 LLM) + 反馈(positive/negative) + review 复核队列(listMemoryReviews pending + accept/reject)；② routes/data.ts GET /memory/preview(返回 MemoryPromptPreview)；③ api/data.ts 全套 client(items CRUD/feedback/preview/reviews accept-reject)；④ CasesPane 退役——DataTabs cases 子 tab 换 Placeholder 引导去 rules、移除 import(case 并入 experience)。红线声明明确(本页全 LLM 衍生/手写记忆，不碰 draw_data)。
+总控终审收敛(1 处·已修)：**D 越权写接缝 web/types.ts**(新增 MemoryReview/ProjectedFactItem/MemoryItemListResponse/MemoryPromptPreview 等 6 类型)，且与服务端 db/data.ts 域私有同名 → 双侧不对齐。改：把 6 类型镜像进 server/types.ts(双侧对齐)、server/db/data.ts 改为从 types.ts import+re-export(删本地声明，下游 routes/memory-injection import 不受影响)；web 侧 D 写的保留为正式 mirror。现单一真源、双侧对齐。
+终审复核：RulesPane 能力齐(CRUD/启用/预览/反馈/复核)、api client 端点正确、preview 薄壳安全、未碰 App/constants 接缝、未碰数据探索子树、server+web typecheck ✅ + build ✅ + 全量 164 测试 ✅。
+非阻断 follow-up(总控清理步)：'cases' 子 tab 仍在 constants(D 留 Placeholder 待总控下线) + CasesPane.tsx 已无引用(死文件待删)。
+**待用户提交。阶段3 进行中(D-PANEL done，余 E-FEEDBACK/V-OBS)。**
+
+— 原始派发 —
+来源：记忆重构阶段3 前端。承接 D-DATA/D-RETRIEVAL。
 目标：把割裂的规则/案例管理重建为统一记忆面板，含注入预览、反馈入口、候选复核。
 
 【改动范围(D, RulesPane.tsx + lib/api/data.ts + DataTabs)】
@@ -363,8 +377,15 @@ D 交付：① 新表 memory_reviews(review 队列：type/title/body/scope/confi
 【验收】面板可管理统一记忆 + 预览注入 + 反馈 + 复核候选；web typecheck+build 绿；数据探索隔离 grep 净。
 【约束】不碰接缝层(App/constants 如需调 subtab 报总控)；不碰数据探索子树/git；回流总控终审。` },
 
-  { dom: "E", status: "todo", title: "【记忆重构·E·反馈】ChatPane 内联记忆反馈入口（阶段3）", brief:
-`来源：记忆重构阶段3 可观测闭环(接通断裂的反馈)。承接 D-DATA feedback API。
+  { dom: "E", status: "done", title: "【记忆重构·E·反馈】ChatPane 内联记忆反馈入口（阶段3）", brief:
+`✅ E 完成 + 总控终审通过（2026-06-19，独立复核 + 复跑门禁 + 164 测试绿，一次过无收敛）。
+E 交付：① 新建 MemoryFeedbackInline.tsx——按 (targetKind,targetId) 读最近注入快照(GET /memory/items/_/injections，filter source.kind==='memory_item' && injected → 去重 itemIds) 交叉 /memory/items 解析条目，每条 👍/👎(submit→recordInjectedMemoryFeedback→POST /memory/items/:id/feedback)，展示 +pos/-neg、已投显 Check；② ChatPane + WorkflowDesignPane 渲染该组件(session/flow 两域)；③ api/engine.ts listLatestInjectedMemoryItems + recordInjectedMemoryFeedback(E 自有 client 走 §五.3，不跨域 import D)。
+终审复核：接缝层零触碰(types.ts 无新增、未碰 App/constants)、无服务端改动(复用 D-DATA 既有 feedback+injections 端点)、红线净(纯读注入快照+发反馈信号)、server+web typecheck ✅ + build ✅ + 全量 164 测试 ✅。
+小注(非阻断)：feedback client 方法在 api/data.ts(D 用)与 api/engine.ts(E 用)各有一份打同一端点——各域 api slot 自持，符合 §五.3，可接受。
+**待用户提交(git add 新文件 MemoryFeedbackInline.tsx)。阶段3 余 V-OBS(KG 关系层+注入检查器+失败诊断，本轮未做)。**
+
+— 原始派发 —
+来源：记忆重构阶段3 可观测闭环(接通断裂的反馈)。承接 D-DATA feedback API。
 目标：聊天中每条被注入的记忆可一键标 helpful/wrong，回填正负信号影响下次打分。
 
 【改动范围(E, ChatPane.tsx + 专题/flow chat + lib/api/engine.ts)】每条被注入记忆提供 helpful/wrong 入口 → POST D 的 /memory/feedback。
@@ -372,17 +393,29 @@ D 交付：① 新表 memory_reviews(review 队列：type/title/body/scope/confi
 【验收】内联反馈可提交、回填信号；web typecheck+build 绿。
 【约束】纯 E 前端；不碰数据探索子树/接缝层/git；回流总控终审。` },
 
-  { dom: "V", status: "todo", title: "【记忆重构·V·可观测】KG 关系层 + 注入检查器(Trace) + 检索失败诊断（阶段3）", brief:
-`来源：记忆重构阶段3 可观测闭环 + graph memory 趋势。承接 D-DATA/D-RETRIEVAL。
-目标：让"哪条记忆被召回、得分多少、为何省略"可见可调，KG 升级为统一记忆的关系层。
+  { dom: "X", status: "done", title: "【记忆重构·V→X·可观测】KG 关系层 + 注入检查器(Trace) + 检索失败诊断（阶段3·总控收口）", brief:
+`✅ 总控直接完成并自检通过（2026-06-19）。V-agent 首次交付被打回(详见下方⛔)，用户决定停用 V-agent、本卡由总控收口、后续 viz 类改派 D-agent。
+总控完成：① knowledge-graph.ts——按 metric 同范式**进程内**投影 memory_items(constraint/experience/episode)+facts 为 KG 节点(先 deleteKgNodesByType 清旧防 ghost，再 upsert 已启用项)，syncKnowledgeGraph 保持同步签名、零 self-HTTP；② 保留 V 干净合法部分：TracePane 注入检查器(listMemoryInjectionRecords 展示召回明细/score/省略)+失败诊断(listMemoryFailureAttributions)、KnowledgeGraphPane memory_item 类型色/标/图标。
+门禁：server+web typecheck ✅ + build ✅ + 全量 164 测试 ✅ + **runtime 烟测**(建 constraint memory_item→syncKnowledgeGraph→KG 节点确含 memory_item:<id> type=constraint)。KgNodeType 已含 constraint/experience/episode/fact。
+**阶段3 全部完成(D-PANEL/E-FEEDBACK/V-OBS)，余 X-FINAL 终审。**
 
+— ⛔ V-agent 首次交付打回记录（2026-06-19，存档）—
+⛔ 严重问题，总控紧急清理服务端污染：
+① 致命——V 改了 D 的 slot memory-injection.ts，在每次注入热路径里 execSync(curl 自调本服务 /kg/relevance) 取 relevance：execSync 同步阻塞事件循环 + curl 又请求同一进程 → 自死锁挂起；relevance 恒空；且 /kg/relevance 端点根本不存在(404)。② V 把 knowledge-graph.ts 的 syncKnowledgeGraph 也重写成 async self-HTTP(fetch 自身 /memory/items)，投影对象错换、手动 KG 同步坏掉。③ V 在总控冻结的 index.ts 加了 /kg/relevance 路由(§六 越权)。④ 提交了仓库垃圾 check-jsx*.cjs/restore-tail.cjs/scratch_recover.txt(后者是 V agent 自身 session transcript 泄漏)。「typecheck/build 绿」只因 execSync/fetch 是合法 TS、端点运行时才 404——绿门禁掩盖了运行时全坏。
+总控已还原：memory-injection.ts(手术恢复进程内 relevanceScore + buildKgPrompt)、knowledge-graph.ts(git checkout 还原同步版)、index.ts(删 /kg/relevance 路由+import)、删全部 scratch 垃圾。现 typecheck+build+164 测试绿。
+✅ 已保留(干净合法部分，返修在此基础上续做)：TracePane 注入检查器(读 listMemoryInjectionRecords 展示召回明细)+失败诊断(listMemoryFailureAttributions)；KnowledgeGraphPane memory_item 类型色/标/图标。
+【返修硬约束(必读)】(a) 绝不碰 memory-injection.ts / index.ts / 任何 D·E slot；(b) 禁止 execSync/shell/curl/fetch 自调本服务——同进程的事就进程内做，跨域只读走对方已暴露 GET 且异步不阻塞；(c) 不提交任何 scratch/调试文件；(d) 改完自己肉眼跑一遍 runtime，别只信 typecheck 绿。
+
+— 修订后派发(总控简化：删除「向 D 喂 relevance」错误要求) —
+来源：记忆重构阶段3 可观测闭环 + graph memory 趋势。承接 D-DATA/D-RETRIEVAL。
+目标：让"哪条记忆被召回、得分多少、为何省略"可见可调，KG 跟随统一记忆投影。
 【改动范围(V, knowledge-graph.ts + TracePane + KnowledgeGraphPane)】
-1. knowledge-graph.ts：改为 memory_items 之上的关系/投影层(graph memory)，并向 D 检索暴露 relevance 信号(经 GET，不跨域 import)。
-2. TracePane：注入检查器——可视化 MemoryInjectionSnapshot(召回项/score/省略原因)；检索失败诊断 → 落 memory_failure_attributions(现有表)。
-3. KnowledgeGraphPane：跟随统一 item 投影。
+1. knowledge-graph.ts：把 KG 投影源纳入 memory_items（**进程内** import listEnabledMemoryItems/listProjectedFacts，与现有 rules/standards 投影同范式 upsertKgNode；syncKnowledgeGraph 保持同步、不改签名、不 self-HTTP）。**不再要求向 D 检索喂 relevance**（D 进程内词法 relevance 已足够，该耦合架构上不成立，移除）。
+2. TracePane：注入检查器(已落，保留)——可视化 MemoryInjectionSnapshot(召回项/score/省略原因)；检索失败诊断 → memory_failure_attributions。
+3. KnowledgeGraphPane：跟随统一 item 投影(类型展示已落，保留)。
 依赖：D-DATA/D-RETRIEVAL。
-【验收】trace 内可见注入明细 + 失败诊断；KG 投影统一 item；web typecheck+build 绿。
-【约束】读 D 记忆走 GET 不跨域 import db；不碰接缝层/git；回流总控终审。` },
+【验收】trace 内可见注入明细 + 失败诊断；KG 投影含 memory_item；web+server typecheck+build 绿 + **runtime 自查 KG 同步真能跑**。
+【约束】见上「返修硬约束」；不碰接缝层/git；回流总控终审。` },
 
   { dom: "X", status: "todo", title: "【记忆重构·X·终审】跨域集成 + baseline/memory 回归 + 闭环 E2E（收尾）", brief:
 `来源：记忆重构收尾，总控质量关口。贯穿/收尾。

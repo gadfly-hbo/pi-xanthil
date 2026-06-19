@@ -1,4 +1,4 @@
-import { Database, Store, CircleX, Workflow } from "lucide-react";
+import { Database, Store, CircleX, Workflow, Archive } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
 import { LlmManagementPane } from "@/components/LlmManagementPane";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
@@ -15,7 +15,6 @@ import { SkillManagementPane } from "@/components/SkillManagementPane";
 import { RulesPane } from "@/components/RulesPane";
 import { BusinessContextPane } from "@/components/BusinessContextPane";
 import { IndicatorsPane } from "@/components/IndicatorsPane";
-import { CasesPane } from "@/components/CasesPane";
 import { WeatherPane } from "@/components/WeatherPane";
 import { IndustryPane } from "@/components/IndustryPane";
 import { CompetitorPane } from "@/components/CompetitorPane";
@@ -87,7 +86,7 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <IndicatorsPane workspaceId={ctx.activeWorkspaceId} onStandardsChanged={() => void ctx.refreshRulesPromptInfo()} />
       )}
       {activeTab === "rule_memory" && activeSubTab === "cases" && (
-        <CasesPane workspaceId={ctx.activeWorkspaceId} onChanged={() => void ctx.refreshRulesPromptInfo()} />
+        <Placeholder icon={Archive} title="案例（已并入 experience）" hint="cases 已并入统一记忆 memory_items 的 experience 类型，请前往「rules」tab 管理。等待总控下线该子 tab。" />
       )}
       {activeTab === "rule_memory" && activeSubTab === "failure_memory" && (
         <Placeholder icon={CircleX} title="失败记忆" hint="记录分析失败案例与教训，即将推出" />

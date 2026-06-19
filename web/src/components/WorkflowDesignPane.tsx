@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { ArrowUp, CheckCircle2, Cpu, Loader2, Play, RefreshCw, Square, Wand2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { MemoryFeedbackInline } from "@/components/MemoryFeedbackInline";
 import { cn } from "@/lib/cn";
 import { gateway } from "@/lib/ws";
 import { asBlocks, textOf, type Flow, type PiEvent, type PiModel, type ServerMessage, type StoredFlowMessage, type WorkflowDef } from "@/types";
@@ -441,9 +442,18 @@ export function WorkflowDesignPane(p: Props) {
         </div>
         <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto p-3">
           {lastAssistantText ? (
-            <div className="whitespace-pre-wrap rounded-md border border-neutral-200 bg-white p-3 text-[12px] leading-5 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200">
-              {lastAssistantText}
-            </div>
+            <>
+              <div className="whitespace-pre-wrap rounded-md border border-neutral-200 bg-white p-3 text-[12px] leading-5 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200">
+                {lastAssistantText}
+              </div>
+              <MemoryFeedbackInline
+                workspaceId={p.flow.workspaceId}
+                targetKind="flow"
+                targetId={p.flow.id}
+                refreshKey={`${messages.length}:${running}`}
+                hidden={running}
+              />
+            </>
           ) : (
             <p className="py-8 text-center text-[12px] leading-5 text-neutral-400 dark:text-neutral-500">提交设计表单后，这里会显示 pi 的生成或修改结果。</p>
           )}

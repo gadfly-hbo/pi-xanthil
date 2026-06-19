@@ -278,6 +278,7 @@ const legacyApi = {
     fetch(`/api/workspaces/${workspaceId}/trace/rule-suggestions`, { method: "POST" }).then(json<TraceRuleSuggestion[]>),
   pruneTraceEvents: (workspaceId: string, retainDays: number) =>
     fetch(`/api/workspaces/${workspaceId}/trace/events?retainDays=${retainDays}`, { method: "DELETE" }).then(json<{ deleted: number; retainedDays: number }>),
+
   listMemoryInjectionRecords: (workspaceId: string, limit = 50) =>
     fetch(`/api/workspaces/${workspaceId}/memory/injections?limit=${limit}`).then(json<MemoryInjectionRecord[]>),
   listMemoryEvaluations: (workspaceId: string) =>

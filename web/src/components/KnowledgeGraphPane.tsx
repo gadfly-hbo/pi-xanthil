@@ -17,6 +17,10 @@ const TYPE_COLORS: Record<KgNodeType, string> = {
   biz_ctx: "#3b82f6",
   report: "#ec4899",
   concept: "#a78bfa",
+  constraint: "#ef4444",
+  experience: "#8b5cf6",
+  episode: "#14b8a6",
+  fact: "#eab308",
 };
 
 const TYPE_LABELS: Record<KgNodeType, string> = {
@@ -26,6 +30,10 @@ const TYPE_LABELS: Record<KgNodeType, string> = {
   biz_ctx: "业务环境",
   report: "报告",
   concept: "概念",
+  constraint: "约束",
+  experience: "经验",
+  episode: "情景",
+  fact: "事实",
 };
 
 const RELATION_LABELS: Record<KgRelation, string> = {
@@ -42,6 +50,10 @@ const TYPE_ICONS: Record<KgNodeType, React.ReactNode> = {
   biz_ctx: <Globe className="h-3 w-3" />,
   report: <FileText className="h-3 w-3" />,
   concept: <Sparkles className="h-3 w-3" />,
+  constraint: <BookOpen className="h-3 w-3" />,
+  experience: <Sparkles className="h-3 w-3" />,
+  episode: <FileText className="h-3 w-3" />,
+  fact: <BarChart2 className="h-3 w-3" />,
 };
 
 const CLUSTER_CENTERS: Record<KgNodeType, [number, number]> = {
@@ -51,6 +63,10 @@ const CLUSTER_CENTERS: Record<KgNodeType, [number, number]> = {
   biz_ctx: [-480, 280],
   report: [480, 280],
   concept: [0, -480],
+  constraint: [0, 0],
+  experience: [0, -480],
+  episode: [480, 280],
+  fact: [-480, -280],
 };
 
 const ALL_RELATIONS: KgRelation[] = ["related_to", "references", "supports", "derived_from"];

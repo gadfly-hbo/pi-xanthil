@@ -42,7 +42,7 @@ import { runPiPrompt, runPiTurn } from "../pi-adapter.ts";
 import { postMemoryCandidateToDIngest, runMemoryConsolidation, type MemoryConsolidationTargetKind } from "../memory-consolidation.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
-import type { ClientMessage, Flow, PiEvent, Session } from "../types.ts";
+import type { ClientMessage, Flow, PiEvent, RetrievalContext, Session } from "../types.ts";
 import { buildAnaxWorkflow, buildAnaxQuickWorkflow } from "../anax-template.ts";
 import { buildSqlLoopWorkflow } from "../sql-loop-template.ts";
 import { moveManagedDirToTrash } from "../trash.ts";
@@ -133,8 +133,17 @@ function ensureLatestZhuantiTask(workspaceId: string, name?: string, sessionTitl
   };
 }
 
-function memoryConsolidationAutoEnabled(): boolean {
-  return process.env.XANTHIL_MEMORY_CONSOLIDATION_AUTO === "1";
+function buildFlowMemoryRetrievalContext(flowId: string, query: string): RetrievalContext {
+  const recentMessages = listFlowMessages(flowId)
+    .slice(-8)
+    .flatMap((message) => {
+      const text = flowMessageText(message.content).trim();
+      return text ? [`${message.role}: ${text}`] : [];
+    });
+  return {
+    query: query.trim(),
+    ...(recentMessages.length > 0 ? { recentMessages } : {}),
+  };
 }
 
 function maybeTriggerFlowMemoryConsolidation(input: {
@@ -144,7 +153,6 @@ function maybeTriggerFlowMemoryConsolidation(input: {
   targetId: string;
   traceRunId?: string;
 }): void {
-  if (!memoryConsolidationAutoEnabled()) return;
   const baseUrl = `http://127.0.0.1:${PORT}`;
   void runMemoryConsolidation({
     workspaceId: input.workspace.id,
@@ -2037,7 +2045,8 @@ export async function handleSendFlow(
   }
   if (workspace) recordSkillRegistryUsageForPaths(flow.workspaceId, workspace.rootPath, skillPaths);
 
-  const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow");
+  const memoryRetrievalContext = buildFlowMemoryRetrievalContext(flow.id, commandExpansion.expandedText);
+  const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow", {}, memoryRetrievalContext);
   recordMemoryInjectionUsage(flow.workspaceId, memoryInjection);
 
   addFlowMessage(flow.id, "user", [{ type: "text", text: msg.text }]);
@@ -2060,7 +2069,7 @@ export async function handleSendFlow(
     piSessionId: flow.id,
     text: `${contextPrefix}${commandExpansion.expandedText}`,
     model: msg.model,
-    systemPrompt: msg.injectRulesPrompt ? withRulesPrompt(flow.workspaceId, "workflow", msg.systemPrompt) : msg.systemPrompt,
+    systemPrompt: msg.injectRulesPrompt ? withRulesPrompt(flow.workspaceId, "workflow", msg.systemPrompt, memoryRetrievalContext) : msg.systemPrompt,
     skillPaths,
     onEvent: (event: PiEvent) => {
       trackUsageEvent({
@@ -2180,7 +2189,11 @@ export async function handleExecuteMultiAgent(
   const clientRunId = msg.runId;
   const active: ActiveMultiAgentRun = { currentRuns: new Set(), aborted: false, dbRunId: runRow.id, flowId: flow.id, ws };
   activeMultiAgentRuns.set(clientRunId, active);
-  const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow");
+  const memoryQuery = Object.entries(msg.inputs ?? {})
+    .map(([key, value]) => `${key}: ${value}`)
+    .join("\n");
+  const memoryRetrievalContext = buildFlowMemoryRetrievalContext(flow.id, memoryQuery || flow.name);
+  const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow", {}, memoryRetrievalContext);
   recordMemoryInjectionUsage(flow.workspaceId, memoryInjection);
   traceFlowEvent(flow.id, "run_start", "running", "multi-agent execution", { model: msg.model, inputs: msg.inputs, memoryInjection, resumeFromNodeId: msg.resumeFromNodeId }, runRow.id);
   send(ws, { type: "run_start", flowId: flow.id, runId: clientRunId });
@@ -2193,7 +2206,7 @@ export async function handleExecuteMultiAgent(
       inputs: msg.inputs,
       defaultModel: msg.model,
       contextPrefix,
-      systemPromptPrefix: msg.injectRulesPrompt ? (buildMemoryPrompt(flow.workspaceId, "workflow") || undefined) : undefined,
+      systemPromptPrefix: msg.injectRulesPrompt ? (buildMemoryPrompt(flow.workspaceId, "workflow", {}, memoryRetrievalContext) || undefined) : undefined,
       onStepStart: (nodeId) => {
         traceFlowEvent(flow.id, "agent_step_start", "running", nodeId, { nodeId }, runRow.id);
         send(ws, { type: "agent_step_start", flowId: flow.id, runId: clientRunId, nodeId });

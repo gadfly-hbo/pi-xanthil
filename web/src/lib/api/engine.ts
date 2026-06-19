@@ -3,6 +3,9 @@
 //   复用请求工具 `import { json } from "./_http"`; 类型从 "@/types" 引入。
 import type {
   ForkBranch,
+  MemoryInjectionRecord,
+  MemoryItem,
+  MemoryItemListResponse,
   SkillAutoDistillResult,
   SkillCoverageGapCluster,
   SkillCoverageGapDistillResult,
@@ -47,6 +50,38 @@ export interface SkillImportResult {
 }
 
 export const engineApi = {
+  listLatestInjectedMemoryItems: async (
+    workspaceId: string,
+    target: { targetKind: "session" | "flow"; targetId: string },
+  ): Promise<MemoryItem[]> => {
+    const records = await fetch(`/api/workspaces/${workspaceId}/memory/items/_/injections?limit=200`)
+      .then(json<MemoryInjectionRecord[]>);
+    const latest = records.find((record) => (
+      record.targetKind === target.targetKind && record.targetId === target.targetId
+    ));
+    const itemIds = [...new Set(latest?.snapshot.sources
+      .filter((source) => source.kind === "memory_item" && source.injected)
+      .flatMap((source) => source.itemIds ?? []) ?? [])];
+    if (itemIds.length === 0) return [];
+
+    const response = await fetch(`/api/workspaces/${workspaceId}/memory/items`)
+      .then(json<MemoryItemListResponse>);
+    const byId = new Map(response.items.map((item) => [item.id, item]));
+    return itemIds.flatMap((itemId) => {
+      const item = byId.get(itemId);
+      return item ? [item] : [];
+    });
+  },
+  recordInjectedMemoryFeedback: (
+    workspaceId: string,
+    itemId: string,
+    signal: "positive" | "negative",
+  ) =>
+    fetch(`/api/workspaces/${workspaceId}/memory/items/${encodeURIComponent(itemId)}/feedback`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ signal }),
+    }).then(json<MemoryItem>),
   forkSession: (sessionId: string, title?: string) =>
     fetch(`/api/sessions/${sessionId}/fork`, {
       method: "POST",

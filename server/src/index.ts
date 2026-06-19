@@ -5308,7 +5308,13 @@ app.get("/api/workspaces/:id/kg/edges", (req, res) => {
   res.json(listKgEdges(ws.id));
 });
 
-app.post("/api/workspaces/:id/kg/sync", (req, res) => {
+
+app.get("/api/workspaces/:id/kg/prompt", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(buildKgPrompt(req.params.id));
+});
+
+app.post("/api/workspaces/:id/kg/sync", async (req, res) => {
   const ws = getWorkspace(req.params.id);
   if (!ws) return res.status(404).json({ error: "workspace not found" });
   try {
