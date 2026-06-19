@@ -1,4 +1,4 @@
-import { Database, Store, CircleX, Workflow, Archive } from "lucide-react";
+import { Database, Store } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
 import { LlmManagementPane } from "@/components/LlmManagementPane";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
@@ -84,15 +84,6 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       )}
       {activeTab === "rule_memory" && activeSubTab === "indicators" && (
         <IndicatorsPane workspaceId={ctx.activeWorkspaceId} onStandardsChanged={() => void ctx.refreshRulesPromptInfo()} />
-      )}
-      {activeTab === "rule_memory" && activeSubTab === "cases" && (
-        <Placeholder icon={Archive} title="案例（已并入 experience）" hint="cases 已并入统一记忆 memory_items 的 experience 类型，请前往「rules」tab 管理。等待总控下线该子 tab。" />
-      )}
-      {activeTab === "rule_memory" && activeSubTab === "failure_memory" && (
-        <Placeholder icon={CircleX} title="失败记忆" hint="记录分析失败案例与教训，即将推出" />
-      )}
-      {activeTab === "rule_memory" && activeSubTab === "process_memory" && (
-        <Placeholder icon={Workflow} title="思维模式" hint="沉淀分析思维模式与方法论，即将推出" />
       )}
 
       {activeTab === "xan_db" && activeSubTab === "the-crowd" && (

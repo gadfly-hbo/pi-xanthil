@@ -14,6 +14,8 @@ import {
   listProjectedFacts,
   coerceRiskFlags,
   ingestMemoryCandidate,
+  findMemoryItemDuplicate,
+  findSemanticDedupShortlist,
   listMemoryReviews,
   getMemoryReview,
   acceptMemoryReview,
@@ -25,6 +27,7 @@ import {
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { buildMemoryPrompt } from "../memory-injection.ts";
+import { judgeSemanticDuplicate, type JudgeFn } from "../memory-dedup.ts";
 import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
 import type {
   BiAggregationDataset,
@@ -844,6 +847,13 @@ dataRouter.get("/api/workspaces/:id/memory/preview", (req, res) => {
 const VALID_TYPES_INGEST: ReadonlySet<MemoryItemType> = new Set(["constraint", "experience", "episode"]);
 const VALID_SCOPES_INGEST = new Set(["global", "chat", "workflow"] as const);
 
+// 测试注入钩子: 单测可通过 __setIngestJudgeOverride 注入 mock judge 函数,
+// 避免在测试里跑真实 pi 进程. 生产路径默认 undefined -> judgeSemanticDuplicate 走 runPiPrompt.
+let ingestJudgeOverride: JudgeFn | undefined;
+export function __setIngestJudgeOverride(fn: JudgeFn | undefined): void {
+  ingestJudgeOverride = fn;
+}
+
 function parseIngestBody(workspaceId: string, body: unknown): { ok: true; value: MemoryIngestInput } | { ok: false; error: string } {
   const b = (body ?? {}) as Record<string, unknown>;
   const type = b.type;
@@ -883,12 +893,32 @@ function parseIngestBody(workspaceId: string, body: unknown): { ok: true; value:
   };
 }
 
-dataRouter.post("/api/workspaces/:id/memory/ingest", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+dataRouter.post("/api/workspaces/:id/memory/ingest", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
   const parsed = parseIngestBody(req.params.id, req.body);
   if (!parsed.ok) return res.status(400).json({ error: parsed.error });
   try {
-    const verdict = ingestMemoryCandidate(parsed.value);
+    // 成本门控: 词法命中直接走旧路径, 不调 LLM. 词法漏判 + shortlist 非空才 judge.
+    let semanticDupId: string | null = null;
+    const lexicalDup = findMemoryItemDuplicate(parsed.value.workspaceId, parsed.value.type, parsed.value.title);
+    if (!lexicalDup) {
+      const shortlist = findSemanticDedupShortlist(
+        parsed.value.workspaceId,
+        parsed.value.type,
+        parsed.value.title,
+        parsed.value.body,
+      );
+      if (shortlist.length > 0) {
+        semanticDupId = await judgeSemanticDuplicate(
+          { title: parsed.value.title, body: parsed.value.body },
+          shortlist,
+          { workspaceRoot: workspace.rootPath },
+          ingestJudgeOverride,
+        );
+      }
+    }
+    const verdict = ingestMemoryCandidate(parsed.value, semanticDupId);
     if (verdict.kind === "rejected") {
       return res.status(400).json({ error: verdict.reason, riskFlags: verdict.riskFlags });
     }

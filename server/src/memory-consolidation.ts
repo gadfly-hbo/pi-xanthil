@@ -1,4 +1,6 @@
 import { generateTraceRuleSuggestions, getTraceTimeline } from "./db.ts";
+import { trackUsageEvent } from "./cache.ts";
+import { PORT } from "./config.ts";
 import { runPiPrompt } from "./pi-adapter.ts";
 import type { MemoryCandidate, MemoryRiskFlag, PiEvent, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem } from "./types.ts";
 
@@ -40,15 +42,51 @@ export interface MemoryConsolidationResult {
   ingested: Array<MemoryConsolidationIngestResult & { candidate: MemoryCandidate }>;
 }
 
+export interface FireMemoryConsolidationOptions {
+  workspaceId: string;
+  workspaceRoot: string;
+  targetKind: MemoryConsolidationTargetKind;
+  targetId: string;
+  baseUrl?: string;
+  label: string;
+  onError: (error: unknown) => void;
+}
+
 export const MEMORY_CONSOLIDATION_SYSTEM_PROMPT =
   "你是记忆沉淀助手，负责从 pi-xanthil 的执行 trace 中提炼可复用记忆。"
   + "只输出 JSON，不输出解释、Markdown 或代码围栏。"
   + "候选必须是对后续任务有稳定帮助的约束、经验或情景，不要记录一次性结论、原始数据明细或敏感信息。";
 
+export const DEFAULT_CONSOLIDATION_MODEL = "minimax-cn/MiniMax-M3";
+
 const VALID_TYPES = new Set<MemoryCandidate["type"]>(["constraint", "experience", "episode"]);
 const VALID_SCOPES = new Set<MemoryCandidate["scope"]>(["global", "chat", "workflow"]);
 const RISK_CODES = new Set<MemoryRiskFlag["code"]>(["instruction_injection", "pii", "weak_evidence", "overbroad"]);
 const RISK_SEVERITIES = new Set<MemoryRiskFlag["severity"]>(["low", "medium", "high"]);
+
+export function fireMemoryConsolidation(options: FireMemoryConsolidationOptions): void {
+  const baseUrl = options.baseUrl ?? `http://127.0.0.1:${PORT}`;
+  void runMemoryConsolidation({
+    workspaceId: options.workspaceId,
+    workspaceRoot: options.workspaceRoot,
+    targetKind: options.targetKind,
+    targetId: options.targetId,
+    dryRun: false,
+    timeoutMs: 180_000,
+    ingestCandidate: (candidate, context) => postMemoryCandidateToDIngest(
+      baseUrl,
+      "/api/workspaces/:id/memory/ingest",
+      candidate,
+      context,
+    ),
+    onEvent: (event) => trackUsageEvent({
+      workspaceId: options.workspaceId,
+      targetKind: options.targetKind,
+      targetId: options.targetId,
+      title: options.label,
+    }, event),
+  }).catch(options.onError);
+}
 
 export async function runMemoryConsolidation(options: MemoryConsolidationOptions): Promise<MemoryConsolidationResult> {
   const maxCandidates = clampInt(options.maxCandidates ?? 6, 1, 12);
@@ -65,7 +103,7 @@ export async function runMemoryConsolidation(options: MemoryConsolidationOptions
     : await runPiPrompt({
       workspaceRoot: options.workspaceRoot,
       text: prompt,
-      model: options.model,
+      model: options.model ?? DEFAULT_CONSOLIDATION_MODEL,
       systemPrompt: MEMORY_CONSOLIDATION_SYSTEM_PROMPT,
       timeoutMs: options.timeoutMs ?? 180_000,
       onEvent: options.onEvent,
@@ -210,6 +248,7 @@ export function parseMemoryCandidates(raw: string, options: {
   maxCandidates?: number;
 }): MemoryCandidate[] {
   const parsed = parseJsonObject(raw);
+  if (parsed === null || (typeof parsed !== "object" && !Array.isArray(parsed))) return [];
   const rawCandidates = Array.isArray(parsed)
     ? parsed
     : Array.isArray((parsed as { candidates?: unknown }).candidates)
@@ -246,17 +285,55 @@ export function parseMemoryCandidates(raw: string, options: {
 
 function parseJsonObject(raw: string): unknown {
   const text = raw.trim().replace(/^```(?:json)?\s*/i, "").replace(/```$/i, "").trim();
+  const direct = safeJsonParse(text);
+  if (direct !== null) return direct;
+  for (let start = 0; start < text.length; start++) {
+    if (text[start] !== "{" && text[start] !== "[") continue;
+    const slice = balancedJsonSlice(text, start);
+    if (!slice) continue;
+    const parsed = safeJsonParse(slice);
+    if (parsed !== null) return parsed;
+  }
+  return null;
+}
+
+function safeJsonParse(text: string): unknown | null {
   try {
     return JSON.parse(text);
   } catch {
-    const startObj = text.indexOf("{");
-    const endObj = text.lastIndexOf("}");
-    if (startObj >= 0 && endObj > startObj) return JSON.parse(text.slice(startObj, endObj + 1));
-    const startArr = text.indexOf("[");
-    const endArr = text.lastIndexOf("]");
-    if (startArr >= 0 && endArr > startArr) return JSON.parse(text.slice(startArr, endArr + 1));
-    throw new Error("memory consolidation output is not valid JSON");
+    return null;
   }
+}
+
+function balancedJsonSlice(text: string, start: number): string | null {
+  const opening = text[start];
+  if (opening !== "{" && opening !== "[") return null;
+  const stack: string[] = [opening];
+  let inString = false;
+  let escaped = false;
+  for (let index = start + 1; index < text.length; index++) {
+    const char = text[index];
+    if (inString) {
+      if (escaped) escaped = false;
+      else if (char === "\\") escaped = true;
+      else if (char === '"') inString = false;
+      continue;
+    }
+    if (char === '"') {
+      inString = true;
+      continue;
+    }
+    if (char === "{" || char === "[") {
+      stack.push(char);
+      continue;
+    }
+    if (char !== "}" && char !== "]") continue;
+    const expected = char === "}" ? "{" : "[";
+    if (stack.at(-1) !== expected) return null;
+    stack.pop();
+    if (stack.length === 0) return text.slice(start, index + 1);
+  }
+  return null;
 }
 
 function applyHeuristicGovernance(candidate: MemoryCandidate): MemoryCandidate {

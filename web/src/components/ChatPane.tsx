@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Square, Wrench, X } from "lucide-react";
+import { Archive, ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Square, Wrench, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
@@ -256,6 +256,9 @@ export function ChatPane(p: Props) {
   const [commandFormError, setCommandFormError] = useState("");
   const [cleanDataFiles, setCleanDataFiles] = useState<WorkspacePath[]>([]);
   const [cleanDataLoading, setCleanDataLoading] = useState(false);
+  const [consolidationCount, setConsolidationCount] = useState(0);
+  const [consolidatingTrace, setConsolidatingTrace] = useState(false);
+  const [consolidationNotice, setConsolidationNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [drawerWidth, setDrawerWidth] = useState(() => {
     if (typeof window === "undefined") return DRAWER_DEFAULT;
     const raw = window.localStorage.getItem(DRAWER_WIDTH_KEY);
@@ -301,6 +304,42 @@ export function ChatPane(p: Props) {
   useEffect(() => {
     if (!canUseSessionTools) setActiveAssistPanel(null);
   }, [canUseSessionTools]);
+
+  useEffect(() => {
+    let cancelled = false;
+    setConsolidationCount(0);
+    setConsolidationNotice(null);
+    if (!p.workspaceId || !activeSessionId) return () => { cancelled = true; };
+    api.getSessionConsolidationCount(p.workspaceId, activeSessionId)
+      .then(({ count }) => {
+        if (!cancelled) setConsolidationCount(count);
+      })
+      .catch((error) => {
+        if (!cancelled) setConsolidationNotice({ tone: "error", text: `计数加载失败：${error instanceof Error ? error.message : String(error)}` });
+      });
+    return () => { cancelled = true; };
+  }, [activeSessionId, p.workspaceId]);
+
+  async function consolidateTrace() {
+    if (!p.workspaceId || !activeSessionId || consolidatingTrace) return;
+    setConsolidatingTrace(true);
+    setConsolidationNotice(null);
+    try {
+      const result = await api.consolidateSessionTrace(p.workspaceId, activeSessionId);
+      setConsolidationCount(result.count);
+      if (!result.ok) {
+        setConsolidationNotice({ tone: "error", text: `沉淀失败：${result.error ?? "候选未通过门禁"}` });
+      } else if (result.candidates === 0) {
+        setConsolidationNotice({ tone: "success", text: "本轮无可沉淀内容" });
+      } else {
+        setConsolidationNotice({ tone: "success", text: `沉淀完成：新增 ${result.ingested} 条 · ${result.review} 条待复核` });
+      }
+    } catch (error) {
+      setConsolidationNotice({ tone: "error", text: `沉淀失败：${error instanceof Error ? error.message : String(error)}` });
+    } finally {
+      setConsolidatingTrace(false);
+    }
+  }
 
   useEffect(() => {
     let cancelled = false;
@@ -532,7 +571,24 @@ export function ChatPane(p: Props) {
           {p.compacting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Gauge className="h-3.5 w-3.5" strokeWidth={1.75} />}
           {p.compacting ? "正在整理" : "整理上下文"}
         </button>
+        <button
+          onClick={() => void consolidateTrace()}
+          disabled={!p.workspaceId || !activeSessionId || consolidatingTrace}
+          title="从当前会话 trace 手动沉淀候选记忆"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] text-neutral-500 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        >
+          {consolidatingTrace ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" strokeWidth={1.75} />}
+          {consolidatingTrace ? "沉淀中…" : `沉淀 trace（${consolidationCount}）`}
+        </button>
         {p.runtimeNotice && <span className="truncate text-[11px] text-neutral-400" title={p.runtimeNotice}>{p.runtimeNotice}</span>}
+        {consolidationNotice && (
+          <span
+            className={cn("truncate text-[11px]", consolidationNotice.tone === "error" ? "text-red-500" : "text-emerald-600 dark:text-emerald-400")}
+            title={consolidationNotice.text}
+          >
+            {consolidationNotice.text}
+          </span>
+        )}
       </div>
 
       {/* messages */}

@@ -8,62 +8,53 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-19 · **记忆重构阶段3：D-PANEL 统一记忆面板 + review 队列**
+- 最近更新：2026-06-19 · **记忆重构增强 D：D-INGEST 语义 dedup（LLM-judge + 词法兜底 + 成本门控）**
 - 进度：
-  - **D-PANEL**（本期完成）：
-    - `RulesPane.tsx` 完全重建为统一记忆面板：5 个 tab（constraint / experience / episode / fact 投影 / review 复核）
-    - CRUD：新建（type/scope/title/body）、编辑、删除，`busyId` 防并发
-    - 启用/停用：checkbox toggle，调 `updateMemoryItem(enabled)` 联动后端
-    - 注入预览：`GET /memory/preview` 实时展示 chat/workflow scope 下 `buildMemoryPrompt` 产物 + char/token/item/fact 计数
-    - 反馈入口：thumbs up/down → `recordMemoryItemFeedback`，即时更新 positiveSignals/negativeSignals
-    - review 复核队列：`listMemoryReviews(pending)` + 一键采纳/拒绝，采纳后 item 自动入列表
-    - fact 投影 tab：只读展示 business_context / metric_definition / reference_file 投影
-    - 风险标签 `RiskBadge`：按 severity 着色展示 instruction_injection/pii/weak_evidence/overbroad
-    - 过期检测：`validUntil < Date.now()` 显示"已过期"徽章
-    - supersedes 链：显示"supersedes"徽章
-  - **Types 增量**（`web/src/types.ts`）：
-    - `MemoryReview` / `MemoryReviewStatus`：复核队列条目类型
-    - `ProjectedFactItem` / `ProjectedFactKind`：fact adapter 投影类型（前端展示用）
-    - `MemoryItemListResponse`：`{ items, facts }` 联合响应
-    - `MemoryPromptPreview`：注入预览响应 `{ prompt, charCount, tokenEstimate, itemCount, factCount }`
-  - **dataApi 增量**（`web/src/lib/api/data.ts`）：9 个新方法
-    - `listMemoryItems` / `createMemoryItem` / `updateMemoryItem` / `deleteMemoryItem`
-    - `recordMemoryItemFeedback` / `previewMemoryPrompt`
-    - `listMemoryReviews` / `acceptMemoryReview` / `rejectMemoryReview`
-  - **Server 增量**（`server/src/routes/data.ts`）：
-    - `GET /api/workspaces/:id/memory/preview`：薄壳调 `buildMemoryPrompt`，返回 prompt + 统计
-    - try/catch 守卫防止 `buildMemoryPrompt` 异常泄露 500
-  - **CasesPane 退役**（`web/src/tabs/DataTabs.tsx`）：
-    - `rule_memory.cases` 子 tab 渲染替换为 Placeholder（"案例已并入 experience"）
-    - `CasesPane.tsx` 文件保留，子 tab 列表不动等总控下线
+  - **D-INGEST 语义 dedup 升级**（本期完成）：
+    - **`db/data.ts`**：
+      - 新增 `findSemanticDedupShortlist(workspaceId, type, candidateTitle, candidateBody, k=8)`：纯 db+JS，按 token 重叠度排序取同 type 已启用 peer 的前 k 条；空 shortlist 表示无近邻、上游应跳过 judge。token 切分中英混合（英文非字母数字拆+lower、中文 2-gram），不引外部分词器。
+      - `tokenizeForOverlap(s)`：内部辅助函数，shortlist 排序专用，不追求语言学严谨。
+      - `ingestMemoryCandidate(input, semanticDupId?)`：加可选第二参数；词法 dedup 漏判时采纳 semanticDupId 对应 item（仅当同 ws + 同 type + enabled），supersede 路径不变。词法命中优先于 semantic。
+    - **新建 `server/src/memory-dedup.ts`**（纯 D 域）：
+      - `judgeSemanticDuplicate(candidate, shortlist, opts, judgeFn?)`：保守判重 system prompt + `runPiPrompt` 走 pi（本地，隐私不出域）；输出严格 JSON `{match: id|null}`，解析容忍 markdown fence + 周边文本；id 必须在 allowedIds 里（防 LLM 幻觉编 id）。**任何抛错/超时/非法输出 → catch → null**，绝不阻断 ingest。
+      - 默认 timeout **15s**（review 后从 30s 收紧；judge prompt 极小，本地模型应秒回）。
+      - 两处 catch（注入 judgeFn 抛错 + pi runPiPrompt 抛错）都加 `console.warn` 含错误消息，避免静默退化。
+      - `judgeFn` 可注入（供测试 mock，避免真跑 pi 进程）。
+      - 暴露 `__testing.parseJudgeOutput / buildPrompt` 供直测（已有 5 个 unit test 覆盖 fence 剥离、id 允许列表、null/非法输入、周边文本提取）。
+    - **`routes/data.ts` POST /memory/ingest**：
+      - 改 async；`__setIngestJudgeOverride(fn)` 测试钩子（process-global，仅同文件内 finally 重置安全；node:test 默认顺序执行无并发风险）。
+      - 编排：① 先 `findMemoryItemDuplicate`（词法）→ 命中即跳过 judge（成本门控核心）；② 词法漏判 + shortlist 非空 → `await judgeSemanticDuplicate`（每候选 ≤1 次 LLM）；③ 把 verdict 交给 `ingestMemoryCandidate(parsed, semanticDupId)`。
+      - 高危/中危/低置信分流逻辑完全不变（`acceptMemoryReview` 路径维持词法）。
+  - **测试**（新建 `server/src/memory-semantic-dedup.test.ts`，13 个测试，全绿）：
+    - HTTP 集成：① 词法漏判+语义同 → judge 命中 → supersede 旧条目；② 词法精确 dup → judge **不**触发；③ judge 抛错 → 优雅回退、ingest 仍 200 accepted、supersededId=null；④ shortlist 空 → judge 不触发。
+    - Unit：`judgeSemanticDuplicate` 空 shortlist 直返 null；注入 judgeFn 抛错被吞。
+    - `parseJudgeOutput` 直测：```json``` 围栏剥离 + id 允许列表、伪造 id 拒绝、null/非字符串/缺字段、畸形/空输入不抛错、周边文本中提取 JSON 对象。
   - **Code Review 修复**（本期）：
-    - `acceptReview` 加 `if (!out)` 守卫（防止已处理 review 导致崩溃）
-    - `rejectReview` 处理 `window.prompt` 取消（`null` 时提前 return）
-    - `refresh` 拆分为 `refreshData`（items + reviews，仅依赖 workspaceId）和 `refreshPreview`（preview，依赖 workspaceId + previewScope），避免切换 scope 时重取 items
-  - **D-INGEST**（上期完成，见 git log）
-  - **D-RETRIEVAL**（上期完成，见 git log）
-  - **D-DATA**（上期完成，见 git log）
+    - I-2：默认 timeout 30s → 15s；两处 catch 加 console.warn，可观测性补强。
+    - S-5：`parseJudgeOutput` 直测从 0 个补到 5 个，覆盖 LLM 输出解析的所有 happy/sad path。
 - 校验：
   - `npm run typecheck`：✅ 全绿（server + web）
   - `npm run build`：✅
-  - 数据探索 LLM 隔离 grep：✅ 空匹配
+  - 数据探索 LLM 隔离 grep：✅ 0 命中（D-INGEST dedup 完全在 server 端，不碰 web 探索子树）
+  - 测试：✅ 25/25（13 新 semantic-dedup + 12 原 ingest-gate 无回归）
 - 下一步（接续优先级）：
-  - ① **总控一行改**：engine 默认 ingestPath 翻到 `/api/workspaces/:id/memory/ingest`（`routes/engine.ts:156` + `routes/engine.ts:1194`）
-  - ② **总控终审**：`rule_memory.cases` 子 tab 正式下线（`constants.ts` 移除 + `CasesPane.tsx` 删除）
-  - ③ **E-DISTILL / E-WIRING**：蒸馏 runner + 调用点对齐（依赖 D-RETRIEVAL + D-INGEST 完成）
-  - ④ **fact adapter 补强**：reference 文件若需读正文摘要（当前仅元数据）
-  - ⑤ **真机联调专题数据三件套**（前次遗留）
-  - ⑥ **真机联调 subagents/command/LLM 管理**（前次遗留）
+  - ① **总控终审本期变更**：核 judge 兜底（catch→null+warn）、成本门控（lexical hit 跳 judge / 空 shortlist 跳 judge）、verdict 分流不变（accepted/review/rejected 三路语义不动）。
+  - ② **可选优化（YAGNI 暂不做）**：
+    - S-1：`tokenizeForOverlap` 输入截断（`s.slice(0, 4000)`）防极端长 body；当前 weak_evidence 软门已挡掉过短 body，超长无硬限。
+    - S-2：peer token 缓存（`Map<id+updatedAt, Set<string>>`）；当前 workspace 量 <1000 peers 不必要。
+    - S-3：在 route 里把 `detectMemoryCandidateRisk` 提到 judge 之前，让高危候选不付 LLM 成本（不影响安全，纯成本节约）。
+    - S-6：`k=8` 在 route 调用点加注释。
+  - ③ 上期遗留：legacy `/memory/feedback` `/memory/injections` 与新 `/memory/items*` 共存合并、`rule_memory.cases` 子 tab 正式下线、`MemoryItemType` 加 `'fact'` —— 全部归总控。
+  - ④ 上期遗留：`fact adapter` 补强、专题数据三件套真机联调、subagents/command/LLM 管理真机联调。
 - 阻塞 / 待总控：
-  - `MemoryItemType` 联合需加 `'fact'`：当前 fact adapter 用 D 域内部 `ProjectedFactItem` 规避
-  - legacy `/memory/feedback` `/memory/injections` 与新 `/memory/items*` 共存：合并时机交总控终审
-  - `rule_memory.cases` 子 tab 正式下线：`constants.ts` 归总控，D 域不动
+  - **本期无新阻塞**。语义 dedup 完全在 D 域内闭环，没碰 types/schema 接缝、没加新依赖。
+  - 上期遗留阻塞延续：`MemoryItemType` 加 `'fact'`、legacy 路由合并时机、`cases` 子 tab 下线时机 —— 等总控。
 - 开放问题：
-  - `listMemoryReviews` 无分页（与 `listMemoryItems` 一致）；review 队列积累多时需加 `LIMIT ? OFFSET ?`
-  - `acceptMemoryReview` 与 `ingestMemoryCandidate` 共享 "create item + supersede" 模式（2 个调用点，YAGNI 暂不提取）
-  - `ProjectedFactItem` 与 `MemoryItem` 重叠字段多但类型不兼容
-  - clean_data 路径白名单 / hooks PUT 无认证 / hooks-triggers.jsonl 大文件全量读（前次遗留）
-  - `RulesPane.tsx` 455 行，后续可拆 `MemoryItemCard` / `ReviewCard` / `FactCard` 子组件
+  - **judge 默认 model 未指定**（`opts.model` 为 undefined → pi 走自身默认）；若总控希望固定到某个轻量模型（本地小模型）以保证延迟与一致性，可在 `routes/data.ts` ingest 路由里给 judgeOpts 加 `model: '<model-id>'`。
+  - **judge 失败率无 metric**：当前只 console.warn 到 stderr；若需统计 fallback 比例需加 counter（YAGNI 暂不做，等真实部署观测后再决策）。
+  - **`__setIngestJudgeOverride` 是 process-global**：node:test 默认顺序执行无问题；若未来转并发 worker 测试需重新评估（不影响生产）。
+  - **shortlist k=8 上限**：当 shortlist 较大时 prompt 也会膨胀；当前同一 workspace 同一 type 的 enabled peers 不太可能超 8，本期不优化。
+  - 上期遗留：`listMemoryReviews` 无分页、clean_data 白名单 / hooks PUT 无认证 / hooks-triggers.jsonl 大文件全量读、`RulesPane.tsx` 拆分。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -220,6 +211,13 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - pi 默认 model 现可用（memory 旧记的 `deepseek-v4-flash` 报 developer-role 400 已不复现）；server spawn 需要 pi 绝对路径时用 `XANTHIL_PI_BIN` 覆盖（`pi` 是 shell function，`which pi` 解析不到，真实路径 `~/Dev/Env/npm-global/bin/pi`）。
 - **行业/竞品长任务"切 tab 续跑"范式**（2026-06-11 hotfix）：长任务（>10s 的 LLM 调用）禁用本地组件 useState 存 loading/data/error，必须用 `web/src/lib/resumableTask.ts` 的 `useResumableTask(key)`。store 在 module 层，promise 不绑组件生命周期，组件 unmount 不影响后台 fetch；mount 时 `useSyncExternalStore` 自动 rehydrate。**key 约定**："业务前缀:" + 业务上下文 id（如 `industry:` + workspaceId）；同 key 重复发起会复用在飞 promise，不重复请求。短任务（秒级 + 已有 useEffect 自动重拉，如 Weather）不必接入。
 - **LLM 结构化 JSON 占位符兜底**（2026-06-11 hotfix）：`routes/data.ts:extractJson` 现有 `sanitizeBarePlaceholders` 二级兜底——thinking 模型在无法估算数值时常写裸 `X` / `N/A` / `待定` / `未知`，导致 `JSON.parse` 整段炸返 500。Sanitize 仅在值位置（`:` / `[` / `,` 之后）替换裸非法 token 为 `0`，字符串字面量内部不动；配合 coerce 层 `asNum` 自然 clamp。**新增同类路由（黄金策等）若复用 `extractJson` 模式，建议把 sanitize 提到 `server/src/json-utils.ts` 共用 + 同步加 prompt "数值字段必须阿拉伯数字，无法估算填 0；严禁 X/N/A/待定/未知"**。
+
+---
+
+**统一记忆 memory_items（v2 重构系列）**
+- **D-INGEST 语义 dedup 设计原则（2026-06-19）**：词法 dedup（`findMemoryItemDuplicate` title normalize + 子串包含）覆盖不了"同主题措辞差异大"的近重复（如"排查 workflow 失败先看 gate"vs"工作流挂了应该看哪个节点"），升级为**词法兜底 + LLM-judge + 成本门控**三层：① 词法命中即跳过 LLM；② 词法漏判才取同 type 已启用 peer 的 token 重叠 shortlist（前 k=8）；③ shortlist 非空才调 judge，每候选 ≤1 次 LLM。**核心成本门控原则**：LLM 是最后兜底，词法 / shortlist 任一过滤即停。
+- **judge 健壮性约束（2026-06-19）**：`judgeSemanticDuplicate` 任何抛错 / 超时 / 非法 JSON 输出一律 catch → null（兜回词法结果），**绝不阻断 ingest**——记忆质量降级远远好于 ingest 失败导致信号丢失。两处 catch 都 `console.warn` 含错误消息，避免静默退化无法观测。LLM 返回的 id 必须在 `allowedIds`（shortlist id 集合）内，防 LLM 幻觉编出不存在的 id。默认 timeout 15s（judge prompt 极小，比 memory-consolidation 的 180s 短一个量级）。
+- **token 切分（中英混合）不引外部分词器**（2026-06-19）：`tokenizeForOverlap` 英文非字母数字拆 + lower、中文 2-gram；只服务 shortlist 排序，不追求语言学严谨。原则：dedup gate 是工程性近似，无需 jieba/spacy 级别精度，本期连同语义 judge 一起把准确率撑到目标线。
 
 ---
 

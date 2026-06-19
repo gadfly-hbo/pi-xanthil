@@ -88,6 +88,58 @@ test("runMemoryConsolidation supports dryRun without ingest", async () => {
   assert.equal(result.ingested.length, 0);
 });
 
+test("runMemoryConsolidation extracts the first balanced JSON value before trailing prose", async () => {
+  const workspace = db.createWorkspace("memory consolidation trailing prose");
+  const session = db.createSession(workspace.id, "尾随文本测试");
+  const result = await memory.runMemoryConsolidation({
+    workspaceId: workspace.id,
+    workspaceRoot: workspace.rootPath,
+    targetKind: "session",
+    targetId: session.id,
+    dryRun: true,
+    distillText: async () => `前言\n${JSON.stringify({
+      candidates: [{
+        type: "experience",
+        title: "先核对 trace 状态",
+        body: "当任务结果异常时，先核对 {run_end} 与 message_error，再决定是否重试。",
+        scope: "chat",
+        sourceEventIds: ["event-1"],
+        confidence: 0.8,
+        riskFlags: [],
+      }],
+    })}\n以上是本次沉淀结果。`,
+  });
+
+  assert.equal(result.candidates.length, 1);
+  assert.equal(result.candidates[0]?.title, "先核对 trace 状态");
+});
+
+test("runMemoryConsolidation treats malformed JSON as zero candidates without ingest", async () => {
+  const workspace = db.createWorkspace("memory consolidation malformed json");
+  const session = db.createSession(workspace.id, "畸形 JSON 测试");
+  let ingestCalls = 0;
+  const result = await memory.runMemoryConsolidation({
+    workspaceId: workspace.id,
+    workspaceRoot: workspace.rootPath,
+    targetKind: "session",
+    targetId: session.id,
+    dryRun: false,
+    distillText: async () => '{"candidates":[{"type":"experience","title":"broken",} trailing',
+    ingestCandidate: async () => {
+      ingestCalls++;
+      return { ok: true };
+    },
+  });
+
+  assert.deepEqual(result.candidates, []);
+  assert.deepEqual(result.ingested, []);
+  assert.equal(ingestCalls, 0);
+});
+
+test("memory consolidation default model is MiniMax-M3", () => {
+  assert.equal(memory.DEFAULT_CONSOLIDATION_MODEL, "minimax-cn/MiniMax-M3");
+});
+
 test("runMemoryConsolidation posts candidates through injected D API boundary", async () => {
   const workspace = db.createWorkspace("memory consolidation ingest");
   const flow = db.createFlow(workspace.id, "沉淀 flow", "test", "multi", null, "ready");

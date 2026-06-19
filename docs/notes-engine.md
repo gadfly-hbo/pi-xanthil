@@ -7,21 +7,24 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-19 · 记忆重构 E 阶段3：KG 投影层重构 + 可观测 Trace 面板补齐
+- 最近更新：2026-06-19 · 记忆重构修复：沉淀 JSON 健壮解析、同步结果反馈与固定模型。
 - 进度：
-  - **KG 作为 memory_items 纯投影**：`syncKnowledgeGraph` 已修改，KG 现在不再是孤立的单点状态，而是被重构成了 `memory_items` 的关系映射（projection layer）。
-  - **D/E 隔离查询与内部接口**：通过 `routes/engine.ts` 暴露了 `/api/workspaces/:id/kg/relevance` 和 `/api/workspaces/:id/kg/prompt` 端点。D 层需要 KG 打分信号或 Prompt 时，强制走内部 GET 请求，彻底避免了跨域直接 import db 造成的循环依赖问题。
-  - **Trace 面板诊断闭环**：在 `TracePane.tsx` 中补齐了「记忆注入检查器」(`MemoryInjectionSnapshot`) 和「检索失败诊断」(`MemoryFailureAttributions`)。这两类数据可视化与原有的 Trace Timeline 和 Rule Extraction 并列展示，统一了 UI 的网格结构，解除了重构初期的 DOM 异常。
+  - **0 沉淀根因已修复**：旧 `parseJsonObject()` 在 catch 内继续裸 `JSON.parse(lastIndexOf)`，LLM 输出合法 JSON + 尾随散文或畸形 JSON时再次抛 SyntaxError，导致整个 consolidation failed。现改为字符串/转义感知的平衡括号扫描与全路径 safe parse。
+  - **脏 JSON 优雅降级**：直接 parse、每个平衡 `{...}` / `[...]` 候选都在 try/catch 内；全失败返回 `null`，`parseMemoryCandidates()` 对 null/非预期结构返回 `[]`。脏输出正常收尾为 0 候选，不调用 ingest、不再产生 parser failed。
+  - **手动端点改为同步结果**：`consolidate-trace` await `runMemoryConsolidation()`，timeout 60 秒；running trace 完成后更新同一事件为 success/failed，避免一次点击计数两次。响应返回 `{count,candidates,ingested,review,ok,error?}`，accepted=`ok && itemId`，review=`ok && !itemId`。
+  - **按钮反馈已贯通**：ChatPane 请求期间显示 spinner +「沉淀中…」；完成后显示「新增 N 条 · M 条待复核」「本轮无可沉淀内容」或具体失败信息。持久 count 仍表示累计点击次数。
+  - **默认模型已固定**：consolidation 与 semantic dedup judge 在未显式传 model 时均使用 `minimax-cn/MiniMax-M3`；显式 model 仍可覆盖。flow helper 与两个自动触发点未改，仅继承新的默认模型与安全 parser。
+  - **边界保持**：仅改 E slot runner/router/ChatPane/API 与 focused tests；沉淀仍经 D `/memory/ingest`，未碰接缝层、数据探索子树或 git。
 - 校验：
-  - `npm run typecheck` ✅（server + web）
-  - `npm run build` ✅（构建成功）
+  - memory consolidation + semantic dedup + retrieval + evaluation tests ✅（31 tests）
+  - `npm run typecheck` ✅
+  - `npm run build` ✅（仅既有 Vite dynamic-import / chunk-size warning）
 - 下一步：
-  - **总控终审**：复核 KG 重构模式与 Trace 视觉呈现是否完全符合预期；检查 D 域读取 E 域内部端点这一解耦方案是否满足长效架构约定。
-  - **全面 E2E 测试**：结合更新的检索诊断面板，进行真实复杂的对话/Workflow 推理，看各种 edge cases 下的失败归因和 topScore 分布能否在 Trace 面板被清晰溯源。
-- 阻塞：无代码阻塞。
-- 开放问题（待总控/用户拍板）：
-  - 目前 D 层向 E 层获取 `kg/relevance` 采用了带 URL 参数的 HTTP GET 接口。如果是高并发或极大量的 query 请求，这种方式的 overhead 可能会显现。未来是否需要一个更高性能的本地跨域消息总线（在不破坏领域边界的前提下）？
-  - KG 删除/同步时的安全兜底策略已通过 `safe-sync` 控制，如果遇到大量 memory_items 并发增删的场景，同步任务可能会拥堵，是否需要引入防抖或队列调度？
+  - **总控终审**：重点核 parser 不再抛、同一 trace 行终态更新、accepted/review 计数口径、固定模型及 flow 调用点零变化。
+  - **真实 E2E smoke**：用此前失败的 session 再点按钮，确认 MiniMax-M3 输出能解析、spinner 最终给出结果、候选进入 memory item/review；再验证“无稳定内容”明确显示 0 候选。本 session 未启动真实 LLM/browser smoke。
+  - **路由/UI测试补强**：当前 focused tests 覆盖 parser 与 dedup 默认模型；后续补 endpoint accepted/review/error 响应和 ChatPane 三种结果文案测试。
+- 阻塞：无代码阻塞；真实运行态 smoke 未完成。
+- 开放问题：无。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -167,9 +170,12 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
 - **memory evaluation runner 检索上下文单一真源（2026-06-18 E-EVAL）**：baseline vs memory 评估必须用同一 evaluation prompt 构造 `RetrievalContext`（当前 `query = prompt.trim()`），并把同一个 ctx 同时传给 `buildMemoryInjectionSnapshot(..., {}, ctx)` 与 `buildMemoryPrompt(..., {}, ctx)`。否则 snapshot 中看到的候选/命中可能与实际 pi system prompt 不一致，评估数据会失真。baseline candidate 仍只记录 `requested:false` snapshot，不注入 memory；memory candidate 走 `memory_item` 新检索。runner 读记忆只经 `memory-injection.ts`，不要为了评估直接 import D 的 db CRUD。
 - **memory consolidation 写入边界（2026-06-19 E-DISTILL）**：`memory-consolidation.ts` 负责 trace→`MemoryCandidate[]` 蒸馏与候选 coerce，但**不直接 import D 的 `db/data.ts` 写表**；非 dry-run 只能通过 D HTTP API 写入。显式端点与自动 hook 默认 POST `/api/workspaces/:id/memory/ingest`，由 D 负责 risk/dedup/confidence 门禁；`ingestPath` 必须是本地 absolute API path，禁止外部 URL，避免把 server 变成任意 POST 代理。
-- **workflow memory ctx 与自动沉淀口径（2026-06-19 E-WIRE）**：同一次 run 的注入审计 snapshot 与实际 system prompt 必须共用同一个 `RetrievalContext`，否则命中记录和真实注入会漂移。flow chat 的 query 取 command 展开后文本，multi-agent 取本轮 inputs，二者附最近 8 条非空 flow messages。成功且非 abort 的 flow / flow_run 完成后无条件 fire-and-forget 蒸馏，失败只记 trace、不反向破坏主 run；普通 session 完成仍在 `index.ts` legacy，由总控接 hook。
+- **session 显式、flow 自动的沉淀口径（2026-06-19 X→E 调整）**：session 禁止在每轮 chat run-end 自动调用蒸馏 LLM，只能由 ChatPane「沉淀 trace（x）」显式触发；手动端点必须 await runner 并返回 accepted/review/empty/error 结果，不能恢复为无反馈 fire-and-forget。flow / flow_run 仍在完整成功且未 abort 后用 `fireMemoryConsolidation()` 自动触发一次。两类路径都固定走 D `/memory/ingest`，不得绕过门禁直写。session 角标语义是“用户点击次数”，不是成功数；running 与终态必须更新同一 trace 行，防止 count 翻倍。
+- **memory consolidation JSON 解析红线（2026-06-19 E-FIX）**：LLM 输出解析不得在 fallback 中裸调 `JSON.parse`，也不得用 `lastIndexOf` 贪婪截取。`memory-consolidation.ts` 因不能依赖 `index.ts` 接缝，局部采用字符串/转义感知的平衡括号扫描；所有 parse 失败返回 `null`，候选层降级为 `[]`，畸形模型输出不能升级成整次任务失败。该链路的默认模型固定为 `minimax-cn/MiniMax-M3`；semantic dedup judge 同口径，显式 model 可覆盖。
+- **workflow memory ctx 口径（2026-06-19 E-WIRE）**：同一次 run 的注入审计 snapshot 与实际 system prompt 必须共用同一个 `RetrievalContext`，否则命中记录和真实注入会漂移。flow chat 的 query 取 command 展开后文本，multi-agent 取本轮 inputs，二者附最近 8 条非空 flow messages。
 - **聊天内联 memory feedback 边界（2026-06-19 E-FEEDBACK）**：逐条统一记忆反馈必须 POST D 的 `/api/workspaces/:id/memory/items/:itemId/feedback`，payload 为 `{ signal: "positive" | "negative" }`；不要复用 legacy `/memory/feedback`，后者只支持旧 sourceKind 级统计且不接受 `memory_item`。UI 只展示 snapshot 中 `kind="memory_item" && injected=true` 的 `itemIds`，不能把当前启用列表冒充本轮实际注入。
 - **injection 与消息关联限制（2026-06-19 E-FEEDBACK）**：`UiMessage` 当前没有持久化时间戳或 injection event ID，在不扩 `App.tsx/types.ts` 接缝时无法可靠把历史 run_start snapshot 绑定到每条 assistant message。当前确认口径是按 `targetKind + targetId` 取最近一轮 snapshot，run 期间隐藏、结束后刷新；若产品要求历史逐消息反馈，必须由总控扩正式关联契约，禁止前端按数组位置或本地生成 message id 猜配。
+- **规则记忆 subtab 收口决策（2026-06-19 X→D）**：三个空占位（cases/failure_memory/process_memory）已从 `RULE_MEMORY_SUB_TABS` 展示列表删除，rules label 从「Persona」改为「统一记忆面板」。SubTab union 保留死 id——理由：① 避免触动 `types.ts:347` `MemorySourceKind` 同名不同义字段（后端 memory injection 的「分析案例库」kind 仍在用）；② `activeSubTab` 不持久化（`useState("view")`），老用户刷新后自动落到首个可见 subtab，无残留风险；③ 若未来要彻底清 union，需先核 `server/src/memory-injection.ts:378` 的「分析案例库」语义是否还在用。CasesPane.tsx（377 行）同步删除。
 - **subagent 模板化 prompt 红线（2026-06-16 E·P0）**：模板只能替换 runner 的 persona 角色段；只读指定 `clean_data` 文件、只写 `reportDir`、末条摘要、不提问自主完成等硬性约束必须由引擎在 persona 后恒定追加，不能放进可编辑模板。无模板、模板 disabled、配置缺失或损坏时必须回退 `DEFAULT_SUBAGENT_PERSONA`，保持旧委派行为。`dataFiles` 必须继续走 `safeResolve(cleanDir, basename(f))`，不得因为模板化而放宽到路径直读。
 - **subagent 配置安全边界（2026-06-16 E·P0）**：`subagents.json` 是本地模板注册表，不是 shell/webhook 执行配置。CRUD coerce 必须白名单字段、未知字段丢弃；`source` 固定 `custom`，`dataScope` 固定 `clean_data`；persona 视为 prompt 文本，禁止通过外部 URL/外发配置引入联网动作。`toolIds` P0 仅保存清洗结果，不代表工具已挂载。
 - **subagent MCP 注入边界（2026-06-17 E·P1）**：模板 `toolIds` 已成为 runner 注入 MCP 工具的实际 allowlist。普通 workspace `.mcp.json` 仍注册全部 analysis 工具；指定模板的子 agent 不改 workspace 根配置，而是以 `<workspace>/sessions/<parentSessionId>/.subagent-cwd/<taskId>` 为 cwd，并在该 cwd 写 scoped `.mcp.json`（`--tools id,id`）。无模板委派保持旧行为，模板 `toolIds: []` 表示无 extraction tool 暴露。该设计避免共享 `.mcp.json` 并发 clobber；代价是子 agent MCP 工具产物默认落在独立 cwd 的 `tool_runs` 下，报告仍必须写入引擎注入的 `reportDir`。
@@ -223,6 +229,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **GET querystring 传业务文本会触发 414**（2026-06-14 P1-B 已规避）：`/api/workspaces/:id/skill-registry/conflicts?content=...` 这类把整段 SKILL.md 文本塞进 query 的设计，浏览器侧 ~8KB、nginx 默认 8KB、其他反向代理 4-16KB 不等，实测踩到的不是 fetch 失败而是 414/400。规避：客户端 `truncateConflictContent` 4KB 上限（`web/src/lib/skillConflict.ts`）。**任何后端读 `req.query` 中长文本字段的端点都应：① 改 POST body；或 ② 客户端必须有上限**；不要假设 GET 想塞多少就能塞多少。
 - **`AbortController` 不是 race 防护的唯一解**（2026-06-14 P1-B 已修，列此供后续参考）：弹窗预查询 + 用户连续切换目标场景下，`AbortController` 会让旧请求抛 AbortError，需要在 catch 内手动区分；用 `useRef<number>` 自增 token + 回调首行校验 `token === ref.current` 就够了，简单且不污染 catch 分支。该范式已在 `SkillManagementPane.tsx` `adoptRequestTokenRef` 落地。
 - **窗口内 fetch 回调的 setError 写到主面板会被遮住**（2026-06-14 P1-B 已修）：弹窗渲染于 `fixed inset-0` 全屏遮罩之上，主面板的 error banner 被遮罩盖住，用户根本看不到。所有 modal 内异步操作都应有**弹窗内独立 errorState**（如 `adoptError`），不要复用主面板 `error`；同时 `try/catch/finally` 中复位 `submitting=false` 必须用 `finally`，否则成功路径与失败路径状态机容易漂移。
+- **同名不同义陷阱：前端 SubTab vs 后端 MemorySourceKind（2026-06-19 记忆重构收尾）**：前端 SubTab `'cases'` 与后端 `MemorySourceKind "cases"` 是同名字符串但语义不同——前端是已下线的空占位 tab，后端是 memory injection 的「分析案例库」记忆源 kind（`memory-injection.ts:378` 仍在装配）。清理前端展示列表时保留 union 中的死 id，避免强删引发不必要的服务端类型联动审查。**任何涉及 SubTab 或 MemorySourceKind 的清理必须先核两侧语义是否耦合。**
 
 ---
 

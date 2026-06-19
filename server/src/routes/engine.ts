@@ -14,7 +14,8 @@ import {
   addFlowMessage, getFileAnalysesByPathIds, createFlowRun, finishFlowRun,
   recordMemoryInjectionUsage, buildHypothesisLibraryContext, getAnaxGateConfig, upsertAnaxGateConfig,
   upsertHypothesisFromArchive, createChangeProposal,
-  listSessions, listMessages, getSessionRuntime, createSession, db,
+  listSessions, listMessages, getSession, getSessionRuntime, createSession,
+  addTraceEvent, getTraceTimeline, db,
 } from "../db.ts";
 import {
   archiveSkillRegistryEntry,
@@ -39,7 +40,7 @@ import { buildRegisteredPathContext } from "../output-paths.ts";
 import { standardDirIn } from "../workspace-dirs.ts";
 import { readWorkflow, runMultiAgent, topoOrder } from "../multi-agent-runner.ts";
 import { runPiPrompt, runPiTurn } from "../pi-adapter.ts";
-import { postMemoryCandidateToDIngest, runMemoryConsolidation, type MemoryConsolidationTargetKind } from "../memory-consolidation.ts";
+import { fireMemoryConsolidation, postMemoryCandidateToDIngest, runMemoryConsolidation, type MemoryConsolidationTargetKind } from "../memory-consolidation.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
 import type { ClientMessage, Flow, PiEvent, RetrievalContext, Session } from "../types.ts";
@@ -133,6 +134,36 @@ function ensureLatestZhuantiTask(workspaceId: string, name?: string, sessionTitl
   };
 }
 
+function traceEngineSessionEvent(
+  session: Session,
+  type: string,
+  status: string,
+  detail?: string | null,
+  payload?: unknown,
+): string {
+  return addTraceEvent({
+    workspaceId: session.workspaceId,
+    targetKind: "session",
+    targetId: session.id,
+    type,
+    target: session.title,
+    status,
+    detail,
+    payload,
+  }).id;
+}
+
+function updateEngineSessionTrace(eventId: string, status: "success" | "failed", detail: string, payload: unknown): void {
+  db.prepare("UPDATE trace_events SET status = ?, detail = ?, payload = ? WHERE id = ?")
+    .run(status, detail, JSON.stringify(payload), eventId);
+}
+
+function countSessionConsolidations(workspaceId: string, sessionId: string): number {
+  return getTraceTimeline(workspaceId, "session", sessionId)
+    .filter((event) => event.type === "memory_consolidation")
+    .length;
+}
+
 function buildFlowMemoryRetrievalContext(flowId: string, query: string): RetrievalContext {
   const recentMessages = listFlowMessages(flowId)
     .slice(-8)
@@ -153,27 +184,18 @@ function maybeTriggerFlowMemoryConsolidation(input: {
   targetId: string;
   traceRunId?: string;
 }): void {
-  const baseUrl = `http://127.0.0.1:${PORT}`;
-  void runMemoryConsolidation({
+  fireMemoryConsolidation({
     workspaceId: input.workspace.id,
     workspaceRoot: input.workspace.rootPath,
     targetKind: input.targetKind,
     targetId: input.targetId,
-    dryRun: false,
-    timeoutMs: 180_000,
-    // 总控协调（D-INGEST 落地后）：默认走门禁端点 /memory/ingest（风险/dedup/置信度→自动入库 or review），不再直写 /memory/items。
-    ingestCandidate: (candidate, context) => postMemoryCandidateToDIngest(baseUrl, "/api/workspaces/:id/memory/ingest", candidate, context),
-    onEvent: (event) => trackUsageEvent({
-      workspaceId: input.workspace.id,
-      targetKind: input.targetKind,
-      targetId: input.targetId,
-      title: `自动记忆沉淀：${input.flow.name}`,
-    }, event),
-  }).catch((err) => {
-    traceFlowEvent(input.flow.id, "memory_consolidation_failed", "failed", String(err), {
-      targetKind: input.targetKind,
-      targetId: input.targetId,
-    }, input.traceRunId);
+    label: `自动记忆沉淀：${input.flow.name}`,
+    onError: (err) => {
+      traceFlowEvent(input.flow.id, "memory_consolidation_failed", "failed", String(err), {
+        targetKind: input.targetKind,
+        targetId: input.targetId,
+      }, input.traceRunId);
+    },
   });
 }
 
@@ -782,6 +804,83 @@ engineRouter.post("/api/workspaces/:id/memory/consolidate", async (req, res) => 
     res.json(result);
   } catch (err) {
     res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+engineRouter.get("/api/workspaces/:id/sessions/:sessionId/consolidation-count", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const session = getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  if (session.workspaceId !== workspace.id) return res.status(403).json({ error: "session belongs to another workspace" });
+  res.json({ count: countSessionConsolidations(workspace.id, session.id) });
+});
+
+engineRouter.post("/api/workspaces/:id/sessions/:sessionId/consolidate-trace", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const session = getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  if (session.workspaceId !== workspace.id) return res.status(403).json({ error: "session belongs to another workspace" });
+
+  const traceEventId = traceEngineSessionEvent(session, "memory_consolidation", "running", "手动沉淀 trace", { trigger: "manual" });
+  const baseUrl = requestBaseUrl(req);
+  try {
+    const result = await runMemoryConsolidation({
+      workspaceId: workspace.id,
+      workspaceRoot: workspace.rootPath,
+      targetKind: "session",
+      targetId: session.id,
+      dryRun: false,
+      timeoutMs: 60_000,
+      onEvent: (event) => trackUsageEvent({
+        workspaceId: workspace.id,
+        targetKind: "session",
+        targetId: session.id,
+        title: "手动记忆沉淀",
+      }, event),
+      ingestCandidate: (candidate, context) => postMemoryCandidateToDIngest(
+        baseUrl,
+        "/api/workspaces/:id/memory/ingest",
+        candidate,
+        context,
+      ),
+    });
+    const ingested = result.ingested.filter((item) => item.ok && Boolean(item.itemId)).length;
+    const review = result.ingested.filter((item) => item.ok && !item.itemId).length;
+    const failedItems = result.ingested.filter((item) => !item.ok);
+    const failures = failedItems.map((item) => item.error ?? "候选未通过记忆门禁");
+    const detail = `手动沉淀完成：候选 ${result.candidates.length} 条，新增 ${ingested} 条，待复核 ${review} 条`;
+    updateEngineSessionTrace(traceEventId, "success", detail, {
+      trigger: "manual",
+      candidates: result.candidates.length,
+      ingested,
+      review,
+      failures: failures.length,
+    });
+    res.json({
+      count: countSessionConsolidations(workspace.id, session.id),
+      candidates: result.candidates.length,
+      ingested,
+      review,
+      ok: failedItems.length === 0,
+      ...(failures.length > 0 ? { error: failures.join("；") } : {}),
+    });
+  } catch (err) {
+    const error = String(err instanceof Error ? err.message : err);
+    updateEngineSessionTrace(traceEventId, "failed", `手动沉淀失败：${error}`, { trigger: "manual", error });
+    traceEngineSessionEvent(session, "memory_consolidation_failed", "failed", error, {
+      targetKind: "session",
+      targetId: session.id,
+    });
+    res.status(500).json({
+      count: countSessionConsolidations(workspace.id, session.id),
+      candidates: 0,
+      ingested: 0,
+      review: 0,
+      ok: false,
+      error,
+    });
   }
 });
 

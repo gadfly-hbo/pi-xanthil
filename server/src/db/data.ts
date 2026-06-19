@@ -613,6 +613,53 @@ export function findMemoryItemDuplicate(workspaceId: string, type: MemoryItemTyp
   return null;
 }
 
+/**
+ * 切 token: 中英混合, 英文按非字母数字拆 + lower; 中文按 2-gram (一个字 + 相邻字).
+ * 短文本足够用; 不引外部分词器. 只服务 shortlist 排序, 不需要语言学严谨.
+ */
+function tokenizeForOverlap(s: string): Set<string> {
+  const out = new Set<string>();
+  const lower = s.toLowerCase();
+  // 英文/数字 token
+  for (const m of lower.match(/[a-z0-9]{2,}/g) ?? []) out.add(m);
+  // 中文 2-gram
+  const han = lower.replace(/[^\u4e00-\u9fa5]+/g, " ").trim();
+  for (const seg of han.split(/\s+/)) {
+    if (seg.length === 1) {
+      out.add(seg);
+    } else {
+      for (let i = 0; i < seg.length - 1; i++) out.add(seg.slice(i, i + 2));
+    }
+  }
+  return out;
+}
+
+/**
+ * 语义 dedup 候选缩集: 同 type 已启用 memory_items 中按 title+body token 与候选词法重叠度排序,
+ * 重叠 > 0 的前 k 条作为 shortlist (纯 db + JS, 不调 LLM). 返回空数组 = 无近邻.
+ * 上游 (memory-dedup.ts) 拿到非空 shortlist 才会触发 LLM-judge, 这层是成本门控的第一道闸.
+ */
+export function findSemanticDedupShortlist(
+  workspaceId: string,
+  type: MemoryItemType,
+  candidateTitle: string,
+  candidateBody: string,
+  k = 8,
+): MemoryItem[] {
+  const candTokens = tokenizeForOverlap(`${candidateTitle}\n${candidateBody}`);
+  if (candTokens.size === 0) return [];
+  const peers = listMemoryItems({ workspaceId, type }).filter((p) => p.enabled);
+  const scored: { item: MemoryItem; overlap: number }[] = [];
+  for (const peer of peers) {
+    const peerTokens = tokenizeForOverlap(`${peer.title}\n${peer.body}`);
+    let overlap = 0;
+    for (const t of candTokens) if (peerTokens.has(t)) overlap++;
+    if (overlap > 0) scored.push({ item: peer, overlap });
+  }
+  scored.sort((a, b) => b.overlap - a.overlap);
+  return scored.slice(0, k).map((s) => s.item);
+}
+
 function insertMemoryReview(input: MemoryIngestInput, reason: string, riskFlags: MemoryRiskFlag[], confidence: number): MemoryReview {
   const id = randomUUID();
   const now = Date.now();
@@ -645,8 +692,12 @@ function insertMemoryReview(input: MemoryIngestInput, reason: string, riskFlags:
 /**
  * 门禁主入口: 风险检测 + dedup + 分流. E runner 通过 routes/data.ts 的 ingest
  * 端点调用本函数; 返回 verdict 让路由层决定 HTTP 响应.
+ *
+ * semanticDupId (可选): 调用方 (路由层) 在词法 dedup 漏判时, 通过 LLM-judge 拿到
+ * 的语义重复 item id. 仅当 findMemoryItemDuplicate 返回 null 且 semanticDupId 指向
+ * 同 workspace 同 type 的活跃 item 时才采纳; supersede 路径不变.
  */
-export function ingestMemoryCandidate(input: MemoryIngestInput): MemoryIngestVerdict {
+export function ingestMemoryCandidate(input: MemoryIngestInput, semanticDupId?: string | null): MemoryIngestVerdict {
   const { confidence, riskFlags } = detectMemoryCandidateRisk({
     title: input.title,
     body: input.body,
@@ -662,7 +713,17 @@ export function ingestMemoryCandidate(input: MemoryIngestInput): MemoryIngestVer
     return { kind: "rejected", reason, riskFlags };
   }
   const hasMedium = riskFlags.some((f) => f.severity === "medium");
-  const dup = findMemoryItemDuplicate(input.workspaceId, input.type, input.title);
+  let dup = findMemoryItemDuplicate(input.workspaceId, input.type, input.title);
+  // 词法漏判时启用 LLM-judge 给出的语义近邻 (调用方负责调 judge); 校验 id 在同 ws+type+enabled.
+  if (!dup && semanticDupId) {
+    const candidate = getMemoryItem(semanticDupId);
+    if (candidate
+      && candidate.workspaceId === input.workspaceId
+      && candidate.type === input.type
+      && candidate.enabled) {
+      dup = candidate;
+    }
+  }
   // 自动入库分支: 高置信 + 无 medium 风险. 命中 dup -> supersede (新条目接替旧条目).
   if (confidence >= AUTO_CONFIDENCE_THRESHOLD && !hasMedium) {
     const item = createMemoryItem({

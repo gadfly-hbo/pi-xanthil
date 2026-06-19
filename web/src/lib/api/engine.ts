@@ -49,7 +49,23 @@ export interface SkillImportResult {
   writtenFiles: string[];
 }
 
+export interface SessionConsolidationResult {
+  count: number;
+  candidates: number;
+  ingested: number;
+  review: number;
+  ok: boolean;
+  error?: string;
+}
+
 export const engineApi = {
+  consolidateSessionTrace: (workspaceId: string, sessionId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidate-trace`, {
+      method: "POST",
+    }).then(json<SessionConsolidationResult>),
+  getSessionConsolidationCount: (workspaceId: string, sessionId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidation-count`)
+      .then(json<{ count: number }>),
   listLatestInjectedMemoryItems: async (
     workspaceId: string,
     target: { targetKind: "session" | "flow"; targetId: string },

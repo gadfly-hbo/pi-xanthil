@@ -29,8 +29,8 @@ export const ZHUANTI_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_ch
 export const ZHUANTI_SIDEBAR_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_chat', label: '对话探索' }, { id: 'anax_view', label: '流水线' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
 export const ZHUANTI_SIDEBAR_IDS = new Set<SubTab>(['anax_chat', 'anax_view', 'hypothesis', 'change_mgmt', 'readme']);
 
-// 规则记忆二级 tab：Persona / Knowhow / 项目记忆 / 失败记忆 / 思维模式 + 业务环境 / trace / 知识图谱。
-export const RULE_MEMORY_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'rules', label: 'Persona' }, { id: 'indicators', label: 'Knowhow' }, { id: 'cases', label: '项目记忆' }, { id: 'failure_memory', label: '失败记忆' }, { id: 'process_memory', label: '思维模式' }, { id: 'business_context', label: '业务环境' }, { id: 'trace', label: 'trace' }, { id: 'knowledge_graph', label: '知识图谱' }];
+// 规则记忆二级 tab：统一记忆面板 / Knowhow + 业务环境 / trace / 知识图谱。
+export const RULE_MEMORY_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'rules', label: '统一记忆面板' }, { id: 'indicators', label: 'Knowhow' }, { id: 'business_context', label: '业务环境' }, { id: 'trace', label: 'trace' }, { id: 'knowledge_graph', label: '知识图谱' }];
 
 export const XAN_DB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'the-crowd', label: 'the-crowd' }, { id: 'weather', label: '天气' }, { id: 'business_district', label: '商圈' }, { id: 'industry', label: '行业' }, { id: 'competitor', label: '竞品' }];
 
