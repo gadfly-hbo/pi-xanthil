@@ -18,6 +18,7 @@ import { Markdown } from "@/components/Markdown";
 import { RunOutputPanel } from "@/components/RunOutputPanel";
 import { WorkflowDesignPane } from "@/components/WorkflowDesignPane";
 import { WorkflowDagEditor } from "@/components/WorkflowDagEditor";
+import { ResearchLabPane } from "@/components/ResearchLabPane";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import type { ExtractionTool, Flow, PiModel, PiSkill, SkillRegistryEntry, WorkflowDef, WorkflowNode } from "@/types";
@@ -40,14 +41,17 @@ import {
 
 interface Props {
   flow: Flow | null;
+  flows: Flow[];
+  workspaceId: string | null;
   models: PiModel[];
   model: string;
   onModelChange: (m: string) => void;
   refreshKey?: number;
   rulesPromptEnabled: boolean;
+  knowledgePromptEnabled: boolean;
 }
 
-type View = "design" | "execute";
+type View = "design" | "execute" | "workflow";
 
 /** Pick a deterministic fallback color when the node doesn't specify one. */
 const FALLBACK_COLORS = [
@@ -281,6 +285,7 @@ export function MultiAgentExecutionPane(p: Props) {
     workflow,
     model: p.model,
     rulesPromptEnabled: p.rulesPromptEnabled,
+    knowledgePromptEnabled: p.knowledgePromptEnabled,
   });
 
   // ---- resizable left rail ----
@@ -597,6 +602,18 @@ export function MultiAgentExecutionPane(p: Props) {
           <Workflow className="h-3.5 w-3.5" strokeWidth={1.75} />
           执行
         </button>
+        <button
+          onClick={() => setView("workflow")}
+          className={cn(
+            "inline-flex h-7 items-center gap-1.5 rounded-md px-2.5 text-[12.5px]",
+            view === "workflow"
+              ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+              : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/60 dark:hover:text-neutral-100",
+          )}
+        >
+          <Workflow className="h-3.5 w-3.5" strokeWidth={1.75} />
+          workflow
+        </button>
         <span className="ml-auto truncate text-[11px] text-neutral-400 dark:text-neutral-500">
           {p.flow.folderPath}
         </span>
@@ -611,6 +628,15 @@ export function MultiAgentExecutionPane(p: Props) {
             onModelChange={p.onModelChange}
             onApplyToEditor={applyToEditor}
             rulesPromptEnabled={p.rulesPromptEnabled}
+            knowledgePromptEnabled={p.knowledgePromptEnabled}
+          />
+        ) : view === "workflow" ? (
+          <ResearchLabPane
+            workspaceId={p.workspaceId}
+            flows={p.flows}
+            model={p.model}
+            models={p.models}
+            onModelChange={p.onModelChange}
           />
         ) : loading ? (
           <div className="flex flex-1 items-center justify-center text-neutral-400">

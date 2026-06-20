@@ -11,8 +11,77 @@ export interface Workspace {
   createdAt: number;
 }
 
-export type WorkspaceFolderName = "draw_data" | "clean_data" | "report";
+export type WorkspaceFolderName = "draw_data" | "clean_data" | "report" | "knowledge";
 export type WorkspacePathKind = "file" | "dir";
+
+// 知识库（knowledge_base 模块 · 总控 X 接缝审定）。CRUD+分块+检索由 Agent-D 实装。
+export interface KnowledgeDoc {
+  id: string;
+  workspaceId: string;
+  title: string;
+  sourceType: "upload" | "path";
+  path: string | null;
+  content: string | null;
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+export interface KnowledgeChunk {
+  id: string;
+  docId: string;
+  idx: number;
+  text: string;
+  tokens: number | null;
+}
+export interface KnowledgeDocInput {
+  workspaceId: string;
+  title: string;
+  sourceType?: "upload" | "path";
+  path?: string | null;
+  content: string;
+  tags?: string[];
+}
+export interface KnowledgeDocPatch {
+  title?: string;
+  path?: string | null;
+  content?: string;
+  tags?: string[];
+}
+export interface KnowledgeChunkHit {
+  chunk: KnowledgeChunk;
+  doc: { id: string; title: string; path: string | null; tags: string[]; updatedAt: number };
+  score: number;
+  signals: { relevance: number; recency: number; idfBoost: number };
+}
+
+// prompts 管理（prompts_mgmt 模块 · 总控 X 接缝审定）。CRUD/聚合由 Agent-D 实装。
+// workspaceId=null 视为全局模板（跨工作区可见）；body 内 {{变量}} 仅存储，渲染由调用方做。
+export interface PromptTemplate {
+  id: string;
+  workspaceId: string | null;
+  title: string;
+  category: string;
+  body: string;
+  variables: string[];
+  tags: string[];
+  createdAt: number;
+  updatedAt: number;
+}
+export interface PromptTemplateInput {
+  workspaceId?: string | null;
+  title: string;
+  category?: string;
+  body: string;
+  variables?: string[];
+  tags?: string[];
+}
+export interface PromptTemplatePatch {
+  title?: string;
+  category?: string;
+  body?: string;
+  variables?: string[];
+  tags?: string[];
+}
 
 export interface WorkspacePath {
   id: number;
@@ -1219,12 +1288,12 @@ export type PiEvent =
 // ---- WebSocket protocol: client <-> gateway ----
 
 export type ClientMessage =
-  | { type: "send"; sessionId: string; text: string; model?: string; skillPaths?: string[]; injectRulesPrompt?: boolean; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }
+  | { type: "send"; sessionId: string; text: string; model?: string; skillPaths?: string[]; injectRulesPrompt?: boolean; injectKnowledgePrompt?: boolean; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }
   | { type: "abort"; sessionId: string }
-  | { type: "send_flow"; flowId: string; text: string; model?: string; systemPrompt?: string; skillPaths?: string[]; injectRulesPrompt?: boolean }
+  | { type: "send_flow"; flowId: string; text: string; model?: string; systemPrompt?: string; skillPaths?: string[]; injectRulesPrompt?: boolean; injectKnowledgePrompt?: boolean }
   | { type: "abort_flow"; flowId: string }
   | { type: "abort_multi_agent"; flowId: string; runId: string }
-  | { type: "execute_multi_agent"; flowId: string; runId: string; inputs?: Record<string, string>; model?: string; injectRulesPrompt?: boolean; resumeFromNodeId?: string; previousRunId?: string }
+  | { type: "execute_multi_agent"; flowId: string; runId: string; inputs?: Record<string, string>; model?: string; injectRulesPrompt?: boolean; injectKnowledgePrompt?: boolean; resumeFromNodeId?: string; previousRunId?: string }
   | { type: "subscribe"; sessionId: string }
   | { type: "execute_anax_precheck"; precheckId: string; workspaceId: string; data_files: string; model?: string }
   | { type: "abort_anax_precheck"; precheckId: string };
@@ -1907,4 +1976,40 @@ export interface SkillRegistryConflict {
 export interface SkillRegistryConflictsResult {
   querySlug: string | null;
   conflicts: SkillRegistryConflict[];
+}
+
+// 汇报可视化契约（2026-06-19 冻结 · 2026-06-20 校准对齐实现）—— 接 BI dataset + 复用 echarts，LLM 不喂明细行
+export interface PresentationChartSpec {
+  id: string;
+  title: string;
+  option: Record<string, unknown>; // echarts option，前端 ReactECharts 直接透传
+}
+
+export interface PresentationDatasetMeta {
+  id: string;
+  slot: string;
+  filename: string;
+  rowCount: number;
+  columnCount: number;
+  columns: string[];
+}
+
+// 生成请求入参（冻结自 api.ts inline；datasetId = BI dataset id 字符串）
+export interface PresentationGenerateInput {
+  pathId: number;
+  relPath?: string;
+  prompt: string;
+  model?: string;
+  datasetId?: string; // 关联 BI dataset id；不传=纯文本如旧（行为不变）
+  businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string };
+}
+
+// 生成结果（提升自 PresentationVersionPane 本地类型；chartSpecs/datasetMeta 服务端确定性产出）
+export interface PresentationTaskResult {
+  path: string;
+  content: string;
+  storylinePath: string;
+  storylineHtml: string;
+  chartSpecs?: PresentationChartSpec[]; // dataset 出图；缺省=无图
+  datasetMeta?: PresentationDatasetMeta | null;
 }

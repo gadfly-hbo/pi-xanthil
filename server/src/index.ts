@@ -20,6 +20,7 @@ import {
 import { moveManagedDirToTrash } from "./trash.ts";
 import { registerDomainRoutes } from "./routes/index.ts";
 import { parseAggregationBuffer } from "./bi-dataset-parser.ts";
+import { buildChartSpecsFromDataset, datasetMetaFromDetail, summarizeDatasetForLlm, type ChartSpec, type DatasetMeta } from "./presentation-charts.ts";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -188,6 +189,7 @@ import { getSessionTokenStats, getWorkspaceTodayTokenStats, getWorkspaceTokenSta
 import { buildKgPrompt, extractKgEntitiesFromReports, syncKnowledgeGraph } from "./knowledge-graph.ts";
 import { deleteKgEdge, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHidden } from "./db.ts";
 import { buildMemoryInjectionSnapshot, withRulesPrompt } from "./memory-injection.ts";
+import { withKnowledgePrompt } from "./knowledge-injection.ts";
 import { expandCommand } from "./command-expand.ts";
 import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentTemplate, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
@@ -2929,17 +2931,19 @@ async function generatePresentationVersionWithLlm(
   reportContent: string,
   userPrompt: string,
   businessRequirementContext: string,
+  datasetSummary: string,
   workspaceRoot: string,
   model: string,
   usageTarget?: { workspaceId: string; targetKind: TokenUsageTargetKind; targetId: string; title: string },
 ): Promise<PresentationVersionResult> {
   const requirementContext = businessRequirementContext.trim() ? `\n\n${businessRequirementContext.trim()}` : "";
+  const datasetContext = datasetSummary.trim() ? `\n\n${datasetSummary.trim()}` : "";
   const prompt = `请基于下面的详细报告，同时生成：
 1. 一份用于汇报和沟通的简化 Markdown 版本。
 2. 一份极简故事线 HTML，用流程化视觉结构呈现讲解内容和顺序，帮助用户快速理清汇报思路。
 
 [用户偏好和使用场景]
-${userPrompt}${requirementContext}
+${userPrompt}${requirementContext}${datasetContext}
 
 [硬性要求]
 1. 只输出严格 JSON，不要输出 Markdown fence 或解释文字。
@@ -2971,7 +2975,7 @@ ${sanitizeReportForLlm(reportContent).slice(0, 80_000)}`;
       "{\"presentationMarkdown\":\"Markdown 汇报稿正文\",\"storylineHtml\":\"完整自包含 HTML 文档，含 <!DOCTYPE html><html><head><style>...</style></head><body>...</body></html>\"}",
       workspaceRoot,
       model,
-      `用户偏好和使用场景：\n${userPrompt}\n${requirementContext}\n\n报告文件：${reportName}\n\n详细报告：\n${sanitizeReportForLlm(reportContent)}`,
+      `用户偏好和使用场景：\n${userPrompt}\n${requirementContext}${datasetContext}\n\n报告文件：${reportName}\n\n详细报告：\n${sanitizeReportForLlm(reportContent)}`,
       usageTarget ? {
         ...usageTarget,
         targetKind: "repair",
@@ -3216,7 +3220,22 @@ app.post("/api/report-versions/generate", async (req, res) => {
       return res.status(400).json({ error: "selected report is not a text or markdown file" });
     }
     const businessRequirementContext = loadBusinessRequirementContextForChat(req.body?.businessRequirementContext);
-    const result = await generatePresentationVersionWithLlm(sourceName, report.content, userPrompt, businessRequirementContext, workspace.rootPath, model, {
+
+    let chartSpecs: ChartSpec[] = [];
+    let datasetMeta: DatasetMeta | null = null;
+    let datasetSummary = "";
+    const datasetId = typeof req.body?.datasetId === "string" ? req.body.datasetId.trim() : "";
+    if (datasetId) {
+      const dataset = getBiDatasetById(datasetId);
+      if (!dataset) return res.status(404).json({ error: "datasetId not found" });
+      // 数据=已脱敏聚合 BI dataset；server 直接用 row 跑确定性聚合产出 echarts option，
+      // 但**只把 schema + 数值列摘要**喂给 LLM（summarizeDatasetForLlm），不喂 row 级数据。
+      chartSpecs = buildChartSpecsFromDataset(dataset);
+      datasetMeta = datasetMetaFromDetail(dataset);
+      datasetSummary = summarizeDatasetForLlm(dataset);
+    }
+
+    const result = await generatePresentationVersionWithLlm(sourceName, report.content, userPrompt, businessRequirementContext, datasetSummary, workspace.rootPath, model, {
       workspaceId: workspace.id,
       targetKind: "report_version",
       targetId: `${pathId}:${sourceRelPath}`,
@@ -3232,6 +3251,8 @@ app.post("/api/report-versions/generate", async (req, res) => {
       content: result.presentationMarkdown,
       storylinePath: storylineRelPath,
       storylineHtml: result.storylineHtml,
+      chartSpecs,
+      datasetMeta,
       model,
     });
   } catch (err) {
@@ -5248,9 +5269,16 @@ async function handleSend(
   }
   const textForPi = `${contextPrefix}${businessRequirementContext}${commandExpansion.expandedText}`;
 
-  const systemPrompt = msg.injectRulesPrompt
-    ? withRulesPrompt(session.workspaceId, "chat", session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined, { query: msg.text })
-    : session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined;
+  const rolePrompt = session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined;
+  const memoryPrompt = msg.injectRulesPrompt
+    ? withRulesPrompt(session.workspaceId, "chat", rolePrompt, { query: msg.text })
+    : rolePrompt;
+  const systemPrompt = withKnowledgePrompt(
+    session.workspaceId,
+    msg.injectKnowledgePrompt,
+    commandExpansion.expandedText,
+    memoryPrompt,
+  );
 
   // Fork 分支：若本 session 是未播种的分支，首轮用 --fork 从父 session 播种历史。
   const forkFrom = forkBranch && !forkBranch.seeded ? forkBranch.parentSessionId : undefined;

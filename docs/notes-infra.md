@@ -8,21 +8,22 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-- 最近更新：2026-06-16 · 总控/E 代笔（LLM 管理特性后端底座完成：`/api/llm/*` shared 路由 + `llm-config.ts` 直写 pi 全局真源；详见 §七）
-- 进度（infra 侧，本会话）：
-  - ✅ 新建 `server/src/llm-config.ts`，集中实现 pi LLM 真源读写：`~/.pi/agent/models.json` provider 投影/写入、`settings.json` 三键局部写、`auth.json` 只读授权态投影、provider 连通性测试。
-  - ✅ 在 `server/src/routes/shared.ts` 挂 6 个 shared 路由：`GET/PUT /api/llm/providers`、`POST /api/llm/providers/:id/test`、`GET/PUT /api/llm/settings`、`GET /api/llm/auth`。
-  - ✅ apiKey 安全口径已落地：provider view 永不回显明文 key；PUT 空值/缺省/`"****"` 保留旧 key；OAuth provider 不写入新 key；test error message 对有效 key 做 replace 脱敏。
-  - ✅ 真源写入口径已落地：`models.json` / `settings.json` 均走 temp+rename 原子写；写 `models.json` 后还原旧权限位；provider/model 未知字段按旧 raw 浅展开保留；`settings.json` 只覆盖 `enabledModels/defaultProvider/defaultModel`，其余键原样保留。
-  - ✅ smoke 用隔离 `XANTHIL_PI_*=/tmp/pi-xanthil-llm-smoke/*` 验证：GET providers/auth 无敏感字段；PUT providers 后旧 key、未知字段、minimax model 级 `baseUrl` 保留；PUT settings 后 `packages/otherSetting` 保留；错误 baseUrl test 返回失败且 message 不含 key。
+- 最近更新：2026-06-20 · 总控（UI 新功能批次推进：汇报可视化契约/终审 + prompts管理 D面板终审；含汇报可视化契约校准收口）
+- 本批进度（总控 infra/接缝/契约侧，2026-06-19~20）：
+  - ✅ **汇报可视化契约**（types.ts 双侧单一真源）：`PresentationChartSpec{id,title,option}` / `PresentationDatasetMeta` / `PresentationGenerateInput`(datasetId **string**) / `PresentationTaskResult`(chartSpecs?/datasetMeta?)。server `presentation-charts.ts` 以 `type ChartSpec=PresentationChartSpec` 别名引用；web `api.ts`/`PresentationVersionPane.tsx` import 契约——**零本地重声明**。
+    - ⚠ 教训：契约首版我误定 `datasetId:number` + `echartsOption` 命名 + 漏 `id/datasetMeta`，D 实装绕过(本地重声明 + 改 seam api.ts inline)致 **3 套并存漂移** → 用户拍板「总控校准」、改契约对齐实现收口。**契约冻结前须先核证消费端真实形态**（BI dataset id 实为 string）。
+  - ✅ **汇报可视化 D 终审通过**（主面板 + 取数，均 D 承接 V）：红线重点核——出图 `buildChartSpecsFromDataset` 全确定性零 LLM、`summarizeDatasetForLlm` 只喂 schema+数值统计(不含 row)、数据=已聚合 BI dataset(clean_data 系)、隔离 grep 净。生成端点在冻结 `index.ts`，D 加 datasetId 薄接线——**总控追认**(核心逻辑已抽到 D-own slot)。
+  - ✅ **prompts管理 D 面板终审通过**：`PromptsManagementPane` 双区(模板库 CRUD / 系统prompt 只读聚合)，接 D CRUD `/api/workspaces/:id/prompt-templates` + E `/api/prompts/system`；红线净、接缝未越界、契约 import 无重声明。
+- 已交付里程碑（非本批，详见 `Orchestration §八`）：
+  - LLM 管理后端底座（2026-06-16，§七）——`/api/llm/*` + `llm-config.ts` 直写 pi 真源 + apiKey 脱敏铁律。
+  - 规则记忆模块重构 11/11 全链交付（2026-06-19，V-OBS 由总控收口、V-agent 已停用）。
 - 下一步：
-  - 前端面板卡可直接对接 `web/src/lib/api/shared.ts` 既有 client：保存 provider 后刷新模型列表，apiKey 输入框保持空值/哨兵保留旧 key。
-  - 总控终审时重点逐行复核 `llm-config.ts` 的三处脱敏/保留链路：`listProvidersView()`、`writeProviders()`/`coerceProviderInput()`、`testProvider()`。
-  - 若未来扩展 `LlmApiKind`，必须同步扩 `SUPPORTED_API_KINDS`、`coerceApiKind()` 与 `testProvider()` 分支；当前唯一支持 `"openai-completions"`。
+  - **知识库新模块**(untracked：`knowledge-injection/retrieval(.ts/.test)`、`system-prompts(.ts/.test)`、前端 `KnowledgeBasePane`/`KnowledgeBaseReadmePane`/`MemoryReadmePane`)据 wiki 标 done，但总控**尚未逐卡运行时实跑终审**、文件未提交 → 待补点检或用户确认。
+  - 汇报可视化 / prompts / 记忆重构 / 知识库 全批改动**待用户手动提交**（本批全程无 git）。
 - 阻塞：无代码阻塞。
 - 开放问题（待总控/后续拍板）：
-  - LLM 管理后端是否需要补 node:test 级单元测试覆盖 key 保留、OAuth 不写 key、settings 局部写和 mode 还原；本 session 已做临时 HTTP smoke，但未新增测试文件。
-  - provider 删除语义目前是 PUT 列表全量替换 `providers`，会删除未提交的 provider；这与前端列表保存范式一致，但总控终审可确认是否需要改成 patch/软删除。
+  - LLM 管理：前端面板卡是否已落地未核实；`llm-config.ts` 三处脱敏链路逐行终审 + node:test 覆盖(key 保留/OAuth 不写 key/settings 局部写) 仍欠(上批仅 HTTP smoke)；扩 `LlmApiKind` 须同步 `SUPPORTED_API_KINDS`/`coerceApiKind()`/`testProvider()`。
+  - 工作区大量跨批次 untracked/modified 累积未提交；§0 与历史里程碑的对齐依赖 `Orchestration §八`。
 
 ---
 

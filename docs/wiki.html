@@ -217,6 +217,88 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ UI 新功能批次·设计定稿（2026-06-19，用户拍板核心定位）：知识库=文档资料库+RAG / prompts=模板库(可编辑)+系统prompt只读 / 汇报版本可视化=接 BI dataset 复用 echarts。每模块 = 1 张设计总纲(X·含接缝自做) + 实现域卡；RAG 注入·模板调用接线列 P2。⚠️ V-agent 已劝退(2026-06-19)，前端/可视交付由 D 承接，不再发 V 卡。派发顺序：先各模块 X 接缝 → 绿后放行 D(数据+前端)/E ∥。════
+  { dom: "X", status: "done", title: "【知识库·设计定稿·X·接缝】导航 + 表 schema + 类型（总纲，总控自做）", brief:
+`✅ X 接缝已完成 + 总控自检通过（2026-06-19，门禁 typecheck+build 双绿）。落地：MainHeader 加 knowledge_base「知识库」(Library 图标，置数据库后) + Tab 类型；constants 加 SubTab kb_docs/kb_search + KNOWLEDGE_SUB_TABS[资料库/检索/readme] + dispatcher 分支；types 双侧加 KnowledgeDoc/KnowledgeChunk + WorkspaceFolderName 加 'knowledge'；data.ts initDataTables 建表 knowledge_docs/knowledge_chunks(+索引)；db.ts VALID_FOLDERS 加 'knowledge'；DataTabs 加 3 个 Placeholder 占位(面板留 D)。类型扩展连带补全 2 处 Record<WorkspaceFolderName> 映射：workspace-dirs FOLDER_DIRS=070_knowledge、FolderPathsPane META。**解锁知识库 D 卡(CRUD+分块入库+BM25 检索)。待用户提交。**
+
+— 设计定稿 —
+✅ 设计定稿（2026-06-19，用户拍板：知识库=文档资料库+RAG 检索，填「非结构化资料」空位，区别于本体库[结构化语义层]/记忆[agent 经验]/Xan数据库[外部行业数据]）。本卡=X 接缝(总控自做)，是 D/V 前置。
+
+【形态】一级 tab knowledge_base「知识库」(icon Library)，放 xan_db 后；子 tab：kb_docs「资料库」(上传/列表/分类/标签) · kb_search「检索」(全文+语义召回预览) · readme。
+【X 自做接缝】MainHeader TABS 加 knowledge_base；constants 加 SubTab 'kb_docs'/'kb_search'(+'readme' 复用) + KNOWLEDGE_SUB_TABS + getSubTabsForTab 分支；types 双侧加 KnowledgeDoc/KnowledgeChunk；db/data.ts 建表 knowledge_docs(id/workspaceId/title/sourceType[upload|path]/path|content/tags/createdAt) + knowledge_chunks(docId/idx/text/tokens)；新增 workspace folder kind 'knowledge'(走 listWorkspacePaths 登记上传文件)。schema 审定后 CRUD 留 D。
+【依赖】无(前置卡)。【验收】typecheck+build 绿；导航出现知识库 2 子tab；表建好。【约束】Tab id 冻结；constants 单一真源；不碰数据探索子树。`},
+  { dom: "D", status: "done", title: "【知识库·D·数据+检索】docs/chunks CRUD + 上传分块入库 + BM25 检索引擎", brief:
+`✅ 总控终审通过（2026-06-19）。门禁：server+web typecheck ✅、知识库 10/10 ✅(knowledge-retrieval.test.ts)；全量 191 中 3 fail 均为既有环境性子进程 spawn(node ENOENT / node:sqlite)失败，与知识库无关(知识库纯 DB+进程内 BM25，不 spawn 子进程)。
+核实：① data.ts CRUD 事务化(BEGIN/COMMIT/ROLLBACK)+输入校验+仅 content 变更才重分块(writeChunksFor 先删后插·幂等)；② chunkKnowledgeText 段落感知(1200char 窗口/120 overlap，尾片并入前片不留半句·不重复 tail)；③ knowledge-retrieval.ts 标准 BM25(k1/b+idf 平滑)多信号(rel.7/recency 60d 半衰期.2/idf.1)·按 maxRaw 归一化(治 BM25 原始分偏高坑)·零新依赖不 import memory-injection；④ 5 端点均有 workspace 存在性+跨 workspace 所有权校验(403)+content 大小限(413)+search topK 钳[1,50]；⑤ 红线净：folder kind 'knowledge'，不接 draw_data。未碰 index.ts 接缝、未碰 git。**解锁知识库「D(承接V)·面板」卡。待用户提交。**
+
+— 原派发 —
+待派发(前置 X 接缝)。目标：知识库数据层 + 检索。
+【改动】① knowledge_docs/knowledge_chunks CRUD(db/data.ts，schema 由 X 审定)；② 上传/登记文档→按段落分块写 knowledge_chunks(参 onto-extract 分块经验：段落边界+overlap，勿 slice)；③ 新建 server/src/knowledge-retrieval.ts，复用 memory-injection 的 BM25 多信号范式做 chunk 召回；④ 端点 /api/workspaces/:id/knowledge(docs CRUD) + /knowledge/search(检索)。
+【依赖】X 接缝(表/类型/folder kind)。【验收】上传文档→分块入库→search 返相关 chunk；server typecheck+build+测试绿。【约束】检索零新依赖(复用现有 BM25 词法+信号)；文档=用户上传资料，不接 draw_data 原始数据通路。`},
+  { dom: "D", status: "done", title: "【知识库·D(承接V)·面板】KnowledgeBasePane（资料库 + 检索）", brief:
+`✅ 总控终审通过（2026-06-19）。门禁：web typecheck ✅ + build ✅。
+核实：① KnowledgeBasePane(view="docs"|"search" 双模)+ KnowledgeBaseReadmePane + knowledge-base-readme.md(42 行·含与统一记忆边界/数据安全/容量上限)；② api/data.ts 加 6 个 client 方法(list/create/get/update/delete/search·encodeURIComponent·类型齐)；③ web/types.ts 镜像 KnowledgeChunkHit/KnowledgeDocInput；④ DataTabs 接线 kb_docs/kb_search/readme；⑤ 上传=客户端 file.text()+文本类型白名单+大小限+用户复核后提交，删除有 confirm 级联警告，每个异步操作有 setError 兜底。
+红线/质量：无 execSync/spawn/self-HTTP/console 调试/scratch 残留；draw_data 仅出现在"严格隔离"注释，前端只调知识库端点不碰原始数据。未碰 git。**知识库模块(X接缝+D数据/检索+D面板)全链路打通；RAG 注入 E·P2 留后。待用户提交。**
+
+— 原派发 —
+待派发(前置 X+D 数据层)。目标：知识库前端。⚠️ V-agent 已停用(2026-06-19)，viz/前端归 Agent-D 承接。
+【改动】新建 KnowledgeBasePane.tsx：kb_docs 区(上传/文档列表/分类标签/删除) + kb_search 区(检索框+召回结果预览，命中 chunk 高亮)；DataTabs(或 EngineTabs)加 knowledge_base 渲染分支；readme 沿用 ?raw+Markdown 范式。
+【依赖】D 的 CRUD/检索端点。【验收】上传→列表→检索→看召回；typecheck+build 绿。【约束】沿用既有管理面板范式；不碰数据探索子树。`},
+  { dom: "E", status: "done", title: "【知识库·E·RAG 注入·P2】检索结果注入分析对话", brief:
+`✅ 总控终审通过（2026-06-19）。门禁 typecheck+build 双绿。核实：新建 knowledge-injection.ts(buildKnowledgePrompt/withKnowledgePrompt 复用 D 的 searchKnowledgeChunks)；index.ts chat 注入点接 withKnowledgePrompt(接在 memoryPrompt 后、msg.injectKnowledgePrompt 开关门控)，**注释明确 query-dependent 知识上下文置于全局稳定 prompt 块之后→不破稳定前缀缓存**；MainHeader/App 加「知识库 on/off」注入开关(对齐 rules 开关范式)+ refreshKnowledgePromptInfo。红线：注入热路径无 execSync/spawn/self-HTTP；注入内容=用户上传资料、不接 draw_data。未碰 git。**知识库模块全链路完成(X+D数据+D面板+E RAG 注入)。待用户提交。**
+
+— 原派发 —
+P2(模块立起来后再做，非首版)。目标：把知识库检索结果作为上下文注入分析对话/工作流(RAG)。
+【改动】检索召回 chunk → 注入 prompt(参 memory-injection 注入范式，稳定前缀/可开关)；对话侧加「引用知识库」开关。
+【依赖】知识库 D(检索) + 记忆注入范式。【验收】开启后对话能引用知识库内容、来源可见。【约束】注入内容=用户资料；守隐私边界、稳定前缀缓存不破。`},
+  { dom: "X", status: "done", title: "【prompts管理·设计定稿·X·接缝】子 tab + 表 schema（总纲，总控自做）", brief:
+`✅ X 接缝已完成 + 自检通过（2026-06-19，门禁 typecheck+build 双绿）。落地：constants SubTab 加 'prompts_mgmt' + AGGREGATE_SUB_TABS 加 {prompts_mgmt:'prompts管理'}(置 LLM管理后/readme 前)；types 双侧加 PromptTemplate/PromptTemplateInput/PromptTemplatePatch；data.ts initDataTables 建表 prompt_templates(workspace_id 可空·category·body·variables·tags·+索引)；DataTabs aggregate+prompts_mgmt Placeholder 占位(面板留 D)。**解锁 prompts D(模板库 CRUD)/E(系统prompt 聚合)/D承接V(面板) 卡。待用户提交。**
+
+— 设计定稿 —
+✅ 设计定稿（2026-06-19，用户拍板：模板库(可编辑)+系统prompt只读聚合 两者都要）。本卡=X 接缝(自做)，D/E/V 前置。
+【形态】挂「控制」(aggregate) 新子 tab prompts_mgmt「prompts管理」，面板内 mini-tab 两区：模板库(CRUD)/系统prompt(只读聚合)。
+【X 自做接缝】constants AGGREGATE_SUB_TABS 加 {id:'prompts_mgmt',label:'prompts管理'} + SubTab 类型；types 加 PromptTemplate；db/data.ts 建表 prompt_templates(id/workspaceId?/title/category/body/variables[]/tags[]/createdAt/updatedAt)。
+【依赖】无(前置)。【验收】控制出现 prompts管理 子tab；表建好；typecheck+build 绿。【约束】constants 单一真源；与 command/skills 管理边界清晰(本卡只管 prompt 文本模板)。`},
+  { dom: "D", status: "done", title: "【prompts管理·D·模板库】prompt_templates CRUD", brief:
+`✅ 总控终审通过（2026-06-19）。门禁 server+web typecheck ✅。核实：data.ts 5 CRUD(create/get/list/update/delete)+rowToPromptTemplate；create 校验 title + variables 未传时自动从 body {{var}} 抽取 + sanitizeStringArr；list 支持 workspace∪global(workspace_id IS NULL) + category 精确 + tags OR(用 \`"tag"\` 子串避免 ab 误中 abc、拒 LIKE 元字符 %/_/"/\\ 防注入)；update partial+校验。SQL 全参数化。routes/data.ts 5 端点(GET list/POST/GET·PATCH·DELETE by id)。api client 留面板卡。未碰 git。**解锁 prompts D承接V·面板卡(E 系统prompt聚合可并行)。待用户提交。**
+
+— 原派发 —
+待派发(前置 X)。目标：用户 prompt 模板库数据层。
+【改动】prompt_templates CRUD(db/data.ts) + 端点 /api/workspaces/:id/prompt-templates(增删改查)；body 支持 {{变量}} 占位(仅存储，渲染在调用方)；category/tags 过滤。
+【依赖】X(表/类型)。【验收】模板增删改查通；server typecheck+build+测试绿。【约束】零新依赖。`},
+  { dom: "E", status: "done", title: "【prompts管理·E·系统prompt聚合】只读聚合端点", brief:
+`✅ 总控终审通过（2026-06-19）。门禁 typecheck ✅。核实：新建 system-prompts.ts 纯只读聚合(无 INSERT/UPDATE/db 写/execSync/spawn/self-HTTP)，枚举来源=prompt-blocks(BLOCK_SAFETY/BASE_BEHAVIOR/FILE_ANALYSIS)+报告/汇报生成 prompt+工作流节点 prompt，返回 SystemPromptOverview{source,label,...}；端点 GET /api/prompts/system 只读返 listSystemPromptOverviews()；引用 prompt-blocks 常量仅展示、不改原逻辑不破稳定前缀。+2 测试(system-prompts/prompt-templates)。未碰 git。**待用户提交。**
+
+— 原派发 —
+待派发(前置 X)。目标：把散落系统 prompt 元数据聚合成只读视图。
+【改动】端点 /api/prompts/system：枚举来源——prompt-blocks.ts(记忆注入稳定前缀) / memory-injection.ts(buildMemoryPrompt/withRulesPrompt) / 报告·汇报生成 prompt / 工作流节点 prompt / send_flow.systemPrompt，返回 {source,label,scope,preview} 只读结构。
+【依赖】X。【验收】端点返各来源 prompt 概览；只读不改原逻辑；typecheck+build 绿。【约束】只读聚合，不动注入/生成逻辑、不破稳定前缀缓存。`},
+  { dom: "D", status: "done", title: "【prompts管理·D(承接V)·面板】PromptsManagementPane（模板库 + 系统prompt 双区）", brief:
+`✅ 总控终审通过（2026-06-19）。门禁 server+web typecheck + web build 三绿。核实：新建 PromptsManagementPane.tsx 双区 mini-tab——模板库(CRUD 表单+列表+{{var}}占位实时抽取+手填 override+category/tags 过滤+全局/本ws 切换) / 系统prompt(只读、按 scope 分组+预览+搜索)；DataTabs aggregate+prompts_mgmt 渲染分支；client 全在 lib/api/data.ts(D CRUD /api/workspaces/:id/prompt-templates + E 聚合 /api/prompts/system)。红线净(零 draw_data/零 LLM、非探索子树)；接缝未碰(App/api root/constants/types 皆 X 前置足迹)；契约类型 import @/types 无重声明。非阻断观察：创建恒回传 variables 绕过后端自动抽取分支，但同规则结果一致(冗余非 bug)。未碰 git。**待用户提交。**
+
+— 原派发 —
+待派发(前置 X+D+E)。目标：prompts管理前端。⚠️ V-agent 已停用(2026-06-19)，viz/前端归 Agent-D 承接。
+【改动】新建 PromptsManagementPane.tsx：mini-tab「模板库」(CRUD 表单+列表+变量占位编辑+分类标签) /「系统prompt」(只读聚合，按来源分组展示+预览)；DataTabs aggregate+prompts_mgmt 渲染分支。
+【依赖】D(模板 CRUD)+E(系统prompt端点)。【验收】模板增删改查 + 系统prompt 浏览；typecheck+build 绿。【约束】参 SkillManagementPane/ToolUsePane 范式。`},
+  { dom: "X", status: "done", title: "【汇报可视化·设计定稿·X·契约】生成契约 + chartSpecs 类型（总纲，总控自做）", brief:
+`✅ 设计定稿（2026-06-19，用户拍板：接 BI dataset、复用 echarts；出图优先确定性聚合，LLM 仅在选图/标题层面参与且不喂明细行）。本卡=X 契约(自做)，V/D 前置。
+【形态】PresentationVersionPane 生成汇报版本时可选关联一个 BI dataset(useBiDataset)→产出 echarts option→嵌入 HTML 故事线，预览用 ReactECharts 渲染。
+【X 自做契约】types 双侧：presentation 生成请求加 datasetId?；PresentationTaskResult 加 chartSpecs?: { title; echartsOption }[]。冻结签名后 D/V 实装。
+【依赖】无(前置)。【验收】类型双侧一致、typecheck 绿。【约束】契约最小加法，不破既有汇报生成。`},
+  { dom: "D", status: "done", title: "【汇报可视化·D(承接V)·主】PresentationVersionPane 加 dataset 选择 + echarts 渲染 + 故事线嵌图", brief:
+`✅ 总控终审通过（2026-06-20）。门禁 server+web typecheck + web build 三绿。核实：PresentationVersionPane 加「关联数据集」选择(useBiDataset)→ReactECharts 渲染 chartSpecs 图表块嵌入故事线预览，不选则纯文本如旧(行为不变)。**总控收口=契约校准**：D 实装时绕过了 X 冻结契约、本地重声明 ChartSpec/PresentationTaskResult + 改 seam api.ts inline，致 3 套并存漂移(且原 X 契约 datasetId 误定为 number、echartsOption 命名、漏 id/datasetMeta)。用户拍板「总控现在校准契约」→ 我把 X 契约改成贴合实现(PresentationChartSpec{id,title,option}+PresentationDatasetMeta+datasetId:string+PresentationTaskResult.datasetMeta?)，api.ts/pane 改 import 契约、presentation-charts.ts 别名引用契约，消灭 3 套并存=单一真源(types.ts 双侧)。零行为变更。未碰 git。**待用户提交。**
+
+— 原派发 —
+待派发(前置 X 契约)。目标：汇报版本前端可视化。⚠️ V-agent 已停用(2026-06-19)，viz/前端归 Agent-D 承接。
+【改动】PresentationVersionPane 加「关联数据集」选择(useBiDataset 列已导入 BI dataset)；生成结果含 chartSpecs 时用 ReactECharts(echarts-for-react，项目已装)渲染图表块，嵌入 HTML 故事线预览；空态/无数据集时退化为纯文本(行为不变)。
+【依赖】X(chartSpecs 契约)、D(若需后端聚合出 option)。【验收】选数据集→生成→汇报稿含图表；不选时纯文本如旧；typecheck+build 绿。【约束】复用 echarts 零新依赖；改动局限 PresentationVersionPane 不外溢报告链路。`},
+  { dom: "D", status: "done", title: "【汇报可视化·D/探索域·取数】BI dataset 读取 + 出图聚合（脱敏边界）", brief:
+`✅ 总控终审通过（2026-06-20，红线重点核）。新建 server/src/presentation-charts.ts：buildChartSpecsFromDataset 全确定性出 echarts option(member_retention/member_recall slot)、零 LLM；summarizeDatasetForLlm 只喂 schema+数值列统计(min/max/mean)、**明确不含任何 row 内容**。index.ts /api/report-versions/generate 加 datasetId→getBiDatasetById(已聚合 BI dataset)→服务端确定性 chartSpecs，LLM 仅吃 datasetSummary。红线核验：探索子树隔离 grep 净；presentation-charts 不触 draw_data/spawn/fetch；数据=clean_data 系聚合集。注：生成端点在 index.ts(冻结 seam)，D 加了 datasetId 接线——总控追认(出图核心逻辑已抽到 D-own slot presentation-charts.ts，index.ts 仅薄接线)。server+web typecheck+build 绿。未碰 git。**待用户提交。**
+
+— 原派发 —
+待派发(前置 X)。⚠️ 涉数据取用，须由懂数据隔离铁律的域处理(AGENTS.md §一)。目标：为汇报图表供数。
+【改动】生成端点支持 datasetId→读已导入 BI dataset(脱敏/已聚合)→确定性聚合产出 echarts option(主路径)；若 LLM 参与选图，仅喂 dataset schema+聚合统计，**严禁喂 draw_data 原始明细行**。
+【依赖】X 契约。【验收】给定 dataset 产出合法 echarts option；隔离 grep 净(不触 draw_data)；server typecheck+build 绿。【约束】数据=已聚合 BI dataset；不新建原始数据通路；LLM 不见明细行。`},
   // ════ 规则记忆模块重构（clean-slate 重建 · 2026-06-18 派发）详见 docs/记忆重构-任务派发.md ════
   // 根因：旧模块以手工维护为中心、注入静态选择 → 从未用起来。范式升级：经验记忆 + 多信号检索 + 治理防漂移 + 可观测闭环。
   // 锁定默认：relevance=词法+信号混合(零新依赖)；沉淀=高置信低危自动入库+其余复核；旧表 drop&rebuild；metric_definitions/business_contexts 不动。
@@ -2224,6 +2306,92 @@ P3(onto + KG)：
    status: "todo"(待领取) | "doing"(修复中) | "done"(已终审，阶段归档时可并入 changelog)。
    字段: { status, title, brief }（无 dom —— 不指定域）。 */
 const HOTFIX = [
+  { status: "done", title: "【后端·健壮化】workflow 读取失败区分文件损坏/配置过期，禁止静默回退默认 workflow", brief:
+`✅ 总控终审通过（2026-06-19，临时快修）。门禁亲验：typecheck ✅ + build ✅ + diff --check ✅；红线=未涉数据探索/draw_data/clean_data；未碰 git。
+改动核实：server/src/routes/engine.ts:266 GET /api/flows/:id/workflow——原「读文件+JSON.parse+normalize」同包一个 try、任一抛错都回退 inferWorkflow()，导致**模型/skill 运行配置过期触发 normalize 抛错时静默丢弃用户有效 workflow.json**。现拆三态：① 无文件→inferred；② JSON.parse 失败(文件损坏)→inferred+warning；③ 文件有效但 normalize 抛错(配置过期)→返回原 workflow+warning 不回退（有效文件即真源）。
+行为变更确认：normalize 失败不再回退 inferred——预期内、修复目的本身。
+notes 落地：建议已由总控补入 docs/notes-engine.md §四（区分「源不可用」vs「源可用但规范化失败」，后者不可静默丢源）。待用户提交。`},
+  { status: "done", title: "【UI重组·实验室解散①】workflow 移入「重复·工作视图」三级 tab（执行之后）", brief:
+`✅ 总控终审通过（2026-06-19，批次①~⑤：server+web typecheck ✅ + web build ✅ + 全 diff 复核 + 删除项残留排查净）。MultiAgentExecutionPane 加 View="workflow" 第三档（执行之后），渲染复用 ResearchLabPane（props 经 flows/workspaceId 透传），ResearchLabPane 组件保留未删。建议用户浏览器实跑确认三级 tab 切换。待用户提交。
+
+— 原派发 —
+
+🆕 待领取（2026-06-19 总控拆卡，用户已确认全部开放点）。本批 = 实验室解散 + 导航改名重组系列（①~⑤），纯前端导航/渲染重组，零 DB 迁移、零 LLM、不碰数据探索子树。建议按①→⑤顺序执行（多卡共改 constants.ts，顺序做免撞）。
+本卡处理实验室的 workflow（research_lab/view → ResearchLabPane）落位。
+
+【改动范围】
+1. MultiAgentExecutionPane.tsx：内部三级视图 View 现为 "design"|"execute"（类型 line 50；tab 按钮「设计」line 577 /「执行」line 598）。新增第三档 view="workflow" 置于「执行」之后——扩 View 联合类型 + 加第三个 tab 按钮（label「workflow」）+ view==="workflow" 时渲染 <ResearchLabPane workspaceId={...} flows={...} model={...} models={...} onModelChange={...} />（props 照 EngineTabs.tsx:184 既有用法搬）。需把 ResearchLabPane 依赖的 flows/model/models 等通过 props 透传进 MultiAgentExecutionPane（该 Pane 已持有 models/model；flows 若无则从 ctx 补一个 prop）。
+2. 不动「设计」「执行」既有逻辑与 workflowDirty 切换确认。
+【验收】web typecheck+build 绿；重复→工作视图顶部出现「设计｜执行｜workflow」三档，点 workflow 进 ResearchLabPane 且功能正常；设计/执行行为零变化。
+【约束/红线】仅碰 MultiAgentExecutionPane 三级 tab 接缝；不动 flow 执行/持久化；不碰 draw_data/clean_data/数据探索子树；不做 git。⚠️ ResearchLabPane.tsx 组件本卡起被复用——系列②删 research_lab 一级 tab 时**只删路由不删该组件文件**。`},
+  { status: "done", title: "【UI重组·实验室解散②】skill/tool 入「控制」+ model 删除 + dlf 散入三模块 + 删 research_lab 一级 tab", brief:
+`✅ 总控终审通过（2026-06-19，批次门禁双绿 + diff 复核）。constants 删 LAB_SUB_TABS、AGGREGATE 加 skill/tool 实验场（与 skills管理/tool-use 并存）、SUB_TABS/EXPLORE/ZHUANTI 行动后插 dlf；EngineTabs skill/tool→aggregate、dlf→explore/multi/zhuanti、删 research_lab 分支；MainHeader 删 research_lab tab + FlaskConical import；删死文件 ModelLabPane.tsx；App 清 research_lab 接线。SubTab 'model' 已从 union 移除。SkillLabPane/ToolLabPane/ResearchLabPane 组件保留。待用户提交。
+
+— 原派发 —
+
+🆕 待领取（2026-06-19 总控拆卡）。系列②，承接①。实验室 5 子 tab 分流：view(workflow)→①已处理；skill/tool→控制；model→删；dlf→日常/专题/重复；全迁出后删除 research_lab 空壳一级 tab。
+
+【改动范围】
+1. constants.ts：
+   · LAB_SUB_TABS 整体删除（research_lab 一级 tab 一并下线）。
+   · AGGREGATE_SUB_TABS（=「控制」模块）新增两子 tab，与现有 skills_mgmt(skills管理)/tool_use(tool-use) **并存**：{id:'skill',label:'skill实验场'}、{id:'tool',label:'tool实验场'}（label 可与用户复核，默认如此区分实验场 vs 管理）。
+   · EXPLORE_SUB_TABS / SUB_TABS / ZHUANTI_SUB_TABS 各在「行动」(actions) 之后插入 {id:'dlf',label:'DLF'}（SUB_TABS 改动经 MULTI_SUB_TABS 带入「重复」）。
+   · getSubTabsForTab 删 research_lab 分支；SubTab 联合类型 'model' 移除（确认无其他引用后）；'skill'/'tool'/'dlf' 保留在 union。
+2. MainHeader.tsx：TABS 删除 { id:"research_lab", ... } 项（清理 FlaskConical import 若不再用）。
+3. EngineTabs.tsx：删 research_lab 的 view/skill/tool/model/dlf 五个渲染分支；新增 aggregate+skill→<SkillLabPane.../>、aggregate+tool→<ToolLabPane.../>（props 照原 research_lab 分支）；新增 explore/multi/zhuanti + dlf 渲染（复用原 research_lab/dlf 分支渲染的面板，约 line 196）。ModelLabPane 渲染删除。
+4. 死文件核查：ModelLabPane.tsx 删 research_lab 入口后若无其他引用→grep 复核后删除；ResearchLabPane.tsx/SkillLabPane.tsx/ToolLabPane.tsx **保留**（仍被复用）。清理 EngineTabs 因删 model 产生的 unused import。
+5. App.tsx：grep "research_lab" 清理残留（默认 tab、可见性、特殊分支等）。
+【验收】web typecheck+build 绿；顶栏无「实验室」；控制模块出现 skill实验场/tool实验场（与 skills管理/tool-use 并列）；日常/专题/重复「行动」后出现 DLF 且渲染正常；无 model 残留入口；无悬空 import/死文件。
+【约束/红线】constants.ts 单一真源、Tab id 不新造（research_lab 仅删不改名）；不碰数据探索子树；删文件前 grep 复核（全局规则·操作安全）；不做 git。依赖：①（ResearchLabPane 已被 MultiAgentExecutionPane 复用，故此处只删路由）。`},
+  { status: "done", title: "【UI重组·数据库改造③】Xan数据库→数据库 + 新增「本品」(BI) + dashboard 整体删除 + onto-xanthil→本体库", brief:
+`✅ 总控终审通过（2026-06-19，批次门禁双绿 + diff 复核）。MainHeader：xan_db→「数据库」、onto_xanthil→「本体库」、删 dashboard tab + Cpu import；constants：SubTab 加 'own_product'、删 DASHBOARD_SUB_TABS + 'model_history'/'report_history'、XAN_DB 加 本品/SQL连接、VIEW_ONLY_TABS 删 dashboard、dispatcher 删 dashboard 分支；VizTabs：删 dashboard 三渲染、xan_db+own_product→BiDashboardPane；删死文件 ReportHistoryPane.tsx + ModelRunHistoryDashboard.tsx。待用户提交。
+
+— 原派发 —
+
+🆕 待领取（2026-06-19 总控拆卡）。系列③。数据库模块改名 + 吸收 BI + 删 dashboard 模块；onto 一级 tab 改名。
+
+【改动范围】
+1. MainHeader.tsx TABS（仅改 label，id/DB kind 不动=零迁移）：{id:"xan_db"} label「Xan数据库」→「数据库」；{id:"onto_xanthil"} label「onto-xanthil」→「本体库」；**删除** {id:"dashboard"} 整项（清理 Cpu import 若不再用）。
+2. constants.ts：
+   · SubTab 联合类型新增 'own_product'（本品，用户已确认命名）。
+   · XAN_DB_SUB_TABS 新增 {id:'own_product',label:'本品'}（建议置于 competitor 竞品 之后或首位，与用户复核位置）。
+   · 删除 DASHBOARD_SUB_TABS 常量；getSubTabsForTab 删 dashboard 分支；VIEW_ONLY_TABS 集合移除 'dashboard'。
+3. VizTabs.tsx：删 dashboard 的三条渲染（view→BiDashboardPane:68 / report_history→ReportHistoryPane:69 / model_history→ModelRunHistoryDashboard:70-71）；新增 xan_db+own_product → <BiDashboardPane workspaceId={ctx.activeWorkspaceId||undefined} />。
+4. 死文件核查：删 dashboard 后 ReportHistoryPane.tsx / ModelRunHistoryDashboard.tsx 若无其他引用→grep 复核后删除（report_history/model_history 随 dashboard 一并删，用户已确认）；清理 VizTabs 相关 unused import。
+5. App.tsx：grep "dashboard" 清理残留（默认 tab/可见性/restoreRun 等接线）。
+【验收】web typecheck+build 绿；顶栏显示「数据库」「本体库」、无「Dashboard」；数据库下出现「本品」并渲染 BI（原 BiDashboardPane）；无报告历史/模型历史残留；无悬空 import/死文件。
+【约束/红线】Tab id 不改（仅 label）；新 SubTab 'own_product' 不复用他义；不碰数据探索子树；删文件前 grep 复核；不做 git。`},
+  { status: "done", title: "【UI重组·控制台改造④】计算工具→控制 + SQL连接→数据库 + 数据提取/聚合计算→聚合数据前 + token统计→LLM管理", brief:
+`✅ 总控终审通过（2026-06-19，批次门禁双绿 + diff 复核）。MainHeader：aggregate→「控制」；constants：SQL连接迁 XAN_DB、数据提取(extraction)+聚合计算(新 id aggregate_compute)迁入 SUB_TABS/EXPLORE/ZHUANTI 的 clean_data 前；DataTabs：extraction/aggregate_compute 落 dataScopeTab(explore/multi/zhuanti)、删 aggregate 旧三分支、xan_db+sql_connect→SqlConnectPane；token统计搬家=新增 LlmWithTokenStats mini-tab 包住 LLM管理子tab(LLM管理|token统计 互斥)，MainHeader 顶栏 token统计按钮 + App onOpenTokenStats 接线已删。未碰数据探索子树内部逻辑（仅以 clean_data 为锚点排序）。待用户提交。
+
+— 原派发 —
+
+🆕 待领取（2026-06-19 总控拆卡）。系列④。计算工具改名为「控制」并收敛为管理/计算控制台；三项子 tab 搬迁 + token 统计并入。
+
+【改动范围】
+1. MainHeader.tsx：TABS {id:"aggregate"} label「计算工具」→「控制」。
+2. constants.ts：
+   · AGGREGATE_SUB_TABS 移出 {id:'sql_connect'}（迁数据库）、并把 {id:'extraction',label:'数据提取'} 与 {id:'view',label:'聚合计算'} 从「控制」移出（见下，迁入数据流模块）。
+   · XAN_DB_SUB_TABS 增 {id:'sql_connect',label:'SQL连接'}。
+   · EXPLORE_SUB_TABS / SUB_TABS / ZHUANTI_SUB_TABS 各在「聚合数据」(clean_data) **之前** 插入「数据提取」「聚合计算」——用户已确认三个数据模块都插。⚠️ 'view' id 在数据模块已表「工作视图/数据分析」，**不可复用**作聚合计算；需为聚合计算新建 SubTab id（如 'aggregate_compute'）并在渲染处映射到 AggregatePane。同理确认 'extraction' 在数据模块渲染 ExtractionPane。
+3. DataTabs.tsx：① 删 aggregate+sql_connect 渲染（line 51），新增 xan_db+sql_connect → <SqlConnectPane.../>；② aggregate+view(聚合计算 AggregatePane)/aggregate+extraction 渲染随子 tab 迁到 explore/multi/zhuanti + 对应新 id；③ llm_mgmt 子 tab 渲染内嵌 token 统计（见 4）。
+4. token统计搬家：MainHeader.tsx 删「token统计」按钮（line 123-129）及 onOpenTokenStats 透传；TokenStatsPane 并入 LLM管理——在 DataTabs aggregate+llm_mgmt 分支（或 LlmManagementPane 内）渲染 <TokenStatsPane/>。清理 App.tsx 中 token-stats modal 的 state/透传，避免悬空（grep onOpenTokenStats / TokenStats 复核）。
+【验收】web typecheck+build 绿；顶栏「控制」；控制下无 SQL连接/数据提取/聚合计算，数据库下出现 SQL连接；日常/专题/重复在「聚合数据」前出现「数据提取」「聚合计算」并正常渲染；LLM管理内可见 token 统计、顶栏 token统计按钮已移除、无悬空状态。
+【约束/红线】⚠️ 本卡在数据模块新增子 tab 并把面板渲染到 explore/multi/zhuanti——**只新增导航位 + 渲染分发，不改 ExtractionPane/AggregatePane/数据探索内部逻辑、不碰 draw_data/clean_data 数据流本身**（位置以 clean_data 作锚点，不动其实现）；若执行中发现须改动数据探索子树→停下转总控。Tab id 仅 aggregate 改 label。不做 git。`},
+  { status: "done", title: "【UI重组·记忆模块⑤】规则记忆→记忆 + 统一记忆面板→统一记忆 + Knowhow→onto-knowhow + 新增 readme 子 tab", brief:
+`✅ 总控终审通过（2026-06-19，批次门禁双绿 + diff 复核）。MainHeader：rule_memory→「记忆」；constants RULE_MEMORY_SUB_TABS：rules「统一记忆面板」→「统一记忆」、indicators「Knowhow」→「onto-knowhow」、末尾加 readme + 注释同步；新建 MemoryReadmePane.tsx（沿用 ExploreReadmePane/AggregateReadmePane 的 ?raw+Markdown 范式）+ web/src/docs/memory-readme.md（45 行，子tab速查/数据流/与onto-xanthil关系/注意事项，层级≤3）；DataTabs rule_memory+readme→MemoryReadmePane。待用户提交。
+
+— 原派发 —
+
+🆕 待领取（2026-06-19 总控拆卡）。系列⑤。记忆模块改名 + 子 tab 文案 + 补 readme（与其他模块一致）。
+
+【改动范围】
+1. MainHeader.tsx：TABS {id:"rule_memory"} label「规则记忆」→「记忆」。
+2. constants.ts RULE_MEMORY_SUB_TABS：{id:'rules'} label「统一记忆面板」→「统一记忆」；{id:'indicators'} label「Knowhow」→「onto-knowhow」；末尾新增 {id:'readme',label:'readme'}（同步更新该常量上方注释 line 32-33）。
+3. 新建 readme 面板 + 文档：新增 MemoryReadmePane.tsx（沿用 WorkflowReadmePane/AggregateReadmePane/ExploreReadmePane 范式：读一份 md 渲染 Markdown）+ 新增 web/src/docs/memory-readme.md（介绍记忆模块：统一记忆/onto-knowhow/业务环境/trace/知识图谱 各 tab 用途 + 数据流 + 注意事项；内容由执行者依模块现状起草，总控终审）。
+4. EngineTabs.tsx（或 DataTabs，依现有 rule_memory 渲染落点）：新增 rule_memory+readme → <MemoryReadmePane/>。
+【验收】web typecheck+build 绿；顶栏「记忆」；子 tab 显示「统一记忆｜onto-knowhow｜业务环境｜trace｜知识图谱｜readme」；点 readme 渲染说明文档；rules 默认进 RulesPane 不变。
+【约束/红线】Tab id 'rule_memory'/'rules'/'indicators' 不动（仅 label）；新 readme 沿用既有 readme 范式不另造机制；不碰数据探索子树；不做 git。`},
   { status: "done", title: "【skill 管理·F 跟进】subagent 激活记入 A 遥测 + 三态 parser 单测", brief:
 `✅ 总控自做并自检通过（2026-06-16，F 卡终审标的两处非阻塞缺口当快修做掉）。① 激活记录：runDelegatedSubAgent 成功完成后调 recordSkillActivationForRun({workspaceId,workspaceRoot,skillPaths,output:summaryText})，子 agent 注入的 skill 真实激活现也进 A 生产遥测（与 flow/workflow/autonomous 同口径）；② 可测性重构：三态解析从 index.ts 局部 parseSubAgentSkillPaths 抽到 skills.ts 的 parseRequestedSkillPaths（与 validateSkillPaths 同处、复用之），delegate 端点改调它，删除 index.ts 局部函数；③ 新增 skills.test.ts 用例覆盖三态（undefined→继承 / []→禁用 / 非空→校验子集去重 / strict 不可用→抛 / 非数组·非字符串→抛）。门禁：server+web typecheck ✅ build ✅ + skill 全测试 22 全绿（skills.test 含新三态用例）；零新依赖、未碰数据探索子树、未碰 git。index.ts 新增 import recordSkillActivationForRun(db/engine)；改动局限 delegate 链路。`},
   { status: "done", title: "【skill 管理】自动沉淀去重默认阈值 1.5→100（超级 skill 万能近邻误撞车）", brief:

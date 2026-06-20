@@ -1,7 +1,7 @@
-import { PanelLeftOpen, Compass, Network, Users, Calculator, BookOpen, Database, FlaskConical, Cpu, Telescope, type LucideIcon } from "lucide-react";
+import { PanelLeftOpen, Compass, Network, Users, Calculator, BookOpen, Database, Library, Telescope, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type Tab = "explore" | "zhuanti" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "research_lab" | "dashboard" | "onto_xanthil";
+export type Tab = "explore" | "zhuanti" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "knowledge_base" | "onto_xanthil";
 
 // 模块命名映射（2026-06-18 改名，权威见 Orchestration.md §〇）：explore=「日常」(曾"探索") · multi=「重复」(曾"工作流"，产物仍称 工作流/flow) · zhuanti=「专题」。
 // ⚠️ 仅 label 展示名可改；Tab id / DB kind="multi" / 路由不可改（零迁移）。
@@ -9,12 +9,11 @@ export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "explore", label: "日常", icon: Compass },
   { id: "zhuanti", label: "专题", icon: Telescope },
   { id: "multi", label: "重复", icon: Users },
-  { id: "aggregate", label: "计算工具", icon: Calculator },
-  { id: "rule_memory", label: "规则记忆", icon: BookOpen },
-  { id: "research_lab", label: "实验室", icon: FlaskConical },
-  { id: "xan_db", label: "Xan数据库", icon: Database },
-  { id: "dashboard", label: "Dashboard", icon: Cpu },
-  { id: "onto_xanthil", label: "onto-xanthil", icon: Network },
+  { id: "aggregate", label: "控制", icon: Calculator },
+  { id: "rule_memory", label: "记忆", icon: BookOpen },
+  { id: "xan_db", label: "数据库", icon: Database },
+  { id: "knowledge_base", label: "知识库", icon: Library },
+  { id: "onto_xanthil", label: "本体库", icon: Network },
 ];
 
 interface Props {
@@ -32,7 +31,10 @@ interface Props {
   rulesPromptCount: number;
   rulesPromptUpdatedAt: number | null;
   onToggleRulesPrompt: () => void;
-  onOpenTokenStats: () => void;
+  knowledgePromptEnabled: boolean;
+  knowledgePromptCount: number;
+  knowledgePromptUpdatedAt: number | null;
+  onToggleKnowledgePrompt: () => void;
   onOpenQuickNotes: () => void;
 }
 
@@ -44,6 +46,11 @@ export function MainHeader(p: Props) {
     : p.rulesPromptEnabled
       ? `规则记忆注入已开启，将注入 ${p.rulesPromptCount} 条启用规则${p.rulesPromptUpdatedAt ? `\n更新于 ${new Date(p.rulesPromptUpdatedAt).toLocaleString()}` : ""}`
       : `规则记忆注入已关闭，有 ${p.rulesPromptCount} 条启用规则可注入${p.rulesPromptUpdatedAt ? `\n更新于 ${new Date(p.rulesPromptUpdatedAt).toLocaleString()}` : ""}`;
+  const knowledgePromptTitle = p.knowledgePromptCount === 0
+    ? "知识库暂无文档"
+    : p.knowledgePromptEnabled
+      ? `引用知识库已开启，将按当前问题检索 ${p.knowledgePromptCount} 篇文档${p.knowledgePromptUpdatedAt ? `\n更新于 ${new Date(p.knowledgePromptUpdatedAt).toLocaleString()}` : ""}`
+      : `引用知识库已关闭，有 ${p.knowledgePromptCount} 篇文档可检索${p.knowledgePromptUpdatedAt ? `\n更新于 ${new Date(p.knowledgePromptUpdatedAt).toLocaleString()}` : ""}`;
   return (
     <header className="flex h-12 shrink-0 items-center px-4">
       {!p.sidebarOpen && (
@@ -94,6 +101,19 @@ export function MainHeader(p: Props) {
       {/* right: usage chips */}
       <div className="ml-auto flex shrink-0 items-center gap-3 pl-3 text-[11px] text-neutral-500 dark:text-neutral-400">
         <button
+          onClick={p.onToggleKnowledgePrompt}
+          title={knowledgePromptTitle}
+          disabled={p.knowledgePromptCount === 0}
+          className={cn(
+            "inline-flex h-7 items-center rounded-md px-2 text-[11.5px] transition-colors disabled:cursor-not-allowed disabled:opacity-50",
+            p.knowledgePromptEnabled
+              ? "bg-sky-50 font-medium text-sky-700 dark:bg-sky-950/40 dark:text-sky-300"
+              : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200",
+          )}
+        >
+          知识库 {p.knowledgePromptCount === 0 ? "none" : p.knowledgePromptEnabled ? `on · ${p.knowledgePromptCount}` : `off · ${p.knowledgePromptCount}`}
+        </button>
+        <button
           onClick={p.onToggleRulesPrompt}
           title={rulesPromptTitle}
           disabled={p.rulesPromptCount === 0}
@@ -120,13 +140,6 @@ export function MainHeader(p: Props) {
           ↩{(p.cacheHitRate * 100).toFixed(0)}%
         </span>
         <span title="累计 token" className="tabular-nums">{p.totalTokens.toLocaleString()} tok</span>
-        <button
-          onClick={p.onOpenTokenStats}
-          title="查看 token 统计明细"
-          className="inline-flex h-7 items-center rounded-md px-2 text-[11.5px] text-neutral-500 transition-colors hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-        >
-          token统计
-        </button>
         <button
           onClick={p.onOpenQuickNotes}
           title="随手记：工作日志与备忘"

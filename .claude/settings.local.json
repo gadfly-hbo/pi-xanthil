@@ -220,7 +220,8 @@
       "Bash(awk '/subagents 管理·看板/{print \"status=\" gensub\\(/.*status: \"\\([a-z_]+\\)\".*/, \"\\\\\\\\1\", \"g\"\\)}' docs/wiki.html)",
       "Bash(grep -nA8 \"zhuantiSeed\\\\|pushZhuantiChatSummary\\\\|ZhuantiSeed\")",
       "Bash(git checkout *)",
-      "Bash(grep -nA2 \"function memoryConsolidationAutoEnabled\" server/src/routes/engine.ts)"
+      "Bash(grep -nA2 \"function memoryConsolidationAutoEnabled\" server/src/routes/engine.ts)",
+      "Bash(echo \"exit=$?\")"
     ]
   }
 }

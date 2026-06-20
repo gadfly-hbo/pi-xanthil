@@ -67,15 +67,12 @@ export interface TabContext {
   handleReportPathsChange: (paths: WorkspacePath[]) => void;
   setArtifactRefreshKey: Dispatch<SetStateAction<number>>;
   refreshRulesPromptInfo: () => void;
+  refreshKnowledgePromptInfo: () => void;
 
   // 工作流 / 引擎
   activeFlow: Flow | null;
   zhuantiChatFlow: Flow | null;
   flows: Flow[];
   rulesPromptEnabled: boolean;
-
-  // 模型工坊
-  pendingRestoreRunId: string | null;
-  handleRestoreConsumed: () => void;
-  handleRequestRestoreRun: (runId: string) => void;
+  knowledgePromptEnabled: boolean;
 }

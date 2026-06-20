@@ -29,6 +29,14 @@ import type {
   MemoryReview,
   MemoryReviewStatus,
   MemoryRiskFlag,
+  KnowledgeDoc,
+  KnowledgeChunk,
+  KnowledgeDocPatch,
+  KnowledgeChunkHit,
+  PromptTemplate,
+  PromptTemplateInput,
+  PromptTemplatePatch,
+  SystemPromptOverview,
 } from "@/types";
 
 // 插件管理：pi 已加载扩展/包清单条目（模块本地类型，仅本域消费故不上提接缝层）。
@@ -242,4 +250,89 @@ export const dataApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason }),
     }).then(json<MemoryReview>),
+
+  // ---- 知识库 knowledge_docs/chunks（D-DATA + D-RETRIEVAL · 2026-06-19） ----
+  // 文档=用户上传/登记的非结构化资料（folder kind 'knowledge'），与 draw_data 严格隔离。
+  // 检索 = workspace 范围内 BM25 召回。所有端点 ownership 由 server 校验（403 跨 ws）。
+  listKnowledgeDocs: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/knowledge`).then(json<KnowledgeDoc[]>),
+
+  createKnowledgeDoc: (
+    workspaceId: string,
+    payload: { title: string; content: string; sourceType?: "upload" | "path"; path?: string | null; tags?: string[] },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/knowledge`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<KnowledgeDoc>),
+
+  getKnowledgeDoc: (workspaceId: string, docId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/knowledge/${encodeURIComponent(docId)}`)
+      .then(json<{ doc: KnowledgeDoc; chunks: KnowledgeChunk[] }>),
+
+  updateKnowledgeDoc: (workspaceId: string, docId: string, patch: KnowledgeDocPatch) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/knowledge/${encodeURIComponent(docId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then(json<KnowledgeDoc>),
+
+  deleteKnowledgeDoc: (workspaceId: string, docId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/knowledge/${encodeURIComponent(docId)}`, {
+      method: "DELETE",
+    }).then(json<{ ok: boolean }>),
+
+  searchKnowledge: (
+    workspaceId: string,
+    query: string,
+    options: { topK?: number; docIds?: string[]; minScore?: number } = {},
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/knowledge/search`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ query, ...options }),
+    }).then(json<{ hits: KnowledgeChunkHit[] }>),
+
+  // ---- prompts 管理 prompt_templates / system-prompts（D-DATA · prompts_mgmt） ----
+  // workspaceId=null 模板对所有工作区可见；list 默认 includeGlobal=1（该 ws ∪ 全局）。
+  // 系统 prompt 聚合 GET /api/prompts/system 是只读快照（无 workspace 维度）。
+  listPromptTemplates: (
+    workspaceId: string,
+    options: { category?: string; tags?: string[]; includeGlobal?: boolean } = {},
+  ) => {
+    const q = new URLSearchParams();
+    if (options.category) q.set("category", options.category);
+    if (options.tags) for (const t of options.tags) q.append("tag", t);
+    if (options.includeGlobal === false) q.set("includeGlobal", "0");
+    const qs = q.toString();
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-templates${qs ? `?${qs}` : ""}`)
+      .then(json<PromptTemplate[]>);
+  },
+
+  createPromptTemplate: (workspaceId: string, payload: PromptTemplateInput) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-templates`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<PromptTemplate>),
+
+  updatePromptTemplate: (workspaceId: string, templateId: string, patch: PromptTemplatePatch) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-templates/${encodeURIComponent(templateId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(patch),
+      },
+    ).then(json<PromptTemplate>),
+
+  deletePromptTemplate: (workspaceId: string, templateId: string) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-templates/${encodeURIComponent(templateId)}`,
+      { method: "DELETE" },
+    ).then(json<{ ok: boolean }>),
+
+  listSystemPromptOverviews: () =>
+    fetch("/api/prompts/system").then(json<SystemPromptOverview[]>),
 };

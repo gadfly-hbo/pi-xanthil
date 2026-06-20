@@ -1,10 +1,11 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { AlertTriangle, FileText, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import ReactECharts from "echarts-for-react";
 import { Markdown } from "@/components/Markdown";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
 import { api } from "@/lib/api";
 import { useResumableTask } from "@/lib/resumableTask";
-import type { FlowTreeNode, WorkspacePath } from "@/types";
+import type { BiDatasetSummary, FlowTreeNode, PresentationChartSpec, PresentationTaskResult, WorkspacePath } from "@/types";
 
 type Scope =
   | { type: "workspace"; workspaceId: string }
@@ -25,13 +26,6 @@ interface ReportOption {
 }
 
 const DEFAULT_PROMPT = "请基于原详细报告，提炼一份用于汇报和沟通的简化 Markdown 版本。保留核心结论、关键数据支撑、风险与下一步建议，语言简洁清晰。";
-
-interface PresentationTaskResult {
-  path: string;
-  content: string;
-  storylinePath: string;
-  storylineHtml: string;
-}
 
 function isReportFile(name: string): boolean {
   return /\.(md|markdown|txt)$/i.test(name);
@@ -70,6 +64,9 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
   const [generatedContent, setGeneratedContent] = useState("");
   const [storylinePath, setStorylinePath] = useState("");
   const [storylineHtml, setStorylineHtml] = useState("");
+  const [chartSpecs, setChartSpecs] = useState<PresentationChartSpec[]>([]);
+  const [datasets, setDatasets] = useState<BiDatasetSummary[]>([]);
+  const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [activeResult, setActiveResult] = useState<"presentation" | "storyline">("presentation");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
@@ -94,6 +91,7 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
     setGeneratedContent("");
     setStorylinePath("");
     setStorylineHtml("");
+    setChartSpecs([]);
     setActiveResult("presentation");
     try {
       if (!scope) {
@@ -140,6 +138,16 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
     void loadReports();
   }, [loadReports]);
 
+  useEffect(() => {
+    let cancelled = false;
+    void api.listBiDatasets().then((list) => {
+      if (!cancelled) setDatasets(list);
+    }).catch(() => {
+      if (!cancelled) setDatasets([]);
+    });
+    return () => { cancelled = true; };
+  }, []);
+
   const generate = useCallback(async () => {
     if (!selectedReport || !prompt.trim() || generating) return;
     setError("");
@@ -147,6 +155,7 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
     setGeneratedContent("");
     setStorylinePath("");
     setStorylineHtml("");
+    setChartSpecs([]);
     setActiveResult("presentation");
     await task.start(async () => {
       const result = await api.generatePresentationVersion({
@@ -154,6 +163,7 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
         relPath: selectedReport.relPath,
         prompt: prompt.trim(),
         model: model || undefined,
+        datasetId: selectedDatasetId || undefined,
         businessRequirementContext: selectedBusinessRequirement ? {
           pathId: selectedBusinessRequirement.pathId,
           markdownPath: selectedBusinessRequirement.markdownPath,
@@ -166,9 +176,10 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
         content: result.content,
         storylinePath: result.storylinePath,
         storylineHtml: result.storylineHtml,
+        chartSpecs: result.chartSpecs ?? [],
       };
     });
-  }, [generating, model, onGenerated, prompt, selectedBusinessRequirement, selectedReport, task]);
+  }, [generating, model, onGenerated, prompt, selectedBusinessRequirement, selectedDatasetId, selectedReport, task]);
 
   useEffect(() => {
     if (task.status !== "done" || !task.data) return;
@@ -176,6 +187,7 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
     setGeneratedContent(task.data.content);
     setStorylinePath(task.data.storylinePath);
     setStorylineHtml(task.data.storylineHtml);
+    setChartSpecs(task.data.chartSpecs ?? []);
   }, [task.status, task.data]);
 
   const emptyHint = paths.length === 0
@@ -243,6 +255,21 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
             </select>
           </div>
           <div>
+            <label className="text-[12px] font-medium text-neutral-700 dark:text-neutral-300">关联数据集（可选，自动出图）</label>
+            <select
+              value={selectedDatasetId}
+              onChange={(event) => setSelectedDatasetId(event.target.value)}
+              disabled={generating || datasets.length === 0}
+              className="mt-2 h-9 w-full rounded-md border border-neutral-200 bg-white px-2.5 text-[12.5px] text-neutral-700 outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+            >
+              <option value="">{datasets.length === 0 ? "未导入 BI 数据集（汇报版本→纯文本）" : "不关联数据集（纯文本汇报）"}</option>
+              {datasets.map((d) => (
+                <option key={d.id} value={d.id}>{`${d.slot === "member_retention" ? "[新客留存]" : "[老客回购]"} ${d.filename}（${d.rowCount} 行）${d.active ? " ·活跃" : ""}`}</option>
+              ))}
+            </select>
+            <p className="mt-1.5 text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">数据集为已脱敏聚合 BI dataset，服务端确定性出图；LLM 仅看 schema 摘要，不见明细行。</p>
+          </div>
+          <div>
             <label className="text-[12px] font-medium text-neutral-700 dark:text-neutral-300">提示词</label>
             <textarea
               value={prompt}
@@ -287,7 +314,21 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
               </div>
               <div className="min-h-0 flex-1 overflow-auto">
                 {activeResult === "presentation" ? (
-                  <Markdown>{generatedContent}</Markdown>
+                  <div className="flex flex-col gap-4">
+                    {chartSpecs.length > 0 && (
+                      <div className="grid grid-cols-1 gap-3 lg:grid-cols-2">
+                        {chartSpecs.map((spec) => (
+                          <div key={spec.id} className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950">
+                            <div className="mb-2 text-[12px] font-medium text-neutral-700 dark:text-neutral-300">{spec.title}</div>
+                            <div className="h-64">
+                              <ReactECharts option={spec.option} style={{ width: "100%", height: "100%" }} notMerge lazyUpdate />
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    <Markdown>{generatedContent}</Markdown>
+                  </div>
                 ) : (
                   <iframe
                     title="故事线预览"

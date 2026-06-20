@@ -19,6 +19,7 @@ const META: Record<WorkspaceFolderName, { title: string; hint: string }> = {
   draw_data: { title: "原始数据", hint: "添加待分析的原始数据文件或文件夹" },
   clean_data: { title: "聚合数据", hint: "添加已聚合处理的数据文件或文件夹" },
   report: { title: "报告输出", hint: "优先添加内容输出目录；未设置时默认输出到最近加载的数据源目录" },
+  knowledge: { title: "知识库", hint: "添加知识库文档（资料/报告/SOP）文件或文件夹" },
 };
 
 interface PreviewState {

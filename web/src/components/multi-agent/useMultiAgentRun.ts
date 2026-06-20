@@ -10,9 +10,10 @@ interface UseMultiAgentRunOptions {
   workflow: EditableWorkflowDef | null;
   model: string;
   rulesPromptEnabled: boolean;
+  knowledgePromptEnabled: boolean;
 }
 
-export function useMultiAgentRun({ flow, workflow, model, rulesPromptEnabled }: UseMultiAgentRunOptions) {
+export function useMultiAgentRun({ flow, workflow, model, rulesPromptEnabled, knowledgePromptEnabled }: UseMultiAgentRunOptions) {
   const flowId = flow?.id ?? "";
   const [taskText, setTaskText] = useState("");
   const [runId, setRunId] = useState<string | null>(null);
@@ -158,8 +159,9 @@ export function useMultiAgentRun({ flow, workflow, model, rulesPromptEnabled }: 
       inputs,
       model: model || undefined,
       injectRulesPrompt: rulesPromptEnabled,
+      injectKnowledgePrompt: knowledgePromptEnabled,
     });
-  }, [flowId, workflow, running, model, rulesPromptEnabled, taskText]);
+  }, [flowId, workflow, running, model, rulesPromptEnabled, knowledgePromptEnabled, taskText]);
 
   const handleAbortRun = useCallback(() => {
     if (!flowId || !runId || !running) return;

@@ -7,21 +7,25 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-18 · VizTabs 支持 zhuanti 模式下的报告五件套
+- 最近更新：2026-06-19 · PresentationVersionPane 接入 BI dataset → chartSpecs 自动出图（V-agent 停用后 viz 归 D 承接）
 - 进度：
-  - **专题 (zhuanti) 报告链路闭环**：`VizTabs` 中的 `report`, `presentation_version`, `report_review` 均已通过扩展条件 `exploreOrMultiOrZhuanti` 支持专题模式。`golden_strategy` 和 `actions` 面板也增加了专题的特定分支。
-  - **专题 Flow Scope 降级**：通过 `ctx.zhuantiChatFlow?.kind === "multi" ? ctx.zhuantiChatFlow : null` 为 `golden_strategy` 和 `actions` 面板构造并传递了安全的作用域，与 `multi` 分支对齐。
+  - **dataset → echarts 闭环（D-A + D-B 一并落）**：`PresentationVersionPane` 加「关联数据集」select；选数据集 → 服务端确定性聚合产出 `chartSpecs[]`（echarts EChartsOption）→ 前端预览页"汇报版本"tab 在 Markdown 上方栅格渲染 `<ReactECharts>` 卡片；不选数据集 → 行为完全不变（纯 Markdown + iframe 故事线）。
+  - **新增 `server/src/presentation-charts.ts`**：`buildChartSpecsFromDataset(detail)` 按 `slot` 派发 `member_retention` / `member_recall` 的确定性聚合（复用 retention/recall 的 alias 列匹配 + `toRatio` 百分比归一化），产 2 个图/slot：规模柱状图 + 留存/回购率折线图。`summarizeDatasetForLlm(detail)` 仅产出 schema + 数值列 min/max/mean 摘要喂给 LLM；**不喂任何 row 内容**。
+  - **`/api/report-versions/generate` 扩展**：接 `datasetId?` → `getBiDatasetById` → 跑确定性聚合 → 响应增 `chartSpecs?` + `datasetMeta?`；LLM prompt 仅追加 dataset 摘要文本（与 businessRequirementContext 同位置注入），不动现有 prompt 主结构。
+  - **故事线 iframe 不渲图**：iframe `sandbox=""` 禁脚本，echarts 进不去；当前选择把图表块放在汇报 Markdown 上方而非嵌进故事线 HTML，避免破坏 iframe 隔离契约。
 - 校验：
   - `npm run typecheck`：✅ server + web 全绿。
-  - `npm run build`：✅ 全绿；无底层骨架篡改。
+  - `npm run build`：✅ 全绿（仅历史 chunk size 警告 + echarts-for-react 静/动态混合 import 警告，与 `BiDashboardPane` 同模式，非本次引入）。
+  - 探索域 LLM 隔离 grep（额外校验）：✅ 净，`DataExplorationPane` 子树未触碰，无 `(generate|chat|extract|clarify|sink|distill).*api\.` 匹配。
 - 下一步：
-  - ① 需要总控（Claude）确认：`golden_strategy` 和 `actions` 面板中，若 `ctx.zhuantiChatFlow` 尚在 ensure 中未就绪，降级为 `flow: null` 交给 Pane 自身处理是否足够。
-  - ② 确认 `DecisionTreePane` 的界面入口（上个 session 遗留）。
-  - ③ KICKOFF P0-B 看板画布持续推进。
+  - ① **故事线 iframe 嵌图降级方案**：当前故事线 HTML 不含图表（受 sandbox 限制）。可后续把 chartSpecs 渲染成静态 SVG 内联进 storylineHtml（echarts 服务端 SSR or 自写极简 SVG），让单文件故事线也带图。需总控拍板优先级。
+  - ② **slot 扩展**：当前确定性聚合只覆盖 `member_retention` + `member_recall`。若 BI dataset 后续接入新 slot（例如清洗后的客户分群、行为序列），`buildChartSpecsFromDataset` 需扩展 dispatch 分支；此前 chartSpecs 会返回空数组（前端降级为纯 Markdown，不报错）。
+  - ③ KICKOFF P0-B 看板画布持续推进（继承上次 session 主线）。
 - 阻塞 / 待总控：
-  - 无代码阻塞。
+  - 无代码阻塞。本次改动已落地、typecheck/build 双绿、隔离边界清。
 - 开放问题：
-  - `ctx.zhuantiChatFlow` 为空或处于 ensure 过程中时，Pane 自身处理 `flow: null` 的行为，是否需要类似 explore 模式补充 session scope 的 fallback 降级？
+  - 故事线 iframe 是否需要嵌图？嵌的话走 SVG 内联还是 base64 PNG？
+  - chartSpecs 是否应该落盘（与 storylineHtml 同目录写一份 JSON）以便重渲染/分享？目前只在 API 响应里返一次，刷新页面就没了。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -74,6 +78,11 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - Diff 复用 `BusinessRequirementPane` 的 **LCS 行级算法，前端计算**，不新增后端 API；AI 修改后自动切 Diff tab。
 - **LLM 长任务「切 tab 续跑」范式**（2026-06-11 hotfix 已落）：黄金策 / 审核(含 autoFix) / 汇报版本 / TOC / 决策树 / 业务需求 / 聚合 等 Pane 的「进行中标志 + 结果」一律**不放组件 `useState`**，改用 `web/src/lib/resumableTask.ts` 的 `useResumableTask(key)`（module 层 store，unmount 不 abort，mount 自动 rehydrate）。范式与 key 约定细节见 notes-data 同名条（D 域 canonical）。**落文件的 Pane**（汇报/业务需求/TOC/决策树等）原 `onGenerated`/`loadHistory` 回调**保留**，续传与落库不冲突。新增此类长任务 Pane 一律走此范式，勿再用本地 useState 存 loading/data。
 - **专题 (zhuanti) 报告链路渲染路由**：`VizTabs` 中的报告五件套支持 `zhuanti` tab；其中 `golden_strategy` 与 `actions` 的 scope 强制构造为 `{ type: "flow", flow: ctx.zhuantiChatFlow }`。若 flow 尚处于 ensure 中（未就绪），则通过可选链安全降级为 `flow: null`，交由 Pane 自身去处理渲染逻辑。
+- **chartSpecs 契约（2026-06-19，V→D 承接）**：汇报版本接 BI dataset 出图走「服务端确定性聚合 + 前端 ReactECharts 透传 option」范式，**不让 LLM 选图/造 option**。
+  - X 契约：`Array<{ id: string; title: string; option: Record<string, unknown> }>`，`option` 即 echarts EChartsOption，前端 `<ReactECharts option={spec.option} />` 原样喂。
+  - 数据隔离铁律：服务端 `getBiDatasetById` 拿到的 dataset 是已脱敏聚合 BI dataset（slot 限定 `member_retention` / `member_recall`），可用其 row 跑确定性聚合产 option；但**只能把 schema + 数值列 min/max/mean 摘要喂 LLM**（`summarizeDatasetForLlm`），row 级数据永不进 prompt。该约束写在 `presentation-charts.ts` 文件头注释，扩展 slot 时务必沿用。
+  - 模块边界：聚合实现在 `server/src/presentation-charts.ts` 自包含（不走 D 域 `routes/data.ts` 的 BiAggregationData 通路，因为汇报版本只读 BI dataset 单源、不需要跨域聚合查询）；前端聚合复用 `web/src/lib/biDatasetParser.ts` 的 alias / `toRatio` 算法（服务端复刻一份，没用 import 跨包以保持服务端独立 build）。
+  - 故事线 iframe 不渲图：iframe `sandbox=""` 禁脚本，echarts 进不去；图表块只在汇报 Markdown 预览面板上方栅格渲染（lg:grid-cols-2，h-64/卡片）。后续若要让单文件故事线 HTML 也带图，需走 SVG 内联或 PNG base64 路线，需总控拍板。
 
 **知识图谱 / trace**（可视化部分）
 - 知识图谱挂「规则记忆」二级 tab（非顶栏独立）；Phase A 结构化图谱优先（无 LightRAG 依赖）；摄入 = 手动触发 + 变更累积；注入折叠进 `injectRulesPrompt` 开关；节点**隐藏而非物理删除**。
@@ -106,6 +115,8 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - **跨域私有工具方法导出**：若在路由层（如 `routes/viz.ts`）尝试复用其它域的 `validateArtifactPath`（挂载于 `index.ts` 私有域），TypeScript 跨文件 import 将报 2305 错。应对方式：若不想扰乱原文件的导出契约，可以在自身域就近实现无害等价物或走正当重构（抽取 `flow-fs.ts` 或 `output-paths.ts`）。
 - **TS Re-export Type 陷阱**：`ValidationIssue` 在 `server/src/types.ts` 中仅作为 `import type` 引入供接口定义使用，并未 `export`。如果在其它文件（如 `db/viz.ts`）中尝试从 `types.ts` 导入它，会报 TS2459 错误。正确做法是直接从源头 `onto-validator.ts` 导入。
 - **轮询定时器泄漏**：使用 `setInterval` 轮询 job 进度时，必须在 job 达到终态（`success` / `failed` / `aborted`）时在轮询回调内显式调用 `clearInterval`，否则即便组件未卸载，前端仍会持续发起无效的 fetch。
+- **故事线 iframe sandbox 与 echarts 不兼容**（2026-06-19）：`PresentationVersionPane` 故事线 tab 用 `<iframe sandbox="">` 渲染 storylineHtml（无脚本、无外链，防 XSS / 数据回传），echarts 需要 JS 运行时，因此**图表块不能直接嵌进 storylineHtml**。当前选择把 chartSpecs 渲染在汇报版本 Markdown 上方的卡片栅格里，故事线 HTML 仍是无图的纯文字流程。若后续要让 storylineHtml 带图，必须走静态 SVG 内联或 PNG base64（不能解 sandbox），属于独立功能项，不要在 chartSpecs 渲染分支里临时撕口子。
+- **echarts-for-react 静/动态 import 警告**（2026-06-19，无害）：`PresentationVersionPane` 静态 import `echarts-for-react`，与 `BiDashboardPane` 同模式；但仓库里 `CompetitorPane` / `IndustryPane` / `WeatherPane` 是动态 import，rollup build 会打 warning："dynamic import will not move module into another chunk"。这是历史遗留组合（V 域三个 Pane 用动态 import），新增 Pane 默认跟 `BiDashboardPane` 走静态 import 即可，不要为了消警告改既有动态 import 的 Pane。
 
 ---
 

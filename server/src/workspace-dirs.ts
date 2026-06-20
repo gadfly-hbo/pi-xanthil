@@ -17,6 +17,7 @@ export const FOLDER_DIRS: Record<WorkspaceFolderName, string> = {
   draw_data: "010_raw",
   clean_data: "020_clean",
   report: "060_reports",
+  knowledge: "070_knowledge",
 };
 
 /** Base directory of a session task. */

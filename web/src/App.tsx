@@ -147,10 +147,11 @@ export default function App() {
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("view");
   // One-way seed: 业务需求 → 数据探索 (field-name hints only, never data).
   const [exploreSeed, setExploreSeed] = useState<ExploreSeed | null>(null);
-  const [pendingRestoreRunId, setPendingRestoreRunId] = useState<string | null>(null);
   const [hasReportPath, setHasReportPath] = useState(false);
   const [rulesPromptEnabled, setRulesPromptEnabled] = useState(false);
   const [rulesPromptInfo, setRulesPromptInfo] = useState<{ count: number; updatedAt: number | null }>({ count: 0, updatedAt: null });
+  const [knowledgePromptEnabled, setKnowledgePromptEnabled] = useState(false);
+  const [knowledgePromptInfo, setKnowledgePromptInfo] = useState<{ count: number; updatedAt: number | null }>({ count: 0, updatedAt: null });
 
   // activeSessionId is read inside the gateway listener — keep a ref in sync.
   const activeRef = useRef<string | null>(null);
@@ -190,6 +191,25 @@ export default function App() {
     } catch {
       setRulesPromptInfo({ count: 0, updatedAt: null });
       setRulesPromptEnabled(false);
+    }
+  }, [activeWorkspaceId]);
+
+  const refreshKnowledgePromptInfo = useCallback(async () => {
+    if (!activeWorkspaceId) {
+      setKnowledgePromptInfo({ count: 0, updatedAt: null });
+      setKnowledgePromptEnabled(false);
+      return;
+    }
+    try {
+      const docs = await api.listKnowledgeDocs(activeWorkspaceId);
+      setKnowledgePromptInfo({
+        count: docs.length,
+        updatedAt: docs.reduce<number | null>((latest, doc) => latest === null ? doc.updatedAt : Math.max(latest, doc.updatedAt), null),
+      });
+      if (docs.length === 0) setKnowledgePromptEnabled(false);
+    } catch {
+      setKnowledgePromptInfo({ count: 0, updatedAt: null });
+      setKnowledgePromptEnabled(false);
     }
   }, [activeWorkspaceId]);
 
@@ -275,7 +295,8 @@ export default function App() {
       });
     }).catch(() => setZhuantiTasks([]));
     void refreshRulesPromptInfo();
-  }, [activeWorkspaceId, refreshRulesPromptInfo]);
+    void refreshKnowledgePromptInfo();
+  }, [activeWorkspaceId, refreshKnowledgePromptInfo, refreshRulesPromptInfo]);
 
   useEffect(() => {
     let cancelled = false;
@@ -609,16 +630,6 @@ export default function App() {
     }
   }, [selectZhuantiTaskData, sessions, zhuantiTasks]);
 
-  const handleRequestRestoreRun = useCallback((runId: string) => {
-    setPendingRestoreRunId(runId);
-    setActiveTab("research_lab");
-    setActiveSubTab("model");
-  }, []);
-
-  const handleRestoreConsumed = useCallback(() => {
-    setPendingRestoreRunId(null);
-  }, []);
-
   useEffect(() => {
     if (!isVisible(activeTab)) {
       const firstAvailable = TABS.find((t) => isVisible(t.id))?.id;
@@ -639,9 +650,9 @@ export default function App() {
     (text: string, skillPaths?: string[], businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string }) => {
       if (!activeSessionId) return;
       setMessages((cur) => [...cur, { id: nextId(), role: "user", content: [{ type: "text", text }] }]);
-      gateway.send({ type: "send", sessionId: activeSessionId, text, model: model || undefined, skillPaths, injectRulesPrompt: rulesPromptEnabled, businessRequirementContext });
+      gateway.send({ type: "send", sessionId: activeSessionId, text, model: model || undefined, skillPaths, injectRulesPrompt: rulesPromptEnabled, injectKnowledgePrompt: knowledgePromptEnabled, businessRequirementContext });
     },
-    [activeSessionId, model, rulesPromptEnabled],
+    [activeSessionId, knowledgePromptEnabled, model, rulesPromptEnabled],
   );
 
   const onStop = useCallback(() => {
@@ -682,9 +693,9 @@ export default function App() {
     (text: string, skillPaths?: string[], businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string }) => {
       if (!zhuantiChatSessionId) return;
       setZhuantiChatMessages((cur) => [...cur, { id: nextId(), role: "user", content: [{ type: "text", text }] }]);
-      gateway.send({ type: "send", sessionId: zhuantiChatSessionId, text, model: model || undefined, skillPaths, injectRulesPrompt: rulesPromptEnabled, businessRequirementContext });
+      gateway.send({ type: "send", sessionId: zhuantiChatSessionId, text, model: model || undefined, skillPaths, injectRulesPrompt: rulesPromptEnabled, injectKnowledgePrompt: knowledgePromptEnabled, businessRequirementContext });
     },
-    [zhuantiChatSessionId, model, rulesPromptEnabled],
+    [zhuantiChatSessionId, knowledgePromptEnabled, model, rulesPromptEnabled],
   );
 
   const onZhuantiChatStop = useCallback(() => {
@@ -782,9 +793,8 @@ export default function App() {
     onZhuantiChatSend, onZhuantiChatStop, compactZhuantiChatContext, refreshZhuantiChatRuntime,
     zhuantiSeed, setZhuantiSeed, pushZhuantiChatSummary,
     exploreSeed, setExploreSeed,
-    handleReportPathsChange, setArtifactRefreshKey, refreshRulesPromptInfo,
-    activeFlow, zhuantiChatFlow, flows, rulesPromptEnabled,
-    pendingRestoreRunId, handleRestoreConsumed, handleRequestRestoreRun,
+    handleReportPathsChange, setArtifactRefreshKey, refreshRulesPromptInfo, refreshKnowledgePromptInfo,
+    activeFlow, zhuantiChatFlow, flows, rulesPromptEnabled, knowledgePromptEnabled,
   };
 
   return (
@@ -871,18 +881,18 @@ export default function App() {
           rulesPromptCount={rulesPromptInfo.count}
           rulesPromptUpdatedAt={rulesPromptInfo.updatedAt}
           onToggleRulesPrompt={() => setRulesPromptEnabled((current) => !current)}
-          onOpenTokenStats={() => {
-            setActiveTab("rule_memory");
-            setActiveSubTab("token_stats");
-          }}
+          knowledgePromptEnabled={knowledgePromptEnabled}
+          knowledgePromptCount={knowledgePromptInfo.count}
+          knowledgePromptUpdatedAt={knowledgePromptInfo.updatedAt}
+          onToggleKnowledgePrompt={() => setKnowledgePromptEnabled((current) => !current)}
           onOpenQuickNotes={() => {
             setActiveTab("rule_memory");
             setActiveSubTab("quick_notes");
           }}
         />
 
-        {/* Sub-tab strip: 工作视图 | 原始数据 | 聚合数据 | 报告输出。实验室顶部 = workflow/…/AnaX；AnaX 子项见下方左竖栏。
-            onto-xanthil 的二级 tab 全部以左侧竖栏呈现（见下方），故此处顶部条对 onto 隐藏。 */}
+        {/* Sub-tab strip: 工作视图 | 原始数据 | 数据提取 | 聚合计算 | 聚合数据 | 数据探索 | 报告输出。重复(multi) 顶部 workflow tab 见 MultiAgentExecutionPane 三级 tab；专题(zhuanti) AnaX 子项见下方左竖栏。
+            本体库(onto-xanthil) 的二级 tab 全部以左侧竖栏呈现（见下方），故此处顶部条对 onto 隐藏。 */}
         {activeTab !== "onto_xanthil" && (
         <div className="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
           {getSubTabsForTab(activeTab).filter((t) => isVisible(activeTab + ":" + t.id) && (activeTab !== "zhuanti" || !ZHUANTI_SIDEBAR_IDS.has(t.id))).map((t) => {

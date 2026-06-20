@@ -1808,7 +1808,7 @@ function parseToolEvaluationResultRow(row: ToolEvaluationResultRow): ToolEvaluat
 
 // ---- workspace paths ----
 
-const VALID_FOLDERS = new Set<string>(["draw_data", "clean_data", "report"]);
+const VALID_FOLDERS = new Set<string>(["draw_data", "clean_data", "report", "knowledge"]);
 const VALID_PATH_KINDS = new Set<string>(["file", "dir"]);
 
 export function addWorkspacePath(workspaceId: string, folder: string, path: string, kind: string, sessionId: string | null = null, flowId: string | null = null, fileHash: string | null = null): WorkspacePath {

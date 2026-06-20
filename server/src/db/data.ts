@@ -19,6 +19,13 @@ import type {
   MemoryRiskFlag,
   MemoryReview,
   ProjectedFactItem,
+  KnowledgeDoc,
+  KnowledgeChunk,
+  KnowledgeDocInput,
+  KnowledgeDocPatch,
+  PromptTemplate,
+  PromptTemplateInput,
+  PromptTemplatePatch,
 } from "../types.ts";
 // 规则记忆 v2 跨 server/web 契约统一在 types.ts（总控终审 D-PANEL 时收敛）；
 // 下游（routes/data.ts·memory-injection.ts）仍从本文件 import，故此处再导出保持兼容。
@@ -84,6 +91,50 @@ export function initDataTables(): void {
       updated_at       INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_memory_reviews_ws_status ON memory_reviews(workspace_id, status, updated_at DESC);
+  `);
+
+  // 知识库 knowledge_docs / knowledge_chunks（知识库模块 · 总控 X 接缝审定 schema · CRUD+分块+检索由 Agent-D 实装）。
+  // 文档=用户上传/登记的非结构化资料（folder kind 'knowledge'）；chunk 供 BM25 检索召回。不接 draw_data 原始数据。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS knowledge_docs (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      title        TEXT NOT NULL,
+      source_type  TEXT NOT NULL DEFAULT 'upload',
+      path         TEXT,
+      content      TEXT,
+      tags         TEXT NOT NULL DEFAULT '[]',
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_knowledge_docs_ws ON knowledge_docs(workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS knowledge_chunks (
+      id       TEXT PRIMARY KEY,
+      doc_id   TEXT NOT NULL REFERENCES knowledge_docs(id),
+      idx      INTEGER NOT NULL,
+      text     TEXT NOT NULL,
+      tokens   INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc ON knowledge_chunks(doc_id, idx);
+  `);
+
+  // prompts 模板库 prompt_templates（prompts_mgmt 模块 · 总控 X 接缝审定 · CRUD 由 Agent-D 实装）。
+  // workspace_id 可空 = 全局模板（跨工作区可见）；body 内 {{变量}} 占位仅存储，渲染由调用方做。
+  // category 用于面板分组（如 "system" / "tool" / "user" / "draft"），自由文本不做枚举强约束。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS prompt_templates (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT REFERENCES workspaces(id),
+      title        TEXT NOT NULL,
+      category     TEXT NOT NULL DEFAULT '',
+      body         TEXT NOT NULL,
+      variables    TEXT NOT NULL DEFAULT '[]',
+      tags         TEXT NOT NULL DEFAULT '[]',
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_prompt_templates_ws ON prompt_templates(workspace_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_prompt_templates_cat ON prompt_templates(category);
   `);
 }
 
@@ -804,3 +855,367 @@ export function rejectMemoryReview(id: string, reason: string): MemoryReview | u
   return getMemoryReview(id);
 }
 
+// ============================================================================
+// 知识库 knowledge_docs / knowledge_chunks（D-DATA 实装 · 总控 X 接缝审定 schema）
+// ----------------------------------------------------------------------------
+// 文档 = 用户上传/登记的非结构化资料（folder kind 'knowledge'），与 draw_data 严格分离。
+// 分块策略：段落优先（参 onto-extract.chunkText），最后一片不足窗口则并入前片，避免 slice
+// 末尾出现"半句"。chunk 同步用于 BM25 召回（见 knowledge-retrieval.ts）。
+// ============================================================================
+
+interface KnowledgeDocRow {
+  id: string;
+  workspace_id: string;
+  title: string;
+  source_type: string;
+  path: string | null;
+  content: string | null;
+  tags: string;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToKnowledgeDoc(r: KnowledgeDocRow): KnowledgeDoc {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    title: r.title,
+    sourceType: r.source_type === "path" ? "path" : "upload",
+    path: r.path,
+    content: r.content,
+    tags: parseStringArray(r.tags),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+const KNOWLEDGE_CHUNK_BUDGET = 1200; // chars，约 600~800 tokens（中英混合）
+const KNOWLEDGE_CHUNK_OVERLAP = 120;
+
+/**
+ * 段落感知分块：与 onto-extract.chunkText 同形，但使用更小窗口适配检索粒度。
+ * 不强行 slice 末尾——尾片 < overlap 时并入前片（拼接 [end..length)，不重复已有内容）。
+ */
+export function chunkKnowledgeText(text: string): string[] {
+  const trimmed = text.trim();
+  if (!trimmed) return [];
+  if (trimmed.length <= KNOWLEDGE_CHUNK_BUDGET) return [trimmed];
+  const chunks: string[] = [];
+  let start = 0;
+  while (start < trimmed.length) {
+    let end = Math.min(start + KNOWLEDGE_CHUNK_BUDGET, trimmed.length);
+    if (end < trimmed.length) {
+      const paraBreak = trimmed.lastIndexOf("\n\n", end);
+      if (paraBreak > start + KNOWLEDGE_CHUNK_BUDGET * 0.5) {
+        end = paraBreak + 2;
+      } else {
+        const lineBreak = trimmed.lastIndexOf("\n", end);
+        if (lineBreak > start + KNOWLEDGE_CHUNK_BUDGET * 0.5) {
+          end = lineBreak + 1;
+        }
+      }
+    }
+    chunks.push(trimmed.slice(start, end));
+    if (end >= trimmed.length) break;
+    const remaining = trimmed.length - end;
+    // 尾片若不足 overlap 阈值，把未读尾巴 [end..length) 拼到前片，避免再开一个微碎片。
+    // 注意：拼的是未读区，不是已写过的 [start..end)，杜绝"重复 tail"。
+    if (remaining <= KNOWLEDGE_CHUNK_OVERLAP) {
+      chunks[chunks.length - 1] += trimmed.slice(end);
+      break;
+    }
+    start = end - KNOWLEDGE_CHUNK_OVERLAP;
+  }
+  return chunks;
+}
+
+export function createKnowledgeDoc(input: KnowledgeDocInput): KnowledgeDoc {
+  if (!input.workspaceId) throw new Error("workspaceId required");
+  const title = input.title.trim();
+  if (!title) throw new Error("title required");
+  const content = input.content ?? "";
+  const id = randomUUID();
+  const now = Date.now();
+  const sourceType = input.sourceType === "path" ? "path" : "upload";
+  const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string" && !!t) : [];
+  db.exec("BEGIN");
+  try {
+    db.prepare(`
+      INSERT INTO knowledge_docs (id, workspace_id, title, source_type, path, content, tags, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, input.workspaceId, title, sourceType, input.path ?? null, content, JSON.stringify(tags), now, now);
+    writeChunksFor(id, content);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+  return getKnowledgeDoc(id) as KnowledgeDoc;
+}
+
+function writeChunksFor(docId: string, content: string): void {
+  db.prepare("DELETE FROM knowledge_chunks WHERE doc_id = ?").run(docId);
+  const pieces = chunkKnowledgeText(content);
+  if (pieces.length === 0) return;
+  const insert = db.prepare(`
+    INSERT INTO knowledge_chunks (id, doc_id, idx, text, tokens) VALUES (?, ?, ?, ?, ?)
+  `);
+  for (let i = 0; i < pieces.length; i++) {
+    const text = pieces[i]!;
+    insert.run(randomUUID(), docId, i, text, Math.ceil(text.length / 4));
+  }
+}
+
+export function getKnowledgeDoc(id: string): KnowledgeDoc | undefined {
+  const r = db.prepare("SELECT * FROM knowledge_docs WHERE id = ?").get(id) as unknown as KnowledgeDocRow | undefined;
+  return r ? rowToKnowledgeDoc(r) : undefined;
+}
+
+export function listKnowledgeDocs(workspaceId: string): KnowledgeDoc[] {
+  return (db.prepare("SELECT * FROM knowledge_docs WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId) as unknown as KnowledgeDocRow[])
+    .map(rowToKnowledgeDoc);
+}
+
+export function updateKnowledgeDoc(id: string, patch: KnowledgeDocPatch): KnowledgeDoc | undefined {
+  const existing = getKnowledgeDoc(id);
+  if (!existing) return undefined;
+  const sets: string[] = [];
+  const params: (string | number | null)[] = [];
+  if (typeof patch.title === "string") {
+    const t = patch.title.trim();
+    if (!t) throw new Error("title required");
+    sets.push("title = ?"); params.push(t);
+  }
+  if (patch.path === null || typeof patch.path === "string") { sets.push("path = ?"); params.push(patch.path); }
+  if (Array.isArray(patch.tags)) {
+    sets.push("tags = ?");
+    params.push(JSON.stringify(patch.tags.filter((t): t is string => typeof t === "string")));
+  }
+  const contentChanged = typeof patch.content === "string" && patch.content !== existing.content;
+  if (contentChanged) { sets.push("content = ?"); params.push(patch.content!); }
+  if (sets.length === 0) return existing;
+  const now = Date.now();
+  sets.push("updated_at = ?"); params.push(now);
+  params.push(id);
+  db.exec("BEGIN");
+  try {
+    db.prepare(`UPDATE knowledge_docs SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+    if (contentChanged) writeChunksFor(id, patch.content!);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+  return getKnowledgeDoc(id);
+}
+
+export function deleteKnowledgeDoc(id: string): boolean {
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM knowledge_chunks WHERE doc_id = ?").run(id);
+    db.prepare("DELETE FROM knowledge_docs WHERE id = ?").run(id);
+    db.exec("COMMIT");
+  } catch (e) {
+    db.exec("ROLLBACK");
+    throw e;
+  }
+  return true;
+}
+
+export function listKnowledgeChunks(docId: string): KnowledgeChunk[] {
+  return db.prepare(
+    "SELECT id, doc_id AS docId, idx, text, tokens FROM knowledge_chunks WHERE doc_id = ? ORDER BY idx ASC",
+  ).all(docId) as unknown as KnowledgeChunk[];
+}
+
+/**
+ * Workspace-wide chunk join, with parent doc fields used by BM25 retrieval.
+ * Filters by docIds when provided.
+ */
+export function listKnowledgeChunksForRetrieval(workspaceId: string, docIds?: string[]): Array<{
+  chunk: KnowledgeChunk;
+  docTitle: string;
+  docPath: string | null;
+  docTags: string[];
+  docUpdatedAt: number;
+}> {
+  const params: string[] = [workspaceId];
+  let where = "d.workspace_id = ?";
+  if (docIds && docIds.length > 0) {
+    where += ` AND d.id IN (${docIds.map(() => "?").join(",")})`;
+    params.push(...docIds);
+  }
+  const rows = db.prepare(`
+    SELECT c.id AS id, c.doc_id AS docId, c.idx AS idx, c.text AS text, c.tokens AS tokens,
+           d.title AS docTitle, d.path AS docPath, d.tags AS docTags, d.updated_at AS docUpdatedAt
+    FROM knowledge_chunks c JOIN knowledge_docs d ON d.id = c.doc_id
+    WHERE ${where}
+  `).all(...params) as unknown as Array<{
+    id: string; docId: string; idx: number; text: string; tokens: number | null;
+    docTitle: string; docPath: string | null; docTags: string; docUpdatedAt: number;
+  }>;
+  return rows.map((r) => ({
+    chunk: { id: r.id, docId: r.docId, idx: r.idx, text: r.text, tokens: r.tokens },
+    docTitle: r.docTitle,
+    docPath: r.docPath,
+    docTags: parseStringArray(r.docTags),
+    docUpdatedAt: r.docUpdatedAt,
+  }));
+}
+
+// ============================================================================
+// prompts 模板库 prompt_templates（D-DATA 实装 · 总控 X 接缝审定 schema）
+// ----------------------------------------------------------------------------
+// workspace_id 可空 = 全局模板（跨工作区可见）；list 默认返回 「该工作区 ∪ 全局」。
+// body 内 {{变量}} 占位仅存储；渲染（替换/校验）由调用方做。本层只做形状抽取
+// （extractPromptVariables）以便面板展示和 input.variables 缺省补齐。
+// 过滤维度：category 精确匹配（自由文本枚举，由面板约定），tags 包含任一匹配。
+// ============================================================================
+
+interface PromptTemplateRow {
+  id: string;
+  workspace_id: string | null;
+  title: string;
+  category: string;
+  body: string;
+  variables: string;
+  tags: string;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToPromptTemplate(r: PromptTemplateRow): PromptTemplate {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    title: r.title,
+    category: r.category,
+    body: r.body,
+    variables: parseStringArray(r.variables),
+    tags: parseStringArray(r.tags),
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+const PROMPT_VARIABLE_RE = /\{\{\s*([a-zA-Z_][\w.-]*)\s*\}\}/g;
+
+/** 从 body 中抽取 `{{name}}` 占位（去重保序）。仅供面板/默认补齐使用，不做替换。 */
+export function extractPromptVariables(body: string): string[] {
+  const out: string[] = [];
+  const seen = new Set<string>();
+  for (const m of body.matchAll(PROMPT_VARIABLE_RE)) {
+    const name = m[1]!;
+    if (!seen.has(name)) {
+      seen.add(name);
+      out.push(name);
+    }
+  }
+  return out;
+}
+
+function sanitizeStringArr(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string" && !!x) : [];
+}
+
+export function createPromptTemplate(input: PromptTemplateInput): PromptTemplate {
+  const title = input.title.trim();
+  if (!title) throw new Error("title required");
+  const body = input.body ?? "";
+  const id = randomUUID();
+  const now = Date.now();
+  const category = (input.category ?? "").trim();
+  // 显式传入 variables 优先；否则从 body 抽取（{{var}}）。
+  const variables = input.variables !== undefined
+    ? sanitizeStringArr(input.variables)
+    : extractPromptVariables(body);
+  const tags = sanitizeStringArr(input.tags);
+  const wsId = typeof input.workspaceId === "string" && input.workspaceId ? input.workspaceId : null;
+  db.prepare(`
+    INSERT INTO prompt_templates (id, workspace_id, title, category, body, variables, tags, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, wsId, title, category, body, JSON.stringify(variables), JSON.stringify(tags), now, now);
+  return getPromptTemplate(id) as PromptTemplate;
+}
+
+export function getPromptTemplate(id: string): PromptTemplate | undefined {
+  const r = db.prepare("SELECT * FROM prompt_templates WHERE id = ?").get(id) as unknown as PromptTemplateRow | undefined;
+  return r ? rowToPromptTemplate(r) : undefined;
+}
+
+/**
+ * 列出模板。默认 includeGlobal=true，返回 「该工作区 ∪ 全局(workspace_id IS NULL)」。
+ * filters: category 精确匹配；tags 任一匹配（OR 语义，标签为内嵌 JSON 数组，走 LIKE 兜底）。
+ */
+export function listPromptTemplates(
+  workspaceId: string,
+  filters?: { category?: string; tags?: string[]; includeGlobal?: boolean },
+): PromptTemplate[] {
+  const includeGlobal = filters?.includeGlobal !== false;
+  const where: string[] = [];
+  const params: (string | number)[] = [];
+  if (includeGlobal) {
+    where.push("(workspace_id = ? OR workspace_id IS NULL)");
+    params.push(workspaceId);
+  } else {
+    where.push("workspace_id = ?");
+    params.push(workspaceId);
+  }
+  if (filters?.category) {
+    where.push("category = ?");
+    params.push(filters.category);
+  }
+  // tags OR：每个 tag 走 LIKE '%"tag"%'。tags 列存 JSON 数组（如 ["a","b"]），
+  // 用 `"<tag>"` 作为子串匹配可避免 "ab" 误中 "abc"。tag 内出现 LIKE 元字符
+  // (% / _) 时用 ESCAPE 转义；为了简单 SKILL：先拒掉这两个字符（标签里几乎不会有）。
+  // ponytail: LIKE 兜底足够用，模板量级 < 1k；上 FTS 等真有性能问题再说。
+  const cleanTags = sanitizeStringArr(filters?.tags).filter((t) => !/[%_"\\]/.test(t));
+  if (cleanTags.length > 0) {
+    const ors = cleanTags.map(() => "tags LIKE ?").join(" OR ");
+    where.push(`(${ors})`);
+    for (const t of cleanTags) params.push(`%"${t}"%`);
+  }
+  const sql = `SELECT * FROM prompt_templates WHERE ${where.join(" AND ")} ORDER BY updated_at DESC`;
+  const rows = db.prepare(sql).all(...params) as unknown as PromptTemplateRow[];
+  return rows.map(rowToPromptTemplate);
+}
+
+export function updatePromptTemplate(id: string, patch: PromptTemplatePatch): PromptTemplate | undefined {
+  const existing = getPromptTemplate(id);
+  if (!existing) return undefined;
+  const sets: string[] = [];
+  const params: (string | number | null)[] = [];
+  if (typeof patch.title === "string") {
+    const t = patch.title.trim();
+    if (!t) throw new Error("title required");
+    sets.push("title = ?"); params.push(t);
+  }
+  if (typeof patch.category === "string") {
+    sets.push("category = ?"); params.push(patch.category.trim());
+  }
+  const bodyChanged = typeof patch.body === "string" && patch.body !== existing.body;
+  if (bodyChanged) {
+    sets.push("body = ?"); params.push(patch.body!);
+    // body 改了但 patch 未显式传 variables，自动重抽（保持一致）。
+    if (patch.variables === undefined) {
+      sets.push("variables = ?"); params.push(JSON.stringify(extractPromptVariables(patch.body!)));
+    }
+  }
+  if (Array.isArray(patch.variables)) {
+    sets.push("variables = ?"); params.push(JSON.stringify(sanitizeStringArr(patch.variables)));
+  }
+  if (Array.isArray(patch.tags)) {
+    sets.push("tags = ?"); params.push(JSON.stringify(sanitizeStringArr(patch.tags)));
+  }
+  if (sets.length === 0) return existing;
+  const now = Date.now();
+  sets.push("updated_at = ?"); params.push(now);
+  params.push(id);
+  db.prepare(`UPDATE prompt_templates SET ${sets.join(", ")} WHERE id = ?`).run(...params);
+  return getPromptTemplate(id);
+}
+
+export function deletePromptTemplate(id: string): boolean {
+  const info = db.prepare("DELETE FROM prompt_templates WHERE id = ?").run(id);
+  return info.changes > 0;
+}

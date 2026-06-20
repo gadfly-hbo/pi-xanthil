@@ -14,6 +14,7 @@ interface Props {
   onModelChange: (model: string) => void;
   onApplyToEditor: () => void;
   rulesPromptEnabled: boolean;
+  knowledgePromptEnabled: boolean;
 }
 
 interface DesignForm {
@@ -237,8 +238,9 @@ export function WorkflowDesignPane(p: Props) {
       model: p.model || undefined,
       systemPrompt,
       injectRulesPrompt: p.rulesPromptEnabled,
+      injectKnowledgePrompt: p.knowledgePromptEnabled,
     });
-  }, [p.flow.id, p.model, p.rulesPromptEnabled]);
+  }, [p.flow.id, p.knowledgePromptEnabled, p.model, p.rulesPromptEnabled]);
 
   const generateWorkflow = useCallback(() => {
     if (running) return;

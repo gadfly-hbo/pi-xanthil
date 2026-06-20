@@ -20,10 +20,22 @@ import {
   getMemoryReview,
   acceptMemoryReview,
   rejectMemoryReview,
+  createKnowledgeDoc,
+  getKnowledgeDoc,
+  listKnowledgeDocs,
+  updateKnowledgeDoc,
+  deleteKnowledgeDoc,
+  listKnowledgeChunks,
+  createPromptTemplate,
+  getPromptTemplate,
+  listPromptTemplates,
+  updatePromptTemplate,
+  deletePromptTemplate,
   type MemoryItemPatch,
   type MemoryIngestInput,
   type MemoryReview,
 } from "../db/data.ts";
+import { searchKnowledgeChunks } from "../knowledge-retrieval.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { buildMemoryPrompt } from "../memory-injection.ts";
@@ -44,6 +56,8 @@ import type {
   HookTriggerRecord,
   MemoryItemInput,
   MemoryItemType,
+  KnowledgeDocPatch,
+  PromptTemplatePatch,
 } from "../types.ts";
 
 /**
@@ -974,4 +988,218 @@ dataRouter.post("/api/workspaces/:id/memory/reviews/:reviewId/reject", (req, res
   const out = rejectMemoryReview(req.params.reviewId, reason);
   if (!out) return res.status(500).json({ error: "failed to reject review" });
   res.json(out);
+});
+
+// ============================================================================
+// 知识库 knowledge_docs / knowledge_chunks（D-DATA + D-RETRIEVAL 实装）
+// ----------------------------------------------------------------------------
+// /api/workspaces/:id/knowledge          GET 列表 / POST 新建
+// /api/workspaces/:id/knowledge/:docId   GET 详情(含 chunks) / PATCH / DELETE
+// /api/workspaces/:id/knowledge/search   POST { query, topK?, docIds? } → BM25 召回
+//
+// 数据安全: 文档 = 用户上传/登记的非结构化资料(folder kind 'knowledge'); 分块策略段落
+// 优先, 不接 draw_data 原始数据; 检索零新依赖, 复用现有 BM25 词法+多信号范式。
+//
+// path 字段语义: 仅作为元数据存储（来源/原始文件位置展示），server 端不会基于它做
+// readFileSync / 路径解析。任何后续把 doc.path 用于 fs 读取的代码必须先过 safeResolve()
+// 工作区沙箱校验，否则即引入路径穿越漏洞。
+// ============================================================================
+
+const KNOWLEDGE_CONTENT_MAX_BYTES = 5 * 1024 * 1024; // 5 MB; 超大文档应先在客户端拆分再上传
+
+function asTagsArr(v: unknown): string[] {
+  return Array.isArray(v) ? v.filter((t): t is string => typeof t === "string" && !!t) : [];
+}
+
+dataRouter.get("/api/workspaces/:id/knowledge", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listKnowledgeDocs(req.params.id));
+});
+
+dataRouter.post("/api/workspaces/:id/knowledge", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const title = typeof b.title === "string" ? b.title.trim() : "";
+  if (!title) return res.status(400).json({ error: "title required" });
+  const content = typeof b.content === "string" ? b.content : "";
+  if (!content.trim()) return res.status(400).json({ error: "content required" });
+  if (Buffer.byteLength(content, "utf8") > KNOWLEDGE_CONTENT_MAX_BYTES) {
+    return res.status(413).json({ error: `content too large (max ${KNOWLEDGE_CONTENT_MAX_BYTES} bytes)` });
+  }
+  const sourceType = b.sourceType === "path" ? "path" : "upload";
+  try {
+    const doc = createKnowledgeDoc({
+      workspaceId: req.params.id,
+      title,
+      sourceType,
+      path: typeof b.path === "string" ? b.path : null,
+      content,
+      tags: asTagsArr(b.tags),
+    });
+    res.json(doc);
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/knowledge/:docId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const doc = getKnowledgeDoc(req.params.docId);
+  if (!doc) return res.status(404).json({ error: "knowledge doc not found" });
+  if (doc.workspaceId !== req.params.id) return res.status(403).json({ error: "doc belongs to another workspace" });
+  const chunks = listKnowledgeChunks(doc.id);
+  res.json({ doc, chunks });
+});
+
+dataRouter.patch("/api/workspaces/:id/knowledge/:docId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getKnowledgeDoc(req.params.docId);
+  if (!existing) return res.status(404).json({ error: "knowledge doc not found" });
+  if (existing.workspaceId !== req.params.id) return res.status(403).json({ error: "doc belongs to another workspace" });
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof b.content === "string" && Buffer.byteLength(b.content, "utf8") > KNOWLEDGE_CONTENT_MAX_BYTES) {
+    return res.status(413).json({ error: `content too large (max ${KNOWLEDGE_CONTENT_MAX_BYTES} bytes)` });
+  }
+  const patch: KnowledgeDocPatch = {};
+  if (typeof b.title === "string") patch.title = b.title;
+  if (b.path === null || typeof b.path === "string") patch.path = b.path;
+  if (typeof b.content === "string") patch.content = b.content;
+  if (Array.isArray(b.tags)) patch.tags = asTagsArr(b.tags);
+  try {
+    const updated = updateKnowledgeDoc(existing.id, patch);
+    if (!updated) return res.status(404).json({ error: "knowledge doc not found" });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.delete("/api/workspaces/:id/knowledge/:docId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getKnowledgeDoc(req.params.docId);
+  if (!existing) return res.status(404).json({ error: "knowledge doc not found" });
+  if (existing.workspaceId !== req.params.id) return res.status(403).json({ error: "doc belongs to another workspace" });
+  res.json({ ok: deleteKnowledgeDoc(existing.id) });
+});
+
+dataRouter.post("/api/workspaces/:id/knowledge/search", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const query = typeof b.query === "string" ? b.query : "";
+  if (!query.trim()) return res.status(400).json({ error: "query required" });
+  const topK = typeof b.topK === "number" && b.topK > 0 ? Math.min(50, Math.floor(b.topK)) : 10;
+  const docIds = Array.isArray(b.docIds)
+    ? (b.docIds as unknown[]).filter((x): x is string => typeof x === "string")
+    : undefined;
+  const minScore = typeof b.minScore === "number" ? b.minScore : undefined;
+  try {
+    const hits = searchKnowledgeChunks(req.params.id, query, { topK, docIds, minScore });
+    res.json({ hits });
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+// ============================================================================
+// prompts 模板库 prompt_templates（D-DATA 实装 · 总控 X 接缝审定）
+// ----------------------------------------------------------------------------
+// /api/workspaces/:id/prompt-templates           GET 列表 / POST 新建
+// /api/workspaces/:id/prompt-templates/:tid      GET / PATCH / DELETE
+//
+// 列表过滤（query）：
+//   - category=<str>        精确匹配
+//   - tag=<str>             支持重复（&tag=a&tag=b 任一匹配 OR）
+//   - includeGlobal=0|1     默认 1（含 workspace_id IS NULL 的全局模板）
+// body 内 {{变量}} 占位仅存储；createPromptTemplate 在未显式传 variables 时自动抽取。
+// ============================================================================
+
+const PROMPT_BODY_MAX_BYTES = 256 * 1024; // 256 KB；超大 prompt 应当拆模板
+
+function readTagsQuery(q: unknown): string[] {
+  if (Array.isArray(q)) return q.filter((t): t is string => typeof t === "string" && !!t);
+  if (typeof q === "string" && q) return [q];
+  return [];
+}
+
+dataRouter.get("/api/workspaces/:id/prompt-templates", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const category = typeof req.query.category === "string" ? req.query.category : undefined;
+  const tags = readTagsQuery(req.query.tag);
+  const includeGlobal = req.query.includeGlobal !== "0";
+  res.json(listPromptTemplates(req.params.id, { category, tags, includeGlobal }));
+});
+
+dataRouter.post("/api/workspaces/:id/prompt-templates", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  const title = typeof b.title === "string" ? b.title.trim() : "";
+  if (!title) return res.status(400).json({ error: "title required" });
+  const body = typeof b.body === "string" ? b.body : "";
+  if (Buffer.byteLength(body, "utf8") > PROMPT_BODY_MAX_BYTES) {
+    return res.status(413).json({ error: `body too large (max ${PROMPT_BODY_MAX_BYTES} bytes)` });
+  }
+  // workspaceId: 显式传 null = 全局；不传 = 默认绑当前 workspace。
+  const wsId = b.workspaceId === null ? null
+    : typeof b.workspaceId === "string" ? b.workspaceId
+    : req.params.id;
+  try {
+    const tpl = createPromptTemplate({
+      workspaceId: wsId,
+      title,
+      category: typeof b.category === "string" ? b.category : "",
+      body,
+      variables: Array.isArray(b.variables) ? asTagsArr(b.variables) : undefined,
+      tags: asTagsArr(b.tags),
+    });
+    res.json(tpl);
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/prompt-templates/:tid", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const tpl = getPromptTemplate(req.params.tid);
+  if (!tpl) return res.status(404).json({ error: "prompt template not found" });
+  // 全局模板（workspaceId=null）任意工作区可读；非全局只能本工作区。
+  if (tpl.workspaceId !== null && tpl.workspaceId !== req.params.id) {
+    return res.status(403).json({ error: "template belongs to another workspace" });
+  }
+  res.json(tpl);
+});
+
+dataRouter.patch("/api/workspaces/:id/prompt-templates/:tid", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getPromptTemplate(req.params.tid);
+  if (!existing) return res.status(404).json({ error: "prompt template not found" });
+  if (existing.workspaceId !== null && existing.workspaceId !== req.params.id) {
+    return res.status(403).json({ error: "template belongs to another workspace" });
+  }
+  const b = (req.body ?? {}) as Record<string, unknown>;
+  if (typeof b.body === "string" && Buffer.byteLength(b.body, "utf8") > PROMPT_BODY_MAX_BYTES) {
+    return res.status(413).json({ error: `body too large (max ${PROMPT_BODY_MAX_BYTES} bytes)` });
+  }
+  const patch: PromptTemplatePatch = {};
+  if (typeof b.title === "string") patch.title = b.title;
+  if (typeof b.category === "string") patch.category = b.category;
+  if (typeof b.body === "string") patch.body = b.body;
+  if (Array.isArray(b.variables)) patch.variables = asTagsArr(b.variables);
+  if (Array.isArray(b.tags)) patch.tags = asTagsArr(b.tags);
+  try {
+    const updated = updatePromptTemplate(existing.id, patch);
+    if (!updated) return res.status(404).json({ error: "prompt template not found" });
+    res.json(updated);
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.delete("/api/workspaces/:id/prompt-templates/:tid", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getPromptTemplate(req.params.tid);
+  if (!existing) return res.status(404).json({ error: "prompt template not found" });
+  if (existing.workspaceId !== null && existing.workspaceId !== req.params.id) {
+    return res.status(403).json({ error: "template belongs to another workspace" });
+  }
+  res.json({ ok: deletePromptTemplate(existing.id) });
 });

@@ -4,10 +4,8 @@ import { Placeholder } from "@/components/Placeholder";
 import { ChatPane } from "@/components/ChatPane";
 import { BusinessRequirementPane } from "@/components/BusinessRequirementPane";
 import { MultiAgentExecutionPane } from "@/components/MultiAgentExecutionPane";
-import { ResearchLabPane } from "@/components/ResearchLabPane";
 import { SkillLabPane } from "@/components/SkillLabPane";
 import { ToolLabPane } from "@/components/ToolLabPane";
-import { ModelLabPane } from "@/components/ModelLabPane";
 import { AnaXPane } from "@/components/AnaXPane";
 import { HypothesisPane } from "@/components/HypothesisPane";
 import { ChangeManagementPane } from "@/components/ChangeManagementPane";
@@ -127,7 +125,7 @@ function ZhuantiChatPane({ ctx }: { ctx: TabContext }) {
 
 /**
  * 【Agent-E · 智能引擎域】tab 渲染模块 —— owner: codex(GPT-5.5)
- * 覆盖：日常→对话/业务需求 · 重复 · 实验室(skill/tool/model/DLF) · 专题(AnaX 对话探索/流水线/假设库/变更管理/readme)。
+ * 覆盖：日常→对话/业务需求 · 重复(含 workflow 三级 tab，复用原 ResearchLabPane) · 专题(AnaX 对话探索/流水线/假设库/变更管理/readme) · 控制→skill/tool 实验场。
  * 新增/调整本域 pane 渲染只改本文件；需要的上下文字段从 TabContext 读取。
  */
 export function EngineTabs({ ctx }: { ctx: TabContext }) {
@@ -174,26 +172,23 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "multi" && activeSubTab === "view" && (
         <MultiAgentExecutionPane
           flow={ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null}
+          flows={ctx.flows}
+          workspaceId={ctx.activeWorkspaceId}
           models={ctx.models}
           model={ctx.model}
           onModelChange={ctx.setModel}
           rulesPromptEnabled={ctx.rulesPromptEnabled}
+          knowledgePromptEnabled={ctx.knowledgePromptEnabled}
         />
       )}
 
-      {activeTab === "research_lab" && activeSubTab === "view" && (
-        <ResearchLabPane workspaceId={ctx.activeWorkspaceId} flows={ctx.flows} model={ctx.model} models={ctx.models} onModelChange={ctx.setModel} />
-      )}
-      {activeTab === "research_lab" && activeSubTab === "skill" && (
+      {activeTab === "aggregate" && activeSubTab === "skill" && (
         <SkillLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} onModelChange={ctx.setModel} />
       )}
-      {activeTab === "research_lab" && activeSubTab === "tool" && (
+      {activeTab === "aggregate" && activeSubTab === "tool" && (
         <ToolLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} />
       )}
-      {activeTab === "research_lab" && activeSubTab === "model" && (
-        <ModelLabPane model={ctx.model} models={ctx.models} mode="all" restoreRunId={ctx.pendingRestoreRunId} onRestoreConsumed={ctx.handleRestoreConsumed} />
-      )}
-      {activeTab === "research_lab" && activeSubTab === "dlf" && (
+      {(activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti") && activeSubTab === "dlf" && (
         <Placeholder icon={FlaskConical} title="DLF" hint="DLF 模块管理，即将推出" />
       )}
 
@@ -203,6 +198,7 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
           model={ctx.model}
           models={ctx.models}
           rulesPromptEnabled={ctx.rulesPromptEnabled}
+          knowledgePromptEnabled={ctx.knowledgePromptEnabled}
           seed={ctx.zhuantiSeed}
           onSeedConsumed={() => ctx.setZhuantiSeed(null)}
           onBackflowSummary={ctx.pushZhuantiChatSummary}

@@ -36,6 +36,7 @@ import { send, getActiveChatRun, activeFlowRuns, activeMultiAgentRuns, type Acti
 import { traceFlowEvent } from "../flow-trace.ts";
 import { trackUsageEvent } from "../cache.ts";
 import { buildMemoryInjectionSnapshot, withRulesPrompt, buildMemoryPrompt } from "../memory-injection.ts";
+import { buildKnowledgePrompt, withKnowledgePrompt } from "../knowledge-injection.ts";
 import { buildRegisteredPathContext } from "../output-paths.ts";
 import { standardDirIn } from "../workspace-dirs.ts";
 import { readWorkflow, runMultiAgent, topoOrder } from "../multi-agent-runner.ts";
@@ -55,6 +56,7 @@ import { retrieveSkills, rankSkillSimilarity } from "../skill-retrieval.ts";
 import { analyzeSkillCoverageGaps, type SkillCoverageGapCluster, type SkillCoverageTask } from "../skill-coverage-gap.ts";
 import { expandCommand } from "../command-expand.ts";
 import { COMMANDS_CONFIG_PATH, FAVORITES_ROOT, PORT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
+import { listSystemPromptOverviews } from "../system-prompts.ts";
 import type { SkillRegistryConflict, SkillRegistryConflictsResult, SkillRegistryEntry, SkillSource, SkillStatus, XanCommand, XanCommandParam, XanCommandParamType } from "../types.ts";
 import {
   maybeRunSkillVersionRetest,
@@ -78,6 +80,10 @@ import {
  * 禁止：触碰 index.ts（legacy 冻结，归总控）/ 他域 router。
  */
 export const engineRouter = Router();
+
+engineRouter.get("/api/prompts/system", (_req, res) => {
+  res.json(listSystemPromptOverviews());
+});
 
 const ZHUANTI_ANAX_SOURCE_NAME = "AnaX 专题";
 
@@ -266,15 +272,25 @@ engineRouter.post("/api/flows/:id/import-local", (req, res) => {
 engineRouter.get("/api/flows/:id/workflow", (req, res) => {
   const flow = getFlow(req.params.id);
   if (!flow) return res.status(404).json({ error: "flow not found" });
+  const content = readFlowFile(flow.folderPath, "workflow.json").content;
+  if (content === null) {
+    return res.json({ workflow: inferWorkflow(flow.folderPath), inferred: true });
+  }
+
+  let workflow: WorkflowLike;
   try {
-    const content = readFlowFile(flow.folderPath, "workflow.json").content;
-    if (content === null) {
-      res.json({ workflow: inferWorkflow(flow.folderPath), inferred: true });
-    } else {
-      res.json({ workflow: normalizeWorkflowSkills(flow.folderPath, normalizeWorkflowModels(JSON.parse(content) as WorkflowLike)), inferred: false });
-    }
-  } catch {
-    res.json({ workflow: inferWorkflow(flow.folderPath), inferred: true });
+    workflow = JSON.parse(content) as WorkflowLike;
+  } catch (err) {
+    return res.json({ workflow: inferWorkflow(flow.folderPath), inferred: true, warning: `workflow.json is invalid: ${String(err)}` });
+  }
+
+  try {
+    const normalized = normalizeWorkflowSkills(flow.folderPath, normalizeWorkflowModels(structuredClone(workflow)));
+    return res.json({ workflow: normalized, inferred: false });
+  } catch (err) {
+    // A valid workflow file is the source of truth even when its runtime model/skill
+    // configuration is stale. Returning an inferred workflow here hides user changes.
+    return res.json({ workflow, inferred: false, warning: String(err) });
   }
 });
 
@@ -2168,7 +2184,12 @@ export async function handleSendFlow(
     piSessionId: flow.id,
     text: `${contextPrefix}${commandExpansion.expandedText}`,
     model: msg.model,
-    systemPrompt: msg.injectRulesPrompt ? withRulesPrompt(flow.workspaceId, "workflow", msg.systemPrompt, memoryRetrievalContext) : msg.systemPrompt,
+    systemPrompt: withKnowledgePrompt(
+      flow.workspaceId,
+      msg.injectKnowledgePrompt,
+      commandExpansion.expandedText,
+      msg.injectRulesPrompt ? withRulesPrompt(flow.workspaceId, "workflow", msg.systemPrompt, memoryRetrievalContext) : msg.systemPrompt,
+    ),
     skillPaths,
     onEvent: (event: PiEvent) => {
       trackUsageEvent({
@@ -2305,7 +2326,10 @@ export async function handleExecuteMultiAgent(
       inputs: msg.inputs,
       defaultModel: msg.model,
       contextPrefix,
-      systemPromptPrefix: msg.injectRulesPrompt ? (buildMemoryPrompt(flow.workspaceId, "workflow", {}, memoryRetrievalContext) || undefined) : undefined,
+      systemPromptPrefix: [
+        msg.injectKnowledgePrompt ? buildKnowledgePrompt(flow.workspaceId, memoryQuery || flow.name) : "",
+        msg.injectRulesPrompt ? buildMemoryPrompt(flow.workspaceId, "workflow", {}, memoryRetrievalContext) : "",
+      ].filter(Boolean).join("\n\n") || undefined,
       onStepStart: (nodeId) => {
         traceFlowEvent(flow.id, "agent_step_start", "running", nodeId, { nodeId }, runRow.id);
         send(ws, { type: "agent_step_start", flowId: flow.id, runId: clientRunId, nodeId });

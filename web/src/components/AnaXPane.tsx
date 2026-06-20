@@ -25,6 +25,7 @@ interface Props {
   model: string;
   models: PiModel[];
   rulesPromptEnabled: boolean;
+  knowledgePromptEnabled: boolean;
   seed?: { task: string } | null;
   onSeedConsumed?: () => void;
   onBackflowSummary?: (text: string) => void;
@@ -146,7 +147,7 @@ function buildBackflowSummary(
   return sections.join("\n\n");
 }
 
-export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled, seed, onSeedConsumed, onBackflowSummary }: Props) {
+export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled, knowledgePromptEnabled, seed, onSeedConsumed, onBackflowSummary }: Props) {
   const [flow, setFlow] = useState<Flow | null>(null);
   const [nodes, setNodes] = useState<WorkflowNode[]>([]);
   const [brief, setBrief] = useState("");
@@ -452,11 +453,12 @@ export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled, seed,
         },
         model: localModel || model || undefined,
         injectRulesPrompt: rulesPromptEnabled,
+        injectKnowledgePrompt: knowledgePromptEnabled,
       });
     } finally {
       setBusy(false);
     }
-  }, [running, busy, workspaceId, brief, flow, model, localModel, rulesPromptEnabled, loadWorkflow, selectedData, quickMode]);
+  }, [running, busy, workspaceId, brief, flow, model, localModel, rulesPromptEnabled, knowledgePromptEnabled, loadWorkflow, selectedData, quickMode]);
 
   const handleResumeFrom = useCallback((nodeId: string) => {
     if (!flow || !workspaceId || running || !brief.trim()) return;
@@ -496,10 +498,11 @@ export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled, seed,
       },
       model: model || undefined,
       injectRulesPrompt: rulesPromptEnabled,
+      injectKnowledgePrompt: knowledgePromptEnabled,
       resumeFromNodeId: nodeId,
       previousRunId,
     });
-  }, [flow, workspaceId, running, brief, historySnap, allRuns, nodes, stepStates, selectedData, model, rulesPromptEnabled]);
+  }, [flow, workspaceId, running, brief, historySnap, allRuns, nodes, stepStates, selectedData, model, rulesPromptEnabled, knowledgePromptEnabled]);
 
   const handleExportReport = useCallback(async () => {
     if (!flow || nodes.length === 0) return;

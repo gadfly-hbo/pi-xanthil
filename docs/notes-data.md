@@ -8,53 +8,41 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-- 最近更新：2026-06-19 · **记忆重构增强 D：D-INGEST 语义 dedup（LLM-judge + 词法兜底 + 成本门控）**
+- 最近更新：2026-06-19 · **prompts 管理 D 承接 V 面板卡（PromptsManagementPane 双区 mini-tab：模板库 CRUD + 系统prompt 只读聚合）**
 - 进度：
-  - **D-INGEST 语义 dedup 升级**（本期完成）：
-    - **`db/data.ts`**：
-      - 新增 `findSemanticDedupShortlist(workspaceId, type, candidateTitle, candidateBody, k=8)`：纯 db+JS，按 token 重叠度排序取同 type 已启用 peer 的前 k 条；空 shortlist 表示无近邻、上游应跳过 judge。token 切分中英混合（英文非字母数字拆+lower、中文 2-gram），不引外部分词器。
-      - `tokenizeForOverlap(s)`：内部辅助函数，shortlist 排序专用，不追求语言学严谨。
-      - `ingestMemoryCandidate(input, semanticDupId?)`：加可选第二参数；词法 dedup 漏判时采纳 semanticDupId 对应 item（仅当同 ws + 同 type + enabled），supersede 路径不变。词法命中优先于 semantic。
-    - **新建 `server/src/memory-dedup.ts`**（纯 D 域）：
-      - `judgeSemanticDuplicate(candidate, shortlist, opts, judgeFn?)`：保守判重 system prompt + `runPiPrompt` 走 pi（本地，隐私不出域）；输出严格 JSON `{match: id|null}`，解析容忍 markdown fence + 周边文本；id 必须在 allowedIds 里（防 LLM 幻觉编 id）。**任何抛错/超时/非法输出 → catch → null**，绝不阻断 ingest。
-      - 默认 timeout **15s**（review 后从 30s 收紧；judge prompt 极小，本地模型应秒回）。
-      - 两处 catch（注入 judgeFn 抛错 + pi runPiPrompt 抛错）都加 `console.warn` 含错误消息，避免静默退化。
-      - `judgeFn` 可注入（供测试 mock，避免真跑 pi 进程）。
-      - 暴露 `__testing.parseJudgeOutput / buildPrompt` 供直测（已有 5 个 unit test 覆盖 fence 剥离、id 允许列表、null/非法输入、周边文本提取）。
-    - **`routes/data.ts` POST /memory/ingest**：
-      - 改 async；`__setIngestJudgeOverride(fn)` 测试钩子（process-global，仅同文件内 finally 重置安全；node:test 默认顺序执行无并发风险）。
-      - 编排：① 先 `findMemoryItemDuplicate`（词法）→ 命中即跳过 judge（成本门控核心）；② 词法漏判 + shortlist 非空 → `await judgeSemanticDuplicate`（每候选 ≤1 次 LLM）；③ 把 verdict 交给 `ingestMemoryCandidate(parsed, semanticDupId)`。
-      - 高危/中危/低置信分流逻辑完全不变（`acceptMemoryReview` 路径维持词法）。
-  - **测试**（新建 `server/src/memory-semantic-dedup.test.ts`，13 个测试，全绿）：
-    - HTTP 集成：① 词法漏判+语义同 → judge 命中 → supersede 旧条目；② 词法精确 dup → judge **不**触发；③ judge 抛错 → 优雅回退、ingest 仍 200 accepted、supersededId=null；④ shortlist 空 → judge 不触发。
-    - Unit：`judgeSemanticDuplicate` 空 shortlist 直返 null；注入 judgeFn 抛错被吞。
-    - `parseJudgeOutput` 直测：```json``` 围栏剥离 + id 允许列表、伪造 id 拒绝、null/非字符串/缺字段、畸形/空输入不抛错、周边文本中提取 JSON 对象。
-  - **Code Review 修复**（本期）：
-    - I-2：默认 timeout 30s → 15s；两处 catch 加 console.warn，可观测性补强。
-    - S-5：`parseJudgeOutput` 直测从 0 个补到 5 个，覆盖 LLM 输出解析的所有 happy/sad path。
+  - **本期 D-PANEL 卡完成**（`【prompts管理·D(承接V)·面板】PromptsManagementPane（模板库 + 系统prompt 双区）`）：
+    - `web/src/components/PromptsManagementPane.tsx`（新建 831 行）：
+      - 顶层 mini-tab「模板库」/「系统prompt」（icon: Library / Settings2），同 `LlmWithTokenStats` mini-tab 范式。
+      - **模板库** `LibraryView`：左 80 列宽列表 + 右详情/编辑分屏。工具栏：搜索（title/body/category/tag）+ `含全局/仅本ws` toggle（控 `includeGlobal`）+ 刷新 + 计数 + 新建。过滤行：category 单选 chip（点已选取消）+ tag 单选 chip。卡片显示 title + 全局徽章（琥珀色 Globe 图标）+ category + 变量数 + tags 前 4 个 + updatedAt。
+      - **TemplateDetail**：title 行 + 全局/category 徽章 + id + updatedAt + 编辑/删除按钮；元信息行展示变量列表（`{{name}}` 代码格式）+ tags；body `<pre>` 灰底等宽渲染（不替换变量，纯展示）。
+      - **DraftEditor**：title (必填) / category / tags (csv) / body (textarea) / variables override (csv，留空 = 自动从 body 抽取)；新建时多一个 `setAsGlobal` checkbox（编辑时不可改归属）；底部信息块实时显示 `extractVariables(body)` 抽取结果。
+      - **系统prompt** `SystemView`：调用 `/api/prompts/system`，按 `scope` 字段 group，每组渲染 label + source（code 字体）+ preview 段落。顶部含 scope chip 过滤 + 搜索 + 刷新 + 「只读」标识。
+      - 边界：本面板**只调** `prompt-templates` + `prompts/system` 端点，不读 draw_data 行级；`workspaceId == null` 时引导"请先选择工作区"占位。
+    - `web/src/lib/api/data.ts`：追加 5 方法 `listPromptTemplates / createPromptTemplate / updatePromptTemplate / deletePromptTemplate / listSystemPromptOverviews`，category/tags/includeGlobal 通过 `URLSearchParams` 编码（tag 重复参数走 `q.append`）。
+    - `web/src/types.ts`：补 `SystemPromptOverview` 镜像（与 `server/src/system-prompts.ts:SystemPromptOverview` 结构一致：source/label/scope/preview，全字符串）。
+    - `web/src/tabs/DataTabs.tsx`：替换原 `<Placeholder ... title="prompts管理" ... />` 为 `<PromptsManagementPane workspaceId={ctx.activeWorkspaceId} />`，import 同步加。
+- 关键设计决策：
+  - **mini-tab + 左右分屏**：参 `SkillManagementPane`（顶部 mini-tab）+ `KnowledgeBasePane`（list+detail/draft 分屏）合体，零新依赖、视觉与既有 D 域一致。
+  - **`{{var}}` 变量编辑双轨**：自动抽取（编辑时实时显示）+ 手填 override（csv，留空 = 用自动抽取的）。与 server `updatePromptTemplate` 行为对齐：patch 显式传 variables → 覆盖；不传 → server 自动重抽（前端这里通过传 autoVars 也能保持稳定）。
+  - **全局态只在新建时可设**：编辑现有模板不允许改 `workspaceId`（与 server PATCH 类型无 workspaceId 字段一致——归属一旦定即定）。
+  - **CSV tags 输入**：与 KnowledgeBasePane `parseTags` 范式一致，逗号分隔，`parseCsvInput` 内联实现（trim + 过空），不抽公共工具（YAGNI）。
 - 校验：
-  - `npm run typecheck`：✅ 全绿（server + web）
-  - `npm run build`：✅
-  - 数据探索 LLM 隔离 grep：✅ 0 命中（D-INGEST dedup 完全在 server 端，不碰 web 探索子树）
-  - 测试：✅ 25/25（13 新 semantic-dedup + 12 原 ingest-gate 无回归）
+  - `npm run typecheck`（web）：✅ 0 错误
+  - `npm run build`（web）：✅ 仅遗留 chunk size 警告（与本卡无关）
+  - 数据探索 LLM 隔离 grep：✅ 0 命中（本卡完全在 `web/src/components/PromptsManagementPane.tsx` + api lib + types + DataTabs，不碰探索子树）
 - 下一步（接续优先级）：
-  - ① **总控终审本期变更**：核 judge 兜底（catch→null+warn）、成本门控（lexical hit 跳 judge / 空 shortlist 跳 judge）、verdict 分流不变（accepted/review/rejected 三路语义不动）。
-  - ② **可选优化（YAGNI 暂不做）**：
-    - S-1：`tokenizeForOverlap` 输入截断（`s.slice(0, 4000)`）防极端长 body；当前 weak_evidence 软门已挡掉过短 body，超长无硬限。
-    - S-2：peer token 缓存（`Map<id+updatedAt, Set<string>>`）；当前 workspace 量 <1000 peers 不必要。
-    - S-3：在 route 里把 `detectMemoryCandidateRisk` 提到 judge 之前，让高危候选不付 LLM 成本（不影响安全，纯成本节约）。
-    - S-6：`k=8` 在 route 调用点加注释。
-  - ③ 上期遗留：legacy `/memory/feedback` `/memory/injections` 与新 `/memory/items*` 共存合并、`rule_memory.cases` 子 tab 正式下线、`MemoryItemType` 加 `'fact'` —— 全部归总控。
-  - ④ 上期遗留：`fact adapter` 补强、专题数据三件套真机联调、subagents/command/LLM 管理真机联调。
+  - ① **总控收尾批次结算**：`prompts管理` 三段（X 接缝 / D 卡 CRUD / D 承接 V 面板 + E 系统prompt聚合）已全部完成。剩 `汇报版本数据可视化` 整条（X 契约未铺：`PresentationTaskResult` 仍内嵌 `PresentationVersionPane.tsx` 局部，需先升 types 双侧加 `datasetId? / chartSpecs?`，再接 BI dataset + echarts；取数走 D / 探索域时严守 LLM 隔离）。
+  - ② **可选增强（YAGNI，暂不做）**：模板"用此模板试运行"按钮（接 chat / send_flow）、变量插值 preview、模板版本/diff、按调用次数排序、批量导入、跨 ws 克隆 / 全局 ↔ 本地迁移按钮（server PATCH 不允许改归属，需新接口）、模板执行追踪（与 trace 子 tab 联动）。
+  - ③ 上期遗留：知识库 chunk 是否注入统一记忆 / 知识库去重策略 / KB 内联编辑 / 混合 tokenizer 拆 `text-search-tokenize.ts` / `MemoryItemType` 加 `'fact'`、legacy 记忆路由合并、`cases` 子 tab 下线、`listMemoryReviews` 分页 / hooks PUT 无认证 / `RulesPane.tsx` 拆分。
 - 阻塞 / 待总控：
-  - **本期无新阻塞**。语义 dedup 完全在 D 域内闭环，没碰 types/schema 接缝、没加新依赖。
-  - 上期遗留阻塞延续：`MemoryItemType` 加 `'fact'`、legacy 路由合并时机、`cases` 子 tab 下线时机 —— 等总控。
+  - 无新阻塞。本卡只新增前端面板 + types 镜像 + api lib 方法，未改任何接缝层骨架（`index.ts` / `db.ts` / `App.tsx` / `api.ts` / `constants.ts` 全未碰）。`web/src/types.ts` 仅追加导出，符合"types 双侧由总控审定，D 域追加镜像"既有约定。
+  - 上期遗留：`MemoryItemType` 加 `'fact'`、legacy 记忆路由合并、`cases` 子 tab 下线时机。
 - 开放问题：
-  - **judge 默认 model 未指定**（`opts.model` 为 undefined → pi 走自身默认）；若总控希望固定到某个轻量模型（本地小模型）以保证延迟与一致性，可在 `routes/data.ts` ingest 路由里给 judgeOpts 加 `model: '<model-id>'`。
-  - **judge 失败率无 metric**：当前只 console.warn 到 stderr；若需统计 fallback 比例需加 counter（YAGNI 暂不做，等真实部署观测后再决策）。
-  - **`__setIngestJudgeOverride` 是 process-global**：node:test 默认顺序执行无问题；若未来转并发 worker 测试需重新评估（不影响生产）。
-  - **shortlist k=8 上限**：当 shortlist 较大时 prompt 也会膨胀；当前同一 workspace 同一 type 的 enabled peers 不太可能超 8，本期不优化。
-  - 上期遗留：`listMemoryReviews` 无分页、clean_data 白名单 / hooks PUT 无认证 / hooks-triggers.jsonl 大文件全量读、`RulesPane.tsx` 拆分。
+  - **「试运行」是否值得做**：模板库当前是纯 CRUD + 浏览，没接到下游（chat / workflow）。若用户需要"在面板里直接用这个模板发一次推理"，需要新增 `runPromptTemplate(id, vars)` 接口或在前端拼好 system+user 直送 chat。等需求来了再做。
+  - **变量类型 / required 元数据**：当前 `variables: string[]` 只存名字，不带 type/required/description。若未来要做"模板调用前 form 自动渲染"，需扩 schema（升级路径：`variables: { name: string; type?: string; required?: boolean; description?: string }[]`）。当前面板按"纯字符串占位"处理。
+  - **全局模板 vs 本 ws 模板的同名冲突**：列表里两者并列（用 Globe 徽章区分），未做 user-override 合并语义；上期遗留问题，本面板未触发新决策。
+  - **system view 是否需要"复制 source 路径到剪贴板"按钮**：当前 source（如 `prompt-blocks.ts:BLOCK_SAFETY`）用 `<code>` 直显，未提供拷贝。简单加一个 button 即可，等用户提需求。
+  - 上期遗留：知识库 chunk 是否参与统一记忆注入 / 去重策略 / 内联编辑 / `path` 字段语义扩展 / 混合 tokenizer 与 memory-injection 已分叉 / `listMemoryReviews` 无分页 / clean_data 白名单 / hooks PUT 无认证 / hooks-triggers.jsonl 大文件全量读 / `RulesPane.tsx` 拆分。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -77,6 +65,7 @@
 | 数据探索 | `DataExplorationPane.tsx` + `data-exploration/*` · `lib/{duckdb,profiling,insights,joins}.ts` | 仅二进制文件流，**零 LLM** |
 | 指标/业务环境/rules/案例 | `IndicatorsPane` `BusinessContextPane` `RulesPane` `CasesPane` | `db/data.ts`(新) · `memory-injection.ts` |
 | 统一记忆 memory_items（v2 重构） | 待建 D-PANEL | `db/data.ts`(CRUD+fact adapter) · `routes/data.ts`(/memory/items*) |
+| 知识库 knowledge_docs/chunks（D 卡片 2026-06-19） | `KnowledgeBasePane.tsx`(资料库+检索双视图) · `KnowledgeBaseReadmePane.tsx`(readme) | `db/data.ts`(CRUD+chunkKnowledgeText) · `knowledge-retrieval.ts`(BM25) · `routes/data.ts`(/knowledge*) |
 | Xan数据库 | `WeatherPane`(前端直连) · `IndustryPane`/`CompetitorPane`(经后端 pi) + 待建[商圈/the-crowd] | 天气=外部 API 前端直连；行业/竞品=`routes/data.ts` 的 `*/analyze` 经 `runPiPrompt` |
 
 db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端方法进 `lib/api/data.ts`。
@@ -221,6 +210,48 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 
 ---
 
+**知识库 knowledge_docs/chunks（D 卡片，2026-06-19）**
+- **定位区分（与 memory_items 的边界）**：知识库 = 用户上传/登记的非结构化**参考资料**（按需检索），memory_items = 系统沉淀的**规则/经验/事实/情景**（主动注入 system prompt）。两者目标场景不同：知识库面向"问答时拉一段 SOP/口径文档"，memory_items 面向"每次对话前注入既有约束/经验"。当前**不**自动合并，跨 source 合并（知识库 chunk 是否进 memory_injection prompt）需总控决议。
+- **数据安全位面**：folder kind = `'knowledge'`，与 `draw_data`(原始) 严格隔离。文档内容由用户主动提交（upload / 注册元数据），是衍生产物可参与 LLM。`path` 字段当前**仅作元数据**（来源展示），server 端不基于它做 fs 读取——任何后续把 `doc.path` 用于 readFileSync 的代码必须先 `safeResolve()` 工作区沙箱（路由头部已加 grep-able 注释）。
+- **分块策略（参 onto-extract.chunkText 但更细粒度）**：budget=1200 chars / overlap=120 chars（约 600~800 tokens 中英混合）。段落优先（`\n\n` lookback），无段落则行（`\n` lookback），都失败才硬切。**修复版**用 `[end..length)` 拼前片（不重复已写区），尾片 ≤ overlap 直接合并避免微碎片。**踩坑**：第一版照抄 onto-extract 的 `[start..length)` 拼法，在小窗口下会让"chunk N+1 是 N 的子串"——BM25 命中倍增 + 存储浪费（review 抓到，已修）。
+- **BM25 检索引擎（零新依赖）**：标准 BM25 (k1=1.5, b=0.75, idf +0.5 平滑负值 clamp) + recency (半衰期 60d) + idfBoost (命中稀有词 tie-breaker)，权重 `0.7/0.2/0.1`。relevance 用最大 BM25 归一到 [0,1] 再加权。候选池只对 query token 集合统计 df/tf（bounded by query size，不全词扫）。
+- **混合 tokenizer（CJK bigram + ASCII 词）**：ASCII 按空格切（length≥2 + stopword）；CJK 用 char-bigram（"复购率" → "复购","购率"）。比 memory-injection 的 whitespace-split 在中文场景下召回明显更准（whitespace-split 把整段中文切成单 token，BM25 几乎无法工作——这也是 memory-injection 中文召回粗的隐性 bug，但本卡按"最小改动"未动它）。后续提取 `text-search-tokenize.ts` 共享模块时再统一。
+- **半衰期 60d 取舍**：相对 memory_item(30d) 慢一倍——知识库存放长期参考资料（口径文档、SOP），不应像即时学习记忆一样快速过期。注释已写在 `recencyScore` 函数上方。
+- **5 MB 内容硬上限**：POST + PATCH 都加 413 守卫（`Buffer.byteLength(content, "utf8")`），避免 50MB 文档单同步循环阻塞 Node event loop。超大文档应客户端先拆分再上传。
+- **node:sqlite 事务必须用 BEGIN/COMMIT/ROLLBACK**（**不**用 `db.transaction()`）：`node:sqlite` 的 `DatabaseSync` 不存在 `transaction()` 方法（typecheck 会报 `Did you mean 'isTransaction'?`）。本卡用 `db.exec("BEGIN")` + try/COMMIT/catch/ROLLBACK，与 `db.ts:764` 同款。**踩坑沉淀**：第一版照抄 better-sqlite3 风格的 `db.transaction(() => {...})()` 直接 typecheck 失败。
+- **`as unknown as Row[]` 必须的两次桥**：`db.prepare().all()` 返回 `Record<string, SQLOutputValue>[]`，TS 直接 `as Row[]` 不合法。本卡用 `as unknown as Row[]`（`getKnowledgeDoc` / `listKnowledgeDocs` / `listKnowledgeChunks` / `listKnowledgeChunksForRetrieval`），与 `data.ts:272` 同款。
+- **更新仅在 content 真变时重写 chunks**：`patch.content !== existing.content` 才 DELETE+INSERT，title/tags/path 改动不触发重切分。代价：若未来改 chunk 大小阈值（`KNOWLEDGE_CHUNK_BUDGET`），需新建迁移脚本——不在本卡范围。
+- **`ponytail:` BM25 性能上限标注**：当前每次 search 重新 tokenize 全工作区 chunk（O(N·avg_chunk_len)）。本地单用户 + 中小工作区可接受；当 chunk ≳ 5k 或 P95 > 50ms 时加 `(workspaceId, max(updated_at))` → tokens 进程内缓存。注释已加在 `searchKnowledgeChunks` 第一次 tokenize 处。
+- **路由 ownership 校验范式**：所有 `/knowledge/:docId` 端点先 `getWorkspace(req.params.id)` 校 workspace 存在 → 再 `doc.workspaceId !== req.params.id` 校归属（403）。与 `/memory/items/:itemId` 同款，本卡新增端点直接复用此 pattern。
+
+---
+
+**知识库 D-PANEL（前端面板，2026-06-19）**
+- **单文件双视图模式**：`KnowledgeBasePane({ workspaceId, view })` 按 `view: "docs" | "search"` prop 派发 DocsView / SearchView。避免开两个组件文件 + 共享工具函数（`fmtTs/fmtSize/highlightChunk`）。与 SkillManagementPane 的"管理控制台单一入口"范式一致。
+- **上传走纯文本白名单**：`file.text()` 仅接受 `.md/.markdown/.txt/.csv/.tsv/.json/.log`，二进制（pdf/docx）由用户先转 markdown——避免引 mammoth/xlsx 解析依赖到前端 bundle，同时与 server 5MB 守卫匹配。客户端预校验 `file.size > MAX_CONTENT_BYTES` 即拦。
+- **检索分数全透明**：每条命中显示 `score/rel/rec/idf` 四个数值（小数点 3 位 + tooltip），便于调试 BM25 ranking weights，无需开发者刷服务端日志。
+- **命中高亮用 manual exec loop**：`highlightChunk` 不依赖 `text.split(re)`（capturing group 会导致 alternation 歧义），改用 `while (re.exec(text))` 手动推进 + string/object 判别联合数组。空 token 时返回 `[<span>text</span>]` 统一类型。
+- **删除二次确认**：`window.confirm` 明确"级联删除所有 chunks + 不可撤销"语义，与 SkillManagementPane 归档确认范式一致。
+- **`group` class 陷阱**：删除按钮用 `group-hover:opacity-100` 但父 `<li>` 缺 `group` class → 按钮永久 `opacity-0` 不可见。review 抓到，已修。**通用教训**：任何 Tailwind `group-*` 修饰符必须确认父元素有 `group` class；`group-hover` 与 `hover` 同时存在时，`hover` 在父元素上也需 `group` 才能级联。
+- **`new Blob()` 每击键分配**：新建模态用 `new Blob([draftContent]).size` 显示实时字节数，每次击键分配 5MB 上限的 Blob。review 建议改为 `new TextEncoder().encode(draftContent).length`——零分配、同结果。已修。
+- **SearchView docs fetch 补 cancelled flag**：DocsView 的 detail fetch 有 cancelled，SearchView 的 doc list fetch 缺——review 抓到，已补 cleanup。
+- **文档列表无分页**：当前全量加载，<100 docs 够用。超 500 时加分页（或至少加个 note）。暂不做。
+- **内联编辑 UI 缺失**：PATCH 端点已就绪但前端只有新建+删除，无编辑入口。需总控确认是否本期补还是下期。
+
+---
+
+**prompts 模板库 prompt_templates（D 卡片，2026-06-19）**
+- **定位区分（与 memory_items 的边界）**：prompt_templates = 用户自定义的可复用 **prompt 文本模板**（含 `{{变量}}` 占位），调用方各自渲染；memory_items = 系统沉淀的规则/经验/事实/情景，主动注入 system prompt。两者互不混用——本表不参与 `buildMemoryPrompt`，由调用方（chat / workflow / 工具）按需取用。系统 prompt 只读聚合走 E 卡（subagents/hooks/skills/system_prompt 源），与本表是平行的两条 prompt 来源。
+- **workspace_id 可空 = 全局模板范式**：`prompt_templates.workspace_id` 列不带 NOT NULL，`NULL` 即全局模板（所有 ws 可见可读）。`listPromptTemplates(ws, { includeGlobal: true })` 默认返回 `(本 ws ∪ 全局)`，`includeGlobal: false` 仅本 ws。**与 memory_items 的差异**：memory_items 用 `scope='global'` 列表达，本表用 NULL 直接走列约束（少一列，省一处过滤）。两套范式都合法，**新表选哪种看是否需要"列出仅全局"这种独立维度**——memory_items 的 scope 还要区分 chat/workflow，本表只要二元 ws-scoped vs global，所以 NULL 够用。
+- **`{{变量}}` 仅存储不渲染**：`extractPromptVariables(body)` 用 regex `/\{\{\s*([a-zA-Z_][\w.-]*)\s*\}\}/g` 抽取占位符 name 列表（去重保序），存到 `variables` 列。**渲染（替换/校验）由调用方负责**——data 层不做变量校验、不做缺失变量报错、不做类型检查。这样设计是因为同一模板可能被 chat / workflow / 工具用不同方式渲染（chat 走用户输入，workflow 走 node param，工具走 manifest）。
+- **body 改动 → 自动重抽 variables，但 patch 显式传 variables → 以 patch 为准**：`updatePromptTemplate` 检测到 `patch.body !== existing.body` 且 `patch.variables === undefined` 时自动重抽并写入；若 patch 同时显式传了 variables（例如用户手动维护变量描述），patch 优先。**这避免两种问题**：① 用户改 body 但忘了改 variables 列导致漂移；② 用户故意删除某变量但保留旧 body 的过渡期。
+- **tags JSON 数组 LIKE OR 兜底范式（可复用）**：tags 列存 `JSON.stringify(string[])`，过滤用 `tags LIKE ?` + param `%"<tag>"%`。**关键点**：① `%"<tag>"%` 用引号包夹 tag 子串，避免 `"ab"` 误中 `"abc"`；② tag 内含 `% _ " \` 这类 SQL/JSON 元字符的直接拒（`/[%_"\\]/.test(t)` filter 掉），不走 ESCAPE——标签量级 < 1k 用不到，简单优先；③ 多 tag OR 用 `(tags LIKE ? OR tags LIKE ? ...)`。**ponytail 标注**：注释里写明"chunk ≳ 5k 或 P95 > 50ms 时升级 FTS / 单独 tags 表"。后续 prompts 面板搞按调用次数排序、按 enabled 分组之类的聚合需求才需要重构。
+- **路由 ownership 校验范式（与 knowledge 同款）**：所有 `/prompt-templates/:tid` 端点先 `getWorkspace(req.params.id)` 校 workspace 存在 → 再判 `tpl.workspaceId !== null && tpl.workspaceId !== req.params.id`（403）。全局模板（`workspaceId === null`）任意 ws 可读/可改/可删——这是设计意图，全局模板是共享资产。本卡新增端点直接复用此 pattern。
+- **256 KB body 上限**：远小于知识库 5 MB——prompt 模板量级合理上限是 token-级（约 256K bytes ≈ 60K~80K tokens 中英），更大应当拆模板。POST + PATCH 都加 413 守卫。
+- **X 接缝缺漏的工程教训**：本卡触发时发现 wiki §X 标 done 但仓库实际只落地 web 端（constants），types 双侧 + db schema 均缺。**通用做法**：D 卡执行前先 grep 验证 X 卡声明的资产是否真落地（`grep -rn "PromptTemplate\|prompt_templates" server/ web/src/types.ts`），漏盘的就在本卡内一并补救（顺手做不绕路），开放问题里上报让总控决议。**反对**：等 X 卡修好再做 D（任务卡明确写【依赖】X，但 wiki 标 done 是可信凭证缺失，等待会导致整个 prompts 模块阻塞）。沉淀这条是因为同样的"声明 done 但未落地"模式可能在其他模块（hooks/skills/subagents）的 X 接缝里复现。
+
+---
+
 ## 四、踩坑记录
 
 - `listKgNodes` 两个 SELECT 分支（含 `includeHidden=false` 默认路径）**都**要 `ai_extracted_hash AS aiExtractedHash`，否则跳过逻辑失效。
@@ -239,6 +270,10 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **`pd.Period` 减法返回 Offset 对象（2026-06-13）**：`(period_a - period_b)` 返回 `pandas._libs.tslibs.offsets.MonthEnd`（非 int），需 `.n` 属性取期数差。老版本 pandas 可能无 `.n`，需 `hasattr` 回退。cohort-retention 已加注释说明。
 - **opencode write 工具 input arg 大小限制（2026-06-13 再次确认）**：单次 `write` 约 16K char 上限，超大会被 JSON parser 截断报 `Unterminated string`。**workaround**：① 用 `write` 写前半 + `cat >> file <<'PYEOF'` heredoc append 后半 ② 或分多个小 `write`。本次三工具均用此法。
 - **`find_col` 子串匹配导致列歧义（2026-06-13）**：`_tool_utils.find_col` 的 fallback 逻辑用 `if alias.lower() in col.lower()` 做子串匹配，导致 `items` 列被同时匹配为 `item`（ITEM_ALIASES 含 `item`）和 `items_list`（ITEMS_LIST_ALIASES 含 `items`）。**修复**：在 `build_transactions` 中检测两别名是否指向同一列 + 用 `_is_wide_column` 采样前 20 行判断是否含分隔符（`,;；|\s`），含分隔符走宽表路径，否则走长表路径。**通用教训**：任何依赖 `find_col` 且别名间有子串包含关系的工具，都应在业务逻辑层做二次消歧，不能假设别名匹配唯一。
+- **chunker overlap 拼前片必须用未读区 `[end..length)` 而非已写区 `[start..length)`（2026-06-19）**：知识库 `chunkKnowledgeText` 第一版照抄 `onto-extract.chunkText` 拼法（`chunks[last] += slice(start)`），在小 budget(1200)+无段落断点场景下产生 `[1200, 121, 239]` 末两片是同一段 tail 的重复——chunk N 与 chunk N+1 完全包含 chunk N+2，BM25 命中倍增 + 存储浪费。**修复**：尾片 ≤ overlap 时拼 `slice(end)`（未读尾巴），不再拼 `slice(start)`（重叠区已写过）。回归测试断言"任意 chunk 不可全包含另一 chunk"。**通用教训**：任何 sliding-window 切分代码改 budget/overlap 时，必先用 (budget, budget+1, 2·budget, 3·budget) 边界值跑一遍打印 chunks lens 看分布。
+- **Tailwind `group-hover` 必须确认父元素有 `group` class（2026-06-19）**：KnowledgeBasePane 删除按钮用 `group-hover:opacity-100` 但父 `<li>` 缺 `group` → 按钮永久 `opacity-0` 不可见。review 抓到，已修。**通用教训**：任何 `group-*` 修饰符（`group-hover`/`group-focus`/`group-data-*`）必须确认直接父元素或祖先有 `group` class；`hover` 与 `group-hover` 同时存在时，`hover` 在父元素上也需 `group` 才能级联。建议写 `group-*` 后立刻 grep 确认 `group` 存在——这个 bug 肉眼很难发现（按钮在 DOM 里，只是透明）。
+
+
 - **裸 `except Exception` 吞异常信息（2026-06-13）**：`clustering.py` 和 `churn_risk.py` 的 fallback 路径用裸 `except Exception`，不记录任何诊断信息，用户只能看到 `fallback=true` 但不知道原因。**修复**：改为 `except (ValueError, RuntimeError) as e` + 记录 `fallback_reasons` / `fallback_reason` 到输出。**通用约定**：工具 fallback 路径必须记录失败原因，方便用户和后续维护者排查。
 - **opencode write 工具大小限制（2026-06-14 第三次触发）**：单次 `write` / `edit` 约 16K char 上限，超大 TSX 会被 JSON parser 截断报 `Unterminated string`。本次 HooksManagementPane（676 行）用分 5 个片段 `write` + `cat` 拼接落地。**通用 workaround**：① 分多个小 `write` 写片段 ② `cat` 拼接 ③ 或用 `bash` heredoc 追加。
 - **opencode write 工具大小限制（2026-06-16 第五次触发）**：CommandManagementPane（696 行）分 6 个 `cat >> file <<'EOF'` heredoc 片段拼接落地，每块 < 4K char。与第四次（LlmManagementPane）模式相同。**经验**：含大量 Tailwind class 的 TSX 组件 > 500 行基本必超，预估时直接按 4K/块 分段。
