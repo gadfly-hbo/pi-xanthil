@@ -7,19 +7,43 @@
   "runtime": "python3",
   "category": "analysis",
   "input": {
-    "accept": [".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".md", ".json"],
+  "output": [
+    ".md",
+    ".json"
+  ],
   "riskLevel": "L0",
   "allowedUse": "对去标识事件级 (customer_id, purchase_date) 表做 cohort 留存分析；产物为聚合矩阵与曲线，不含原始事件行。",
   "forbiddenUse": "不得用于含 PII 的原始数据；不得用于客户级单行汇总表（仅含首/末购日，无法重建 cohort），此情况会触发明确错误。",
   "failureHandling": "缺列时返回 '缺少必需字段'；若 总行数 ≈ 客户数（无重复购买）返回 '数据粒度不符: 期望事件级表（同一客户多行）'；cohort 数 < 2 时返回 '可识别的 cohort 过少'。",
-  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "traceFields": [
+    "toolId",
+    "inputPath",
+    "outputPath",
+    "success",
+    "failed",
+    "durationMs"
+  ],
   "resultColumns": [
-    { "key": "cohorts", "label": "cohort 数" },
-    { "key": "customers", "label": "客户数" },
-    { "key": "granularity", "label": "粒度" }
+    {
+      "key": "cohorts",
+      "label": "cohort 数"
+    },
+    {
+      "key": "customers",
+      "label": "客户数"
+    },
+    {
+      "key": "granularity",
+      "label": "粒度"
+    }
   ],
   "parameters": [
     {
@@ -28,7 +52,10 @@
       "type": "select",
       "required": false,
       "default": "monthly",
-      "options": ["weekly", "monthly"],
+      "options": [
+        "weekly",
+        "monthly"
+      ],
       "description": "cohort 划分粒度，默认按月"
     },
     {
@@ -39,5 +66,22 @@
       "default": 12,
       "description": "矩阵最多展示的 period offset 数（含 period 0），默认 12"
     }
-  ]
+  ],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "customer_id",
+        "required": true,
+        "description": "客户标识（同一客户多行）",
+        "example": "C0001"
+      },
+      {
+        "name": "purchase_date",
+        "required": true,
+        "description": "购买/下单日期（支持 order_date/event_date 别名）",
+        "example": "2025-01-15"
+      }
+    ],
+    "note": "事件/期级长表：每位客户 ≥1 行且存在重复购买（总行数显著大于客户数）。"
+  }
 }

@@ -7,19 +7,43 @@
   "runtime": "python3",
   "category": "analysis",
   "input": {
-    "accept": [".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".md", ".json"],
+  "output": [
+    ".md",
+    ".json"
+  ],
   "riskLevel": "L0",
   "allowedUse": "对去标识客户级 RFM-T 聚合表做 CLV 预测与分层；产物含分层规模/均值聚合，不含原始客户行（明细 CSV 仅含 customer_id 占位与预测值，可选关闭）。",
   "forbiddenUse": "不得用于含 PII 的原始数据；frequency/recency/T 必须按 BG/NBD 标准口径预先聚合（首单不计入 frequency；recency=末购-首购，非距今天数）。",
   "failureHandling": "缺列/数据不足时返回清晰错误；模型拟合失败时回退为简单均值估计并标注 fallback=true。",
-  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "traceFields": [
+    "toolId",
+    "inputPath",
+    "outputPath",
+    "success",
+    "failed",
+    "durationMs"
+  ],
   "resultColumns": [
-    { "key": "customers", "label": "客户数" },
-    { "key": "horizonDays", "label": "预测期(天)" },
-    { "key": "totalCLV", "label": "CLV合计" }
+    {
+      "key": "customers",
+      "label": "客户数"
+    },
+    {
+      "key": "horizonDays",
+      "label": "预测期(天)"
+    },
+    {
+      "key": "totalCLV",
+      "label": "CLV合计"
+    }
   ],
   "parameters": [
     {
@@ -38,5 +62,40 @@
       "default": 0,
       "description": "年化贴现率（0-1），0 表示不贴现"
     }
-  ]
+  ],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "customer_id",
+        "required": true,
+        "description": "客户标识",
+        "example": "C0001"
+      },
+      {
+        "name": "frequency",
+        "required": true,
+        "description": "重复购买次数（首单不计入）",
+        "example": "5"
+      },
+      {
+        "name": "recency",
+        "required": true,
+        "description": "首购到末购的间隔天数",
+        "example": "210"
+      },
+      {
+        "name": "T",
+        "required": true,
+        "description": "观察期/客户年龄（首购到截止日天数）",
+        "example": "365"
+      },
+      {
+        "name": "monetary",
+        "required": true,
+        "description": "客户均订单金额（frequency>0 时有效）",
+        "example": "295"
+      }
+    ],
+    "note": "客户级 RFM-T 聚合表（BG/NBD 口径）。"
+  }
 }

@@ -7,20 +7,47 @@
   "runtime": "python3",
   "category": "analysis",
   "input": {
-    "accept": [".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".md", ".json"],
+  "output": [
+    ".md",
+    ".json"
+  ],
   "riskLevel": "L0",
   "allowedUse": "对去标识实体级数值特征表做聚类；产物为各群规模与均值画像，不回写原始实体行明细。",
   "forbiddenUse": "不得用于含 PII 的原始数据；非数值特征（自由文本/类别等）需上游先编码为数值。",
   "failureHandling": "数值特征列 < 2 时返回 '可用数值特征过少'；样本数 < k_max 时返回 '样本数过少'；K-means 退化（某簇空）回退到 k-1 并标注 fallback=true。",
-  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "traceFields": [
+    "toolId",
+    "inputPath",
+    "outputPath",
+    "success",
+    "failed",
+    "durationMs"
+  ],
   "resultColumns": [
-    { "key": "samples", "label": "样本数" },
-    { "key": "features", "label": "特征数" },
-    { "key": "k", "label": "选定 k" },
-    { "key": "silhouette", "label": "轮廓系数" }
+    {
+      "key": "samples",
+      "label": "样本数"
+    },
+    {
+      "key": "features",
+      "label": "特征数"
+    },
+    {
+      "key": "k",
+      "label": "选定 k"
+    },
+    {
+      "key": "silhouette",
+      "label": "轮廓系数"
+    }
   ],
   "parameters": [
     {
@@ -63,5 +90,32 @@
       "default": 42,
       "description": "保证可复现"
     }
-  ]
+  ],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "customer_id",
+        "required": true,
+        "description": "实体 id（首列，支持 user_id/sku/entity_id 别名）",
+        "example": "C0001"
+      },
+      {
+        "name": "feature_1",
+        "required": true,
+        "description": "数值特征 1",
+        "example": "12.5"
+      },
+      {
+        "name": "feature_2",
+        "description": "数值特征 2",
+        "example": "3"
+      },
+      {
+        "name": "feature_3",
+        "description": "数值特征 3",
+        "example": "880"
+      }
+    ],
+    "note": "第 1 列为实体 id，其余所有数值列作为特征；非数值列会被忽略，可按需增删特征列。"
+  }
 }

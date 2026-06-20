@@ -22,6 +22,7 @@ import type {
   SkillStatus,
   SubAgentTask,
   SubAgentTaskInput,
+  WorkflowAgentsBoard,
 } from "@/types";
 import { truncateConflictContent } from "@/lib/skillConflict";
 import { json } from "./_http";
@@ -124,6 +125,10 @@ export const engineApi = {
   },
   getSubAgentTask: (taskId: string) =>
     fetch(`/api/subagent-tasks/${taskId}`).then(json<SubAgentTask>),
+  listWorkflowAgents: (workspaceId?: string) => {
+    const qs = workspaceId ? `?workspaceId=${encodeURIComponent(workspaceId)}` : "";
+    return fetch(`/api/workflow-agents${qs}`).then(json<WorkflowAgentsBoard>);
+  },
   abortSubAgent: (taskId: string) =>
     fetch(`/api/subagent-tasks/${taskId}/abort`, { method: "POST" }).then(json<{ ok: true }>),
   resumeSubAgent: (taskId: string, input: { correction?: string; correctedResult?: string; model?: string; templateId?: string }) =>

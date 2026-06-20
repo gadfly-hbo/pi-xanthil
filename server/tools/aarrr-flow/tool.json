@@ -7,19 +7,84 @@
   "runtime": "python3",
   "category": "analysis",
   "input": {
-    "accept": [".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".md", ".json"],
+  "output": [
+    ".md",
+    ".json"
+  ],
   "riskLevel": "L0",
   "allowedUse": "对去标识阶段人数时序表做关系流转分析；产物为聚合转化率与漏斗，不含原始用户行。",
   "forbiddenUse": "不得用于含 PII 的原始用户行数据（输入须先聚合到阶段人数时序）。",
   "failureHandling": "缺 period 列或可识别阶段列 < 2 时返回 '缺少必需字段'；时序行数 < 1 时返回 '时序数据为空'；某阶段全 0 时该转化率标 0 并继续。",
-  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
-  "resultColumns": [
-    { "key": "periods", "label": "期数" },
-    { "key": "stages", "label": "阶段数" },
-    { "key": "overallDeepening", "label": "整段加深率" }
+  "traceFields": [
+    "toolId",
+    "inputPath",
+    "outputPath",
+    "success",
+    "failed",
+    "durationMs"
   ],
-  "parameters": []
+  "resultColumns": [
+    {
+      "key": "periods",
+      "label": "期数"
+    },
+    {
+      "key": "stages",
+      "label": "阶段数"
+    },
+    {
+      "key": "overallDeepening",
+      "label": "整段加深率"
+    }
+  ],
+  "parameters": [],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "period",
+        "required": true,
+        "description": "期数/日期/周",
+        "example": "2025-01"
+      },
+      {
+        "name": "awareness",
+        "description": "认知阶段人数",
+        "example": "10000"
+      },
+      {
+        "name": "interest",
+        "description": "兴趣阶段人数",
+        "example": "6000"
+      },
+      {
+        "name": "consideration",
+        "description": "考虑阶段人数",
+        "example": "3000"
+      },
+      {
+        "name": "purchase",
+        "description": "购买/转化阶段人数",
+        "example": "1200"
+      },
+      {
+        "name": "loyalty",
+        "description": "忠诚/复购阶段人数",
+        "example": "500"
+      },
+      {
+        "name": "advocacy",
+        "description": "推荐阶段人数",
+        "example": "120"
+      }
+    ],
+    "note": "period 必填 + 至少两个阶段人数列；阶段列可用中文别名或 stage1..stageN 兜底。"
+  }
 }

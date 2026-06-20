@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { ArrowUp, CheckCircle2, Cpu, Loader2, Play, RefreshCw, Square, Wand2 } from "lucide-react";
+import { ArrowUp, CheckCircle2, Cpu, FolderInput, Loader2, Play, RefreshCw, Square, Upload, Wand2 } from "lucide-react";
 import { api } from "@/lib/api";
 import { MemoryFeedbackInline } from "@/components/MemoryFeedbackInline";
 import { cn } from "@/lib/cn";
@@ -49,6 +49,20 @@ const PATCH_SYSTEM_PROMPT = `你是一个 workflow 局部修改器。当前 flow
 4. 如果用户要求 gate 回跳或最多 N 轮，写入 onBlock.retryFromNodeId 和 onBlock.maxIterations
 5. 修改后写回当前 flow 根目录 workflow.json
 6. 回复中简短说明改了哪些节点；不要重写整套方法论`;
+
+const SYNTHESIZE_SYSTEM_PROMPT = `你是一个 workflow 逆向合成器。用户把一个已有的产品物料导入到了当前 flow 根目录（可能是 skill 指令、prompt、说明文档、脚本，或一个完整的子目录结构），请你读取并理解它，逆向产出当前 flow 根目录下的 workflow.json。
+
+必须遵守：
+1. 先用 read 工具列出并读取当前 flow 根目录下导入的物料，重点看 README/说明/skill .md/prompt/脚本与子目录结构等“结构与意图”类文件。
+2. 数据安全红线：只读“结构与意图”，忽略并且绝不读取数据文件的行级内容（.csv/.tsv/.xlsx/.xls/.parquet/.json 数据集等），最多看文件名/列名层面；绝不把任何业务数据样本或明细行写入 workflow.json。
+3. 从物料中识别可复用的步骤、角色分工、工具调用、质量门禁与回跳，映射为 agent/tool/gate 三类节点；未标注时默认 agent。
+4. 看不出明确步骤时，按物料主流程保守生成 3-5 个 agent 节点，不要编造业务事实。
+5. agent prompt 用 {{task}} 或上游输出 key 引用，不要内联数据样本。
+6. 每个节点设 id/label/role/icon/color/desc，id 用英文 kebab-case 或 snake_case；自动生成 edges 默认顺序串联；物料里有“回到/重试/不通过返回”则为 gate 写 onBlock.retryFromNodeId 和 onBlock.maxIterations。
+7. 最终把 workflow.json 写入当前 flow 根目录；回复中简短说明你从物料里识别到了哪些节点。
+
+workflow.json 格式：
+{ "version": 1, "defaultModel": "", "nodes": [{ "id": "...", "label": "...", "prompt": "...", "model": "", "kind": "agent|tool|gate", "role": "...", "icon": "🤖", "color": "#0ea5e9", "desc": "...", "outputKey": "..." }], "edges": [{ "id": "e1", "source": "...", "target": "..." }] }`;
 
 const EXAMPLES: Array<{ label: string; form: DesignForm }> = [
   {
@@ -154,6 +168,13 @@ ${form.outputs.trim() || "未填写。"}
 请写入当前 flow 根目录的 workflow.json。`;
 }
 
+function buildSynthesizePrompt(pastedText: string, importInfo: { sourceName: string; count: number } | null): string {
+  return `请读取当前 flow 根目录下导入的物料，逆向理解其意图与步骤，生成 workflow.json。
+${importInfo ? `\n已导入物料：${importInfo.sourceName}（${importInfo.count} 个文件），请用 read 工具浏览其目录结构与说明类文件。` : ""}${pastedText ? `\n\n## 用户补充的物料（skill / prompt / 说明）\n${pastedText}` : ""}
+
+请只读取“结构与意图”类内容（README/说明/skill/prompt/脚本/目录结构），不要读取数据文件的行级内容，也不要把任何数据样本写入 workflow.json。最终写入当前 flow 根目录的 workflow.json。`;
+}
+
 export function WorkflowDesignPane(p: Props) {
   const [form, setForm] = useState<DesignForm>({ goal: "", inputs: "", steps: "", gates: "", outputs: "" });
   const [patchText, setPatchText] = useState("");
@@ -253,6 +274,49 @@ export function WorkflowDesignPane(p: Props) {
     sendFlow(`请基于当前 workflow.json 做以下最小修改：\n\n${text}`, PATCH_SYSTEM_PROMPT);
     setPatchText("");
   }, [patchText, running, sendFlow]);
+
+  const [importInfo, setImportInfo] = useState<{ sourceName: string; count: number } | null>(null);
+  const [localPath, setLocalPath] = useState("");
+  const [importPastedText, setImportPastedText] = useState("");
+  const [importing, setImporting] = useState(false);
+  const [importError, setImportError] = useState("");
+  const folderInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFolderFiles = useCallback(async (files: FileList | null) => {
+    if (!files || files.length === 0) return;
+    setImporting(true);
+    setImportError("");
+    try {
+      const result = await api.importFlowFolder(p.flow.id, files);
+      setImportInfo({ sourceName: result.sourceName, count: result.count });
+    } catch (err) {
+      setImportError("导入失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImporting(false);
+    }
+  }, [p.flow.id]);
+
+  const importLocal = useCallback(async () => {
+    const path = localPath.trim();
+    if (!path || importing) return;
+    setImporting(true);
+    setImportError("");
+    try {
+      const result = await api.importLocalFolder(p.flow.id, path);
+      setImportInfo({ sourceName: result.sourceName, count: result.count });
+    } catch (err) {
+      setImportError("导入失败：" + (err instanceof Error ? err.message : String(err)));
+    } finally {
+      setImporting(false);
+    }
+  }, [importing, localPath, p.flow.id]);
+
+  const generateFromImport = useCallback(() => {
+    if (running) return;
+    const pasted = importPastedText.trim();
+    if (!importInfo && !pasted) return;
+    sendFlow(buildSynthesizePrompt(pasted, importInfo), SYNTHESIZE_SYSTEM_PROMPT);
+  }, [importInfo, importPastedText, running, sendFlow]);
 
   const stop = useCallback(() => {
     gateway.send({ type: "abort_flow", flowId: p.flow.id });
@@ -374,6 +438,84 @@ export function WorkflowDesignPane(p: Props) {
                   切换到执行
                 </button>
               )}
+            </div>
+          </section>
+
+          <section className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-950">
+            <div className="flex items-center gap-2 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+              <FolderInput className="h-4 w-4 text-neutral-500" strokeWidth={1.75} />
+              <div className="min-w-0 flex-1">
+                <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">导入生成（从已有产品逆向）</h2>
+                <p className="text-[11.5px] text-neutral-500 dark:text-neutral-400">导入已写好的 skill / prompt / 说明文档 / 文件夹产品，AI 读取后逆向合成 workflow.json。</p>
+              </div>
+            </div>
+            <div className="space-y-3 p-4">
+              <div className="flex flex-wrap items-center gap-2">
+                <button
+                  onClick={() => folderInputRef.current?.click()}
+                  disabled={running || importing}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2.5 text-[11.5px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                >
+                  <Upload className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  上传文件夹
+                </button>
+                <input
+                  ref={folderInputRef}
+                  type="file"
+                  multiple
+                  className="hidden"
+                  onChange={(event) => { const files = event.target.files; event.currentTarget.value = ""; void handleFolderFiles(files); }}
+                  {...({ webkitdirectory: "", directory: "" } as Record<string, string>)}
+                />
+                <span className="text-[11px] text-neutral-400">或</span>
+                <input
+                  value={localPath}
+                  onChange={(event) => setLocalPath(event.target.value)}
+                  placeholder="本地文件夹绝对路径，如 /Users/.../my-product"
+                  className="h-7 min-w-[220px] flex-1 rounded-md border border-neutral-200 bg-transparent px-2 text-[11.5px] text-neutral-900 outline-none focus:border-neutral-400 dark:border-neutral-700 dark:text-neutral-100"
+                />
+                <button
+                  onClick={() => void importLocal()}
+                  disabled={running || importing || !localPath.trim()}
+                  className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2.5 text-[11.5px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                >
+                  {importing ? <Loader2 className="h-3.5 w-3.5 animate-spin" strokeWidth={1.75} /> : <FolderInput className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                  导入路径
+                </button>
+              </div>
+              {importInfo && (
+                <span className="inline-flex items-center gap-1 text-[11.5px] text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  已导入 {importInfo.sourceName}（{importInfo.count} 个文件）
+                </span>
+              )}
+              {importError && <div className="text-[11.5px] text-red-600 dark:text-red-400">{importError}</div>}
+              <label className="block text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
+                或粘贴已有 skill / prompt / 说明（可选）
+                <textarea
+                  value={importPastedText}
+                  onChange={(event) => setImportPastedText(event.target.value)}
+                  rows={5}
+                  placeholder="把已有的 skill 指令、prompt 模板或产品说明粘贴到这里…（不要粘贴数据明细行）"
+                  className="mt-1 w-full resize-y rounded-md border border-neutral-200 bg-transparent px-3 py-2 text-[12.5px] leading-5 text-neutral-900 outline-none focus:border-neutral-400 dark:border-neutral-700 dark:text-neutral-100"
+                />
+              </label>
+              <div className="flex items-center gap-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+                <span className="text-[11px] text-neutral-400 dark:text-neutral-500">读取上方导入的物料 + 粘贴内容，逆向生成 workflow.json（只读结构与意图，不读数据行）</span>
+                <button
+                  onClick={running ? stop : generateFromImport}
+                  disabled={!running && !importInfo && !importPastedText.trim()}
+                  className={cn(
+                    "ml-auto inline-flex h-8 items-center gap-1.5 rounded-md px-3 text-[12px] font-medium",
+                    !running && !importInfo && !importPastedText.trim()
+                      ? "cursor-not-allowed bg-neutral-100 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600"
+                      : "bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white",
+                  )}
+                >
+                  {running ? <Square className="h-3 w-3" fill="currentColor" /> : <Wand2 className="h-3.5 w-3.5" strokeWidth={1.75} />}
+                  {running ? "停止" : "从导入物料生成工作流"}
+                </button>
+              </div>
             </div>
           </section>
 

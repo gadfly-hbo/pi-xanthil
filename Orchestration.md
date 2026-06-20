@@ -4,7 +4,9 @@
 > 总控 = Claude（Opus）：负责架构、接缝层、接口契约、db migration 审批、跨域集成、**全部代码终审**。
 > 三个编程 Agent 在各自域的 **slot 文件**内开发，**永不触碰接缝层骨架文件**。
 
-最后更新：2026-06-12 · 状态：**第 0 步接缝重构完成** ✅ + **P0 全部齐活** ✅ + **actions 行动闭环模块交付** ✅（分析→行动→执行，机制 A 终审收敛通过，详见 §八） —— 接缝重构批1~3✅；P0-A(D 上传即用)✅、P0-B(V 看板画布·重做)✅、P0-C(E E2E 验证补课)✅、P0-D(D 看板聚合数据源)✅ 均终审+实跑通过；**P0 收口，待归档 changelog v2.1**（SQL 真实库 + AnaX flywheel UI 实跑降级 P1 遗留）。**另：onto-xanthil 数据语义层全期(P1/P2/P3/P2b')交付完毕**（总控独立开发，`MetricDefinition` 契约随之落地，详见 `docs/onto-xanthil-design.md`）。
+最后更新：2026-06-20 · 状态：**v2.2 发布** ✅ —— **v2.1（P0 收口 + onto-xanthil 数据语义层）已归档** ✅，**2.2 阶段启动 · 派发板待新派发**。v2.2 收纳 2026-06-11→06-20 全部交付：规则记忆模块 clean-slate 重建(11/11)、工作区任务模型 + 专题(AnaX)一级工作台、actions 行动闭环、fork 分支 + 委派子 agent、onto 文档分批抽取、全局记忆池 + 按工作区启用、知识库模块、控制模块重构为 AI 工程基元控制台、汇报版本可视化、数据提取分类/CSV 模板、tool-use/subagents/hooks 运行看板、五大模块 readme 体系；V-agent 停用、前端归 D 承接。完整清单见 `docs/wiki.html` CHANGELOG v2.2。
+
+> 📌 **2.1 → 2.2 归档说明（2026-06-20，总控发布）**：截至 06-12 状态行（第 0 步接缝重构 ✅ + P0 全齐活 ✅ + onto-xanthil 全期 ✅）即 v2.1 里程碑，已落 CHANGELOG。其后所有 done 工作汇总为 v2.2 一条版本记录；wiki 派发板已清 done 卡、仅保留 10 张 2.1 遗留未完成卡待 2.2 重新排期。下方 §八 历史明细保留为里程碑档案，不再增删。
 
 ---
 
@@ -223,6 +225,12 @@ web/src/
 ---
 
 ## 八、当前状态 / 待办
+
+> ════ **发布节点 · v2.2（2026-06-20）** ════
+> **v2.1（P0 收口 + onto-xanthil）已归档 ✅；v2.2 已发布 ✅；2.2 阶段启动 · 派发板待新派发。**
+> 下方为 v2.1/v2.0 周期的里程碑明细档案（保留不删，供追溯）。v2.2 收纳的交付清单见 `docs/wiki.html` CHANGELOG v2.2。
+> **2.1 遗留待 2.2 重排（已保留在 wiki 派发板，10 张）**：SQL 真实库链路实跑(缺凭据降级)、AnaX archive flywheel UI 实跑、App.tsx 域模块 React.lazy 代码分割、skill 自进化(沙箱安全/链式蒸馏)、红线硬化(数据分析 session 内建工具可达 draw_data 评估)、decision 模块接线、deleteWorkspace 子表补齐、subagents 进阶(博弈/黑板/Save-as-Tool/节点级看板)。
+> ════════════════════════════════
 
 - [x] **批1 server routes slot** — `routes/{data,engine,viz,shared}.ts` + `registerDomainRoutes`，index.ts 一行挂载；server typecheck 零新增错误
 - [x] **批2a web api slot** — `lib/api/{_http,data,engine,viz,shared}.ts`；api.ts 改为 legacyApi + 域片段 spread 合并；web typecheck + build 绿

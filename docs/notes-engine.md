@@ -7,6 +7,8 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
+> 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
+
 - 最近更新：2026-06-19 · 知识库 RAG P2：检索结果注入分析对话与工作流，独立开关及来源引用贯通。
 - 进度：
   - **RAG 注入 helper 已落地**：新增 `knowledge-injection.ts`，消费 D 域 `searchKnowledgeChunks()` 的 workspace 级 BM25 召回；默认 top-K=5、注入字符预算 6000，无 query/无命中/开关关闭时不改变原 system prompt。

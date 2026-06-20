@@ -7,19 +7,43 @@
   "runtime": "python3",
   "category": "analysis",
   "input": {
-    "accept": [".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".md", ".json"],
+  "output": [
+    ".md",
+    ".json"
+  ],
   "riskLevel": "L0",
   "allowedUse": "对去标识客户级聚合表做 RFM 分群与画像统计；产物为聚合层（群规模/均值），不含原始客户行。",
   "forbiddenUse": "不得用于含手机号/姓名等 PII 的原始数据；不得用于事件级（多行/客户）数据（须先聚合）。",
   "failureHandling": "缺少必需列时返回 '缺少必需字段: ...' 错误；行数 < 8 时返回 '客户数过少' 错误。",
-  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "traceFields": [
+    "toolId",
+    "inputPath",
+    "outputPath",
+    "success",
+    "failed",
+    "durationMs"
+  ],
   "resultColumns": [
-    { "key": "customers", "label": "客户数" },
-    { "key": "segments", "label": "分群数" },
-    { "key": "topSegment", "label": "最大群" }
+    {
+      "key": "customers",
+      "label": "客户数"
+    },
+    {
+      "key": "segments",
+      "label": "分群数"
+    },
+    {
+      "key": "topSegment",
+      "label": "最大群"
+    }
   ],
   "parameters": [
     {
@@ -30,5 +54,34 @@
       "default": "",
       "description": "若 recency 列为日期，按该日计算 recency_days；空则取数据中最大日期。格式 YYYY-MM-DD。"
     }
-  ]
+  ],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "customer_id",
+        "required": true,
+        "description": "客户标识（支持 顾客ID/用户ID/member_id 别名）",
+        "example": "C0001"
+      },
+      {
+        "name": "recency",
+        "required": true,
+        "description": "最近购买日期或距今天数",
+        "example": "30"
+      },
+      {
+        "name": "frequency",
+        "required": true,
+        "description": "购买频次/次数",
+        "example": "8"
+      },
+      {
+        "name": "monetary",
+        "required": true,
+        "description": "累计金额/总消费",
+        "example": "2360"
+      }
+    ],
+    "note": "客户级去标识聚合表；recency 可填日期（自动换算距今天数）。"
+  }
 }

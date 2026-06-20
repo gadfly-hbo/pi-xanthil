@@ -7,21 +7,51 @@
   "runtime": "python3",
   "category": "analysis",
   "input": {
-    "accept": [".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".md", ".json"],
+  "output": [
+    ".md",
+    ".json"
+  ],
   "riskLevel": "L0",
   "allowedUse": "对服饰行业商品结构进行分析，支持以下字段：商品编号、SKU编号、价格、吊牌价、销量、库存、入库数量、订单数、件数。分析结果为聚合指标，不包含个人身份信息。",
   "forbiddenUse": "不能处理含个人身份信息（PII）的数据；不能用于非服饰品类的商品结构分析；分析结果不应作为唯一的库存或定价决策依据。",
   "failureHandling": "CSV 缺少必需字段时返回详细错误信息；空 CSV 返回 0 指标；超时自动终止子进程。",
-  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "traceFields": [
+    "toolId",
+    "inputPath",
+    "outputPath",
+    "success",
+    "failed",
+    "durationMs"
+  ],
   "resultColumns": [
-    { "key": "totalSkus", "label": "SKU 总数" },
-    { "key": "priceBandCount", "label": "价格带数" },
-    { "key": "sellThroughRate", "label": "售罄率" },
-    { "key": "motionRate", "label": "动销率" },
-    { "key": "upt", "label": "连带率(UPT)" }
+    {
+      "key": "totalSkus",
+      "label": "SKU 总数"
+    },
+    {
+      "key": "priceBandCount",
+      "label": "价格带数"
+    },
+    {
+      "key": "sellThroughRate",
+      "label": "售罄率"
+    },
+    {
+      "key": "motionRate",
+      "label": "动销率"
+    },
+    {
+      "key": "upt",
+      "label": "连带率(UPT)"
+    }
   ],
   "parameters": [
     {
@@ -40,5 +70,44 @@
       "default": 30,
       "description": "计算库销比时使用的时间窗口（天），用于将累计销量折算为日均销量"
     }
-  ]
+  ],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "sku_id",
+        "required": true,
+        "description": "商品/SKU 编号",
+        "example": "SKU0001"
+      },
+      {
+        "name": "price",
+        "required": true,
+        "description": "售价",
+        "example": "199"
+      },
+      {
+        "name": "tag_price",
+        "description": "吊牌价",
+        "example": "399"
+      },
+      {
+        "name": "sales",
+        "required": true,
+        "description": "销量",
+        "example": "320"
+      },
+      {
+        "name": "inventory",
+        "required": true,
+        "description": "库存",
+        "example": "85"
+      },
+      {
+        "name": "stock_in_date",
+        "description": "入库日期",
+        "example": "2025-03-01"
+      }
+    ],
+    "note": "需 SKU 级聚合数据；含价格/吊牌价/销量/库存/入库等字段。"
+  }
 }

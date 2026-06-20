@@ -9,7 +9,7 @@ import { FlowListColumn } from "@/components/FlowListColumn";
 import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
 import { useTabVisibility } from "@/lib/useTabVisibility";
-import { getSubTabsForTab, ONTO_SUB_TABS, ZHUANTI_SIDEBAR_TABS, ZHUANTI_SIDEBAR_IDS, type SubTab } from "@/lib/constants";
+import { getSubTabsForTab, ONTO_SUB_TABS, LAB_SUB_TABS, LAB_SUB_IDS, ZHUANTI_SIDEBAR_TABS, ZHUANTI_SIDEBAR_IDS, type SubTab } from "@/lib/constants";
 import { DataTabs } from "@/tabs/DataTabs";
 import { EngineTabs } from "@/tabs/EngineTabs";
 import { VizTabs } from "@/tabs/VizTabs";
@@ -621,7 +621,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "the-crowd" : tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "readme" : "view");
     if (tab === "explore") {
       setActiveSessionId(sessions[0]?.id ?? null);
     }
@@ -896,7 +896,7 @@ export default function App() {
         {activeTab !== "onto_xanthil" && (
         <div className="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
           {getSubTabsForTab(activeTab).filter((t) => isVisible(activeTab + ":" + t.id) && (activeTab !== "zhuanti" || !ZHUANTI_SIDEBAR_IDS.has(t.id))).map((t) => {
-            const active = t.id === activeSubTab;
+            const active = t.id === activeSubTab || (activeTab === "aggregate" && t.id === "skill" && LAB_SUB_IDS.has(activeSubTab));
             return (
               <button
                 key={t.id}
@@ -932,6 +932,28 @@ export default function App() {
           {activeTab === "onto_xanthil" && (
             <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
               {ONTO_SUB_TABS.filter((t) => isVisible("onto_xanthil:" + t.id)).map((t) => {
+                const active = t.id === activeSubTab;
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveSubTab(t.id)}
+                    className={cn(
+                      "rounded-md px-2.5 py-1.5 text-left text-[12.5px] transition-colors",
+                      active
+                        ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+                        : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
+                    )}
+                  >
+                    {t.label}
+                  </button>
+                );
+              })}
+            </nav>
+          )}
+          {/* 控制·实验场：三级子项以左侧竖栏呈现（skill/tool/hooks/command/subagents/prompts，标签无「实验场」尾缀，复用单一 activeSubTab） */}
+          {activeTab === "aggregate" && LAB_SUB_IDS.has(activeSubTab) && (
+            <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
+              {LAB_SUB_TABS.filter((t) => isVisible("aggregate:" + t.id)).map((t) => {
                 const active = t.id === activeSubTab;
                 return (
                   <button

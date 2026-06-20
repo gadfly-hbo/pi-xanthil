@@ -30,6 +30,11 @@ export interface ExtractionToolManifest {
   timeoutMs?: number;
   parameters?: ToolParameter[];
   resultColumns?: Array<{ key: string; label: string }>;
+  // 期望输入数据表单（用于前端生成可下载 CSV 模板）；缺省=无固定表单（如任意 SQL/HTML 抓取）。
+  inputTemplate?: {
+    columns: Array<{ name: string; required?: boolean; description?: string; example?: string }>;
+    note?: string;
+  };
   riskLevel?: "L0" | "L1" | "L2" | "L3";
   allowedUse?: string;
   forbiddenUse?: string;

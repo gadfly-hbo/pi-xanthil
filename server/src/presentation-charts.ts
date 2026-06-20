@@ -167,6 +167,97 @@ export function buildChartSpecsFromDataset(detail: BiDatasetDetail): ChartSpec[]
   return [];
 }
 
+const GENERIC_MAX_CATEGORIES = 50;
+const GENERIC_MAX_MEASURES = 6;
+const GENERIC_SERIES_COLORS = ["#3b82f6", "#10b981", "#f59e0b", "#8b5cf6", "#ef4444", "#06b6d4"];
+
+// 一列是否「数值列」：非空样本里 ≥60% 可解析为数字。
+function isNumericColumn(rows: Array<Record<string, unknown>>, col: string): boolean {
+  let total = 0;
+  let numeric = 0;
+  for (const r of rows) {
+    const v = r[col];
+    if (v == null || v === "") continue;
+    total++;
+    if (toNumber(v) != null) numeric++;
+  }
+  return total > 0 && numeric / total >= 0.6;
+}
+
+// 通用确定性出图：任意已脱敏 clean_data 聚合表 → 一张「类别 × 数值列」分组柱状图。
+// 首个非数值列作类别轴（缺省用行号），数值列作 series。**从不返回 row 级数据给 LLM。**
+export function buildGenericChartSpecs(columns: string[], rows: Array<Record<string, unknown>>): ChartSpec[] {
+  if (columns.length === 0 || rows.length === 0) return [];
+  const numericCols = columns.filter((c) => isNumericColumn(rows, c));
+  if (numericCols.length === 0) return [];
+
+  const categoryCol = columns.find((c) => !numericCols.includes(c));
+  const clippedRows = rows.slice(0, GENERIC_MAX_CATEGORIES);
+  const categories = clippedRows.map((r, i) =>
+    categoryCol ? String(r[categoryCol] ?? `行${i + 1}`) : `行${i + 1}`,
+  );
+  const measures = numericCols.slice(0, GENERIC_MAX_MEASURES);
+  const series = measures.map((m, idx) => ({
+    name: m,
+    type: "bar",
+    data: clippedRows.map((r) => toNumber(r[m]) ?? 0),
+    itemStyle: { color: GENERIC_SERIES_COLORS[idx % GENERIC_SERIES_COLORS.length] },
+  }));
+
+  const overview: ChartSpec = {
+    id: "agg-overview",
+    title: categoryCol ? `按「${categoryCol}」分组的数值概览` : "数值概览",
+    option: {
+      tooltip: { trigger: "axis" },
+      legend: measures.length > 1 ? { type: "scroll", top: 0 } : undefined,
+      grid: { left: 48, right: 16, top: measures.length > 1 ? 36 : 24, bottom: 48 },
+      xAxis: {
+        type: "category",
+        data: categories,
+        axisLabel: { fontSize: 10, rotate: categories.length > 8 ? 30 : 0 },
+      },
+      yAxis: { type: "value" },
+      series,
+    },
+  };
+  return [overview];
+}
+
+// 数值列摘要行（schema 级，不含任何 row 内容）：≥50% 样本可解析为数字才纳入。
+function numericColumnStatLines(columns: string[], rows: Array<Record<string, unknown>>): string[] {
+  const lines: string[] = [];
+  for (const col of columns) {
+    const nums: number[] = [];
+    for (const r of rows) {
+      const v = toNumber(r[col]);
+      if (v != null) nums.push(v);
+    }
+    if (nums.length >= Math.max(2, Math.floor(rows.length * 0.5))) {
+      const min = Math.min(...nums);
+      const max = Math.max(...nums);
+      const mean = nums.reduce((a, b) => a + b, 0) / nums.length;
+      lines.push(`  - ${col}: n=${nums.length}, min=${min.toFixed(4)}, max=${max.toFixed(4)}, mean=${mean.toFixed(4)}`);
+    }
+  }
+  return lines;
+}
+
+// 给 LLM 喂的 clean_data 聚合集元信息：schema + 行数 + 数值列摘要统计。**不含任何 row 内容。**
+export function summarizeAggregationForLlm(name: string, columns: string[], rows: Array<Record<string, unknown>>): string {
+  const numericSummaries = numericColumnStatLines(columns, rows);
+  return [
+    "[关联聚合数据集元信息]",
+    `filename=${name}, rows=${rows.length}, cols=${columns.length}`,
+    `columns: ${columns.join(", ")}`,
+    numericSummaries.length > 0 ? "numeric column stats:" : "",
+    ...numericSummaries,
+    "[/关联聚合数据集元信息]",
+    "",
+  ]
+    .filter(Boolean)
+    .join("\n");
+}
+
 // 给 LLM 喂的元信息：schema + 行数 + 数值列摘要统计。**不含任何 row 内容**。
 export function summarizeDatasetForLlm(detail: BiDatasetDetail): string {
   const numericSummaries: string[] = [];

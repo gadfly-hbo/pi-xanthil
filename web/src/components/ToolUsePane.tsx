@@ -1,7 +1,8 @@
-import { useEffect, useMemo, useState } from "react";
-import { Wrench, ShieldCheck, Bot, FlaskConical, RefreshCw } from "lucide-react";
+import { useCallback, useEffect, useMemo, useState } from "react";
+import { Wrench, ShieldCheck, Bot, FlaskConical, RefreshCw, Activity } from "lucide-react";
+import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
-import type { ExtractionTool, ToolEvalCase } from "@/types";
+import type { ExtractionTool, ToolEvalCase, ToolRunRecord } from "@/types";
 import type { FolderScope } from "@/tabs/types";
 
 interface Props {
@@ -30,14 +31,14 @@ function isAiExposed(tool: ExtractionTool): boolean {
   return categoryOf(tool) === "analysis";
 }
 
-// props signature kept for DataTabs.tsx call convention; unused in management console mode
-export function ToolUsePane(_props: Props) {
+export function ToolUsePane({ workspaceId }: Props) {
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [loadError, setLoadError] = useState("");
   const [reloading, setReloading] = useState(false);
   const [toolId, setToolId] = useState<string>("");
   const [filter, setFilter] = useState<"all" | Category>("all");
   const [evalState, setEvalState] = useState<EvalState>({ status: "idle" });
+  const [view, setView] = useState<"console" | "board">("console");
 
   const reload = () => {
     setReloading(true);
@@ -105,6 +106,28 @@ export function ToolUsePane(_props: Props) {
           </p>
         </div>
 
+        <div className="inline-flex h-8 w-fit rounded-md border border-neutral-200 bg-neutral-100 p-0.5 dark:border-neutral-700 dark:bg-neutral-900">
+          {([["console", "工具台账"], ["board", "运行看板"]] as const).map(([key, label]) => (
+            <button
+              key={key}
+              onClick={() => setView(key)}
+              className={cn(
+                "inline-flex items-center gap-1 rounded px-3 text-[12px] font-medium transition-colors",
+                view === key
+                  ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100"
+                  : "text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200",
+              )}
+            >
+              {key === "board" && <Activity className="h-3.5 w-3.5" />}
+              {label}
+            </button>
+          ))}
+        </div>
+
+        {view === "board" && <ToolRunBoard workspaceId={workspaceId} />}
+
+        {view === "console" && (
+        <>
         <div className="rounded-lg border border-emerald-200 bg-emerald-50 px-4 py-3 text-[12px] text-emerald-800 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-200">
           <div className="flex items-center gap-2 font-medium">
             <ShieldCheck className="h-4 w-4" /> 边界声明
@@ -242,6 +265,8 @@ export function ToolUsePane(_props: Props) {
             )}
           </main>
         </div>
+        </>
+        )}
       </div>
     </div>
   );
@@ -420,5 +445,189 @@ function ToolDetail({ tool, evalState, onLoadCases }: ToolDetailProps) {
         )}
       </section>
     </>
+  );
+}
+
+const SOURCE_LABEL: Record<ToolRunRecord["source"], string> = { manual: "手动", ai: "AI" };
+
+function formatRunTime(ts: number): string {
+  const d = new Date(ts);
+  if (Number.isNaN(d.getTime())) return "-";
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${pad(d.getMonth() + 1)}-${pad(d.getDate())} ${pad(d.getHours())}:${pad(d.getMinutes())}`;
+}
+
+interface ToolRunAgg {
+  toolId: string;
+  toolName: string;
+  total: number;
+  success: number;
+  failed: number;
+  manual: number;
+  ai: number;
+  lastTime: number;
+  durSum: number;
+  durN: number;
+}
+
+// 运行看板：按 trace_events 的工具运行流水汇总（按工具计数）+ 最近运行流水。仅读脱敏字段，不读输入/输出明细。
+function ToolRunBoard({ workspaceId }: { workspaceId: string | null }) {
+  const [runs, setRuns] = useState<ToolRunRecord[]>([]);
+  const [limit, setLimit] = useState(200);
+  const [loading, setLoading] = useState(false);
+  const [error, setError] = useState("");
+
+  const load = useCallback(() => {
+    if (!workspaceId) { setRuns([]); return; }
+    setLoading(true);
+    setError("");
+    api.listToolRuns(workspaceId, limit)
+      .then(setRuns)
+      .catch((err) => setError(String(err)))
+      .finally(() => setLoading(false));
+  }, [workspaceId, limit]);
+
+  useEffect(() => { load(); }, [load]);
+
+  const summary = useMemo(() => {
+    const map = new Map<string, ToolRunAgg>();
+    for (const r of runs) {
+      const key = r.toolId || r.toolName || r.id;
+      let agg = map.get(key);
+      if (!agg) {
+        agg = { toolId: r.toolId, toolName: r.toolName, total: 0, success: 0, failed: 0, manual: 0, ai: 0, lastTime: 0, durSum: 0, durN: 0 };
+        map.set(key, agg);
+      }
+      agg.total += 1;
+      if (r.status === "failed") agg.failed += 1; else agg.success += 1;
+      if (r.source === "ai") agg.ai += 1; else agg.manual += 1;
+      if (r.time > agg.lastTime) agg.lastTime = r.time;
+      if (r.durationMs != null) { agg.durSum += r.durationMs; agg.durN += 1; }
+    }
+    return [...map.values()].sort((a, b) => b.total - a.total);
+  }, [runs]);
+
+  const totals = useMemo(() => {
+    const failed = runs.filter((r) => r.status === "failed").length;
+    return { total: runs.length, success: runs.length - failed, failed };
+  }, [runs]);
+
+  if (!workspaceId) {
+    return (
+      <section className="rounded-lg border border-dashed border-neutral-200 bg-white p-8 text-center text-[13px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900">
+        请先选择工作区后查看工具运行看板。
+      </section>
+    );
+  }
+
+  return (
+    <div className="flex flex-col gap-4">
+      <div className="flex flex-wrap items-center gap-3 rounded-lg border border-neutral-200 bg-white px-4 py-3 dark:border-neutral-800 dark:bg-neutral-900">
+        <span className="text-[12.5px] font-semibold text-neutral-700 dark:text-neutral-200">运行总览</span>
+        <span className="text-[12px] text-neutral-500">共 <b className="text-neutral-800 dark:text-neutral-100">{totals.total}</b> 次</span>
+        <span className="text-[12px] text-emerald-600 dark:text-emerald-400">成功 {totals.success}</span>
+        <span className="text-[12px] text-red-500">失败 {totals.failed}</span>
+        <div className="ml-auto flex items-center gap-2">
+          <select
+            value={limit}
+            onChange={(e) => setLimit(Number(e.target.value))}
+            className="rounded border border-neutral-200 bg-transparent px-2 py-1 text-[11.5px] dark:border-neutral-700"
+          >
+            <option value={100}>最近 100</option>
+            <option value={200}>最近 200</option>
+            <option value={500}>最近 500</option>
+            <option value={2000}>最近 2000</option>
+          </select>
+          <button
+            onClick={load}
+            disabled={loading}
+            className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            <RefreshCw className={"h-3 w-3 " + (loading ? "animate-spin" : "")} /> 刷新
+          </button>
+        </div>
+      </div>
+
+      {error && (
+        <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</p>
+      )}
+
+      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <h3 className="flex items-center gap-1.5 text-[12.5px] font-semibold text-neutral-700 dark:text-neutral-200"><Wrench className="h-3.5 w-3.5" /> 按工具汇总</h3>
+        {summary.length === 0 ? (
+          <p className="mt-3 text-[12px] text-neutral-400">{loading ? "加载中…" : "本工作区暂无工具运行记录。手动运行在「数据提取」面板，AI 调用经 MCP。"}</p>
+        ) : (
+          <table className="mt-2 w-full text-[11.5px]">
+            <thead className="text-neutral-500 dark:text-neutral-400">
+              <tr className="border-b border-neutral-200 dark:border-neutral-700">
+                <th className="px-2 py-1.5 text-left font-normal">工具</th>
+                <th className="px-2 py-1.5 text-right font-normal">调用</th>
+                <th className="px-2 py-1.5 text-right font-normal">成功</th>
+                <th className="px-2 py-1.5 text-right font-normal">失败</th>
+                <th className="px-2 py-1.5 text-right font-normal">手动/AI</th>
+                <th className="px-2 py-1.5 text-right font-normal">平均耗时</th>
+                <th className="px-2 py-1.5 text-right font-normal">最近运行</th>
+              </tr>
+            </thead>
+            <tbody>
+              {summary.map((s) => (
+                <tr key={s.toolId || s.toolName} className="border-b border-neutral-100 last:border-0 dark:border-neutral-800">
+                  <td className="px-2 py-1.5">
+                    <span className="font-medium text-neutral-800 dark:text-neutral-100">{s.toolName || s.toolId}</span>
+                    {s.toolId && <span className="ml-1.5 font-mono text-[10px] text-neutral-400">{s.toolId}</span>}
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums">{s.total}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-emerald-600 dark:text-emerald-400">{s.success}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-red-500">{s.failed || ""}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{s.manual}/{s.ai}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{s.durN > 0 ? `${Math.round(s.durSum / s.durN)}ms` : "-"}</td>
+                  <td className="px-2 py-1.5 text-right text-neutral-500">{s.lastTime ? formatRunTime(s.lastTime) : "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <h3 className="flex items-center gap-1.5 text-[12.5px] font-semibold text-neutral-700 dark:text-neutral-200"><Activity className="h-3.5 w-3.5" /> 最近运行流水</h3>
+        {runs.length === 0 ? (
+          <p className="mt-3 text-[12px] text-neutral-400">{loading ? "加载中…" : "暂无运行记录。"}</p>
+        ) : (
+          <table className="mt-2 w-full text-[11.5px]">
+            <thead className="text-neutral-500 dark:text-neutral-400">
+              <tr className="border-b border-neutral-200 dark:border-neutral-700">
+                <th className="px-2 py-1.5 text-left font-normal">时间</th>
+                <th className="px-2 py-1.5 text-left font-normal">工具</th>
+                <th className="px-2 py-1.5 text-left font-normal">来源</th>
+                <th className="px-2 py-1.5 text-left font-normal">状态</th>
+                <th className="px-2 py-1.5 text-right font-normal">成功/失败</th>
+                <th className="px-2 py-1.5 text-right font-normal">耗时</th>
+              </tr>
+            </thead>
+            <tbody>
+              {runs.map((r) => (
+                <tr key={r.id} className="border-b border-neutral-100 last:border-0 dark:border-neutral-800">
+                  <td className="px-2 py-1.5 tabular-nums text-neutral-500">{formatRunTime(r.time)}</td>
+                  <td className="px-2 py-1.5 text-neutral-800 dark:text-neutral-100">{r.toolName || r.toolId}</td>
+                  <td className="px-2 py-1.5">
+                    <span className={cn("rounded px-1.5 py-[1px] text-[10px]", r.source === "ai" ? "bg-blue-500/15 text-blue-700 dark:text-blue-300" : "bg-neutral-200/70 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300")}>
+                      {SOURCE_LABEL[r.source]}
+                    </span>
+                  </td>
+                  <td className="px-2 py-1.5">
+                    <span className={cn("font-medium", r.status === "failed" ? "text-red-500" : "text-emerald-600 dark:text-emerald-400")}>
+                      {r.status === "failed" ? "失败" : "成功"}
+                    </span>
+                  </td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{r.success ?? "-"}/{r.failed ?? "-"}</td>
+                  <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{r.durationMs != null ? `${r.durationMs}ms` : "-"}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        )}
+      </section>
+    </div>
   );
 }

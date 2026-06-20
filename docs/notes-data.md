@@ -8,6 +8,8 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
+> 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
+
 - 最近更新：2026-06-19 · **prompts 管理 D 承接 V 面板卡（PromptsManagementPane 双区 mini-tab：模板库 CRUD + 系统prompt 只读聚合）**
 - 进度：
   - **本期 D-PANEL 卡完成**（`【prompts管理·D(承接V)·面板】PromptsManagementPane（模板库 + 系统prompt 双区）`）：

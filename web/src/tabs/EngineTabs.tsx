@@ -9,7 +9,7 @@ import { ToolLabPane } from "@/components/ToolLabPane";
 import { AnaXPane } from "@/components/AnaXPane";
 import { HypothesisPane } from "@/components/HypothesisPane";
 import { ChangeManagementPane } from "@/components/ChangeManagementPane";
-import { AnaXReadmePane } from "@/components/AnaXReadmePane";
+import { ZhuantiReadmePane } from "@/components/ZhuantiReadmePane";
 import { WorkflowReadmePane } from "@/components/WorkflowReadmePane";
 import { ExploreReadmePane } from "@/components/ExploreReadmePane";
 import type { TabContext } from "./types";
@@ -188,6 +188,18 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "aggregate" && activeSubTab === "tool" && (
         <ToolLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} />
       )}
+      {activeTab === "aggregate" && activeSubTab === "hooks_lab" && (
+        <Placeholder icon={FlaskConical} title="hooks 实验场" hint="hooks 试运行实验场，即将推出" />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "command_lab" && (
+        <Placeholder icon={FlaskConical} title="command 实验场" hint="command 试运行实验场，即将推出" />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "subagents_lab" && (
+        <Placeholder icon={FlaskConical} title="subagents 实验场" hint="subagents 试运行实验场，即将推出" />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "prompts_lab" && (
+        <Placeholder icon={FlaskConical} title="prompts 实验场" hint="prompts 试运行实验场，即将推出" />
+      )}
       {(activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti") && activeSubTab === "dlf" && (
         <Placeholder icon={FlaskConical} title="DLF" hint="DLF 模块管理，即将推出" />
       )}
@@ -210,7 +222,7 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "zhuanti" && activeSubTab === "change_mgmt" && (
         <ChangeManagementPane workspaceId={ctx.activeWorkspaceId} />
       )}
-      {activeTab === "zhuanti" && activeSubTab === "readme" && <AnaXReadmePane />}
+      {activeTab === "zhuanti" && activeSubTab === "readme" && <ZhuantiReadmePane />}
     </>
   );
 }

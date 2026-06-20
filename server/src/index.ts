@@ -20,7 +20,8 @@ import {
 import { moveManagedDirToTrash } from "./trash.ts";
 import { registerDomainRoutes } from "./routes/index.ts";
 import { parseAggregationBuffer } from "./bi-dataset-parser.ts";
-import { buildChartSpecsFromDataset, datasetMetaFromDetail, summarizeDatasetForLlm, type ChartSpec, type DatasetMeta } from "./presentation-charts.ts";
+import { buildChartSpecsFromDataset, buildGenericChartSpecs, datasetMetaFromDetail, summarizeAggregationForLlm, summarizeDatasetForLlm, type ChartSpec, type DatasetMeta } from "./presentation-charts.ts";
+import { readWorkflow } from "./multi-agent-runner.ts";
 import express from "express";
 import cors from "cors";
 import multer from "multer";
@@ -99,6 +100,7 @@ import {
   listTraceFailures,
   listMemoryInjectionRecords,
   listTraceRecentEvents,
+  listToolRuns,
   listSessions,
   listWorkflowEvaluations,
   listMemoryEvaluations,
@@ -193,6 +195,7 @@ import { withKnowledgePrompt } from "./knowledge-injection.ts";
 import { expandCommand } from "./command-expand.ts";
 import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentTemplate, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
+import type { WorkflowAgentEntry, WorkflowRunView } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
 import { buildExtractionToolsMcpServer, ensureWorkspaceMcpConfig, registerAllWorkspaceMcp } from "./mcp/register.ts";
 import { registerChildProcess } from "./child-processes.ts";
@@ -1373,6 +1376,13 @@ app.get("/api/workspaces/:id/trace/trend", (req, res) => {
   res.json(getTraceTrend(req.params.id, days));
 });
 
+// tool-use 运行看板：工具运行流水（来自 trace_events，仅脱敏 payload 字段，不读输入/输出明细内容）。
+app.get("/api/workspaces/:id/tool-runs", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const limit = Math.min(2000, Math.max(1, Number(req.query.limit ?? 200) || 200));
+  res.json(listToolRuns(req.params.id, limit));
+});
+
 app.get("/api/workspaces/:id/trace/timeline", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   const targetKind = String(req.query.targetKind ?? "");
@@ -1764,6 +1774,30 @@ app.get("/api/subagent-tasks/:id", (req, res) => {
   const task = getSubAgentTask(req.params.id);
   if (!task) return res.status(404).json({ error: "task not found" });
   res.json(task);
+});
+
+// 工作流 agent 看板（只读）：遍历工作区各 flow 的 workflow.json 取 agent/gate/tool 节点（花名册），
+// 并投影 flow_runs 为流水线级运行明细。纯读、不触运行路径、不回灌 LLM、不读数据行内容。
+app.get("/api/workflow-agents", (req, res) => {
+  const wsFilter = typeof req.query.workspaceId === "string" && req.query.workspaceId.trim() ? req.query.workspaceId.trim() : undefined;
+  const workspaceIds = wsFilter ? [wsFilter] : listWorkspaces().map((w) => w.id);
+  const agents: WorkflowAgentEntry[] = [];
+  const runs: WorkflowRunView[] = [];
+  for (const wsId of workspaceIds) {
+    for (const flow of listFlows(wsId)) {
+      const def = readWorkflow(flow.folderPath);
+      if (def) {
+        for (const node of def.nodes) {
+          agents.push({ flowId: flow.id, flowName: flow.name, nodeId: node.id, label: node.label, role: node.role, kind: node.kind ?? "agent" });
+        }
+      }
+      for (const run of listFlowRuns(flow.id)) {
+        runs.push({ id: run.id, flowId: flow.id, flowName: flow.name, workspaceId: wsId, status: run.status, startedAt: run.startedAt, endedAt: run.endedAt ?? undefined, outputDir: run.outputDir });
+      }
+    }
+  }
+  runs.sort((a, b) => b.startedAt - a.startedAt);
+  res.json({ agents, runs });
 });
 
 app.post("/api/subagent-tasks/:id/abort", (req, res) => {
@@ -3225,6 +3259,7 @@ app.post("/api/report-versions/generate", async (req, res) => {
     let datasetMeta: DatasetMeta | null = null;
     let datasetSummary = "";
     const datasetId = typeof req.body?.datasetId === "string" ? req.body.datasetId.trim() : "";
+    const cleanDataPathId = typeof req.body?.cleanDataPathId === "string" ? req.body.cleanDataPathId.trim() : "";
     if (datasetId) {
       const dataset = getBiDatasetById(datasetId);
       if (!dataset) return res.status(404).json({ error: "datasetId not found" });
@@ -3233,6 +3268,23 @@ app.post("/api/report-versions/generate", async (req, res) => {
       chartSpecs = buildChartSpecsFromDataset(dataset);
       datasetMeta = datasetMetaFromDetail(dataset);
       datasetSummary = summarizeDatasetForLlm(dataset);
+    } else if (cleanDataPathId) {
+      // 关联 clean_data 聚合文件：通用确定性出图。守卫——只允许 clean_data，draw_data 天然被
+      // folder 检查挡在外；明细 row 仅用于服务端出图，**不喂 LLM**（只给 schema 摘要）。
+      // 登记项可能是单文件或目录；目录用 relPath 定位子文件（与报告版本同款解析）。
+      const cleanRelPath = typeof req.body?.cleanDataRelPath === "string" ? req.body.cleanDataRelPath : "";
+      const dsEntry = getWorkspacePath(Number(cleanDataPathId));
+      if (!dsEntry) return res.status(404).json({ error: "cleanDataPathId not found" });
+      if (dsEntry.folder !== "clean_data") return res.status(400).json({ error: "only clean_data aggregations are supported" });
+      const dsBaseDir = dsEntry.kind === "dir" ? resolve(dsEntry.path) : dirname(resolve(dsEntry.path));
+      const dsRelPath = dsEntry.kind === "dir" ? cleanRelPath : basename(dsEntry.path);
+      if (dsEntry.kind === "dir" && !dsRelPath) return res.status(400).json({ error: "cleanDataRelPath required for directory clean_data paths" });
+      validateArtifactPath(dsRelPath, "聚合数据 tab 登记路径");
+      const dsAbsPath = resolve(dsBaseDir, dsRelPath);
+      const { columns, rows } = parseAggregationBuffer(readFileSync(dsAbsPath), dsAbsPath);
+      const dsName = basename(dsAbsPath);
+      chartSpecs = buildGenericChartSpecs(columns, rows);
+      datasetSummary = summarizeAggregationForLlm(dsName, columns, rows);
     }
 
     const result = await generatePresentationVersionWithLlm(sourceName, report.content, userPrompt, businessRequirementContext, datasetSummary, workspace.rootPath, model, {

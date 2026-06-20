@@ -7,13 +7,44 @@
   "runtime": "python3",
   "category": "ingestion",
   "input": {
-    "accept": [".xlsx", ".xls", ".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".xlsx",
+      ".xls",
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".csv", ".zip", ".txt"],
+  "output": [
+    ".csv",
+    ".zip",
+    ".txt"
+  ],
   "resultColumns": [
-    { "key": "totalRows", "label": "原始行" },
-    { "key": "validPhones", "label": "有效号" },
-    { "key": "uniquePhones", "label": "去重号" }
-  ]
+    {
+      "key": "totalRows",
+      "label": "原始行"
+    },
+    {
+      "key": "validPhones",
+      "label": "有效号"
+    },
+    {
+      "key": "uniquePhones",
+      "label": "去重号"
+    }
+  ],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "phone",
+        "required": true,
+        "description": "会员手机号",
+        "example": "13800000000"
+      }
+    ],
+    "note": "单列手机号即可；也接受含手机号列的 Excel/CSV。"
+  }
 }

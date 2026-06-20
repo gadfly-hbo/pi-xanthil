@@ -221,7 +221,11 @@
       "Bash(grep -nA8 \"zhuantiSeed\\\\|pushZhuantiChatSummary\\\\|ZhuantiSeed\")",
       "Bash(git checkout *)",
       "Bash(grep -nA2 \"function memoryConsolidationAutoEnabled\" server/src/routes/engine.ts)",
-      "Bash(echo \"exit=$?\")"
+      "Bash(echo \"exit=$?\")",
+      "Bash(grep -n \"</aside>\\\\|</main>\\\\|</div>\\\\s*$\\\\|ToolDetail tool={tool}\\\\|^  \\);\\\\|^}\" web/src/components/ToolUsePane.tsx)",
+      "Bash(grep -nA0 \"\")",
+      "Bash(grep -n \"原始派发 —\\\\`\\\\|花名册为接缝外纯前端增量\" docs/wiki.html)",
+      "Bash(awk 'NR>=219 && /^\\\\];/ {print NR\": \"$0; exit}' docs/wiki.html)"
     ]
   }
 }

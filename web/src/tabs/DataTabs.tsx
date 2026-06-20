@@ -22,6 +22,7 @@ import { WeatherPane } from "@/components/WeatherPane";
 import { IndustryPane } from "@/components/IndustryPane";
 import { CompetitorPane } from "@/components/CompetitorPane";
 import { AggregateReadmePane } from "@/components/AggregateReadmePane";
+import { XanDbReadmePane } from "@/components/XanDbReadmePane";
 import { MemoryReadmePane } from "@/components/MemoryReadmePane";
 import { KnowledgeBasePane } from "@/components/KnowledgeBasePane";
 import { KnowledgeBaseReadmePane } from "@/components/KnowledgeBaseReadmePane";
@@ -111,6 +112,9 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       )}
       {activeTab === "xan_db" && activeSubTab === "sql_connect" && (
         <SqlConnectPane workspaceId={ctx.activeWorkspaceId} />
+      )}
+      {activeTab === "xan_db" && activeSubTab === "readme" && (
+        <XanDbReadmePane />
       )}
 
       {/* 知识库（D-PANEL · 2026-06-19，V-agent 已停用前端归 D 承接） */}

@@ -7,6 +7,8 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
+> 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
+
 - 最近更新：2026-06-19 · PresentationVersionPane 接入 BI dataset → chartSpecs 自动出图（V-agent 停用后 viz 归 D 承接）
 - 进度：
   - **dataset → echarts 闭环（D-A + D-B 一并落）**：`PresentationVersionPane` 加「关联数据集」select；选数据集 → 服务端确定性聚合产出 `chartSpecs[]`（echarts EChartsOption）→ 前端预览页"汇报版本"tab 在 Markdown 上方栅格渲染 `<ReactECharts>` 卡片；不选数据集 → 行为完全不变（纯 Markdown + iframe 故事线）。

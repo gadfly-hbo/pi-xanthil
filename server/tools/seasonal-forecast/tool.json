@@ -7,19 +7,43 @@
   "runtime": "python3",
   "category": "analysis",
   "input": {
-    "accept": [".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".md", ".json"],
+  "output": [
+    ".md",
+    ".json"
+  ],
   "riskLevel": "L0",
   "allowedUse": "对含日期和数值指标的 CSV 进行时间序列分解与预测，结果包含趋势/季节/残差分量及置信区间。",
   "forbiddenUse": "不能处理含个人身份信息（PII）的数据；不能用于非时间序列数据；预测结果不应作为唯一的业务决策依据。",
   "failureHandling": "CSV 数据过少（<2 个季节周期）时返回可读警告；缺少必需字段时返回详细错误；超时自动终止子进程。",
-  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "traceFields": [
+    "toolId",
+    "inputPath",
+    "outputPath",
+    "success",
+    "failed",
+    "durationMs"
+  ],
   "resultColumns": [
-    { "key": "dataPoints", "label": "数据点数" },
-    { "key": "forecastPeriods", "label": "预测期数" },
-    { "key": "seasonalPeriod", "label": "季节周期" }
+    {
+      "key": "dataPoints",
+      "label": "数据点数"
+    },
+    {
+      "key": "forecastPeriods",
+      "label": "预测期数"
+    },
+    {
+      "key": "seasonalPeriod",
+      "label": "季节周期"
+    }
   ],
   "parameters": [
     {
@@ -38,5 +62,22 @@
       "default": 14,
       "description": "向前预测的期数"
     }
-  ]
+  ],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "date",
+        "required": true,
+        "description": "日期列",
+        "example": "2025-01-01"
+      },
+      {
+        "name": "value",
+        "required": true,
+        "description": "指标列（销售/流量/KPI）",
+        "example": "1280"
+      }
+    ],
+    "note": "时序聚合表：一列日期 + 一列指标。"
+  }
 }

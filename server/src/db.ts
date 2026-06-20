@@ -11,7 +11,7 @@ import { initSharedTables, backfillMemoryEnablements, listEnabledItemIds, enable
 import { initDataTables } from "./db/data.ts";
 import { initEngineTables } from "./db/engine.ts";
 import { initVizTables } from "./db/viz.ts";
-import type { MetricDefinition, MemoryItemKind } from "./types.ts";
+import type { MetricDefinition, MemoryItemKind, ToolRunRecord } from "./types.ts";
 
 // 全局池模型：按本工作区启用集合过滤池条目（共享单实例；启用关系见 db/shared.ts）。
 function enabledIds(workspaceId: string, kind: MemoryItemKind): Set<string> {
@@ -3157,6 +3157,32 @@ export function listTraceRecentEvents(workspaceId: string, limit = 30): TraceEve
       FROM trace_events WHERE workspace_id = ?
     ) ORDER BY time DESC LIMIT ?
   `).all(workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, limit) as unknown as TraceEvent[];
+}
+
+// tool-use 运行看板数据源：从 trace_events 取工具运行流水（含 payload 明细字段）。
+export function listToolRuns(workspaceId: string, limit = 200): ToolRunRecord[] {
+  const rows = db.prepare(`
+    SELECT id, created_at AS time, target, status, payload
+    FROM trace_events
+    WHERE workspace_id = ? AND target_kind = 'extraction_tool' AND type = 'tool_run'
+    ORDER BY created_at DESC LIMIT ?
+  `).all(workspaceId, limit) as Array<{ id: string; time: number; target: string | null; status: string; payload: string | null }>;
+  const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
+  return rows.map((r) => {
+    let p: Record<string, unknown> = {};
+    try { p = r.payload ? (JSON.parse(r.payload) as Record<string, unknown>) : {}; } catch { /* ignore malformed payload */ }
+    return {
+      id: r.id,
+      time: r.time,
+      toolId: typeof p.toolId === "string" ? p.toolId : "",
+      toolName: r.target ?? "",
+      source: p.source === "ai" ? "ai" : "manual",
+      status: r.status === "failed" ? "failed" : "success",
+      success: num(p.success),
+      failed: num(p.failed),
+      durationMs: num(p.durationMs),
+    };
+  });
 }
 
 function listPersistedTraceTimeline(workspaceId: string, targetKind: string, targetId: string): TraceTimelineItem[] {

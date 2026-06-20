@@ -1368,6 +1368,32 @@ export interface SubAgentTemplate {
   source: "custom";
 }
 
+// ---- 工作流 agent 看板（只读投影：从各 flow 的 workflow.json nodes + flow_runs 聚合，供 SubAgentBoard 展示；不落库、不触运行路径） ----
+export interface WorkflowAgentEntry {
+  flowId: string;
+  flowName: string;
+  nodeId: string;
+  label: string;
+  role?: string;
+  kind: "agent" | "gate" | "tool";
+}
+
+export interface WorkflowRunView {
+  id: string;
+  flowId: string;
+  flowName: string;
+  workspaceId: string;
+  status: string; // FlowRunStatus 的宽松投影
+  startedAt: number;
+  endedAt?: number;
+  outputDir: string;
+}
+
+export interface WorkflowAgentsBoard {
+  agents: WorkflowAgentEntry[];
+  runs: WorkflowRunView[];
+}
+
 // ---- Knowledge Graph ----
 
 export type KgNodeType = "rule" | "metric" | "ref_file" | "biz_ctx" | "report" | "concept" | "constraint" | "experience" | "episode" | "fact";
@@ -1878,6 +1904,19 @@ export interface HookTriggerRecord {
   blocked?: boolean; // 该触发是否实际拦截了工具调用
 }
 
+// 计算工具·tool-use 运行看板：单次工具运行记录（来自 trace_events，target_kind=extraction_tool / type=tool_run）。
+export interface ToolRunRecord {
+  id: string;
+  time: number;
+  toolId: string;
+  toolName: string;
+  source: "manual" | "ai";       // 手动（数据提取面板）/ AI（经 MCP 调用）
+  status: "success" | "failed";
+  success: number | null;        // 工具产物中成功条数
+  failed: number | null;
+  durationMs: number | null;
+}
+
 // 计算工具·command 管理 —— pi-xanthil 自有的「斜杠命令注册表」契约（详见 docs/wiki.html「command 管理」卡）。
 // 实证：pi 在 -p positional 模式不展开 prompt 里的 /command（slash 为交互式 TUI/RPC 特性），故命令解析/展开
 // 由 pi-xanthil 服务端做（command-expand.ts），不依赖 pi 扩展。真源 = COMMANDS_CONFIG_PATH(commands.json)。
@@ -2000,7 +2039,9 @@ export interface PresentationGenerateInput {
   relPath?: string;
   prompt: string;
   model?: string;
-  datasetId?: string; // 关联 BI dataset id；不传=纯文本如旧（行为不变）
+  datasetId?: string; // 关联 BI dataset id（biset，按 slot 出图）；不传=纯文本如旧（行为不变）
+  cleanDataPathId?: string; // 关联 clean_data 聚合的登记项 workspace_paths.id（通用出图）；与 datasetId 二选一
+  cleanDataRelPath?: string; // 登记项为目录时，定位子文件的相对路径；单文件登记可省略
   businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string };
 }
 

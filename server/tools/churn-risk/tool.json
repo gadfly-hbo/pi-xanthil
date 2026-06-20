@@ -7,19 +7,43 @@
   "runtime": "python3",
   "category": "analysis",
   "input": {
-    "accept": [".csv"],
-    "modes": ["file", "directory"]
+    "accept": [
+      ".csv"
+    ],
+    "modes": [
+      "file",
+      "directory"
+    ]
   },
-  "output": [".md", ".json"],
+  "output": [
+    ".md",
+    ".json"
+  ],
   "riskLevel": "L0",
   "allowedUse": "对去标识客户级 RFM 表做流失风险预警；产物为分层聚合与脱敏 top 列表，不回写订单原始行。",
   "forbiddenUse": "不得用于含 PII 的原始数据；recency 必须为距今天数口径（不是首末购间隔），frequency 必须为已聚合次数。",
   "failureHandling": "缺列时返回 '缺少必需字段'；客户数 < 10 时返回 '客户数过少'；KM 拟合失败回退为基于 recency 阈值的硬分类并标注 fallback=true。",
-  "traceFields": ["toolId", "inputPath", "outputPath", "success", "failed", "durationMs"],
+  "traceFields": [
+    "toolId",
+    "inputPath",
+    "outputPath",
+    "success",
+    "failed",
+    "durationMs"
+  ],
   "resultColumns": [
-    { "key": "customers", "label": "客户数" },
-    { "key": "churnThreshold", "label": "流失阈值(天)" },
-    { "key": "highRiskRatio", "label": "高/极高风险占比" }
+    {
+      "key": "customers",
+      "label": "客户数"
+    },
+    {
+      "key": "churnThreshold",
+      "label": "流失阈值(天)"
+    },
+    {
+      "key": "highRiskRatio",
+      "label": "高/极高风险占比"
+    }
   ],
   "parameters": [
     {
@@ -38,5 +62,33 @@
       "default": 30,
       "description": "高风险客户列表保留前 N 条"
     }
-  ]
+  ],
+  "inputTemplate": {
+    "columns": [
+      {
+        "name": "customer_id",
+        "required": true,
+        "description": "客户标识（去标识占位）",
+        "example": "C0001"
+      },
+      {
+        "name": "recency",
+        "required": true,
+        "description": "自上次购买至截止日的天数",
+        "example": "45"
+      },
+      {
+        "name": "frequency",
+        "required": true,
+        "description": "历史购买次数",
+        "example": "8"
+      },
+      {
+        "name": "monetary",
+        "description": "累计或均额（可选）",
+        "example": "2360"
+      }
+    ],
+    "note": "客户级 RFM 聚合表；列名支持别名。"
+  }
 }

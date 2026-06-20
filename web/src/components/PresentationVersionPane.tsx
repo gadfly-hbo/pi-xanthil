@@ -25,10 +25,25 @@ interface ReportOption {
   relPath: string;
 }
 
+// 关联的 clean_data 聚合文件：可能是登记的单文件，也可能是登记目录下的子文件。
+// 用「登记项 pathId + relPath」定位（与报告选择器同款），子文件无独立 workspace_paths.id。
+interface CleanDataOption {
+  id: string;
+  label: string;
+  pathId: number;
+  relPath: string;
+}
+
 const DEFAULT_PROMPT = "请基于原详细报告，提炼一份用于汇报和沟通的简化 Markdown 版本。保留核心结论、关键数据支撑、风险与下一步建议，语言简洁清晰。";
+
+const TABULAR_EXTS = [".csv", ".xlsx", ".xls", ".tsv"];
 
 function isReportFile(name: string): boolean {
   return /\.(md|markdown|txt)$/i.test(name);
+}
+
+function isTabularFile(name: string): boolean {
+  return TABULAR_EXTS.some((ext) => name.toLowerCase().endsWith(ext));
 }
 
 function flattenFiles(node: FlowTreeNode): FlowTreeNode[] {
@@ -66,6 +81,8 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
   const [storylineHtml, setStorylineHtml] = useState("");
   const [chartSpecs, setChartSpecs] = useState<PresentationChartSpec[]>([]);
   const [datasets, setDatasets] = useState<BiDatasetSummary[]>([]);
+  const [cleanOptions, setCleanOptions] = useState<CleanDataOption[]>([]);
+  // 下拉选中值带前缀：bi:<biset id> / clean:<option id> / 空=纯文本。
   const [selectedDatasetId, setSelectedDatasetId] = useState("");
   const [activeResult, setActiveResult] = useState<"presentation" | "storyline">("presentation");
   const [loading, setLoading] = useState(false);
@@ -82,6 +99,11 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
   const selectedReport = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
     [reports, selectedReportId],
+  );
+
+  const selectedCleanOption = useMemo(
+    () => (selectedDatasetId.startsWith("clean:") ? cleanOptions.find((o) => o.id === selectedDatasetId) ?? null : null),
+    [cleanOptions, selectedDatasetId],
   );
 
   const loadReports = useCallback(async () => {
@@ -148,6 +170,35 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
     return () => { cancelled = true; };
   }, []);
 
+  // 按 scope 列出 clean_data 聚合的 tabular 文件，供「关联数据集」通用出图。
+  // 登记项可能是单文件，也可能是目录——目录要遍历树拿子文件（与报告选择器同款）。
+  useEffect(() => {
+    let cancelled = false;
+    if (!scope) { setCleanOptions([]); return; }
+    const request = scope.type === "workspace"
+      ? api.listWorkspacePaths(scope.workspaceId, "clean_data")
+      : scope.type === "session"
+        ? api.listSessionPaths(scope.sessionId, "clean_data")
+        : api.listFlowPaths(scope.flowId, "clean_data");
+    void request.then(async (list) => {
+      const found = await Promise.all(list.map(async (path) => {
+        if (path.kind === "file") {
+          return isTabularFile(path.path)
+            ? [{ id: `clean:${path.id}:`, label: basenamePath(path.path), pathId: path.id, relPath: "" }]
+            : [];
+        }
+        const tree = await api.workspacePathTree(path.id);
+        return flattenFiles(tree)
+          .filter((file) => isTabularFile(file.name))
+          .map((file) => ({ id: `clean:${path.id}:${file.path}`, label: file.path, pathId: path.id, relPath: file.path }));
+      }));
+      if (!cancelled) setCleanOptions(found.flat());
+    }).catch(() => {
+      if (!cancelled) setCleanOptions([]);
+    });
+    return () => { cancelled = true; };
+  }, [scope]);
+
   const generate = useCallback(async () => {
     if (!selectedReport || !prompt.trim() || generating) return;
     setError("");
@@ -163,7 +214,9 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
         relPath: selectedReport.relPath,
         prompt: prompt.trim(),
         model: model || undefined,
-        datasetId: selectedDatasetId || undefined,
+        datasetId: selectedDatasetId.startsWith("bi:") ? selectedDatasetId.slice(3) : undefined,
+        cleanDataPathId: selectedCleanOption ? String(selectedCleanOption.pathId) : undefined,
+        cleanDataRelPath: selectedCleanOption ? selectedCleanOption.relPath : undefined,
         businessRequirementContext: selectedBusinessRequirement ? {
           pathId: selectedBusinessRequirement.pathId,
           markdownPath: selectedBusinessRequirement.markdownPath,
@@ -179,7 +232,7 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
         chartSpecs: result.chartSpecs ?? [],
       };
     });
-  }, [generating, model, onGenerated, prompt, selectedBusinessRequirement, selectedDatasetId, selectedReport, task]);
+  }, [generating, model, onGenerated, prompt, selectedBusinessRequirement, selectedCleanOption, selectedDatasetId, selectedReport, task]);
 
   useEffect(() => {
     if (task.status !== "done" || !task.data) return;
@@ -259,15 +312,26 @@ export function PresentationVersionPane({ scope, model, onGenerated }: Props) {
             <select
               value={selectedDatasetId}
               onChange={(event) => setSelectedDatasetId(event.target.value)}
-              disabled={generating || datasets.length === 0}
+              disabled={generating || (datasets.length === 0 && cleanOptions.length === 0)}
               className="mt-2 h-9 w-full rounded-md border border-neutral-200 bg-white px-2.5 text-[12.5px] text-neutral-700 outline-none disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
             >
-              <option value="">{datasets.length === 0 ? "未导入 BI 数据集（汇报版本→纯文本）" : "不关联数据集（纯文本汇报）"}</option>
-              {datasets.map((d) => (
-                <option key={d.id} value={d.id}>{`${d.slot === "member_retention" ? "[新客留存]" : "[老客回购]"} ${d.filename}（${d.rowCount} 行）${d.active ? " ·活跃" : ""}`}</option>
-              ))}
+              <option value="">{datasets.length === 0 && cleanOptions.length === 0 ? "无 BI 数据集 / 聚合数据（汇报版本→纯文本）" : "不关联数据集（纯文本汇报）"}</option>
+              {datasets.length > 0 && (
+                <optgroup label="BI 数据集（按预设结构出图）">
+                  {datasets.map((d) => (
+                    <option key={`bi:${d.id}`} value={`bi:${d.id}`}>{`${d.slot === "member_retention" ? "[新客留存]" : "[老客回购]"} ${d.filename}（${d.rowCount} 行）${d.active ? " ·活跃" : ""}`}</option>
+                  ))}
+                </optgroup>
+              )}
+              {cleanOptions.length > 0 && (
+                <optgroup label="聚合数据 clean_data（通用出图）">
+                  {cleanOptions.map((o) => (
+                    <option key={o.id} value={o.id}>{`[聚合数据] ${o.label}`}</option>
+                  ))}
+                </optgroup>
+              )}
             </select>
-            <p className="mt-1.5 text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">数据集为已脱敏聚合 BI dataset，服务端确定性出图；LLM 仅看 schema 摘要，不见明细行。</p>
+            <p className="mt-1.5 text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">数据集为已脱敏聚合数据，服务端确定性出图；LLM 仅看 schema 摘要，不见明细行。clean_data 按「首列类别 + 数值列」自动成图。</p>
           </div>
           <div>
             <label className="text-[12px] font-medium text-neutral-700 dark:text-neutral-300">提示词</label>

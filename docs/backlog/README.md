@@ -20,3 +20,4 @@
 | onto-xanthil 全局本体扩展 | [onto-xanthil-全局本体扩展.md](onto-xanthil-全局本体扩展.md) | 2026-06-11 | 暂缓 | 把分析运行时制品（任务/洞察/报告/run/action/eval）对象化并串成 Search Around 血缘 + Action 治理 + 对象级 Trace/Eval 的全局对象图 |
 | 模拟决策 | （方案待迁入本池） | 2026-06-11 | 暂缓 | 模拟推演 / 决策智能模块，已从产品剥离；原方案散见会话与 `decision-intelligence` 记忆，捞出前需补齐方案文件 |
 | agent-loop 工作流闭环 | [agent-loop-工作流闭环.md](agent-loop-工作流闭环.md) | 2026-06-13 | 暂缓 | 给工作流 runner 加"gate 失败→带证据回跳上游重跑+预算约束"的反馈闭环，让 DAG 单向流升级为 agent-loop；植入工作流而非另开模块，MVP=SQL 修复 loop |
+| subagents 看板 · 节点级运行落库 | [subagents看板-节点级运行落库.md](subagents看板-节点级运行落库.md) | 2026-06-20 | 暂缓 | 工作流节点运行态不落库（只流式广播），新建 `flow_node_runs` 表 + runner 落库，让看板到真 agent 粒度统计；方案 A（流水线级聚合）先做，本条为治本增强排后续 |

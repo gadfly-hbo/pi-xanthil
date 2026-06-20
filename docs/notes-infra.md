@@ -8,6 +8,8 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
+> 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。详见 `Orchestration.md §八` 发布节点。
+
 - 最近更新：2026-06-20 · 总控（UI 新功能批次推进：汇报可视化契约/终审 + prompts管理 D面板终审；含汇报可视化契约校准收口）
 - 本批进度（总控 infra/接缝/契约侧，2026-06-19~20）：
   - ✅ **汇报可视化契约**（types.ts 双侧单一真源）：`PresentationChartSpec{id,title,option}` / `PresentationDatasetMeta` / `PresentationGenerateInput`(datasetId **string**) / `PresentationTaskResult`(chartSpecs?/datasetMeta?)。server `presentation-charts.ts` 以 `type ChartSpec=PresentationChartSpec` 别名引用；web `api.ts`/`PresentationVersionPane.tsx` import 契约——**零本地重声明**。
