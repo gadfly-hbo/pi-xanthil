@@ -313,6 +313,53 @@ const TASKS = [
 验收：构造一组同 method tag 的高频 experience→聚类命中→产出 skill 候选 markdown→进 registry/review 不自动启用；dryRun 列簇与理由；memory-to-skill.test.ts 覆盖聚类阈值+候选生成；门禁全绿、接缝零触碰、复用 skill-distillation 无复刻。
 ✅ 总控终审通过（2026-06-21，一次过无收敛）：新建 memory-to-skill.ts(analyzeMemorySkillClusters 纯函数·method:优先 task:兜底聚类·跳过 retired·三阈值 highConfidence≥3/usedCount≥6/positiveSignals≥3·DI listExperiences+distillCluster·dryRun) + routes POST /memory/promote-skills。**复用无复刻**：distillCluster 绑既有 distillSkillCandidate(buildSkillDistillationPrompt 管道)。**不自动启用**：落库 status="candidate"(非 enabled)，有专测「writes a candidate registry entry without auto-activating」坐实；带 dedup(findAutoDistillDuplicate)。门禁实跑：server tsc 净、memory-to-skill 8/8(含 HTTP 集成 dryRun)、memory 全量 83/83、红线净、V-OBS 自检无 execSync/spawnSync(listExperiences 用 async fetch self-HTTP，同 consolidation 范式、非热路径)、接缝零触碰。小后续：实验场 lab 接 promote-skills 产物做评测闭环 + 面板「升级 Skill」入口。**【记忆 v2.0 缺口1/3/4 全部完成；缺口2 向量层按既定暂缓】。**` },
 
+  { dom: "D", status: "done", created: "2026-06-21 20:00", title: "【记忆v2.0·缺口1·面板补全】注入预览支持显式 tag 硬过滤（点亮结构化精筛 UI）", brief:
+`来源：记忆 v2.0 缺口1 收尾——后端检索引擎(filterTags 硬过滤)+契约(RetrievalContext.tags)已就绪(X-MEM2-CTX done)，但 UI 未点亮：GET /memory/preview 端点只接 query 不接 tags(routes/data.ts:824)、api.previewMemoryPrompt 不传 tags、RulesPane 注入预览区无 tag/query 输入。本卡把「显式结构化精筛」在面板接通——让用户能在面板选 tag 看到「这些 tag 下会注入哪些记忆」(untagged 被硬过滤)。纯 D 域接线，不碰接缝(契约/buildMemoryPrompt 签名已就绪)。
+约束：不碰接缝层(types/index/db 注册表/constants)，buildMemoryPrompt 守冻结签名(已接 ctx)，自带门禁绿。
+落点：
+1. routes/data.ts GET /memory/preview(:824)：入参增 tags——复用既有 readTagsQuery(同文件 :1130 ?tag=a&tag=b 重复参数范式)解析 req.query.tag；ctx 构造由 \`const ctx = query ? { query } : undefined\` 改为 \`(query || tags.length) ? { query, tags } : undefined\`，透传 buildMemoryPrompt → 引擎 filterTags 硬过滤(显式 tags)。
+2. api/data.ts previewMemoryPrompt(:233)：options 加 tags?: string[]，按 ?tag= 重复参数拼接(同 listKnowledgeDocs 范式 :308)。
+3. RulesPane.tsx 注入预览区(:354 一带)：加「模拟检索」控件——① 显式 tag 多选(强烈建议直接复用现有列表 tagFilter:123 + allTags:177，一套 tag 选择同时驱动列表过滤与注入预览，最直观体现「选这些 tag→注入这些记忆」)；② 可选 query 输入框(boost 信号)。变更即重新拉 preview(传 tags+query)，预览结果展示硬过滤后的 itemCount/prompt。fetchPreview(:147)带上 tags。
+4. (可选)preview 响应可回带 requestedTagCount/命中条目，便于 UI 显示「精筛前 N→后 M」。
+验收：面板选 tag→注入预览只剩命中 tag 的记忆(untagged 被硬过滤)、itemCount 随之下降；不选 tag→预览行为不变(退回原 query/词法)；空 query 也能仅按 tag 筛；web typecheck/build 绿、数据探索红线 grep 净、接缝零触碰。按 /px-hotfix 或域 SOP 走 session。分支 feat/data-memory-preview-tags。
+✅ 总控终审通过（2026-06-21，一次过无收敛）：3 文件均 D slot、接缝零触碰。preview 端点 readTagsQuery(req.query.tag)→ctx{query,tags}→buildMemoryPrompt(引擎 filterTags 硬过滤)；prompt 为真实注入内容(含 governance/topK/预算)；itemCount 改 matched.length(tag 过滤后候选池·与改造前 enabled.length 同近似层级但 tag-aware·OR 命中同引擎)。api previewMemoryPrompt 加 tags? ?tag= 重复参数。RulesPane 预览区加「模拟检索」(独立 previewTags/previewQuery state + tag chip 多选 + query 输入 + 清除)。门禁实跑：server tsc 净、web tsc+build 绿、红线净(draw_data 仅注释/403 守门)。benign deviation：用独立 previewTags 而非复用列表 tagFilter——分离「管理列表过滤 vs 模拟检索作用域」UX 更清晰，接受。**【记忆 v2.0 缺口1 含 UI 全链端到端可用：打 tag→入库→检索结构化精筛/boost→面板显式硬过滤预览】。** 待提交。` },
+
+  // ──── 【记忆 v2.0 收尾·UI 入口 + 闭环】（总控拆卡 2026-06-21）。缺口1/3/4 后端全就绪，补 UI 入口点亮 + 缺口4 评测闭环 + 缺口1 chat boost 补全。后端端点均已存在，多为接线卡。────
+  { dom: "D", status: "todo", created: "2026-06-21 20:30", title: "【记忆v2.0·缺口3·维护 UI】RulesPane「立即维护」按钮 + dryRun 预览", brief:
+`来源：缺口3 Dream Worker 后端就绪(POST /memory/maintain @engineRouter:1448，dryRun 返回升/降/退役明细)，但无 UI 入口——搭车触发是被动的，用户无法主动跑/预览。本卡补面板入口。纯 D 接线，端点已在 engineRouter(非 dataRouter)。
+约束：不碰接缝层，自带门禁绿。
+落点：
+1. api/engine.ts 加 maintainMemory(workspaceId, { dryRun }) → POST /api/workspaces/:id/memory/maintain（注意是 engineRouter，走 engine api client）。返回 { scanned, changes[], applied }。
+2. RulesPane.tsx：加「立即维护」入口——先调 dryRun=true 拉 changes 明细(每条 action=promote/demote/retire + before/after confidence + reason) 展示为可预览列表 → 用户确认后调 dryRun=false 执行、提示 applied 数。建议放在注入预览区附近或面板头部工具区。
+3. 维护后刷新记忆列表(confidence/状态可能变)。
+验收：dryRun 预览出升/降/退役明细不落库；执行后 confidence/validUntil 真变、列表刷新；空库/无变更时友好提示；web typecheck/build 绿、接缝零触碰、红线净。分支 feat/data-memory-maintain-ui。` },
+
+  { dom: "D", status: "todo", created: "2026-06-21 20:31", title: "【记忆v2.0·缺口4·升级 Skill UI】RulesPane「从记忆升级 Skill」入口 + dryRun 列簇", brief:
+`来源：缺口4 后端就绪(POST /memory/promote-skills @engineRouter:1461，dryRun 列可升级簇+理由；非 dryRun 产 skill 候选入 registry status="candidate" 不自动启用)，但无 UI 入口。本卡补面板入口。纯 D 接线。
+约束：不碰接缝层，自带门禁绿。
+落点：
+1. api/engine.ts 加 promoteMemorySkills(workspaceId, { dryRun, thresholds?, maxPromotions? }) → POST /memory/promote-skills。返回 { clusters[], eligibleClusters, promotions[] }。
+2. RulesPane.tsx：加「升级 Skill」入口——dryRun 列 eligible 簇(tag/reasons/highConfidenceCount/totalUsedCount/条目数) → 用户确认后非 dryRun 执行 → 提示「N 个候选已入 Skill 候选库(registry candidate)，去实验场评测」。强调**不自动启用**。
+3. 复用 experience type 的记忆作为升级源（后端已按 method:/task: tag 聚类）。
+验收：dryRun 列簇与升级依据；执行产 candidate(不启用)；阈值不达时空列表+说明；web typecheck/build 绿、接缝零触碰。依赖联动 [缺口4·评测闭环] 把候选送评测。分支 feat/data-memory-promote-ui。` },
+
+  { dom: "E", status: "todo", created: "2026-06-21 20:32", title: "【记忆v2.0·缺口4·评测闭环】promote 产出的 registry candidate 进 SkillLab 评测", brief:
+`来源：缺口4 闭环最后一环——promote-skills 产物落 skill_registry(status="candidate")，但 SkillLab 评测吃 SkillVariant[](skill markdown 内容)，目前 variant 来源是 retrieval_variant/手填(SkillLabPane:225-235)，无「选 registry skill(尤其 candidate)载入为 eval variant」入口。本卡接通 memory→promote→candidate→评测→采纳/淘汰闭环。
+约束：E 域(实验场)，不碰接缝层；E 先核现状再定接线量。
+落点(E 自带调研)：
+1. 核 SkillLab 是否已能评测 registry 里的 skill：若 retrieval_variant 已覆盖 candidate 则仅补「一键从候选送评测」快捷入口；若否，加「从 registry 选 skill(过滤 status=candidate)→读 registrySkillPath markdown→作为 eval variant」选择器，跑 baseline vs candidate。
+2. 评测后可回写/参考 registry status(candidate→active 采纳 / 淘汰)，对齐方法论「升级 Skill→评测反哺」。
+3. 与 [缺口4·升级 Skill UI] 串联：promote 提示「去评测」可直达本入口。
+验收：能选 candidate skill 跑评测出对照读数；评测结论可指导采纳/淘汰；门禁全绿、接缝零触碰。分支 feat/engine-skill-registry-eval。` },
+
+  { dom: "X", status: "todo", created: "2026-06-21 20:33", title: "【记忆v2.0·缺口1·chat dataPaths boost】chat 注入点接 clean_data → data: boost（接缝·低优先）", brief:
+`来源：X-MEM2-CTX 时 chat 注入点(index.ts:4966)留 query-only(flow 已接 dataPaths)，因 4966 在 sessionPaths(4975)计算之前、且涉 fork/path 作用域逻辑。本卡补 chat 的 data: boost 一致性。**接缝层 index.ts=总控持有**；价值有限(boost-only、非硬过滤)，**低优先**。
+约束：仅动 index.ts chat 注入点，守 RetrievalContext 既定语义(dataPaths→推断 boost，绝不硬过滤)。
+落点：
+1. index.ts:4966 buildMemoryInjectionSnapshot 的 ctx 由 { query: msg.text } 补为带 dataPaths——取 session clean_data 文件路径(listWorkspacePaths(workspaceId,"clean_data",pathScopeSessionId) 的 file 项)。注意顺序：4966 在 sessionPaths(4975)/forkBranch(4979)之前，需把 clean_data 路径提前算一小段或内联取(不破坏既有 4972 traceSessionEvent 用 memoryInjection 的时序)。
+2. :5005 withRulesPrompt 的 ctx 同步带 dataPaths。
+验收：chat 带数据文件时 data:<stem> 进 boostTags(仅加权不硬过滤、untagged 不被清空)；缓存稳定前缀不回退；server tsc/build 绿、记忆测试回归绿。可总控自做或委派 D。分支随归属。` },
+
   // ════ 【控制·实验场改造】持续性项目（总控拆卡 2026-06-20）。派发书 docs/实验场改造-任务派发.md。4 占位 lab→对齐 skill/tool 完整测评；prompts 起步。X-LAB0 契约先行，逐期为 E 解契约。════
   { dom: "X", status: "done", created: "2026-06-20 15:30", title: "【实验场·X-LAB0】四期共用 eval 接缝契约 + db 表审批 + 路由位（贯穿）", brief:
 `来源：docs/实验场改造-任务派发.md §3 ownership。本卡=总控自承接的接缝层，逐期为 E 解契约、各期终审集成。不一次做完，按 phase 推进。

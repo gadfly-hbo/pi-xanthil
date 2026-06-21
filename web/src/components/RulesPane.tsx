@@ -112,6 +112,9 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
   const [reviews, setReviews] = useState<MemoryReview[]>([]);
   const [preview, setPreview] = useState<MemoryPromptPreview | null>(null);
   const [previewScope, setPreviewScope] = useState<"chat" | "workflow">("chat");
+  // 模拟检索控件：显式 tag 硬过滤（filterTags）+ 可选 query（boost 信号）。
+  const [previewTags, setPreviewTags] = useState<Set<string>>(new Set());
+  const [previewQuery, setPreviewQuery] = useState("");
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
@@ -144,12 +147,16 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
   const refreshPreview = useCallback(async () => {
     if (!workspaceId) return;
     try {
-      const previewData = await api.previewMemoryPrompt(workspaceId, { targetScope: previewScope });
+      const previewData = await api.previewMemoryPrompt(workspaceId, {
+        targetScope: previewScope,
+        query: previewQuery.trim() || undefined,
+        tags: previewTags.size ? [...previewTags] : undefined,
+      });
       setPreview(previewData);
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
     }
-  }, [workspaceId, previewScope]);
+  }, [workspaceId, previewScope, previewQuery, previewTags]);
 
   useEffect(() => {
     void refreshData();
@@ -180,6 +187,21 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
     for (const it of baseVisibleItems) for (const t of it.tags) s.add(t);
     return [...s].sort();
   }, [baseVisibleItems]);
+
+  // 跨 type 全部 tag（供注入预览「模拟检索」精筛，预览不分 type 故取全量）。
+  const allTags = useMemo(() => {
+    const s = new Set<string>();
+    for (const it of items) for (const t of it.tags) s.add(t);
+    return [...s].sort();
+  }, [items]);
+
+  const togglePreviewTag = (tag: string) => {
+    setPreviewTags((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag); else next.add(tag);
+      return next;
+    });
+  };
 
   // 多选 AND 过滤：选中的 tag 全部命中才保留（精筛语义，与检索预过滤同向）。
   const visibleItems = useMemo(() => {
@@ -363,6 +385,32 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
                 <option value="chat">chat</option>
                 <option value="workflow">workflow</option>
               </select>
+            </div>
+            <div className="mt-3 space-y-2 rounded-lg border border-dashed border-neutral-200 bg-neutral-50/60 p-3 dark:border-neutral-700 dark:bg-neutral-950/40">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="text-[11px] text-neutral-500">模拟检索 · tag 硬过滤</span>
+                {(previewTags.size > 0 || previewQuery) && (
+                  <button onClick={() => { setPreviewTags(new Set()); setPreviewQuery(""); }} className="text-[11px] text-neutral-400 underline-offset-2 hover:underline">清除</button>
+                )}
+              </div>
+              {allTags.length > 0 ? (
+                <div className="flex flex-wrap gap-1">
+                  {allTags.map((t) => {
+                    const on = previewTags.has(t);
+                    return (
+                      <button key={t} onClick={() => togglePreviewTag(t)} className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10.5px] ${on ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900" : tagTone(t)}`}>{t}</button>
+                    );
+                  })}
+                </div>
+              ) : (
+                <p className="text-[11px] text-neutral-400">暂无 tag（给记忆条目打标签后可在此精筛）</p>
+              )}
+              <input
+                value={previewQuery}
+                onChange={(e) => setPreviewQuery(e.target.value)}
+                placeholder="可选 query（boost 信号，影响打分排序，不硬过滤）"
+                className="w-full rounded-md border border-neutral-200 bg-transparent px-2 py-1 text-[12px] dark:border-neutral-700"
+              />
             </div>
             <pre className="mt-3 max-h-72 overflow-auto whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 text-[12px] leading-5 text-neutral-700 dark:bg-neutral-950 dark:text-neutral-300">{preview?.prompt || "（当前 scope 无可注入记忆）"}</pre>
           </div>

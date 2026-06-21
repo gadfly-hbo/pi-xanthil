@@ -1,0 +1,26 @@
+{
+  "id": "member-portrait-analysis",
+  "name": "会员人群画像分析",
+  "version": "1.0.0",
+  "description": "会员人群画像分析 - 自动注册",
+  "entry": "main.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [
+      ".csv",
+      ".xlsx",
+      ".xls",
+      ".md",
+      ""
+    ],
+    "modes": [
+      "directory",
+      "file"
+    ]
+  },
+  "output": [
+    "*"
+  ],
+  "riskLevel": "L0"
+}

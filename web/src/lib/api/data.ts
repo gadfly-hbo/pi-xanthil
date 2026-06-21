@@ -230,10 +230,11 @@ export const dataApi = {
       body: JSON.stringify({ signal }),
     }).then(json<MemoryItem>),
 
-  previewMemoryPrompt: (workspaceId: string, options: { targetScope?: "chat" | "workflow"; query?: string } = {}) => {
+  previewMemoryPrompt: (workspaceId: string, options: { targetScope?: "chat" | "workflow"; query?: string; tags?: string[] } = {}) => {
     const q = new URLSearchParams();
     if (options.targetScope) q.set("targetScope", options.targetScope);
     if (options.query) q.set("query", options.query);
+    if (options.tags) for (const t of options.tags) q.append("tag", t);
     const qs = q.toString();
     return fetch(`/api/workspaces/${workspaceId}/memory/preview${qs ? `?${qs}` : ""}`).then(json<MemoryPromptPreview>);
   },

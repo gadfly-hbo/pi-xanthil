@@ -1,0 +1,25 @@
+{
+  "id": "multi-platform-portrait-extract",
+  "name": "多平台人群画像核心数据提取",
+  "version": "1.0.0",
+  "description": "多平台人群画像核心数据提取 - 自动注册",
+  "entry": "main.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [
+      ".csv",
+      ".xlsx",
+      ".xls",
+      ".md",
+      ""
+    ],
+    "modes": [
+      "directory"
+    ]
+  },
+  "output": [
+    "*"
+  ],
+  "riskLevel": "L0"
+}

@@ -826,7 +826,9 @@ dataRouter.get("/api/workspaces/:id/memory/preview", (req, res) => {
   const targetScopeRaw = typeof req.query.targetScope === "string" ? req.query.targetScope : "chat";
   const targetScope: "chat" | "workflow" = targetScopeRaw === "workflow" ? "workflow" : "chat";
   const query = typeof req.query.query === "string" ? req.query.query : "";
-  const ctx = query ? { query } : undefined;
+  // 显式 tags（?tag=a&tag=b 重复参数）→ 引擎 filterTags 硬过滤（untagged / 非命中被剔）。
+  const tags = readTagsQuery(req.query.tag);
+  const ctx = query || tags.length ? { query, tags } : undefined;
   let prompt: string;
   try {
     prompt = buildMemoryPrompt(req.params.id, targetScope, {}, ctx);
@@ -837,12 +839,18 @@ dataRouter.get("/api/workspaces/:id/memory/preview", (req, res) => {
   // 与 memory-injection.ts 估算口径一致：~4 chars/token（粗算，仅用于 UI 展示）。
   const tokenEstimate = Math.ceil(charCount / 4);
   const enabled = listEnabledMemoryItems(req.params.id);
+  // itemCount 反映硬过滤后命中条目数：与引擎 filterTags 同向（OR 命中，untagged 被剔）。
+  // 无显式 tags 时退回全量 enabled，行为不变。
+  const tagSet = new Set(tags);
+  const matched = tagSet.size > 0
+    ? enabled.filter((it) => it.tags.some((t) => tagSet.has(t)))
+    : enabled;
   const facts = listProjectedFacts(req.params.id);
   res.json({
     prompt,
     charCount,
     tokenEstimate,
-    itemCount: enabled.length,
+    itemCount: matched.length,
     factCount: facts.filter((f) => f.enabled).length,
   });
 });

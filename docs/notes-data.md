@@ -10,34 +10,31 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-21 · **记忆 v2.0 缺口1 实装（tags 分层标签：data + 检索 + 面板三段）**
+- 最近更新：2026-06-21 · **记忆 v2.0 缺口1 面板补全（注入预览显式 tag 硬过滤 UI 点亮）**
 - 进度：
-  - **本期 D-MEM2-TAG 卡完成**（依赖 X-MEM2-CONTRACT 契约绿）：
-    - **① 数据层 `server/src/db/data.ts`**：`initDataTables` 两表 CREATE 加 `tags TEXT NOT NULL DEFAULT '[]'` + 末尾 idempotent migration（`PRAGMA table_info` + 条件 ALTER，两表循环，写在 data.ts 自己 init，不碰 db.ts）；`MemoryItemRow`/`MemoryReviewRow` 加 `tags: string`；**替换两处占位桩**（`rowToMemoryItem`/`rowToMemoryReview` 的 `tags: []` → `parseStringArray(r.tags)`）；新增 `normalizeTags()`（trim+去空+去重+保序+上限32）；create/patch/ingest 自动入库/insertReview/acceptReview 全链透传 tags（**采纳成 item 不丢标签**）。
-    - **② 路由 `server/src/routes/data.ts`**（D slot）：`parseMemoryItemInput` / PATCH route / `parseIngestBody` 三处 `asTagsArr(b.tags)` 透传（复用既有 helper）。
-    - **③ 检索 `server/src/memory-injection.ts`**：`SCORE_WEIGHTS` 重新归一加 `tagMatch`（0.4/0.18/0.17/0.12/0.13，和=1）；`RetrievalCandidate`+两converter+`ScoredCandidate.signals` 加 tags/tagMatch；`parseRequestedTags(ctx)` 从 `ctx.query` 抠 `前缀:值` token（RetrievalContext 冻结无 tags 字段，tag 信号一律 query 解析）；**结构化预过滤**（请求 tag 非空先按交集收窄候选池再打分）；snapshot meta 加 `requestedTagCount`。
-    - **④ 面板 `web/src/components/RulesPane.tsx`**：CreateDraft/EditDraft 加 `tags: string`；新增 `parseCsvTags`/`tagTone`（前缀分层着色）/`TagChip`；create+edit csv tags 输入；item+review card tag chips；type 列上方多选 tag 筛选 bar（AND + 清除）。
-    - **⑤ web api `web/src/lib/api/data.ts`**：create payload + update patch 加 `tags?: string[]`。
-    - **⑥ 测试 `server/src/memory-retrieval.test.ts`**：扩 5 tag 用例（round-trip / patch / review-accept 不丢标签 / 预过滤收窄 / 无前缀 query 不预过滤）。
-- 关键设计决策（详见正文「记忆 v2.0 缺口1：tags 分层标签」段）：
-  - **migration 写 data.ts 自己 init，不碰 db.ts**：项目无 MIGRATIONS 版本注册器（契约里"递增版本注册"是 aspirational），沿用 db.ts 既有 `PRAGMA table_info + ALTER` 范式。
-  - **tag 信号从 query 解析（非改 RetrievalContext）**：接缝层冻结，取"零接缝改动"路径，用户决策确认；显式 tags 等总控审定扩 RetrievalContext 再接。
-  - **SCORE_WEIGHTS 归一不破基线**：无 tag 信号 tagMatch=0，五维退化为原四维相对比例，既有 11 用例全过。
+  - **本期 D-MEM2-PREVIEW-TAGS 卡完成**（依赖 X-MEM2-CTX 契约绿：`RetrievalContext.tags` + 引擎 `filterTags` 硬过滤已就绪）：把「显式结构化精筛」在 RulesPane 注入预览区接通——用户在面板选 tag 即可看到「这些 tag 下会注入哪些记忆」（untagged / 非命中被硬过滤）。纯 D 域接线，接缝零触碰。
+    - **① 后端 `server/src/routes/data.ts` GET /memory/preview（:824）**：入参增 tags——复用既有 `readTagsQuery`（同文件 :1121，`?tag=a&tag=b` 重复参数范式）解析 `req.query.tag`；ctx 构造改为 `(query || tags.length) ? { query, tags } : undefined`，透传 `buildMemoryPrompt` → 引擎 `filterTags` 硬过滤。`itemCount` 由全量 `listEnabledMemoryItems().length` 改为**硬过滤后命中数**（OR 命中 `it.tags.some(t => tagSet.has(t))`，与引擎 :363 预过滤同向；**无显式 tags 时退回全量，行为不变**）。
+    - **② web api `web/src/lib/api/data.ts` previewMemoryPrompt（:233）**：options 加 `tags?: string[]`，按 `q.append("tag", t)` 重复参数拼接（同 `listPromptTemplates` 范式 :308）。
+    - **③ 面板 `web/src/components/RulesPane.tsx` 注入预览区**：新增「模拟检索」控件——独立 state `previewTags: Set<string>` + `previewQuery: string`；跨 type `allTags` memo（预览不分 type 取全量条目 tag）；`togglePreviewTag`；预览块内虚线框控件区（tag chips 硬过滤 + 可选 query 输入 boost + 清除按钮）；`refreshPreview` 带上 tags+query（变更即重拉，依赖数组加 `previewQuery`/`previewTags`）。
+- 关键设计决策（详见正文「记忆 v2.0 缺口1：tags 分层标签」段补记）：
+  - **预览 tag 用独立 state（`previewTags`），不复用列表 `tagFilter`**：卡里"强烈建议"复用列表 tagFilter 一套驱动列表+预览，但 `tagFilter`/`availableTags` 是 **activeTab type-scoped**（只在 constraint/experience/episode tab 有值），而注入预览**跨 type 全局**。复用会让选 tag 同时污染列表过滤、且 tag 集不全。取"独立控件 + 跨 type `allTags`"路径——更直观零耦合。否决"复用列表 filter"方案。
+  - **`itemCount` 硬过滤后命中数在 route 直算，不走 snapshot.sourceCount**：曾试 `buildMemoryInjectionSnapshot().sourceCount`，但 `sourceCount` 统计的是注入**部件/kind 数**（businessContext/rules/standards/cases/KG/memory_item 六类各算一），非单条 item 数，granularity 错。改为 route 内对 `listEnabledMemoryItems` 直接按 tagSet OR 过滤计数，与引擎 :363 同向、口径正确。
+  - **不碰 types 接缝**：`MemoryPromptPreview` 维持 5 字段，卡里"可选回带 requestedTagCount"会需要加字段碰 types → YAGNI 跳过，`itemCount` 下降已足够体现"选 tag→条目下降"。
 - 校验：
   - `npm run typecheck`（server+web）：✅ 0 错误
   - `npm run build`（web）：✅ 仅遗留 chunk size 警告（与本卡无关）
-  - `node --test src/memory-*.test.ts`：✅ **60/60 全过**（含新增 5 tag 用例）
-  - 数据探索 LLM 隔离 grep：✅ 0 命中（本卡未碰探索子树）
+  - `node --test src/memory-*.test.ts`：✅ **83/83 全过**（本卡未加测：preview tag 过滤逻辑薄，引擎 filterTags 已被既有用例覆盖）
+  - 数据探索 LLM 隔离 grep：✅ EXIT=1 无匹配（本卡未碰探索子树）
 - 下一步（接续优先级）：
-  - ① 本卡可选增强（YAGNI 暂不做）：显式 tags 进 RetrievalContext（需总控审接缝）、tag 自动补全/建议、按 tag 聚合统计、E-MEM2-DISTILL-TAG 蒸馏产出 tags（E 域）、tag 批量重命名/合并。
+  - ① 本卡可选增强（YAGNI 暂不做）：`requestedTagCount` 回带 + UI 显示「精筛前 N→后 M」（需总控审 types 扩 `MemoryPromptPreview`）；预览 tag 与列表 tagFilter 联动跳转（选列表 tag → 一键带入预览）；query 解析 tag 误命中收口（白名单前缀过滤，见开放问题）。
   - ② 上期遗留：`汇报版本数据可视化` 整条（X 契约未铺，需总控先审 types 双侧加 `datasetId? / chartSpecs?`）。
-  - ③ 长尾：`MemoryItemType` 加 `'fact'`、legacy 记忆路由合并、`cases` 子 tab 下线、KB 内联编辑、混合 tokenizer 拆 `text-search-tokenize.ts`、`listMemoryReviews` 分页、`RulesPane.tsx` 拆分（本卡又加 ~60 行，拆分压力略增）。
+  - ③ 长尾：`MemoryItemType` 加 `'fact'`、legacy 记忆路由合并、`cases` 子 tab 下线、KB 内联编辑、混合 tokenizer 拆 `text-search-tokenize.ts`、`listMemoryReviews` 分页、`RulesPane.tsx` 拆分（本卡又加 ~35 行，拆分压力略增）。
 - 阻塞 / 待总控：
-  - 无新阻塞。未碰任何接缝层骨架（`index.ts`/`db.ts`/`App.tsx`/`api.ts`/`constants.ts`/`types.ts` 真源全未碰）；`memory-injection.ts` 守 `buildMemoryInjectionSnapshot` 冻结签名（参数列表未改）。tags 双侧 types 由 X-MEM2-CONTRACT 既审定就位，本卡只消费。
+  - 无新阻塞。未碰任何接缝层骨架（`index.ts`/`db.ts`/`App.tsx`/`api.ts`/`constants.ts`/`types.ts` 真源全未碰）；`buildMemoryPrompt` 守冻结签名（仅消费已就绪的 `ctx.tags`，未改签名）。
 - 开放问题：
+  - **query 解析 tag 的误命中（上期遗留，仍未收）**：`前缀:值` 正则会把 query 里偶然的 `http://`、`时间:10点` 当 tag 信号；本卡预览的 query 输入框同样触发该 boost 解析。当前预过滤"有交集即留"，误命中 tag 若不在候选集则全被过滤 → 召回空（潜在坑）。**升级路径**：解析按软约定前缀白名单过滤（仅认 task/industry/method/data/problem:），或显式 tags 走 RetrievalContext（已就绪，本卡预览的硬过滤已用显式 tags 路径，boost query 仍走词法解析）。
   - **tag 软约定前缀是否硬约束**：当前自由 string、前缀仅软约定（着色+解析宽进任意 `x:y`）。契约明确"非硬枚举便于 LLM 蒸馏与未来收紧"，暂不收。
-  - **query 解析 tag 的误命中**：`前缀:值` 正则会把 query 里偶然的 `http://`、`时间:10点` 当 tag 信号；当前预过滤"有交集即留"，误命中 tag 若不在候选集则导致全被过滤 → 召回空（潜在坑）。**升级路径**：解析按软约定前缀白名单过滤（仅认 task/industry/method/data/problem:），或显式 tags 走扩展后 RetrievalContext。真实使用暴露再收。
-  - 上期遗留开放问题保留（见 git log 上一版 §0）。
+  - **预览精筛前后计数是否需可视化**：见下一步①，需总控审 types 扩字段决策。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -213,6 +210,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **SCORE_WEIGHTS 重新归一不破基线**：四维 0.45/0.2/0.2/0.15 → 五维 0.4/0.18/0.17/0.12/0.13（和=1）。**关键性质**：无 tag 信号时 tagMatch=0，五维退化为原四维的等比例缩放，相对排序不变——既有 11 个 ranking/governance 用例零修改全过。任何后续加打分维度都应保此性质（新维度在"无信号"时贡献 0，老用例才不破）。
 - **采纳成 item 不丢标签**：candidate→review→accept 三段路径全程透传 tags（`MemoryIngestInput.tags` → `insertMemoryReview` 落 review.tags → `acceptMemoryReview` 读 review.tags 传 createMemoryItem）。这是契约里 memory_reviews 也要加 tags 列的根因——否则采纳时标签断链。单测 `tags: review accept does not drop tags` 守此不变量。
 - **RulesPane tag UI 复用既有范式**：`parseCsvTags` 同 KnowledgeBasePane csv 范式；`tagTone` 按前缀着色（task紫/industry绿/method蓝/data琥珀/problem玫红/其余中性）；筛选 bar 多选 **AND** 语义（选中 tag 全命中才留），与检索预过滤的"交集"方向一致但前端是全包含、检索是有交集——两者口径不同是有意的（面板要精确收窄，检索要宽召回）。
+- **注入预览显式 tag 硬过滤 UI（D-MEM2-PREVIEW-TAGS, 2026-06-21）**：GET /memory/preview 入参增 `?tag=`（`readTagsQuery` 解析），ctx 透传 `{query, tags}` → 引擎 `filterTags` 走**显式 tags 路径**（非 query 词法解析），untagged/非命中被硬过滤。`itemCount` 改为硬过滤后命中数（route 内直算 `listEnabledMemoryItems` OR 过滤，**非** snapshot.sourceCount——后者是 kind 部件数 granularity 错）。面板预览区「模拟检索」控件用**独立 state**（`previewTags`/`previewQuery`）+ **跨 type `allTags`**，刻意不复用列表 `tagFilter`（那是 activeTab type-scoped，预览是跨 type 全局）。**两条 tag 路径并存**：预览硬过滤=显式 tags（精确）；boost query 输入框=仍走 query 词法解析（有上述误命中坑）。未碰 types（`MemoryPromptPreview` 维持 5 字段），`requestedTagCount` 回带留待总控审字段。
 
 ---
 

@@ -1,0 +1,53 @@
+{
+  "id": "audience-cluster",
+  "name": "人群分簇",
+  "version": "1.0.0",
+  "description": "基于业务规则的电商单品画像人群分簇工具（GenZ、成熟人群等）",
+  "entry": "main.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv", ""],
+    "modes": ["directory"]
+  },
+  "output": ["clusters.csv", "baseline.csv", "summary.csv", "audience_cluster_report.md"],
+  "parameters": [
+    {
+      "name": "top100_xlsx",
+      "label": "TOP100 总表 (可选)",
+      "type": "string",
+      "description": "包含商品ID、名称及GMV等指标的总表路径",
+      "required": false
+    },
+    {
+      "name": "genz_a_min",
+      "label": "A簇 GenZ 阈值",
+      "type": "number",
+      "default": 0.20,
+      "description": "A_GenZ主导簇的下限"
+    },
+    {
+      "name": "genz_b_min",
+      "label": "B簇 GenZ 阈值",
+      "type": "number",
+      "default": 0.13,
+      "description": "B_年轻白领簇的下限"
+    },
+    {
+      "name": "mature_d_min",
+      "label": "D簇成熟人群阈值",
+      "type": "number",
+      "default": 0.09,
+      "description": "D_成熟偏好簇的下限"
+    },
+    {
+      "name": "male_keyword",
+      "label": "男装独立款关键字",
+      "type": "string",
+      "default": "男",
+      "description": "匹配为 E_男装独立款"
+    }
+  ],
+  "riskLevel": "L0",
+  "allowedUse": "单品画像聚类、人群策略分析"
+}

@@ -1,0 +1,25 @@
+{
+  "id": "store-member-operation-analysis",
+  "name": "门店会员运营分析",
+  "version": "1.0.0",
+  "description": "门店会员运营分析 - 自动注册",
+  "entry": "main.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [
+      ".csv",
+      ".xlsx",
+      ".xls",
+      ".md",
+      ""
+    ],
+    "modes": [
+      "directory"
+    ]
+  },
+  "output": [
+    "*"
+  ],
+  "riskLevel": "L0"
+}
