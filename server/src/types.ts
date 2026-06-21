@@ -1483,10 +1483,14 @@ export interface MemoryPromptPreview {
 
 // 多信号检索入参：D-RETRIEVAL 实装打分召回。契约期冻结为注入函数末位可选参，
 // ctx 为 undefined 时注入行为不变（D 实装前的向后兼容）。
+// tags（X-MEM2-CTX）：调用方**刻意**的结构化作用域（如面板按 tag 筛选）。语义分层——
+//   显式 tags → 硬结构化预过滤（无交集即出局，含 untagged）+ tagMatch 加权；
+//   推断信号（query 前缀解析 / dataPaths→data:）→ 仅 tagMatch 加权，永不硬过滤（防自动注入清空召回）。
 export interface RetrievalContext {
   query: string;
   recentMessages?: string[];
   dataPaths?: string[];
+  tags?: string[];
 }
 
 // ---- analysis standards (指标体系) ----

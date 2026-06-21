@@ -714,6 +714,7 @@ export interface RetrievalContext {
   query: string;
   recentMessages?: string[];
   dataPaths?: string[];
+  tags?: string[]; // 显式结构化作用域（硬预过滤）；推断信号仅 boost，见 server/types.ts 说明
 }
 
 export type BusinessContextCategory = "org" | "status" | "glossary" | "constraint" | "history" | "goal";

@@ -90,6 +90,8 @@ import { standardDirIn } from "../workspace-dirs.ts";
 import { readWorkflow, runMultiAgent, topoOrder } from "../multi-agent-runner.ts";
 import { runPiPrompt, runPiTurn } from "../pi-adapter.ts";
 import { fireMemoryConsolidation, postMemoryCandidateToDIngest, runMemoryConsolidation, type MemoryConsolidationTargetKind } from "../memory-consolidation.ts";
+import { runMemoryMaintenance } from "../memory-maintenance.ts";
+import { DEFAULT_MEMORY_SKILL_THRESHOLDS, fetchMemoryExperiences, runMemoryToSkillPromotion, type MemorySkillThresholds } from "../memory-to-skill.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
 import type { ClientMessage, Flow, PiEvent, RetrievalContext, Session } from "../types.ts";
@@ -778,9 +780,17 @@ function buildFlowMemoryRetrievalContext(flowId: string, query: string): Retriev
       const text = flowMessageText(message.content).trim();
       return text ? [`${message.role}: ${text}`] : [];
     });
+  // X-MEM2-CTX：flow 名下 clean_data 文件路径 → data:<stem> 检索 boost 信号（不参与硬过滤）。
+  const flow = getFlow(flowId);
+  const dataPaths = flow
+    ? listWorkspacePaths(flow.workspaceId, "clean_data", undefined, flowId)
+        .filter((p) => p.kind === "file")
+        .map((p) => p.path)
+    : [];
   return {
     query: query.trim(),
     ...(recentMessages.length > 0 ? { recentMessages } : {}),
+    ...(dataPaths.length > 0 ? { dataPaths } : {}),
   };
 }
 
@@ -1433,6 +1443,52 @@ engineRouter.get("/api/workspaces/:id/sessions/:sessionId/consolidation-count", 
   res.json({ count: countSessionConsolidations(workspace.id, session.id) });
 });
 
+// 记忆 v2.0 缺口3 · Dream Worker 手动触发：纯算术维护(升/降 confidence、老化退役)。
+// dryRun=true 只返回拟调整明细不落库；供面板按钮/手动跑（搭车触发已在 fireMemoryConsolidation）。
+engineRouter.post("/api/workspaces/:id/memory/maintain", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const dryRun = (req.body as { dryRun?: unknown } | null)?.dryRun === true;
+  try {
+    res.json(runMemoryMaintenance({ workspaceId: workspace.id, dryRun }));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+// 记忆 v2.0 缺口4：把 Dream Worker 提纯后的高频 experience 聚类升级为 skill candidate。
+// 记忆读取只走 D API；dryRun 不调 LLM、不写 registry；正式执行复用既有 skill distillation + candidate 门禁。
+engineRouter.post("/api/workspaces/:id/memory/promote-skills", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseMemorySkillPromotionBody(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const result = await runMemoryToSkillPromotion({
+      workspaceId: workspace.id,
+      dryRun: parsed.value.dryRun,
+      thresholds: parsed.value.thresholds,
+      maxPromotions: parsed.value.maxPromotions,
+      listExperiences: (workspaceId) => fetchMemoryExperiences(requestBaseUrl(req), workspaceId),
+      distillCluster: (cluster, transcript) => distillSkillCandidate({
+        workspaceId: workspace.id,
+        workspaceRoot: workspace.rootPath,
+        transcript,
+        model: parsed.value.model,
+        timeoutMs: parsed.value.timeoutMs,
+        duplicateThreshold: parsed.value.duplicateThreshold,
+        dryRun: false,
+        originSessionId: null,
+        usageTargetId: `memory-cluster:${cluster.tag}`,
+        usageTitle: `记忆升级 Skill：${cluster.tag}`,
+      }),
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
 engineRouter.post("/api/workspaces/:id/sessions/:sessionId/consolidate-trace", async (req, res) => {
   const workspace = getWorkspace(req.params.id);
   if (!workspace) return res.status(404).json({ error: "workspace not found" });
@@ -1841,6 +1897,20 @@ type ParsedMemoryConsolidation =
   }
   | { ok: false; error: string };
 
+type ParsedMemorySkillPromotion =
+  | {
+    ok: true;
+    value: {
+      dryRun: boolean;
+      model?: string;
+      timeoutMs: number;
+      duplicateThreshold: number;
+      maxPromotions: number;
+      thresholds: MemorySkillThresholds;
+    };
+  }
+  | { ok: false; error: string };
+
 function parseSkillAutoDistillBody(body: unknown): ParsedSkillAutoDistill {
   const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
   const now = Date.now();
@@ -1931,6 +2001,50 @@ function parseMemoryConsolidationBody(body: unknown): ParsedMemoryConsolidation 
       timeoutMs,
       maxCandidates,
       ingestPath,
+    },
+  };
+}
+
+function parseMemorySkillPromotionBody(body: unknown): ParsedMemorySkillPromotion {
+  const raw = typeof body === "object" && body !== null ? body as Record<string, unknown> : {};
+  const timeoutMs = raw.timeoutMs === undefined ? 180_000 : Number(raw.timeoutMs);
+  if (!Number.isInteger(timeoutMs) || timeoutMs < 10_000 || timeoutMs > 600_000) {
+    return { ok: false, error: "timeoutMs must be an integer between 10000 and 600000" };
+  }
+  const duplicateThreshold = raw.duplicateThreshold === undefined ? 50 : Number(raw.duplicateThreshold);
+  if (!Number.isFinite(duplicateThreshold) || duplicateThreshold <= 0) return { ok: false, error: "duplicateThreshold must be positive" };
+  const maxPromotions = raw.maxPromotions === undefined ? 5 : Number(raw.maxPromotions);
+  if (!Number.isInteger(maxPromotions) || maxPromotions < 1 || maxPromotions > 10) {
+    return { ok: false, error: "maxPromotions must be an integer between 1 and 10" };
+  }
+  const thresholds: MemorySkillThresholds = {
+    highConfidence: raw.highConfidence === undefined ? DEFAULT_MEMORY_SKILL_THRESHOLDS.highConfidence : Number(raw.highConfidence),
+    minHighConfidenceItems: raw.minHighConfidenceItems === undefined ? DEFAULT_MEMORY_SKILL_THRESHOLDS.minHighConfidenceItems : Number(raw.minHighConfidenceItems),
+    minUsedCount: raw.minUsedCount === undefined ? DEFAULT_MEMORY_SKILL_THRESHOLDS.minUsedCount : Number(raw.minUsedCount),
+    minPositiveSignals: raw.minPositiveSignals === undefined ? DEFAULT_MEMORY_SKILL_THRESHOLDS.minPositiveSignals : Number(raw.minPositiveSignals),
+  };
+  if (!Number.isFinite(thresholds.highConfidence) || thresholds.highConfidence < 0 || thresholds.highConfidence > 1) {
+    return { ok: false, error: "highConfidence must be between 0 and 1" };
+  }
+  if (!Number.isInteger(thresholds.minHighConfidenceItems) || thresholds.minHighConfidenceItems < 1 || thresholds.minHighConfidenceItems > 20) {
+    return { ok: false, error: "minHighConfidenceItems must be an integer between 1 and 20" };
+  }
+  if (!Number.isInteger(thresholds.minUsedCount) || thresholds.minUsedCount < 0 || thresholds.minUsedCount > 100_000) {
+    return { ok: false, error: "minUsedCount must be an integer between 0 and 100000" };
+  }
+  if (!Number.isInteger(thresholds.minPositiveSignals) || thresholds.minPositiveSignals < 0 || thresholds.minPositiveSignals > 100_000) {
+    return { ok: false, error: "minPositiveSignals must be an integer between 0 and 100000" };
+  }
+  const model = String(raw.model ?? "").trim() || undefined;
+  return {
+    ok: true,
+    value: {
+      dryRun: raw.dryRun !== false,
+      model,
+      timeoutMs,
+      duplicateThreshold,
+      maxPromotions,
+      thresholds,
     },
   };
 }
@@ -2055,7 +2169,7 @@ function parseSkillCoverageGapTask(value: unknown): SkillCoverageGapCluster["tas
   };
 }
 
-async function distillSkillCandidate(input: {
+export async function distillSkillCandidate(input: {
   workspaceId: string;
   workspaceRoot: string;
   transcript: string;
@@ -2066,21 +2180,25 @@ async function distillSkillCandidate(input: {
   originSessionId: string | null;
   usageTargetId: string;
   usageTitle: string;
+  distillText?: (prompt: string) => Promise<string>;
 }): Promise<DistillCandidateResult> {
   try {
-    const rawOutput = await runPiPrompt({
-      workspaceRoot: input.workspaceRoot,
-      text: buildSkillDistillationPrompt(input.transcript),
-      model: input.model,
-      systemPrompt: SKILL_DISTILL_SYSTEM_PROMPT,
-      timeoutMs: input.timeoutMs,
-      onEvent: (event) => trackUsageEvent({
-        workspaceId: input.workspaceId,
-        targetKind: "session",
-        targetId: input.usageTargetId,
-        title: input.usageTitle,
-      }, event),
-    });
+    const prompt = buildSkillDistillationPrompt(input.transcript);
+    const rawOutput = input.distillText
+      ? await input.distillText(prompt)
+      : await runPiPrompt({
+        workspaceRoot: input.workspaceRoot,
+        text: prompt,
+        model: input.model,
+        systemPrompt: SKILL_DISTILL_SYSTEM_PROMPT,
+        timeoutMs: input.timeoutMs,
+        onEvent: (event) => trackUsageEvent({
+          workspaceId: input.workspaceId,
+          targetKind: "session",
+          targetId: input.usageTargetId,
+          title: input.usageTitle,
+        }, event),
+      });
     const content = extractSkillMarkdown(rawOutput);
     const name = parseSkillName(content) ?? "";
     const description = parseSkillDescription(content);

@@ -258,38 +258,60 @@ const TASKS = [
 · build 绿占位桩(总控加)：db/data.ts rowToMemoryItem:213 + rowToMemoryReview:592 各加 \`tags: []\` 注释桩(标 X-MEM2-CONTRACT)，D-MEM2-TAG 加列后替换为 parseStringArray(r.tags)。
 · 门禁：server tsc 净(唯一报错 saveToolEvaluation@eval-set-api-smoke.test 为既有实验场在途问题,非本卡)、web tsc 净、web build 绿、记忆测试 55/55。**D/E 实装卡可开工。**` },
 
-  { dom: "D", status: "todo", created: "2026-06-21 16:01", title: "【记忆v2.0·缺口1·数据+检索+面板】tags 列 migration + CRUD 读写 + 检索 tag 维度 + 面板筛选", brief:
+  { dom: "D", status: "done", created: "2026-06-21 16:01", title: "【记忆v2.0·缺口1·数据+检索+面板】tags 列 migration + CRUD 读写 + 检索 tag 维度 + 面板筛选", brief:
 `来源：记忆 v2.0 缺口1 实装侧。依赖 X-MEM2-CONTRACT 契约绿。约束：不碰接缝层(types/index/db 注册表/constants)，memory-injection.ts 守 X-CONTRACT 冻结签名，自带门禁绿。
 落点：
 1. db/data.ts：按契约口径给 **memory_items 与 memory_reviews 两张表**各加列 \`tags TEXT NOT NULL DEFAULT '[]'\` migration(递增版本注册 MIGRATIONS，总控审 SQL)；MemoryItemRow/MemoryReviewRow 加 tags 字段；**替换两处占位桩**(rowToMemoryItem ~213 / rowToMemoryReview ~592 的 \`tags: []\` 改为 parseStringArray(r.tags))；create/list/列级 patch CRUD 读写 tags(JSON parse/stringify)；MemoryIngestInput 加 tags + ingest 自动入库(createMemoryItem)与入 review(insertMemoryReview)、review 采纳成 item 三处透传 tags。
 2. memory-injection.ts 检索打分：在现有多信号(relevance/recency/feedback/typePriority)叠加 **tagMatch 维度**——RetrievalContext 可带 query 解析出的 tag 信号或显式 tags，命中候选 tag 加权；并支持**结构化预过滤**(指定 tag 时先按 tag 收窄候选池再打分，对齐「SQL 精筛为主」)。SCORE_WEIGHTS 重新归一(给 tagMatch 分权重，不破坏既有用例基线则微调)；snapshot 每条 signals 增 tagMatch。
 3. RulesPane(统一记忆面板)：列表展示 tags(分层着色)、按 tag 筛选/多选过滤、编辑时增删 tag；review 队列候选展示其 tags。
 验收：tags 落库读取正确(含 review→采纳不丢标签)；检索按 tag 精筛+加权可复现(单测覆盖 tag 命中收窄+打分)；面板可筛/可编辑；memory-retrieval.test.ts 扩 tag 用例；server+web typecheck/build 绿、数据探索红线 grep 净。
-契约已绿(X-MEM2-CONTRACT done)：types 双侧 tags 字段就位、占位桩待替换、memory_reviews 加列口径见 types.ts 契约注释块。可开工。` },
+契约已绿(X-MEM2-CONTRACT done)：types 双侧 tags 字段就位、占位桩待替换、memory_reviews 加列口径见 types.ts 契约注释块。可开工。
+✅ 总控终审通过（2026-06-21，含 1 收敛）：6 文件均 D slot、接缝层零触碰(types/db.ts/index.ts/constants 工作树无 diff)、buildMemoryInjectionSnapshot 冻结签名未变、占位桩已替换 parseStringArray(r.tags)、两表 tags 列(PRAGMA+ALTER 幂等，项目无 MIGRATIONS 注册器故未用版本号)、ingest/review/采纳三处透传、SCORE_WEIGHTS 五维和=1.0(tagMatch=0 时不破基线·61 测试坐实)。门禁实跑：server+web typecheck/build 绿、memory 61/61、数据探索红线 grep 净(draw_data 仅注释/403 守门)。
+🔧 总控收敛(1)：D 自报开放坑「query 误命中 http:// / 时间: 当 tag→预过滤清空召回」——研判：中文前缀因 \`[a-z_]+\` 实际不命中(D 过虑)，但 \`https://\`、英文 \`word:value\` 真会命中并静默清空召回(绿门禁≠功能可用)。已把 parseRequestedTags 前缀限定到软分层白名单 (task|industry|method|data|problem)，补回归测试「spurious url 不清空召回」(61 测试含此条)。显式 tags 仍走 X-MEM2-CTX。` },
 
-  { dom: "E", status: "todo", created: "2026-06-21 16:02", title: "【记忆v2.0·缺口1·蒸馏侧】consolidation prompt 产出分层 tags + 候选带 tags 过门禁", brief:
+  { dom: "E", status: "done", created: "2026-06-21 16:02", title: "【记忆v2.0·缺口1·蒸馏侧】consolidation prompt 产出分层 tags + 候选带 tags 过门禁", brief:
 `来源：记忆 v2.0 缺口1 蒸馏侧。依赖 X-MEM2-CONTRACT。约束：不碰接缝层与他域 slot，调 D 数据走 API 不直 import，自带门禁绿。
 落点：
 1. memory-consolidation.ts 蒸馏 prompt 的【输出 JSON schema】(现含 type/title/body/scope/confidence)新增 \`tags: string[]\`，prompt 指引按 5 层软约定打 3~5 个分层 tag(task:/industry:/method:/data:/problem:)；解析候选时回填 tags 到 MemoryCandidate(robust parse，缺失给 [])。
 2. 候选 POST 到 D 的 /memory/ingest 时带 tags(门禁/dedup 不因 tags 改判，仅透传入库)。
-验收：trace→候选蒸馏产出带分层 tags、畸形/缺失 tags 不崩(给空)；memory-consolidation.test.ts 加 tag 产出用例；POST ingest 透传 tags；门禁全绿、接缝零触碰。` },
+验收：trace→候选蒸馏产出带分层 tags、畸形/缺失 tags 不崩(给空)；memory-consolidation.test.ts 加 tag 产出用例；POST ingest 透传 tags；门禁全绿、接缝零触碰。
+✅ 总控终审通过（2026-06-21，一次过无收敛）：仅碰 memory-consolidation.ts(+test)+notes-engine，接缝/他域零触碰。prompt schema 加 tags + 指引 3~5 个分层 tag；robust parse asStringArray(非数组→[]·滤空/非串·trim)缺失不崩；POST body \`{...candidate}\` 展开透传 tags，E→D 接缝闭合(routes/data.ts:709 asTagsArr(b.tags) 读取入库)。门禁实跑：server tsc 净、consolidation 8/8、memory 全量 62/62、红线净。**缺口1 三段(X-CONTRACT/D-TAG/E-DISTILL-TAG)全 done；X-MEM2-CTX 依赖已就绪，可开工。**` },
 
-  { dom: "E", status: "todo", created: "2026-06-21 16:03", title: "【记忆v2.0·缺口3·Dream Worker】离线维护：主动写回 confidence + 主动降权/标 stale", brief:
+  { dom: "X", status: "done", created: "2026-06-21 17:00", title: "【记忆v2.0·缺口1·检索增强】X-MEM2-CTX：RetrievalContext 加 tags + 注入点产结构化 tag 查询（方案2 正解）", brief:
+`来源：D-MEM2-TAG 检索侧先走方案1(从 ctx.query 抓 task:/industry:/method:/data:/problem: 前缀 token 作机会性 tagMatch，零接缝)。但方法论「结构化精筛」的正解是显式结构化 tag 查询——自动注入链路的 query 是用户大白话、几乎不含前缀，方案1 的 tagMatch 真实命中近零(总控研判 2026-06-21)。本卡把方案1 升级为结构化召回(接缝改动，口径总控持有)。
+依赖：D-MEM2-TAG(tags 已落库可被过滤 + 方案1 基线) + E-MEM2-DISTILL-TAG(记忆带 tag 才有可筛对象)。两者绿后开工。
+范围(跨域·子项归属标注)：
+1. [X·契约] types.ts 双侧 RetrievalContext 加 \`tags?: string[]\`(显式结构化查询条件)；冻结签名，对齐既有「ctx 末位可选」原则、缓存稳定前缀不变。
+2. [X·自做] index.ts chat 注入点(:5214/:5252 一带)产结构化 tag：从当前任务/dataPaths 推断(data: 由数据文件名映射、task:/method: 由 query 关键词→tag 词典映射)，填入 ctx.tags。
+3. [→E] routes/engine.ts flow 注入点(buildFlowMemoryRetrievalContext 等)同样产 ctx.tags。
+4. [→D] memory-injection.ts：ctx.tags 存在时先按 tag 结构化预过滤收窄候选池(对齐「SQL 精筛为主」)，再多信号打分；tagMatch 正式进 SCORE_WEIGHTS 并重新归一(替换方案1 的机会性 query 前缀解析)。
+验收：显式 ctx.tags 能结构化收窄候选池+加权、召回少而准；无 tags 时退回词法行为不破坏；缓存稳定前缀不回退；门禁全绿 + baseline/memory 对照可见 tag 精筛增益。
+✅ 总控自做 done（2026-06-21）。**关键设计修正(总控研判)**：原计划「注入点自动产 tag→硬预过滤」有致命坑——记忆多数未打 tag 时，任一推断/spurious tag 会把 untagged 候选全部剔出、静默清空召回(同 URL 坑同源、更广)。故定**语义分层**：① 显式 ctx.tags(调用方刻意作用域，如面板按 tag 筛)→硬预过滤+boost；② 推断信号(query 前缀解析 / dataPaths→data:)→**仅 tagMatch boost，永不硬过滤**。
+交付：① [契约] RetrievalContext 加 \`tags?: string[]\` 双侧(末位可选、签名冻结)。② [memory-injection] deriveTags()→{filterTags(显式·硬过滤), boostTags(显式∪query前缀∪dataPaths→data:·打分)}；parseRequestedTags 拆为 parseQueryTags+dataPathTags；meta 加 boostTagCount。③ [flow] buildFlowMemoryRetrievalContext 接 flow clean_data 路径→dataPaths(data: boost)。④ chat 注入点保持 query-only(前缀 boost 自动生效；显式 tags 不自动设以防清空)——dataPaths boost 因 fork/path 逻辑微妙留 trivial 后续。⑤ 显式 tags 硬过滤的首个消费者(面板 /memory/preview 传 tags)留小后续。
+门禁实跑：server tsc 净、web tsc+build 绿、memory 64/64(新增 3 tag 语义测试：显式硬过滤 / query 前缀只 boost 不清空 untagged / dataPaths→data: boost)、接缝双侧对齐。**缺口1 全链(契约+数据+检索+蒸馏+检索增强)完成。**` },
+
+  { dom: "E", status: "done", created: "2026-06-21 16:03", title: "【记忆v2.0·缺口3·Dream Worker】离线维护：主动写回 confidence + 主动降权/标 stale", brief:
 `来源：记忆 v2.0 缺口3——现 pos/negSignals 与 staleAfterDays 仅在检索期被动当 feedback/recency 维度用，**不主动写回 confidence、无离线降权 worker**，记忆库质量分布不会自我提纯。本卡补离线 Dream 维护任务(对齐方法论 Dream 的升级/降级/老化三件事；去重/废弃/合并现已由 dedup+supersede+validUntil 覆盖)。
-约束：不碰接缝层，调 D 数据走 API(不直 import db)，不接 index.ts session 钩子(避免接缝)，自带门禁绿。
+约束：不碰接缝层(含 index.ts)，调 D 数据走 API(不直 import db)，自带门禁绿。**纯算术、零 LLM、零 token**(区别于 fireMemoryConsolidation 调 pi)。
+触发(用户决策 2026-06-21=搭车完成钩子)：**折叠进 fireMemoryConsolidation 尾部**——沉淀(产记忆)完成后顺带 fire-and-forget 跑一次 maintain(养记忆)。session(index.ts)/flow(engine.ts) 两个现有触发点因此自动都带上，**index.ts 零改、接缝零触碰**(关键：不新增 index.ts 调用点，靠内聚到 consolidation.ts 实现搭车)。加**轻量节流**：每 workspace 记上次 maintain 时间(内存 Map 即可)，距上次 < N 分钟则跳过，避免高频任务全表重扫。
 落点：
 1. 新建 memory-maintenance.ts(仿 memory-consolidation.ts 的 DI+dryRun 范式)：遍历 workspace memory_items，按规则计算调整——①升级：pos 显著>neg 且 usedCount 达阈值→上调 confidence(封顶 1)；②降级：neg≥pos 或长期未用(lastUsedAt 超 staleAfterDays)→下调 confidence；③标 stale：超期未用且低 confidence→建议 supersede/expire(不物理删，可审计)。纯函数算调整量，落库走 D 的列级 patch API。
-2. routes/engine.ts：手动触发端点 POST /api/workspaces/:id/memory/maintain(dryRun 可选，返回拟调整明细)；可选 env 门控的周期触发(默认关，复用现有 flow/session 完成钩子之外的独立调度，不改 index.ts)。
-验收：Dream worker 按规则产出升/降/stale 调整、dryRun 出明细不落库、实跑经 D API 写回 confidence/状态；memory-maintenance.test.ts 覆盖三类规则；不破坏检索(质量提纯后 baseline vs memory 对照可验证);门禁全绿、接缝零触碰。` },
+2. memory-consolidation.ts：fireMemoryConsolidation 成功尾部调 fireMemoryMaintenance(node 节流 Map)；不改 index.ts/engine.ts 现有调用点。
+3. routes/engine.ts：手动触发端点 POST /api/workspaces/:id/memory/maintain(dryRun 可选，返回拟调整明细)，供面板按钮/手动跑。
+验收：Dream worker 按规则产出升/降/stale 调整、dryRun 出明细不落库、实跑经 D API 写回 confidence/状态；搭车触发节流生效(短时间内多次完成只跑一次)；memory-maintenance.test.ts 覆盖三类规则+节流；不破坏检索(质量提纯后 baseline vs memory 对照可验证)；门禁全绿、接缝(含 index.ts)零触碰。
+✅ 总控自做 done（2026-06-21）。交付：① 新建 memory-maintenance.ts——纯函数 computeMaintenancePlan(三规则·至多一动作·优先级 retire>demote>promote·跳过已退役) + runMemoryMaintenance(DI·dryRun) + fireMemoryMaintenance(节流 Map·默认 5min·resetMaintenanceThrottle 测试钩子)。② 搭车：fireMemoryConsolidation .then 尾部调 fireMemoryMaintenance(index.ts 零改、接缝零触碰)。③ routes/engine.ts POST /memory/maintain(dryRun)手动端点。
+实现决策：·「标 stale」=patch validUntil=now（软退役、isExpired 不召回、可审计，不物删）。·DI 默认绑 db **in-process 直调**(listMemoryItems/updateMemoryItem)，**非 self-HTTP**——比 consolidation 的 HTTP ingest 更稳，吸取 V-OBS 自死锁教训。·纯算术零 LLM 零 token。
+门禁实跑：server tsc 净、memory 全量 75/75(新增 maintenance 11)、V-OBS 自检无 execSync/spawn/fetch、红线净、接缝(types/db.ts/index.ts/constants)零触碰。小后续：面板「立即维护」按钮接 /memory/maintain + dryRun 预览。` },
 
-  { dom: "E", status: "todo", created: "2026-06-21 16:04", title: "【记忆v2.0·缺口4·记忆→skill 连线】高频 experience 聚类 → skill 候选进实验场复核", brief:
+  { dom: "E", status: "done", created: "2026-06-21 16:04", title: "【记忆v2.0·缺口4·记忆→skill 连线】高频 experience 聚类 → skill 候选进实验场复核", brief:
 `来源：记忆 v2.0 缺口4(高价值)——consolidation(产记忆)与 skill-distillation/实验场 labs(评测 skill)两端齐备，独缺「高频经验聚类→升级 skill」连线，这是现成资产能低成本接通的最高 ROI 缺口。
 约束：不碰接缝层，调 D 记忆走 API、复用 skill-distillation.ts 管道与 skill-registry 端点，自带门禁绿。依赖 缺口1 tag(聚类维度) + 建议 E-MEM2-DREAM 后做(用提纯后的 confidence/usedCount 作聚类信号)。
 落点：
 1. 新建 memory-to-skill.ts：读 D 的 memory_items，按 \`tag(method:/task:)+type=experience\` 聚类，命中阈值(同簇高 confidence experience 数≥N 且累计 usedCount/positiveSignals 达标)→判定可升级。
 2. 复用 skill-distillation.ts(buildSkillDistillationPrompt/distillSkillCandidate/extractSkillMarkdown/slugifySkillName)把簇内经验合成 skill 候选 markdown；不直接注册，投到 **skill-registry 复核**(routes/engine.ts:1298 POST skill-registry 或先入 review，复用现有 conflicts 检测 1060)，由人工/实验场 lab 评测后采纳。
 3. routes/engine.ts：触发端点 POST /api/workspaces/:id/memory/promote-skills(dryRun 列候选簇)；产出的 skill 候选走实验场评测闭环(对齐方法论「升级 Skill→评测反哺」)。
-验收：构造一组同 method tag 的高频 experience→聚类命中→产出 skill 候选 markdown→进 registry/review 不自动启用；dryRun 列簇与理由；memory-to-skill.test.ts 覆盖聚类阈值+候选生成；门禁全绿、接缝零触碰、复用 skill-distillation 无复刻。` },
+验收：构造一组同 method tag 的高频 experience→聚类命中→产出 skill 候选 markdown→进 registry/review 不自动启用；dryRun 列簇与理由；memory-to-skill.test.ts 覆盖聚类阈值+候选生成；门禁全绿、接缝零触碰、复用 skill-distillation 无复刻。
+✅ 总控终审通过（2026-06-21，一次过无收敛）：新建 memory-to-skill.ts(analyzeMemorySkillClusters 纯函数·method:优先 task:兜底聚类·跳过 retired·三阈值 highConfidence≥3/usedCount≥6/positiveSignals≥3·DI listExperiences+distillCluster·dryRun) + routes POST /memory/promote-skills。**复用无复刻**：distillCluster 绑既有 distillSkillCandidate(buildSkillDistillationPrompt 管道)。**不自动启用**：落库 status="candidate"(非 enabled)，有专测「writes a candidate registry entry without auto-activating」坐实；带 dedup(findAutoDistillDuplicate)。门禁实跑：server tsc 净、memory-to-skill 8/8(含 HTTP 集成 dryRun)、memory 全量 83/83、红线净、V-OBS 自检无 execSync/spawnSync(listExperiences 用 async fetch self-HTTP，同 consolidation 范式、非热路径)、接缝零触碰。小后续：实验场 lab 接 promote-skills 产物做评测闭环 + 面板「升级 Skill」入口。**【记忆 v2.0 缺口1/3/4 全部完成；缺口2 向量层按既定暂缓】。**` },
 
   // ════ 【控制·实验场改造】持续性项目（总控拆卡 2026-06-20）。派发书 docs/实验场改造-任务派发.md。4 占位 lab→对齐 skill/tool 完整测评；prompts 起步。X-LAB0 契约先行，逐期为 E 解契约。════
   { dom: "X", status: "done", created: "2026-06-20 15:30", title: "【实验场·X-LAB0】四期共用 eval 接缝契约 + db 表审批 + 路由位（贯穿）", brief:

@@ -55,11 +55,14 @@ const DEFAULT_SELECTION_POLICY: MemorySelectionPolicy = {
 };
 
 // ─── 多信号打分权重（D-RETRIEVAL 阶段1 内置；后续可经 policy 注入）────────
+// 记忆 v2.0 缺口1：加 tagMatch 维度（结构化精筛），权重重新归一（和=1.0）。
+// 无 tag 信号时 tagMatch=0，五维退化为原四维相对比例，既有 ranking 基线不破。
 const SCORE_WEIGHTS = {
-  relevance: 0.45,
-  recency: 0.2,
-  feedback: 0.2,
-  typePriority: 0.15,
+  relevance: 0.4,
+  recency: 0.18,
+  feedback: 0.17,
+  typePriority: 0.12,
+  tagMatch: 0.13,
 } as const;
 
 // type 优先级（约束 > 事实 > 经验 > 情景），归一化到 [0,1]
@@ -144,12 +147,67 @@ function feedbackScore(pos: number, neg: number): number {
   return Math.max(0, Math.min(1, (raw + 1) / 2));
 }
 
+// 记忆 v2.0 缺口1：tag 命中评分 = 候选 tag ∩ 请求 tag / |请求 tag|，归一 [0,1]。
+// 请求 tag 为空时返回 0（tagMatch 维度自然退化，不影响无 tag 检索的基线）。
+function tagMatchScore(candidateTags: string[], requestedTags: Set<string>): number {
+  if (requestedTags.size === 0 || candidateTags.length === 0) return 0;
+  let hit = 0;
+  for (const t of candidateTags) if (requestedTags.has(t)) hit++;
+  return hit / requestedTags.size;
+}
+
+// X-MEM2-CTX · tag 信号分层（防自动注入清空召回）：
+//   filterTags = 显式 ctx.tags（调用方刻意结构化作用域，如面板按 tag 筛）→ 硬预过滤；
+//   boostTags  = filterTags ∪ query 前缀解析 ∪ dataPaths→data: → 仅 tagMatch 加权。
+// 推断信号绝不进硬过滤：否则记忆多数未打 tag 时，一个 spurious/推断 tag 会把 untagged
+// 候选全部剔出、静默打空召回（同 URL 坑同源，总控研判 2026-06-21）。
+interface DerivedTags {
+  filterTags: Set<string>; // 硬预过滤（仅显式）
+  boostTags: Set<string>;  // tagMatch 打分（显式 + 推断）
+}
+
+// 从 query 解析 `前缀:值` 形态 token。前缀限白名单 (task/industry/method/data/problem)，
+// 避免 `https://…`、英文 `word:value` 被误判为 tag（总控终审收敛 2026-06-21）。
+function parseQueryTags(query: string | undefined): string[] {
+  if (!query) return [];
+  const out: string[] = [];
+  for (const m of query.matchAll(/(?:^|\s)((?:task|industry|method|data|problem):[^\s，。；,;]+)/gi)) {
+    const tag = m[1]?.trim();
+    if (tag) out.push(tag);
+  }
+  return out;
+}
+
+// dataPaths → data:<文件名 stem>（小写，去扩展名），作为 boost 信号。
+function dataPathTags(dataPaths: string[] | undefined): string[] {
+  if (!dataPaths?.length) return [];
+  const out: string[] = [];
+  for (const p of dataPaths) {
+    const base = p.split(/[\\/]/).pop()?.replace(/\.[^.]+$/, "").trim().toLowerCase();
+    if (base) out.push(`data:${base}`);
+  }
+  return out;
+}
+
+function deriveTags(ctx: RetrievalContext | undefined): DerivedTags {
+  const filterTags = new Set<string>();
+  for (const t of ctx?.tags ?? []) {
+    const tag = typeof t === "string" ? t.trim() : "";
+    if (tag) filterTags.add(tag);
+  }
+  const boostTags = new Set<string>(filterTags);
+  for (const t of parseQueryTags(ctx?.query)) boostTags.add(t);
+  for (const t of dataPathTags(ctx?.dataPaths)) boostTags.add(t);
+  return { filterTags, boostTags };
+}
+
 // ─── memory_item 候选：MemoryItem(constraint/experience/episode) ∪ ProjectedFactItem ───
 type RetrievalCandidate = {
   id: string;
   type: "constraint" | "experience" | "episode" | "fact";
   title: string;
   body: string;
+  tags: string[];
   updatedAt: number;
   positiveSignals: number;
   negativeSignals: number;
@@ -167,6 +225,7 @@ function memoryItemToCandidate(m: MemoryItem): RetrievalCandidate {
     type: m.type,
     title: m.title,
     body: m.body,
+    tags: m.tags,
     updatedAt: m.updatedAt,
     positiveSignals: m.positiveSignals,
     negativeSignals: m.negativeSignals,
@@ -184,6 +243,7 @@ function factToCandidate(f: ProjectedFactItem): RetrievalCandidate {
     type: "fact",
     title: f.title,
     body: f.body,
+    tags: [],
     updatedAt: f.updatedAt,
     positiveSignals: 0,
     negativeSignals: 0,
@@ -198,7 +258,7 @@ function factToCandidate(f: ProjectedFactItem): RetrievalCandidate {
 
 type ScoredCandidate = RetrievalCandidate & {
   score: number;
-  signals: { relevance: number; recency: number; feedback: number; typePriority: number };
+  signals: { relevance: number; recency: number; feedback: number; typePriority: number; tagMatch: number };
 };
 
 function isExpired(c: RetrievalCandidate, now: number): boolean {
@@ -227,18 +287,20 @@ function buildSupersededIds(items: MemoryItem[]): Set<string> {
   return out;
 }
 
-function scoreCandidate(c: RetrievalCandidate, queryTokens: Set<string>, now: number): ScoredCandidate {
+function scoreCandidate(c: RetrievalCandidate, queryTokens: Set<string>, requestedTags: Set<string>, now: number): ScoredCandidate {
   const targetTokens = tokenize(`${c.title} ${c.body}`);
   const relevance = relevanceScore(queryTokens, targetTokens);
   const recency = recencyScore(c.updatedAt, now);
   const feedback = feedbackScore(c.positiveSignals, c.negativeSignals);
   const typePriority = TYPE_PRIORITY[c.type] ?? 0.4;
+  const tagMatch = tagMatchScore(c.tags, requestedTags);
   const score =
     SCORE_WEIGHTS.relevance * relevance +
     SCORE_WEIGHTS.recency * recency +
     SCORE_WEIGHTS.feedback * feedback +
-    SCORE_WEIGHTS.typePriority * typePriority;
-  return { ...c, score, signals: { relevance, recency, feedback, typePriority } };
+    SCORE_WEIGHTS.typePriority * typePriority +
+    SCORE_WEIGHTS.tagMatch * tagMatch;
+  return { ...c, score, signals: { relevance, recency, feedback, typePriority, tagMatch } };
 }
 
 function formatCandidateBlock(c: ScoredCandidate): string {
@@ -281,6 +343,7 @@ function collectMemoryItemPart(
   const facts = INCLUDE_PROJECTED_FACTS ? listProjectedFacts(workspaceId) : [];
   const supersededIds = buildSupersededIds(items);
   const queryTokens = buildQueryTokens(ctx);
+  const { filterTags, boostTags } = deriveTags(ctx);
 
   const all: RetrievalCandidate[] = [
     ...items.map(memoryItemToCandidate),
@@ -288,6 +351,8 @@ function collectMemoryItemPart(
   ];
 
   // 治理过滤：剔除 scope 不匹配 / suppressed / expired / poison / superseded。
+  // 结构化预过滤（「SQL 精筛为主」对齐）：仅当调用方传**显式 filterTags** 时才硬收窄候选池
+  // （无交集即出局，含 untagged）。推断信号（query 前缀/dataPaths）不参与硬过滤——见 deriveTags。
   const survived: RetrievalCandidate[] = [];
   for (const c of all) {
     if (targetScope && c.scope !== "global" && c.scope !== targetScope) continue;
@@ -295,11 +360,12 @@ function collectMemoryItemPart(
     if (isExpired(c, now)) continue;
     if (isPoisoned(c)) continue;
     if (isSuppressed(c)) continue;
+    if (filterTags.size > 0 && !c.tags.some((t) => filterTags.has(t))) continue;
     survived.push(c);
   }
 
-  // 多信号打分，降序，取 top-K。
-  const scored = survived.map((c) => scoreCandidate(c, queryTokens, now));
+  // 多信号打分（tagMatch 用 boostTags：显式 + 推断），降序，取 top-K。
+  const scored = survived.map((c) => scoreCandidate(c, queryTokens, boostTags, now));
   scored.sort((a, b) => b.score - a.score);
   const selected = scored.slice(0, Math.max(0, topK));
 
@@ -316,7 +382,7 @@ function collectMemoryItemPart(
     updatedAt: selected.reduce<number | null>((acc, c) => (acc == null || c.updatedAt > acc ? c.updatedAt : acc), null),
     priority: 25, // 介于 rules(20) 与 standards(30) 之间；实际筛选由多信号打分主导
     selectionReason: ctx?.query
-      ? "memory_item 多信号召回（relevance + recency + feedback + typePriority）"
+      ? "memory_item 多信号召回（relevance + recency + feedback + typePriority + tagMatch）"
       : "memory_item 多信号召回（无 ctx，仅按 recency/feedback/typePriority）",
     usage: null,
     itemIds: selected.map((c) => c.id),
@@ -326,6 +392,8 @@ function collectMemoryItemPart(
       filteredCount: all.length - survived.length,
       topK,
       topScore: selected[0]?.score ?? 0,
+      requestedTagCount: filterTags.size, // 硬预过滤的显式 tag 数（推断 boost 不计）
+      boostTagCount: boostTags.size,
     },
   };
 }

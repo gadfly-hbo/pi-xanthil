@@ -706,6 +706,7 @@ function parseMemoryItemInput(workspaceId: string, body: unknown): { ok: true; v
       type: type as MemoryItemType,
       title,
       body: bodyText,
+      tags: asTagsArr(b.tags),
       source,
       sourceEventIds: asStringArr(b.sourceEventIds),
       confidence,
@@ -760,6 +761,7 @@ dataRouter.patch("/api/workspaces/:id/memory/items/:itemId", (req, res) => {
   const patch: MemoryItemPatch = {};
   if (typeof b.title === "string") patch.title = b.title;
   if (typeof b.body === "string") patch.body = b.body;
+  if (Array.isArray(b.tags)) patch.tags = asTagsArr(b.tags);
   if (typeof b.type === "string") {
     if (!VALID_MEM_TYPES.has(b.type as MemoryItemType)) {
       return res.status(400).json({ error: "invalid type" });
@@ -897,6 +899,7 @@ function parseIngestBody(workspaceId: string, body: unknown): { ok: true; value:
       type: type as MemoryItemType,
       title,
       body: bodyText,
+      tags: asTagsArr(b.tags),
       scope,
       sourceEventIds,
       confidence,

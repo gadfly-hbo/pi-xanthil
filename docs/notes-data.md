@@ -10,41 +10,34 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-19 · **prompts 管理 D 承接 V 面板卡（PromptsManagementPane 双区 mini-tab：模板库 CRUD + 系统prompt 只读聚合）**
+- 最近更新：2026-06-21 · **记忆 v2.0 缺口1 实装（tags 分层标签：data + 检索 + 面板三段）**
 - 进度：
-  - **本期 D-PANEL 卡完成**（`【prompts管理·D(承接V)·面板】PromptsManagementPane（模板库 + 系统prompt 双区）`）：
-    - `web/src/components/PromptsManagementPane.tsx`（新建 831 行）：
-      - 顶层 mini-tab「模板库」/「系统prompt」（icon: Library / Settings2），同 `LlmWithTokenStats` mini-tab 范式。
-      - **模板库** `LibraryView`：左 80 列宽列表 + 右详情/编辑分屏。工具栏：搜索（title/body/category/tag）+ `含全局/仅本ws` toggle（控 `includeGlobal`）+ 刷新 + 计数 + 新建。过滤行：category 单选 chip（点已选取消）+ tag 单选 chip。卡片显示 title + 全局徽章（琥珀色 Globe 图标）+ category + 变量数 + tags 前 4 个 + updatedAt。
-      - **TemplateDetail**：title 行 + 全局/category 徽章 + id + updatedAt + 编辑/删除按钮；元信息行展示变量列表（`{{name}}` 代码格式）+ tags；body `<pre>` 灰底等宽渲染（不替换变量，纯展示）。
-      - **DraftEditor**：title (必填) / category / tags (csv) / body (textarea) / variables override (csv，留空 = 自动从 body 抽取)；新建时多一个 `setAsGlobal` checkbox（编辑时不可改归属）；底部信息块实时显示 `extractVariables(body)` 抽取结果。
-      - **系统prompt** `SystemView`：调用 `/api/prompts/system`，按 `scope` 字段 group，每组渲染 label + source（code 字体）+ preview 段落。顶部含 scope chip 过滤 + 搜索 + 刷新 + 「只读」标识。
-      - 边界：本面板**只调** `prompt-templates` + `prompts/system` 端点，不读 draw_data 行级；`workspaceId == null` 时引导"请先选择工作区"占位。
-    - `web/src/lib/api/data.ts`：追加 5 方法 `listPromptTemplates / createPromptTemplate / updatePromptTemplate / deletePromptTemplate / listSystemPromptOverviews`，category/tags/includeGlobal 通过 `URLSearchParams` 编码（tag 重复参数走 `q.append`）。
-    - `web/src/types.ts`：补 `SystemPromptOverview` 镜像（与 `server/src/system-prompts.ts:SystemPromptOverview` 结构一致：source/label/scope/preview，全字符串）。
-    - `web/src/tabs/DataTabs.tsx`：替换原 `<Placeholder ... title="prompts管理" ... />` 为 `<PromptsManagementPane workspaceId={ctx.activeWorkspaceId} />`，import 同步加。
-- 关键设计决策：
-  - **mini-tab + 左右分屏**：参 `SkillManagementPane`（顶部 mini-tab）+ `KnowledgeBasePane`（list+detail/draft 分屏）合体，零新依赖、视觉与既有 D 域一致。
-  - **`{{var}}` 变量编辑双轨**：自动抽取（编辑时实时显示）+ 手填 override（csv，留空 = 用自动抽取的）。与 server `updatePromptTemplate` 行为对齐：patch 显式传 variables → 覆盖；不传 → server 自动重抽（前端这里通过传 autoVars 也能保持稳定）。
-  - **全局态只在新建时可设**：编辑现有模板不允许改 `workspaceId`（与 server PATCH 类型无 workspaceId 字段一致——归属一旦定即定）。
-  - **CSV tags 输入**：与 KnowledgeBasePane `parseTags` 范式一致，逗号分隔，`parseCsvInput` 内联实现（trim + 过空），不抽公共工具（YAGNI）。
+  - **本期 D-MEM2-TAG 卡完成**（依赖 X-MEM2-CONTRACT 契约绿）：
+    - **① 数据层 `server/src/db/data.ts`**：`initDataTables` 两表 CREATE 加 `tags TEXT NOT NULL DEFAULT '[]'` + 末尾 idempotent migration（`PRAGMA table_info` + 条件 ALTER，两表循环，写在 data.ts 自己 init，不碰 db.ts）；`MemoryItemRow`/`MemoryReviewRow` 加 `tags: string`；**替换两处占位桩**（`rowToMemoryItem`/`rowToMemoryReview` 的 `tags: []` → `parseStringArray(r.tags)`）；新增 `normalizeTags()`（trim+去空+去重+保序+上限32）；create/patch/ingest 自动入库/insertReview/acceptReview 全链透传 tags（**采纳成 item 不丢标签**）。
+    - **② 路由 `server/src/routes/data.ts`**（D slot）：`parseMemoryItemInput` / PATCH route / `parseIngestBody` 三处 `asTagsArr(b.tags)` 透传（复用既有 helper）。
+    - **③ 检索 `server/src/memory-injection.ts`**：`SCORE_WEIGHTS` 重新归一加 `tagMatch`（0.4/0.18/0.17/0.12/0.13，和=1）；`RetrievalCandidate`+两converter+`ScoredCandidate.signals` 加 tags/tagMatch；`parseRequestedTags(ctx)` 从 `ctx.query` 抠 `前缀:值` token（RetrievalContext 冻结无 tags 字段，tag 信号一律 query 解析）；**结构化预过滤**（请求 tag 非空先按交集收窄候选池再打分）；snapshot meta 加 `requestedTagCount`。
+    - **④ 面板 `web/src/components/RulesPane.tsx`**：CreateDraft/EditDraft 加 `tags: string`；新增 `parseCsvTags`/`tagTone`（前缀分层着色）/`TagChip`；create+edit csv tags 输入；item+review card tag chips；type 列上方多选 tag 筛选 bar（AND + 清除）。
+    - **⑤ web api `web/src/lib/api/data.ts`**：create payload + update patch 加 `tags?: string[]`。
+    - **⑥ 测试 `server/src/memory-retrieval.test.ts`**：扩 5 tag 用例（round-trip / patch / review-accept 不丢标签 / 预过滤收窄 / 无前缀 query 不预过滤）。
+- 关键设计决策（详见正文「记忆 v2.0 缺口1：tags 分层标签」段）：
+  - **migration 写 data.ts 自己 init，不碰 db.ts**：项目无 MIGRATIONS 版本注册器（契约里"递增版本注册"是 aspirational），沿用 db.ts 既有 `PRAGMA table_info + ALTER` 范式。
+  - **tag 信号从 query 解析（非改 RetrievalContext）**：接缝层冻结，取"零接缝改动"路径，用户决策确认；显式 tags 等总控审定扩 RetrievalContext 再接。
+  - **SCORE_WEIGHTS 归一不破基线**：无 tag 信号 tagMatch=0，五维退化为原四维相对比例，既有 11 用例全过。
 - 校验：
-  - `npm run typecheck`（web）：✅ 0 错误
+  - `npm run typecheck`（server+web）：✅ 0 错误
   - `npm run build`（web）：✅ 仅遗留 chunk size 警告（与本卡无关）
-  - 数据探索 LLM 隔离 grep：✅ 0 命中（本卡完全在 `web/src/components/PromptsManagementPane.tsx` + api lib + types + DataTabs，不碰探索子树）
+  - `node --test src/memory-*.test.ts`：✅ **60/60 全过**（含新增 5 tag 用例）
+  - 数据探索 LLM 隔离 grep：✅ 0 命中（本卡未碰探索子树）
 - 下一步（接续优先级）：
-  - ① **总控收尾批次结算**：`prompts管理` 三段（X 接缝 / D 卡 CRUD / D 承接 V 面板 + E 系统prompt聚合）已全部完成。剩 `汇报版本数据可视化` 整条（X 契约未铺：`PresentationTaskResult` 仍内嵌 `PresentationVersionPane.tsx` 局部，需先升 types 双侧加 `datasetId? / chartSpecs?`，再接 BI dataset + echarts；取数走 D / 探索域时严守 LLM 隔离）。
-  - ② **可选增强（YAGNI，暂不做）**：模板"用此模板试运行"按钮（接 chat / send_flow）、变量插值 preview、模板版本/diff、按调用次数排序、批量导入、跨 ws 克隆 / 全局 ↔ 本地迁移按钮（server PATCH 不允许改归属，需新接口）、模板执行追踪（与 trace 子 tab 联动）。
-  - ③ 上期遗留：知识库 chunk 是否注入统一记忆 / 知识库去重策略 / KB 内联编辑 / 混合 tokenizer 拆 `text-search-tokenize.ts` / `MemoryItemType` 加 `'fact'`、legacy 记忆路由合并、`cases` 子 tab 下线、`listMemoryReviews` 分页 / hooks PUT 无认证 / `RulesPane.tsx` 拆分。
+  - ① 本卡可选增强（YAGNI 暂不做）：显式 tags 进 RetrievalContext（需总控审接缝）、tag 自动补全/建议、按 tag 聚合统计、E-MEM2-DISTILL-TAG 蒸馏产出 tags（E 域）、tag 批量重命名/合并。
+  - ② 上期遗留：`汇报版本数据可视化` 整条（X 契约未铺，需总控先审 types 双侧加 `datasetId? / chartSpecs?`）。
+  - ③ 长尾：`MemoryItemType` 加 `'fact'`、legacy 记忆路由合并、`cases` 子 tab 下线、KB 内联编辑、混合 tokenizer 拆 `text-search-tokenize.ts`、`listMemoryReviews` 分页、`RulesPane.tsx` 拆分（本卡又加 ~60 行，拆分压力略增）。
 - 阻塞 / 待总控：
-  - 无新阻塞。本卡只新增前端面板 + types 镜像 + api lib 方法，未改任何接缝层骨架（`index.ts` / `db.ts` / `App.tsx` / `api.ts` / `constants.ts` 全未碰）。`web/src/types.ts` 仅追加导出，符合"types 双侧由总控审定，D 域追加镜像"既有约定。
-  - 上期遗留：`MemoryItemType` 加 `'fact'`、legacy 记忆路由合并、`cases` 子 tab 下线时机。
+  - 无新阻塞。未碰任何接缝层骨架（`index.ts`/`db.ts`/`App.tsx`/`api.ts`/`constants.ts`/`types.ts` 真源全未碰）；`memory-injection.ts` 守 `buildMemoryInjectionSnapshot` 冻结签名（参数列表未改）。tags 双侧 types 由 X-MEM2-CONTRACT 既审定就位，本卡只消费。
 - 开放问题：
-  - **「试运行」是否值得做**：模板库当前是纯 CRUD + 浏览，没接到下游（chat / workflow）。若用户需要"在面板里直接用这个模板发一次推理"，需要新增 `runPromptTemplate(id, vars)` 接口或在前端拼好 system+user 直送 chat。等需求来了再做。
-  - **变量类型 / required 元数据**：当前 `variables: string[]` 只存名字，不带 type/required/description。若未来要做"模板调用前 form 自动渲染"，需扩 schema（升级路径：`variables: { name: string; type?: string; required?: boolean; description?: string }[]`）。当前面板按"纯字符串占位"处理。
-  - **全局模板 vs 本 ws 模板的同名冲突**：列表里两者并列（用 Globe 徽章区分），未做 user-override 合并语义；上期遗留问题，本面板未触发新决策。
-  - **system view 是否需要"复制 source 路径到剪贴板"按钮**：当前 source（如 `prompt-blocks.ts:BLOCK_SAFETY`）用 `<code>` 直显，未提供拷贝。简单加一个 button 即可，等用户提需求。
-  - 上期遗留：知识库 chunk 是否参与统一记忆注入 / 去重策略 / 内联编辑 / `path` 字段语义扩展 / 混合 tokenizer 与 memory-injection 已分叉 / `listMemoryReviews` 无分页 / clean_data 白名单 / hooks PUT 无认证 / hooks-triggers.jsonl 大文件全量读 / `RulesPane.tsx` 拆分。
+  - **tag 软约定前缀是否硬约束**：当前自由 string、前缀仅软约定（着色+解析宽进任意 `x:y`）。契约明确"非硬枚举便于 LLM 蒸馏与未来收紧"，暂不收。
+  - **query 解析 tag 的误命中**：`前缀:值` 正则会把 query 里偶然的 `http://`、`时间:10点` 当 tag 信号；当前预过滤"有交集即留"，误命中 tag 若不在候选集则导致全被过滤 → 召回空（潜在坑）。**升级路径**：解析按软约定前缀白名单过滤（仅认 task/industry/method/data/problem:），或显式 tags 走扩展后 RetrievalContext。真实使用暴露再收。
+  - 上期遗留开放问题保留（见 git log 上一版 §0）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -211,6 +204,18 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **token 切分（中英混合）不引外部分词器**（2026-06-19）：`tokenizeForOverlap` 英文非字母数字拆 + lower、中文 2-gram；只服务 shortlist 排序，不追求语言学严谨。原则：dedup gate 是工程性近似，无需 jieba/spacy 级别精度，本期连同语义 judge 一起把准确率撑到目标线。
 
 ---
+
+**记忆 v2.0 缺口1：tags 分层标签（D-MEM2-TAG, 2026-06-21）**
+- **tags 是检索的"结构化精筛"维度**，弥补"唯 scope/type 两维 + 词法 relevance"在大库下少/准/可控的短板。软分层约定（非硬枚举、自由 string）：前缀 `task:/industry:/method:/data:/problem:`（对齐方法论 5 层）。`normalizeTags` 只做 trim+去空+去重+保序+上限 32，**不校验前缀白名单**——契约明确"便于 LLM 蒸馏产出与未来收紧，零 schema churn"。
+- **migration 写在 `initDataTables()` 自己内部，不碰 db.ts 接缝层**：项目无 MIGRATIONS 版本注册器（契约注释里"递增版本注册 MIGRATIONS"是 aspirational 措辞），实际就是 db.ts 既有的 `PRAGMA table_info(t)` + 条件 `ALTER TABLE t ADD COLUMN` idempotent 范式。新库走 CREATE TABLE 自带列，旧库走 ALTER 补列，两路都对。**两表循环**（memory_items + memory_reviews）一段搞定。
+- **tag 信号从 query 解析，而非改 RetrievalContext**：`RetrievalContext`（types.ts 真源）是冻结接缝层，只有 `query/recentMessages/dataPaths`，D 不能加 `tags` 字段。故 `parseRequestedTags(ctx)` 从 `ctx.query` 用正则 `/(?:^|\s)([a-z_]+:[^\s，。；,;]+)/gi` 抠 `前缀:值` 形态 token 当请求 tag（用户决策：取零接缝改动路径）。显式 tags 入参等总控审定扩 RetrievalContext 再接。**已知坑**：query 里偶然出现的 `http://` / `时间:10点` 会被误当 tag 信号；当前预过滤是"候选 tag ∩ 请求 tag 有交集即留"，误命中 tag 若不在任何候选 tag 集合里 → 全候选被过滤 → 召回空。升级路径：解析按软约定前缀白名单过滤，或走扩展后的 RetrievalContext。
+- **结构化预过滤（"SQL 精筛为主"对齐）先于打分**：请求 tag 非空时，治理过滤同一循环里加一道"无 tag 交集即出局"，收窄候选池后再多信号打分。这把 tag 当硬筛而非软加权——与"指定 tag 时先按 tag 收窄候选再排序"语义一致。`tagMatchScore = 命中数 / |请求 tag|` 归一 [0,1]，再以 0.13 权重叠加。
+- **SCORE_WEIGHTS 重新归一不破基线**：四维 0.45/0.2/0.2/0.15 → 五维 0.4/0.18/0.17/0.12/0.13（和=1）。**关键性质**：无 tag 信号时 tagMatch=0，五维退化为原四维的等比例缩放，相对排序不变——既有 11 个 ranking/governance 用例零修改全过。任何后续加打分维度都应保此性质（新维度在"无信号"时贡献 0，老用例才不破）。
+- **采纳成 item 不丢标签**：candidate→review→accept 三段路径全程透传 tags（`MemoryIngestInput.tags` → `insertMemoryReview` 落 review.tags → `acceptMemoryReview` 读 review.tags 传 createMemoryItem）。这是契约里 memory_reviews 也要加 tags 列的根因——否则采纳时标签断链。单测 `tags: review accept does not drop tags` 守此不变量。
+- **RulesPane tag UI 复用既有范式**：`parseCsvTags` 同 KnowledgeBasePane csv 范式；`tagTone` 按前缀着色（task紫/industry绿/method蓝/data琥珀/problem玫红/其余中性）；筛选 bar 多选 **AND** 语义（选中 tag 全命中才留），与检索预过滤的"交集"方向一致但前端是全包含、检索是有交集——两者口径不同是有意的（面板要精确收窄，检索要宽召回）。
+
+---
+
 
 **知识库 knowledge_docs/chunks（D 卡片，2026-06-19）**
 - **定位区分（与 memory_items 的边界）**：知识库 = 用户上传/登记的非结构化**参考资料**（按需检索），memory_items = 系统沉淀的**规则/经验/事实/情景**（主动注入 system prompt）。两者目标场景不同：知识库面向"问答时拉一段 SOP/口径文档"，memory_items 面向"每次对话前注入既有约束/经验"。当前**不**自动合并，跨 source 合并（知识库 chunk 是否进 memory_injection prompt）需总控决议。

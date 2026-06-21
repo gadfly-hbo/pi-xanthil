@@ -2,6 +2,7 @@ import { generateTraceRuleSuggestions, getTraceTimeline } from "./db.ts";
 import { trackUsageEvent } from "./cache.ts";
 import { PORT } from "./config.ts";
 import { runPiPrompt } from "./pi-adapter.ts";
+import { fireMemoryMaintenance } from "./memory-maintenance.ts";
 import type { MemoryCandidate, MemoryRiskFlag, PiEvent, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem } from "./types.ts";
 
 export type MemoryConsolidationTargetKind = Extract<TraceTargetKind, "session" | "flow" | "flow_run">;
@@ -85,7 +86,11 @@ export function fireMemoryConsolidation(options: FireMemoryConsolidationOptions)
       targetId: options.targetId,
       title: options.label,
     }, event),
-  }).catch(options.onError);
+  })
+    // 搭车 Dream Worker（缺口3）：沉淀(产记忆)成功后顺带跑一次 maintain(养记忆)，节流防高频。
+    // 纯算术零 LLM；折叠在此使 session(index.ts)/flow(engine.ts) 现有触发点自动带上，接缝零触碰。
+    .then(() => { fireMemoryMaintenance({ workspaceId: options.workspaceId, onError: options.onError }); })
+    .catch(options.onError);
 }
 
 export async function runMemoryConsolidation(options: MemoryConsolidationOptions): Promise<MemoryConsolidationResult> {
@@ -221,6 +226,7 @@ ${suggestions || "(none)"}
 - 不要把用户一次性业务结论、具体品牌/地区/数值沉淀为长期记忆。
 - 没有稳定价值时输出空数组。
 - 每条候选必须能从 sourceEventIds 对应事件找到依据；证据弱时降低 confidence 并加 weak_evidence。
+- 每条候选输出 3~5 个分层 tags，按 task:/industry:/method:/data:/problem: 五层软约定选择适用维度；不适用的层级不要硬凑。
 
 【输出 JSON schema】
 {
@@ -229,6 +235,7 @@ ${suggestions || "(none)"}
       "type": "constraint | experience | episode",
       "title": "短标题",
       "body": "可复用记忆正文，写清适用条件与边界",
+      "tags": ["task:任务类型", "method:方法", "problem:问题"],
       "scope": "global | chat | workflow",
       "sourceEventIds": ["trace event id"],
       "confidence": 0.0,
@@ -272,6 +279,7 @@ export function parseMemoryCandidates(raw: string, options: {
       type,
       title: title.slice(0, 160),
       body: body.slice(0, 1600),
+      tags: asStringArray(rawItem.tags),
       scope,
       sourceEventIds: sourceEventIds.length > 0 ? sourceEventIds.slice(0, 12) : options.fallbackSourceEventIds,
       confidence: clampNumber(Number(rawItem.confidence), 0, 1, 0.6),

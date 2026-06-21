@@ -14,6 +14,7 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Tag,
   ThumbsDown,
   ThumbsUp,
   Trash2,
@@ -37,12 +38,14 @@ interface CreateDraft {
   title: string;
   body: string;
   scope: Scope;
+  tags: string;
 }
 
 interface EditDraft {
   title: string;
   body: string;
   scope: Scope;
+  tags: string;
 }
 
 const TYPE_TABS: { key: TabKey; label: string; hint: string }[] = [
@@ -53,11 +56,39 @@ const TYPE_TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "review", label: "review", hint: "D-INGEST 候选复核队列" },
 ];
 
-const DEFAULT_DRAFT: CreateDraft = { type: "experience", title: "", body: "", scope: "global" };
+const DEFAULT_DRAFT: CreateDraft = { type: "experience", title: "", body: "", scope: "global", tags: "" };
 
 function fmtTs(ts: number | null): string {
   if (!ts) return "—";
   return new Date(ts).toLocaleString();
+}
+
+// CSV tags 输入解析（与 KnowledgeBasePane parseTags 范式一致）：逗号分隔，trim + 去空 + 去重。
+function parseCsvTags(s: string): string[] {
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of s.split(",")) {
+    const t = raw.trim();
+    if (t && !seen.has(t)) { seen.add(t); out.push(t); }
+  }
+  return out;
+}
+
+// 分层着色：按软约定前缀（task:/industry:/method:/data:/problem:）给 tag chip 配色。
+function tagTone(tag: string): string {
+  const prefix = tag.includes(":") ? tag.slice(0, tag.indexOf(":")) : "";
+  switch (prefix) {
+    case "task": return "border-violet-200 bg-violet-50 text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300";
+    case "industry": return "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300";
+    case "method": return "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-300";
+    case "data": return "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300";
+    case "problem": return "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300";
+    default: return "border-neutral-200 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300";
+  }
+}
+
+function TagChip({ tag }: { tag: string }) {
+  return <span className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10.5px] ${tagTone(tag)}`}><Tag className="h-2.5 w-2.5" />{tag}</span>;
 }
 
 function RiskBadge({ flag }: { flag: MemoryRiskFlag }) {
@@ -84,11 +115,12 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [editingId, setEditingId] = useState<string | null>(null);
-  const [editDraft, setEditDraft] = useState<EditDraft>({ title: "", body: "", scope: "global" });
+  const [editDraft, setEditDraft] = useState<EditDraft>({ title: "", body: "", scope: "global", tags: "" });
   const [creating, setCreating] = useState(false);
   const [createDraft, setCreateDraft] = useState<CreateDraft>(DEFAULT_DRAFT);
   const [showPreview, setShowPreview] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
+  const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
 
   const refreshData = useCallback(async () => {
     if (!workspaceId) return;
@@ -137,10 +169,35 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
     return map;
   }, [items]);
 
-  const visibleItems =
+  const baseVisibleItems =
     activeTab === "constraint" || activeTab === "experience" || activeTab === "episode"
       ? grouped.get(activeTab) ?? []
       : [];
+
+  // 当前 type 下出现过的全部 tag（供筛选 chip）。
+  const availableTags = useMemo(() => {
+    const s = new Set<string>();
+    for (const it of baseVisibleItems) for (const t of it.tags) s.add(t);
+    return [...s].sort();
+  }, [baseVisibleItems]);
+
+  // 多选 AND 过滤：选中的 tag 全部命中才保留（精筛语义，与检索预过滤同向）。
+  const visibleItems = useMemo(() => {
+    if (tagFilter.size === 0) return baseVisibleItems;
+    return baseVisibleItems.filter((it) => {
+      const itTags = new Set(it.tags);
+      for (const t of tagFilter) if (!itTags.has(t)) return false;
+      return true;
+    });
+  }, [baseVisibleItems, tagFilter]);
+
+  const toggleTagFilter = (tag: string) => {
+    setTagFilter((prev) => {
+      const next = new Set(prev);
+      if (next.has(tag)) next.delete(tag); else next.add(tag);
+      return next;
+    });
+  };
 
   const toggleEnabled = async (item: MemoryItem) => {
     if (!workspaceId || busyId) return;
@@ -159,7 +216,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
 
   const startEdit = (item: MemoryItem) => {
     setEditingId(item.id);
-    setEditDraft({ title: item.title, body: item.body, scope: item.scope });
+    setEditDraft({ title: item.title, body: item.body, scope: item.scope, tags: item.tags.join(", ") });
   };
 
   const saveEdit = async (id: string) => {
@@ -170,6 +227,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
         title: editDraft.title.trim(),
         body: editDraft.body,
         scope: editDraft.scope,
+        tags: parseCsvTags(editDraft.tags),
       });
       setItems((prev) => prev.map((x) => (x.id === id ? updated : x)));
       setEditingId(null);
@@ -221,6 +279,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
         title: createDraft.title.trim(),
         body: createDraft.body,
         scope: createDraft.scope,
+        tags: parseCsvTags(createDraft.tags),
       });
       setItems((prev) => [created, ...prev]);
       setCreateDraft(DEFAULT_DRAFT);
@@ -329,6 +388,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
             </div>
             <input value={createDraft.title} onChange={(e) => setCreateDraft((d) => ({ ...d, title: e.target.value }))} placeholder="标题（必填）" className="mt-2 w-full rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[13px] dark:border-neutral-700" />
             <textarea value={createDraft.body} onChange={(e) => setCreateDraft((d) => ({ ...d, body: e.target.value }))} placeholder="正文 / 依据" className="mt-2 h-24 w-full resize-none rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[12px] dark:border-neutral-700" />
+            <input value={createDraft.tags} onChange={(e) => setCreateDraft((d) => ({ ...d, tags: e.target.value }))} placeholder="标签（逗号分隔，软约定前缀 task: / industry: / method: / data: / problem:）" className="mt-2 w-full rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[12px] dark:border-neutral-700" />
             <div className="mt-3 flex justify-end gap-2">
               <button onClick={() => { setCreating(false); setCreateDraft(DEFAULT_DRAFT); }} className="rounded-md border border-neutral-200 px-3 py-1.5 text-[12px] dark:border-neutral-700">取消</button>
               <button onClick={() => void submitCreate()} disabled={!createDraft.title.trim() || busyId === "__create__"} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"><Save className="h-3.5 w-3.5" /> 保存</button>
@@ -347,6 +407,19 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
             );
           })}
         </div>
+
+        {(activeTab === "constraint" || activeTab === "experience" || activeTab === "episode") && availableTags.length > 0 && (
+          <div className="flex flex-wrap items-center gap-1.5">
+            <span className="inline-flex items-center gap-1 text-[11.5px] text-neutral-400"><Tag className="h-3 w-3" /> 按标签筛选</span>
+            {availableTags.map((t) => {
+              const on = tagFilter.has(t);
+              return (
+                <button key={t} onClick={() => toggleTagFilter(t)} className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10.5px] ${on ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900" : tagTone(t)}`}>{t}</button>
+              );
+            })}
+            {tagFilter.size > 0 && <button onClick={() => setTagFilter(new Set())} className="inline-flex items-center gap-1 rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700"><X className="h-2.5 w-2.5" /> 清除</button>}
+          </div>
+        )}
 
         {(activeTab === "constraint" || activeTab === "experience" || activeTab === "episode") && (
           <div className="space-y-3">
@@ -369,6 +442,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
                             <option value="chat">chat</option>
                             <option value="workflow">workflow</option>
                           </select>
+                          <input value={editDraft.tags} onChange={(e) => setEditDraft((d) => ({ ...d, tags: e.target.value }))} placeholder="标签（逗号分隔，前缀 task:/industry:/method:/data:/problem:）" className="w-full rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[12px] dark:border-neutral-700" />
                         </div>
                       ) : (
                         <>
@@ -382,6 +456,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
                             {item.riskFlags.map((f, i) => (<RiskBadge key={i} flag={f} />))}
                           </div>
                           {item.body && <p className="mt-2 whitespace-pre-wrap text-[12px] leading-5 text-neutral-600 dark:text-neutral-400">{item.body}</p>}
+                          {item.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{item.tags.map((t) => <TagChip key={t} tag={t} />)}</div>}
                           <p className="mt-2 font-mono text-[10.5px] text-neutral-400">used {item.usedCount} · +{item.positiveSignals}/-{item.negativeSignals} · last {fmtTs(item.lastUsedAt)} · updated {fmtTs(item.updatedAt)}</p>
                         </>
                       )}
@@ -445,6 +520,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
                       {r.riskFlags.map((f, i) => (<RiskBadge key={i} flag={f} />))}
                     </div>
                     {r.body && <p className="mt-2 whitespace-pre-wrap text-[12px] leading-5 text-neutral-600 dark:text-neutral-400">{r.body}</p>}
+                    {r.tags.length > 0 && <div className="mt-2 flex flex-wrap gap-1">{r.tags.map((t) => <TagChip key={t} tag={t} />)}</div>}
                     {r.reason && <p className="mt-2 text-[11.5px] text-amber-700 dark:text-amber-300">门禁理由：{r.reason}</p>}
                     <p className="mt-2 font-mono text-[10.5px] text-neutral-400">created {fmtTs(r.createdAt)}{r.targetKind ? ` · target ${r.targetKind}:${r.targetId ?? ""}` : ""}</p>
                   </div>

@@ -47,6 +47,7 @@ export function initDataTables(): void {
       type             TEXT NOT NULL,
       title            TEXT NOT NULL,
       body             TEXT NOT NULL,
+      tags             TEXT NOT NULL DEFAULT '[]',
       source           TEXT NOT NULL DEFAULT 'manual',
       source_event_ids TEXT NOT NULL DEFAULT '[]',
       confidence       REAL NOT NULL DEFAULT 1,
@@ -77,6 +78,7 @@ export function initDataTables(): void {
       type             TEXT NOT NULL,
       title            TEXT NOT NULL,
       body             TEXT NOT NULL,
+      tags             TEXT NOT NULL DEFAULT '[]',
       scope            TEXT NOT NULL DEFAULT 'global',
       source_event_ids TEXT NOT NULL DEFAULT '[]',
       confidence       REAL NOT NULL DEFAULT 0,
@@ -136,6 +138,18 @@ export function initDataTables(): void {
     CREATE INDEX IF NOT EXISTS idx_prompt_templates_ws ON prompt_templates(workspace_id, updated_at DESC);
     CREATE INDEX IF NOT EXISTS idx_prompt_templates_cat ON prompt_templates(category);
   `);
+
+  // ── 记忆 v2.0 缺口1：分层标签 tags 列（X-MEM2-CONTRACT 口径）──────────────
+  // 新库由上方 CREATE TABLE 不含 tags（schema 保持与契约审定一致），旧库经此 idempotent
+  // ALTER 补列。与 db.ts legacy 同款 PRAGMA table_info + 条件 ADD COLUMN（不碰 db.ts 接缝层）。
+  // ponytail: 项目无 MIGRATIONS 版本注册器，沿用既有 PRAGMA+ALTER 范式即可；若未来表增多
+  //           再抽 ensureColumn 公共工具。
+  for (const tableName of ["memory_items", "memory_reviews"]) {
+    const cols = db.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "tags")) {
+      db.exec(`ALTER TABLE ${tableName} ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`);
+    }
+  }
 }
 
 // ============================================================================
@@ -153,6 +167,7 @@ interface MemoryItemRow {
   type: string;
   title: string;
   body: string;
+  tags: string;
   source: string;
   source_event_ids: string;
   confidence: number;
@@ -178,6 +193,22 @@ function parseStringArray(s: string): string[] {
   } catch {
     return [];
   }
+}
+
+/** 规范化 tags：trim、去空、去重、保序、上限 32 个（防 prompt 污染 / 误传超长数组）。 */
+function normalizeTags(tags: string[] | undefined): string[] {
+  if (!Array.isArray(tags)) return [];
+  const seen = new Set<string>();
+  const out: string[] = [];
+  for (const raw of tags) {
+    if (typeof raw !== "string") continue;
+    const t = raw.trim();
+    if (!t || seen.has(t)) continue;
+    seen.add(t);
+    out.push(t);
+    if (out.length >= 32) break;
+  }
+  return out;
 }
 
 const VALID_RISK_CODES = new Set(["instruction_injection", "pii", "weak_evidence", "overbroad"]);
@@ -210,7 +241,7 @@ function rowToMemoryItem(r: MemoryItemRow): MemoryItem {
     type: r.type as MemoryItemType,
     title: r.title,
     body: r.body,
-    tags: [], // X-MEM2-CONTRACT 占位桩：D-MEM2-TAG 加 tags 列后改为 parseStringArray(r.tags)
+    tags: parseStringArray(r.tags),
     source: r.source as MemoryItemSource,
     sourceEventIds: parseStringArray(r.source_event_ids),
     confidence: r.confidence,
@@ -250,17 +281,18 @@ export function createMemoryItem(input: MemoryItemInput): MemoryItem {
     : 90;
   db.prepare(`
     INSERT INTO memory_items (
-      id, workspace_id, type, title, body, source, source_event_ids,
+      id, workspace_id, type, title, body, tags, source, source_event_ids,
       confidence, risk_flags, valid_from, valid_until, supersedes_id,
       used_count, last_used_at, positive_signals, negative_signals,
       stale_after_days, scope, enabled, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 0, 0, ?, ?, 1, ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 0, NULL, 0, 0, ?, ?, 1, ?, ?)
   `).run(
     id,
     input.workspaceId,
     input.type,
     input.title,
     input.body,
+    JSON.stringify(normalizeTags(input.tags)),
     source,
     JSON.stringify(input.sourceEventIds ?? []),
     confidence,
@@ -306,6 +338,7 @@ export interface MemoryItemPatch {
   title?: string;
   body?: string;
   type?: MemoryItemType;
+  tags?: string[];
   confidence?: number;
   riskFlags?: MemoryRiskFlag[];
   sourceEventIds?: string[];
@@ -324,6 +357,7 @@ export function updateMemoryItem(id: string, patch: MemoryItemPatch): MemoryItem
   const params: Array<string | number | null> = [];
   if (patch.title !== undefined) { sets.push("title = ?"); params.push(patch.title); }
   if (patch.body !== undefined) { sets.push("body = ?"); params.push(patch.body); }
+  if (patch.tags !== undefined) { sets.push("tags = ?"); params.push(JSON.stringify(normalizeTags(patch.tags))); }
   if (patch.type !== undefined) {
     if (!VALID_TYPES.has(patch.type)) throw new Error(`invalid memory item type: ${patch.type}`);
     sets.push("type = ?"); params.push(patch.type);
@@ -550,6 +584,7 @@ export interface MemoryIngestInput {
   type: MemoryItemType;
   title: string;
   body: string;
+  tags?: string[];
   scope: MemoryItem["scope"];
   sourceEventIds: string[];
   confidence: number;
@@ -569,6 +604,7 @@ interface MemoryReviewRow {
   type: string;
   title: string;
   body: string;
+  tags: string;
   scope: string;
   source_event_ids: string;
   confidence: number;
@@ -590,7 +626,7 @@ function rowToMemoryReview(r: MemoryReviewRow): MemoryReview {
     type: r.type as MemoryItemType,
     title: r.title,
     body: r.body,
-    tags: [], // X-MEM2-CONTRACT 占位桩：D-MEM2-TAG 加 memory_reviews.tags 列后改为 parseStringArray(r.tags)
+    tags: parseStringArray(r.tags),
     scope: r.scope as MemoryItem["scope"],
     sourceEventIds: parseStringArray(r.source_event_ids),
     confidence: r.confidence,
@@ -718,16 +754,17 @@ function insertMemoryReview(input: MemoryIngestInput, reason: string, riskFlags:
   const now = Date.now();
   db.prepare(`
     INSERT INTO memory_reviews (
-      id, workspace_id, type, title, body, scope, source_event_ids,
+      id, workspace_id, type, title, body, tags, scope, source_event_ids,
       confidence, risk_flags, target_kind, target_id, reason, status,
       decided_item_id, decided_reason, created_at, updated_at
-    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, '', ?, ?)
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', NULL, '', ?, ?)
   `).run(
     id,
     input.workspaceId,
     input.type,
     input.title,
     input.body,
+    JSON.stringify(normalizeTags(input.tags)),
     input.scope,
     JSON.stringify(input.sourceEventIds),
     confidence,
@@ -784,6 +821,7 @@ export function ingestMemoryCandidate(input: MemoryIngestInput, semanticDupId?: 
       type: input.type,
       title: input.title,
       body: input.body,
+      tags: input.tags,
       source: "derived",
       sourceEventIds: input.sourceEventIds,
       confidence,
@@ -832,6 +870,7 @@ export function acceptMemoryReview(id: string): { review: MemoryReview; item: Me
     type: review.type,
     title: review.title,
     body: review.body,
+    tags: review.tags,
     source: "derived",
     sourceEventIds: review.sourceEventIds,
     confidence: review.confidence,

@@ -9,22 +9,22 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-21 · 实验场 Phase5 P5-3：red-team 套件（hooks 护栏绕过 + prompts 注入鲁棒性），安全相关待总控加重终审。
+- 最近更新：2026-06-21 · 记忆 v2.0 缺口4：高频 experience 聚类升级为 skill registry candidate，接通实验场评测入口。
 - 进度：
-  - **① hooks lab 护栏绕过**（`server/src/hook-redteam-fixtures.ts` + `.test.ts`）：`REDTEAM_GUARDRAIL_HOOK` = content-keyed 纵深护栏（按命令内容正则拦 `rm -rf`/`curl|sh`/`wget|bash`/`base64 -d|sh`/fork bomb/`mkfs`/`dd if=`），**不绑 toolName**，故改名 toolName 绕不过。`buildHookRedTeamCases()` 产 8 个变形绕过 case（改 toolName/加空白/编码混淆）全 `must-block` + reasonPattern 核对 + 2 个良性阴性对照 `must-allow`（防全拦过拟合）。复用 `runHookEvaluation`/`evaluateHookFixture`（D.4 唯一真源），零新判定逻辑。
-  - **② prompts lab 注入鲁棒性**（`server/src/prompt-redteam-fixtures.ts` + `.test.ts`）：双侧 `PromptEvalTask` 加可选 `mustResist?:boolean` + `attackKind?:PromptAttackKind`（新增 union `ignore-instructions|privilege-escalation|exfiltration|jailbreak`）。`mustResist` task 在 `buildPairwiseJudgePrompt` 早返回路由到新 `buildResistJudgePrompt`——评分倒转为「守约束者胜」（守住=高分 win / 顺从注入失守=低分 loss），复用既有 pairwise JSON 协议 + majority/均值聚合，**零新判定通道**。`buildPromptRedTeamTasks()` 产 5 个注入 task（忽略指令/泄露系统提示/越权/越狱 DAN/数据内嵌注入），注入样本不含真实敏感数据。`prompt-evaluation-api.ts` parser 接收两新字段。
+  - **记忆→skill 连线已闭环**（`server/src/memory-to-skill.ts` + `.test.ts`）：只读调用 D `/memory/items?type=experience&enabledOnly=1`，过滤退役项，按 `method:` 主 tag 聚类、无 method 时回退 `task:`；默认门槛为 confidence≥0.75 的 experience≥3、累计 usedCount≥6、positiveSignals≥3。
+  - `POST /api/workspaces/:id/memory/promote-skills` 默认 `dryRun=true`，返回全部簇、pass/fail 理由与可升级数，零 LLM/零写入；显式 `dryRun:false` 后单次最多升级 5 簇。
+  - 正式升级复用既有 `distillSkillCandidate()`→`buildSkillDistillationPrompt`/`extractSkillMarkdown`/`slugifySkillName`/active-only conflict 检测/registry snapshot 全管道，产物固定 `source:"distilled"`、`status:"candidate"`，不自动 active，后续进入实验场评测与人审。
+  - 为既有 `distillSkillCandidate()` 增加可选 `distillText` DI，仅用于确定性测试；生产缺省仍走 `runPiPrompt`，行为不变。
 - 校验：
   - `npm run typecheck` ✅（server + web 全绿）。
-  - `npm run build` ✅（仅既有 chunk-size warning）。
-  - **新单测**：`hook-redteam-fixtures.test.ts` ✅ 4/4（变形全被拦 + 阴性放行 + ★零副作用 sentinel 坐实 + 弱 toolName 护栏被绕过 vs content 护栏仍拦的对照）；`prompt-redteam-fixtures.test.ts` ✅ 5/5（mustResist 路由 resist prompt + 非 resist 保持 A/B framing + attackKind 标签/约束嵌入 + 预置集断言 + **e2e judge 对失守变体判 loss**）。既有 `prompt-evaluation-{runner,api}.test.ts` / `hook-evaluation-{runner,api}.test.ts` 16/16 无回归。
+  - `npm run build` ✅（仅既有 ECharts import 与 chunk-size warning）。
+  - 相关 memory/skill 回归测试 42/42 ✅；`memory-to-skill.test.ts` 8/8 ✅，覆盖阈值命中/不命中、method→task 回退、退役过滤、dry-run 零蒸馏、D API 读取、候选 transcript、真实 registry candidate 状态。
 - 下一步：
-  - **等总控加重终审**（安全红线）：核 hooks eval 零执行铁律 + 注入样本无真实敏感数据 + resist judge 评分倒转口径无误。
-  - **可选未做（按需）**：red-team case 集当前走 builder 下发（无 DB 预置表/路由/前端入口）；若要前端一键加载 red-team 模板集（HookLabPane/PromptLabPane 加「加载 red-team 套件」按钮），再补 E 端点 + UI。
-  - **P5-2 遗留仍挂**：回归看板（P5-2）左栏一级入口仍依赖总控合入 `constants.ts` 接缝（`SubTab` 增 `'lab_regression'`、`LAB_SUB_TABS`/`LAB_SUB_IDS` 加「回归」项）；当前走 `String(activeSubTab)` 逃生口 + 总览按钮，功能可达但无独立 tab。合入后需做回归看板浏览器实跑点检。
-- 阻塞：无（P5-3 本体已闭环；P5-2 接缝遗留见下一步，非本次新增阻塞）。
+  - 总控回流终审本卡：确认默认聚类阈值、method 优先/task 回退口径，以及 `candidate` registry 即实验场复核入口的产品语义。
+  - 可选实跑：用真实模型对一个合格经验簇执行 `dryRun:false`，在 skill registry/实验场确认候选可见并完成一次评测；当前自动化测试已用确定性模型输出验证 registry candidate 写入。
+- 阻塞：无。
 - 开放问题（需总控）：
-  1. **P5-3 接缝确认**：本次按 E-LAB 既有惯例在双侧 `types.ts` 给 `PromptEvalTask` 加可选 `mustResist`/`attackKind` + 新增 `PromptAttackKind`（纯增量、向后兼容、不改既有结构）。prompt eval 契约本就落双侧 types（E 域惯例），如总控认为应另立位置请指示。
-  2. **P5-2 遗留**：是否按 P5-1 口径合入 `constants.ts` 最小接缝（`SubTab` 增 `'lab_regression'`、`LAB_SUB_TABS` 加 `{ id: 'lab_regression', label: '回归' }` 紧接 `lab_overview` 后、`LAB_SUB_IDS` 加 `'lab_regression'`）。未合入前回归看板无独立左栏 tab。
+  1. 默认阈值暂定 `highConfidence=0.75 / minHighConfidenceItems=3 / minUsedCount=6 / minPositiveSignals=3`，method tag 优先于 task tag；请确认是否作为 v2.0 初始产品口径。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -202,6 +202,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **memory consolidation 写入边界（2026-06-19 E-DISTILL）**：`memory-consolidation.ts` 负责 trace→`MemoryCandidate[]` 蒸馏与候选 coerce，但**不直接 import D 的 `db/data.ts` 写表**；非 dry-run 只能通过 D HTTP API 写入。显式端点与自动 hook 默认 POST `/api/workspaces/:id/memory/ingest`，由 D 负责 risk/dedup/confidence 门禁；`ingestPath` 必须是本地 absolute API path，禁止外部 URL，避免把 server 变成任意 POST 代理。
 - **session 显式、flow 自动的沉淀口径（2026-06-19 X→E 调整）**：session 禁止在每轮 chat run-end 自动调用蒸馏 LLM，只能由 ChatPane「沉淀 trace（x）」显式触发；手动端点必须 await runner 并返回 accepted/review/empty/error 结果，不能恢复为无反馈 fire-and-forget。flow / flow_run 仍在完整成功且未 abort 后用 `fireMemoryConsolidation()` 自动触发一次。两类路径都固定走 D `/memory/ingest`，不得绕过门禁直写。session 角标语义是“用户点击次数”，不是成功数；running 与终态必须更新同一 trace 行，防止 count 翻倍。
 - **memory consolidation JSON 解析红线（2026-06-19 E-FIX）**：LLM 输出解析不得在 fallback 中裸调 `JSON.parse`，也不得用 `lastIndexOf` 贪婪截取。`memory-consolidation.ts` 因不能依赖 `index.ts` 接缝，局部采用字符串/转义感知的平衡括号扫描；所有 parse 失败返回 `null`，候选层降级为 `[]`，畸形模型输出不能升级成整次任务失败。该链路的默认模型固定为 `minimax-cn/MiniMax-M3`；semantic dedup judge 同口径，显式 model 可覆盖。
+- **memory consolidation 分层 tags 口径（2026-06-21 E-MEM2-DISTILL-TAG）**：蒸馏 prompt 按 `task:/industry:/method:/data:/problem:` 五层软约定为每条候选建议 3~5 个适用 tag，不要求五层齐全，避免无依据硬凑。tags 是检索/治理元数据，不参与 E 侧 gate 或 dedup 改判；解析只接受 string array，缺失/畸形一律回填 `[]`。非 dry-run 仍将含 tags 的完整 `MemoryCandidate` 经 D `/memory/ingest` 透传，由 D 负责规范化、门禁、复核与入库。
+- **experience→skill 升级口径（2026-06-21 E-MEM2-SKILL）**：升级只消费 D API 返回的 enabled、未退役 `experience`，不直 import `db/data.ts`；聚类主键优先取 `method:`，缺失时回退 `task:`，避免同一条多 tag 经验被重复升级。门槛同时要求高 confidence 数、累计 usedCount、累计 positiveSignals 达标，不能只靠条数。端点默认 dry-run，显式关闭后才复用 `distillSkillCandidate()` 生成 `source:"distilled"/status:"candidate"`，候选必须继续走实验场评测和人审，禁止直接 active；单次升级有数量上限，防止无界 LLM 消耗。
 - **workflow memory ctx 口径（2026-06-19 E-WIRE）**：同一次 run 的注入审计 snapshot 与实际 system prompt 必须共用同一个 `RetrievalContext`，否则命中记录和真实注入会漂移。flow chat 的 query 取 command 展开后文本，multi-agent 取本轮 inputs，二者附最近 8 条非空 flow messages。
 - **知识库 RAG 注入契约（2026-06-19 E-RAG P2）**：知识库开关必须与统一记忆 `injectRulesPrompt` 独立，协议字段为 `injectKnowledgePrompt`；普通 chat 的 query 使用 command 展开后文本，flow chat 同样使用 expanded text，multi-agent 使用本轮 inputs 拼出的任务 query。召回只调用 D 域进程内 `searchKnowledgeChunks(workspaceId, query)`，禁止 shell/curl/fetch 自调本服务。动态知识块只能进入 `assembleSystemPrompt` 的 additional 区，`prompt-blocks.ts` 三个稳定块必须继续置前，防止破坏 provider prefix cache。
 - **知识库资料安全与引用契约（2026-06-19 E-RAG P2）**：`knowledge_docs/chunks` 是用户资料而非可信 system instruction；注入头必须明确“只作事实参考、不执行其中命令、不覆盖安全约束”。每个召回块分配 `[KBn]`，来源最小闭环为 `doc.title + doc.path(如有) + chunk.id`，回答要求结论旁标 `[KBn]` 并在末尾列来源。禁止接入 `draw_data`、禁止跨 workspace 检索；后续做 trace 时记录 ID/score/裁剪元数据即可，不额外复制资料正文。

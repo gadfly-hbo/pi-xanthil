@@ -178,6 +178,7 @@ export const dataApi = {
       type: MemoryItemType;
       title: string;
       body: string;
+      tags?: string[];
       scope?: "global" | "chat" | "workflow";
       sourceEventIds?: string[];
       confidence?: number;
@@ -200,6 +201,7 @@ export const dataApi = {
       type: MemoryItemType;
       title: string;
       body: string;
+      tags: string[];
       scope: "global" | "chat" | "workflow";
       enabled: boolean;
       confidence: number;
