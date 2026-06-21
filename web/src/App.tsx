@@ -165,9 +165,6 @@ export default function App() {
     setFlows((current) => [task.flow, ...current.filter((item) => item.id !== task.flow.id)]);
   }, []);
 
-  // 侧边栏「非活动自动收起」：鼠标离开延时收起，拖拽改宽（userSelect=none）时不收。
-  const collapseTimer = useRef<number | undefined>(undefined);
-
   const refreshRulesPromptInfo = useCallback(async () => {
     if (!activeWorkspaceId) {
       setRulesPromptInfo({ count: 0, updatedAt: null });
@@ -831,15 +828,7 @@ export default function App() {
               onOpenSettings={() => setSettingsOpen(true)}
             />
           </div>
-          <div
-            className="hidden md:block"
-            onMouseEnter={() => { if (collapseTimer.current) window.clearTimeout(collapseTimer.current); }}
-            onMouseLeave={() => {
-              collapseTimer.current = window.setTimeout(() => {
-                if (document.body.style.userSelect !== "none") setSidebarOpen(false);
-              }, 300);
-            }}
-          >
+          <div className="hidden md:block">
             <Sidebar
               workspaces={workspaces}
               activeWorkspaceId={activeWorkspaceId}

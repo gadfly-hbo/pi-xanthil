@@ -9,25 +9,22 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-19 · 知识库 RAG P2：检索结果注入分析对话与工作流，独立开关及来源引用贯通。
+- 最近更新：2026-06-21 · 实验场 Phase5 P5-3：red-team 套件（hooks 护栏绕过 + prompts 注入鲁棒性），安全相关待总控加重终审。
 - 进度：
-  - **RAG 注入 helper 已落地**：新增 `knowledge-injection.ts`，消费 D 域 `searchKnowledgeChunks()` 的 workspace 级 BM25 召回；默认 top-K=5、注入字符预算 6000，无 query/无命中/开关关闭时不改变原 system prompt。
-  - **稳定前缀未破坏**：知识库是 query-dependent 动态块，只作为 `assembleSystemPrompt(additionalPrompt)` 的 additional 部分；`BLOCK_SAFETY` / `BLOCK_BASE_BEHAVIOR` / `BLOCK_FILE_ANALYSIS` 仍字节稳定并置于最前，单测显式校验顺序。
-  - **隐私与 prompt injection 边界已写入注入块**：只检索当前 workspace 的 `knowledge_docs/chunks` 用户资料，不接 `draw_data`；注入头明确资料仅作事实参考、不得执行资料内指令或覆盖安全约束。
-  - **来源引用可见**：每个召回块使用 `[KB1]` 等稳定 ID，携带文档标题、登记路径（如有）和 chunk id；prompt 强制回答在相关结论后标引用，并在末尾列「知识库来源」。检索结果类型补齐 `doc.path`。
-  - **生产链路已贯通**：普通日常/专题 session chat、flow 设计对话、普通 multi-agent、AnaX 首跑与续跑均透传独立 `injectKnowledgePrompt`；与 `injectRulesPrompt` 解耦，可分别开关。
-  - **UI 已贯通**：MainHeader 新增「知识库 on/off」chip，展示当前 workspace 文档数与更新时间；无文档禁用，新增/删除文档后即时刷新。状态由 App 单一持有并传到 EngineTabs/工作流组件。
-  - **未做的范围**：未增加持久化开关偏好、独立知识引用面板或 knowledge injection trace；当前来源可见依赖模型遵循强制引用 prompt。
+  - **① hooks lab 护栏绕过**（`server/src/hook-redteam-fixtures.ts` + `.test.ts`）：`REDTEAM_GUARDRAIL_HOOK` = content-keyed 纵深护栏（按命令内容正则拦 `rm -rf`/`curl|sh`/`wget|bash`/`base64 -d|sh`/fork bomb/`mkfs`/`dd if=`），**不绑 toolName**，故改名 toolName 绕不过。`buildHookRedTeamCases()` 产 8 个变形绕过 case（改 toolName/加空白/编码混淆）全 `must-block` + reasonPattern 核对 + 2 个良性阴性对照 `must-allow`（防全拦过拟合）。复用 `runHookEvaluation`/`evaluateHookFixture`（D.4 唯一真源），零新判定逻辑。
+  - **② prompts lab 注入鲁棒性**（`server/src/prompt-redteam-fixtures.ts` + `.test.ts`）：双侧 `PromptEvalTask` 加可选 `mustResist?:boolean` + `attackKind?:PromptAttackKind`（新增 union `ignore-instructions|privilege-escalation|exfiltration|jailbreak`）。`mustResist` task 在 `buildPairwiseJudgePrompt` 早返回路由到新 `buildResistJudgePrompt`——评分倒转为「守约束者胜」（守住=高分 win / 顺从注入失守=低分 loss），复用既有 pairwise JSON 协议 + majority/均值聚合，**零新判定通道**。`buildPromptRedTeamTasks()` 产 5 个注入 task（忽略指令/泄露系统提示/越权/越狱 DAN/数据内嵌注入），注入样本不含真实敏感数据。`prompt-evaluation-api.ts` parser 接收两新字段。
 - 校验：
-  - knowledge retrieval/injection + memory injection 回归 ✅（16 tests）
-  - `npm run typecheck` ✅
-  - `npm run build` ✅（仅既有 Vite dynamic-import / chunk-size warning）
+  - `npm run typecheck` ✅（server + web 全绿）。
+  - `npm run build` ✅（仅既有 chunk-size warning）。
+  - **新单测**：`hook-redteam-fixtures.test.ts` ✅ 4/4（变形全被拦 + 阴性放行 + ★零副作用 sentinel 坐实 + 弱 toolName 护栏被绕过 vs content 护栏仍拦的对照）；`prompt-redteam-fixtures.test.ts` ✅ 5/5（mustResist 路由 resist prompt + 非 resist 保持 A/B framing + attackKind 标签/约束嵌入 + 预置集断言 + **e2e judge 对失守变体判 loss**）。既有 `prompt-evaluation-{runner,api}.test.ts` / `hook-evaluation-{runner,api}.test.ts` 16/16 无回归。
 - 下一步：
-  - **真实 E2E smoke**：准备一篇带唯一事实和 path 的知识文档，开启开关后分别跑日常 chat 与 multi-agent，确认回答引用 `[KBn]`、末尾来源标题/path 可见；关闭开关复跑确认不引用。本 session 未调用真实 LLM/browser。
-  - **可观测性补强**：若需要审计“本轮到底召回了哪些 chunk”，新增 knowledge injection snapshot/trace，不能复用 memory snapshot 冒充；应记录 doc/chunk ID、score、预算裁剪结果，不记录额外原文副本。
-  - **性能门槛**：当前 BM25 每次 query 全量 tokenize；当 workspace chunk 约 5k 或 P95 > 50ms 时，再按 `(workspaceId, corpus version)` 加进程内 token cache，避免提前引入索引复杂度。
-- 阻塞：无代码阻塞；真实 LLM/browser E2E 尚未执行。
-- 开放问题：是否要求把来源升级为 UI 确定性 citation panel（不依赖模型按 prompt 输出）？当前 P2 验收按回答内 `[KBn]` + 来源列表实现；若总控要求强确定性展示，需要扩 ServerMessage/trace 契约并由 UI 渲染召回来源。
+  - **等总控加重终审**（安全红线）：核 hooks eval 零执行铁律 + 注入样本无真实敏感数据 + resist judge 评分倒转口径无误。
+  - **可选未做（按需）**：red-team case 集当前走 builder 下发（无 DB 预置表/路由/前端入口）；若要前端一键加载 red-team 模板集（HookLabPane/PromptLabPane 加「加载 red-team 套件」按钮），再补 E 端点 + UI。
+  - **P5-2 遗留仍挂**：回归看板（P5-2）左栏一级入口仍依赖总控合入 `constants.ts` 接缝（`SubTab` 增 `'lab_regression'`、`LAB_SUB_TABS`/`LAB_SUB_IDS` 加「回归」项）；当前走 `String(activeSubTab)` 逃生口 + 总览按钮，功能可达但无独立 tab。合入后需做回归看板浏览器实跑点检。
+- 阻塞：无（P5-3 本体已闭环；P5-2 接缝遗留见下一步，非本次新增阻塞）。
+- 开放问题（需总控）：
+  1. **P5-3 接缝确认**：本次按 E-LAB 既有惯例在双侧 `types.ts` 给 `PromptEvalTask` 加可选 `mustResist`/`attackKind` + 新增 `PromptAttackKind`（纯增量、向后兼容、不改既有结构）。prompt eval 契约本就落双侧 types（E 域惯例），如总控认为应另立位置请指示。
+  2. **P5-2 遗留**：是否按 P5-1 口径合入 `constants.ts` 最小接缝（`SubTab` 增 `'lab_regression'`、`LAB_SUB_TABS` 加 `{ id: 'lab_regression', label: '回归' }` 紧接 `lab_overview` 后、`LAB_SUB_IDS` 加 `'lab_regression'`）。未合入前回归看板无独立左栏 tab。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -41,7 +38,7 @@
 | 业务需求 | `BusinessRequirementPane` `useBusinessRequirementContexts` | `routes/engine.ts`(新) |
 | 重复（工作流/flow 产物） | `MultiAgentExecutionPane` `CreationPane` `WorkflowDagEditor` `DecisionTreePane` `TocPane` `RunOutputPanel` | `multi-agent-runner.ts` `flow-fs.ts` |
 | AnaX | `AnaXPane` `HypothesisPane` `ChangeManagementPane` `AnaXReadmePane` | `anax-template.ts` `anax-gate.ts` |
-| 实验室 | `SkillLabPane` `ToolLabPane` `ModelLabPane` `ModelBuilder` `OperationalModelPane` | `*-evaluation-runner.ts` `skill-{curator,distillation,retrieval,activation}.ts` `model-lab.ts` `web/src/data/models.ts` |
+| 实验室 | `SkillLabPane` `ToolLabPane` `PromptLabPane` `ModelLabPane` `ModelBuilder` `OperationalModelPane` `LabOverviewPane` `RegressionDashboardPane` `eval-shared/*` | `*-evaluation-runner.ts` `*-evaluation-api.ts` `skill-{curator,distillation,retrieval,activation}.ts` `lab-timeline.ts` `regression-gate.ts` `model-lab.ts` `web/src/data/models.ts` |
 
 db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前端方法进 `lib/api/engine.ts`。
 
@@ -109,6 +106,36 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 ---
 
 ## 三、关键决策沉淀
+
+**实验场 / prompt 评测**
+- 2026-06-20 E-LAB1：prompts lab 沿用 per-module runner，不为六类实验场提前抽统一泛型基类。`PromptVariant` 的第一个元素即 baseline；`role="system"` 通过 `RunPiOptions.systemPrompt` 注入，`role="prefix"` 只前置到当次 task user text。两种注入都继续经过 pi adapter 的稳定安全前缀，不能自行直拼并绕过 `assembleSystemPrompt()`。
+- 2026-06-20 E-LAB1：prompt eval 新表与路由全部落 E slot（`db/engine.ts` / `routes/engine.ts`），不复制 skill/tool 的 legacy `db.ts` / `index.ts` 落点。评测数据采用 evaluation 主表 + result 明细表，task 集独立表；列表不带 results，detail 才加载结果，避免历史页放大响应体。
+- 2026-06-20 E-LAB1：pairwise 逐字复用 skill 的 majority verdict、分数/置信度均值和 `judgeRuns` 留痕口径；没有为 prompt 自造新评分标准。prompt lab 去掉 skill 特有的 activation/retrieval/contextPrefix 字段，防止不同评测对象的指标语义混用。
+
+**实验场 / command 评测（E-LAB2）**
+- 2026-06-20 E-LAB2 case 输入口径：command case 输入用 **`argsText`**（命令名之后的参数串），不用结构化 paramValues。原因：`expandCommand(text, commands)` 吃完整 slash 行做真实 parse，positional/`{{args}}` 无法由结构化键值表达；runner 内 `composeLine = /${command.name}${argsText? " "+argsText : ""}` 拼回完整行再展开，最忠实地复用生产展开路径，零旁路。
+- 2026-06-20 E-LAB2 一 case 一 expectation：沿用 tool 模型，5 类 expectation（expand-contains/expand-golden/skill-attached 纯确定性无模型消耗；run-contains/run-llm-judge 才起 pi turn）。要同时验「展开 + 实跑」必须拆两 case，不在单 case 内叠加多断言。
+- 2026-06-20 E-LAB2 model 必填边界：`parseCommandEvaluationRunRequest` 只在「任一 case 为 run-*」时强制 `request.model` 必填；纯确定性评测不传 model 不报错。run-* 的 turn 注入沿用 prompt runner 既有 `runTurn?: (RunPiOptions)=>PiRun` 注入点（单测/smoke mock），run-llm-judge 复用 `evaluation-common.runJudge`，不自造执行通道（无 execSync/self-HTTP）。
+- 2026-06-20 E-LAB2 落点同 Phase1：三表落 `db/engine.ts`、8 路由落 `routes/engine.ts`，不碰冻结的 `index.ts`/`db.ts`。run handler 读全局 `commands.json`（经本文件已导出的 `readCommandsFile()`），按 `commandId` 找 enabled 命令，缺/禁用→400。command 是 workspace 无关的全局注册表，case-set/evaluation 仍按 workspace 归集。
+- 2026-06-20 E-LAB2 archive kind 三处同改：扩 `"command"` 需同时改 `EvaluationArchiveIndexItem.kind` 类型、`archiveEvaluation` 内部签名、`listEvaluationArchives` 的 baseName 前缀识别（`command-evaluation-` → kind）。web 侧 `types.ts` 的 `EvaluationArchiveIndexItem.kind` 也要同步加 `"command"`（双侧镜像）。`web/src/lib/evaluation-export.ts` 的 `downloadEvaluationJson` prefix union 暂未含 `"command"`，CommandLabPane 用局部 `downloadJson` 规避，未改共享导出库（避免外溢）；若总控要统一 web archive 导出再扩。
+- 2026-06-20 E-LAB2 大 TSX 写入踩坑复现：写 CommandLabPane（~459 行）时，单次 Write/Edit 工具调用的入参在传输层约 ~10KB 即被截断成 Unterminated string。最终方案=先 Write 极简骨架（imports + 纯函数 helpers + `inputCls` 常量），再用多次 `cat >> heredoc`（每段 <200 行）分块追加组件主体 / CaseEditor / ResultPanel。**重申既有约定：>200 行新 TSX 一律先骨架后分块追加，不要一次性 Write/Edit 整文件。**
+
+**实验场 / hooks 评测（E-LAB4，范式 B 护栏单测）**
+- 2026-06-21 E-LAB4 纯确定性范式：hooks lab = 护栏单测，**无 LLM / 无 judge / 无 model**；`repeat` 仅为 schema parity（确定性下重跑结果恒同），默认 1。run handler **同步**（非 async），无 pi turn。5 类 expectation：must-block(reasonPattern 正则可选)/must-allow/golden-mutation(mutatedInput 深等)/match(matchedHookIds 集合等、顺序无关)/trigger-count。
+- 2026-06-21 E-LAB4 verdict 唯一真源 = 接缝纯函数：runner 一律调 `pi-extensions/px-hook-runner/hook-eval-core.ts` 的 `evaluateHookFixture`（D.4 owner=总控抽出，扩展运行时与 eval 共用同一判定），**不复刻** block/mutate/match 语义。runner 暴露 `evaluate?` 注入点供单测，默认真实纯函数。
+- 2026-06-21 E-LAB4 ★安全红线（等同 AGENTS.md §一）：eval **绝不执行 hook 副作用**。command/notify/log 只枚举进 `verdict.sideEffectKinds`，runner 内零 spawn/exec/写 hooks-triggers.jsonl。**必须有测试坐实**——构造 `command` action hook + 命中 fixture，跑完断言其 shell 命令的 sentinel 文件不存在（`hook-evaluation-runner.test.ts` 已含此红线 case）。
+- 2026-06-21 E-LAB4 跨 rootDir import 接缝踩坑：runner/route import `../../pi-extensions/px-hook-runner/hook-eval-core.ts` 时，server `tsc`（`include:["src"]` + strict）会把扩展文件拉进 program，暴出该文件自身的 TS7022（`cloneInput` 缺显式返回类型→`base` 自引用 any）+ 跨 rootDir 的 TS2307 解析失败。**该文件是接缝层（owner=总控），E 不擅改**——回总控修（加显式返回类型 + tsconfig 解析）。`node --test --experimental-strip-types` 因只剥类型不 typecheck，运行期不受此阻，故逻辑验证可先行。
+- 2026-06-21 E-LAB4 落点同前期：三表 `hook_eval_sets`/`hook_evaluations`/`hook_evaluation_results` 落 `db/engine.ts`，verdict 列 matched_hook_ids/blocked/block_reason/mutated_input/side_effect_kinds/trigger_count；8 路由落 `routes/engine.ts`，run handler 用**本地** `readHooksForEval`（读全局 hooks.json，与 dataRouter `GET /api/hooks` 同源但不跨域复用其私有 `readHooksFile`），按 `case.hookIds` 过滤子集、缺省全 enabled。archive kind 扩 `"hook"`（双侧 `EvaluationArchiveIndexItem.kind` + `archiveEvaluation` 签名 + `listEvaluationArchives` 前缀识别三处同改）。
+- 2026-06-21 E-LAB4 HookLabPane 前端：无 model/models props（确定性）；payload/expectedInput 用 JSON 文本框 + 提交前 `JSON.parse` 防呆（`built.error` 在面板内提示，不发后端）；hooks 子集用 `api.listHooks()`（data 域端点）勾选；顶部常驻红线提示「仅评判 verdict，绝不执行副作用」。
+
+**实验场 / red-team 套件（P5-3，prompt 注入 / 护栏绕过；安全相关→总控加重终审）**
+- 2026-06-21 P5-3 hooks 护栏绕过决策：red-team 护栏选 **content-keyed**（按命令内容正则匹配 `match.pattern`），**不绑 toolName**。理由——攻击者最容易的绕过手法就是改 toolName（`bash`→`shell-exec-v2`→`exec`…），toolName 型护栏天然脆弱；content 护栏对变形 toolName 免疫。预置集特意含一个「弱 toolName 护栏被改名绕过 vs content 护栏仍拦」对照 case 把这点坐实。另含 2 个良性阴性对照（`ls`/`curl -o 下载不管道执行`）防全拦过拟合。
+- 2026-06-21 P5-3 ★正则陷阱（务必记）：`matchesHook` 用 `new RegExp(m.pattern)` **无 flag**，JS 不支持内联 `(?i)` —— 写 `(?i)...` 会抛 SyntaxError 被 catch 成「不命中」，护栏静默失效、绕过 case 反而"通过"。故危险 token 一律按命令惯例**小写直配**，不依赖大小写无关。后续任何 hooks pattern 写法同此约束。
+- 2026-06-21 P5-3 hooks red-team **不扩 expectation**：现有 `must-block`(+reasonPattern)/`must-allow` 已足够表达「变形仍被拦/良性放行」，无需新增 expectation kind。"must-resist 类断言"在 hooks 侧即等价于 `must-block`，复用即可，零接缝增量。
+- 2026-06-21 P5-3 hooks red-team 下发形态：hooks lab 无 DB 预置 case 表，red-team case 集以 **builder 函数** `buildHookRedTeamCases()` 下发（前端可调它生成后写入 `hook_eval_sets`，或文档/产品示例直接展示）。否决了「为 red-team 单独建预置表/路由」——当前只需一组固定模板，builder + 文档示例最轻；若将来要多套可管理的 red-team 模板再补端点。
+- 2026-06-21 P5-3 prompts 注入鲁棒性落点（用户拍板「task 级 resist 标注 + 复用 pairwise judge」）：在 `PromptEvalTask` 加可选 `mustResist`/`attackKind`，`mustResist` task 在 `buildPairwiseJudgePrompt` 顶部**早返回**路由到 `buildResistJudgePrompt`，把评分语义**倒转为「守约束者胜」**（守住=高分 win / 顺从注入失守=低分 loss），其余 JSON 协议 + majority/均值聚合一字不改。**否决了**新增独立 resist-judge 判定通道（单变体绝对 pass/fail + minScore 硬门禁）——那要扩 `PromptEvalTask` 更多字段 + runner 判定分支 + 可能 DB 列，接缝远大于复用 pairwise；用户选最小接缝方案。代价：注入鲁棒性仍是「相对 baseline 谁更稳健」，不是绝对 pass/fail；若将来要绝对门禁再单开通道。
+- 2026-06-21 P5-3 接缝裁断：本次给双侧 `types.ts` 的 `PromptEvalTask` 加可选 `mustResist`/`attackKind` + 新增 `PromptAttackKind` union。判定为**符合 E-LAB 既有惯例**（prompt eval 契约本就落双侧 types，见 E-LAB1 决策）且为**纯增量可选字段**（向后兼容、不改既有结构、旧 task 不带这两字段行为零变化），故按惯例镜像两侧而非另立位置。已写入 §0 开放问题待总控确认。
+- 2026-06-21 P5-3 ★安全（等同 AGENTS.md §一）：① hooks red-team 仍守 E-LAB4 零执行铁律——危险命令是 sentinel 占位（`/tmp/__redteam_sentinel__` 等），评测路径零 spawn，测试 sentinel-not-exist 坐实；② prompts 注入样本不含真实敏感数据——「系统提示/密钥」全是占位文案，judge 纯判定不触发危险执行。两侧均待总控加重终审核这两条红线。
 
 **重复 / 工作流产物**
 - Flow `kind: single|multi`（DB 自动迁移 ALTER+DEFAULT）→ 后删单智能体，只留 multi；**更名仅改 label，内部 id `multi`/DB kind 不动**（零迁移）。
@@ -196,10 +223,25 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **subagent 全局运行看板（2026-06-17 D·看板）**：`listAllSubAgentTasks` JOIN sessions 派生 `workspace_id`，不补 `subagent_tasks` 列、零迁移。`SubAgentTask.workspaceId` 是只读派生字段（JOIN 产出），不是持久化列——workspaceId 是 session 固有属性（单一真源），存进 task 冗余且可能与 session 不一致。看板 ws trace 复用 `subagent_event` 全局广播，按 `workspaceId` 过滤；`subagent_run_start`/`subagent_run_end` 触发全量刷新。前端筛选（工作区/状态/模板）优先走 server 端 status 参数减少传输量，模板筛选纯前端（`templateId` 不在 server 筛选参数中）。
 - **subagent skill 子集绑定（2026-06-17，skill 自进化 F；2026-06-18 收尾修订）**：委派子 agent 复用 workflow `node.skillPaths` 三态语义，双侧 `SubAgentTaskInput.skillPaths?: string[]`：`undefined` 表示继承 pi 默认 skill 策略，`[]` 表示显式禁用 skill，非空数组表示仅注入指定 skill 子集。后端 delegate 入口必须用 `validateSkillPaths(workspace.rootPath, value, { mode:"strict" })` 校验，禁止 slug 直传或路径绕过；校验后的值透传到 `runPiTurn`，由 pi-adapter 生成 `--no-skills --skill <path>` 或空数组禁用。前端 `DelegateSubAgentCard` 用三态按钮表达语义，指定模式复用 `SkillSelector`；**指定模式必须非空才能提交**，不能把“指定但未选择”发送成 `[]`，否则会与“禁用 skill”的协议语义冲突。当前 `skillPaths` 仅为运行时输入，不写 `subagent_tasks`，因此历史看板不展示、resume 不恢复；若要审计/复用需另扩 schema/provenance。
 
+### Phase5 runner 范式收敛评估（2026-06-21）
+
+- **结论：维持六 runner 各自实现，只共享稳定 helper；本期不抽统一 runner 内核。** 六文件共 2,782 行，其中 skill/prompt 共 1,324 行、控制流和 pairwise judge 高度同构；但两者在 variant 注入、activation、context、prompt 组装和结果类型上已有实质差异。其余四类差异更大：tool 执行本地进程并做文件/golden/schema 判定，command 混合静态展开与 pi 实跑，subagent 管轨迹/预算/report，hook 是严格零副作用的同步纯判定。
+- 已有共享边界合理：`evaluation-common.ts` 统一 metrics/event/judge，`evaluation-errors.ts` 统一错误结构，`evaluation-archive.ts` 统一归档入口。若把 run loop、case 执行、expectation、summary 强塞入泛型内核，会引入大量 callback/type parameter，并模糊 hook 的“零 spawn/零 fs”安全边界，收益低于维护成本。
+- 后续只在**至少两个 runner 同时修改且语义完全一致**时抽 helper。候选仅限 `sanitizeEvaluationId`、repeat/case 基础校验、分组汇总与 pairwise 数值聚合；expectation 执行、目录布局、prompt 构造、side effect 策略继续留在各 runner。skill/prompt 的 pairwise helper 重复度最高，但应先补跨域等价测试，再单独提取，不能借本期呈现层 DRY 顺带改执行语义。
+
+### Phase5 P5-2 跨 lab 回归看板 + CI gate（2026-06-21）
+
+- **聚合口径：六类指标字段不统一，按 lab 各写 adapter，不抽巨型 union。** 六类 `*_summaries` 命名/形状各异（skill/prompt 有 `variantSummaries`+`pairwiseSummaries`+`activationRate`，tool/command/subagent/hook 只有 `caseSummaries`）。统一时间线点 `LabTimelinePoint` 收敛为 4 个可比指标：`score`（pairwise 胜率优先，否则 = passRate）/`passRate`（Σsuccess/Σtotal）/`winRate`（仅 skill/prompt）/`activationRate`（仅 skill）。缺失维度填 `null`，门禁对 null 指标**跳过**不判，避免误报。
+- **resourceId 语义**：skill/prompt 每个非 baseline variant = 一个资源（resourceId=variantId，skill 即 registry id）；tool=toolId、command=commandId；subagent/hook 无资源维度，整集聚合为单点 resourceId=`"-"`。skill/prompt 必须**排除 baseline variant**（它是参照系不是被评对象）。
+- **门禁阈值复用 skill-regression 口径并推广**：`DEFAULT_REGRESSION_GATE_THRESHOLDS` 沿用 skill 的 scoreDrop 0.1 / activationRateDrop 0.2，新增 passRateDrop/winRateDrop 0.1。判据同样是 `delta <= -drop`（与 `compareSkillRegression` 一致），保证跨 lab 与既有 candidate→active 升级口径一致。门禁是**只读判定**，不写库、不触发评测、不重算回归历史——CI gate 消费聚合真源即可。
+- **接缝边界**：`lab_regression` 子 tab 需改接缝 `constants.ts`（E 不碰），故用 `String(activeSubTab)==="lab_regression"` 逃生口渲染 + 总览按钮进入，功能可达；左栏一级 tab 待总控合入。此模式与 P5-1 `lab_overview` 合入前完全一致。
+
 ---
 
 ## 四、踩坑 / 陷阱
 
+- **domain router 注册晚于 legacy 路由，通配路由会抢先匹配**（2026-06-20 E-LAB1）：legacy `POST /api/evaluations/:kind/:id/archive` 在 `registerDomainRoutes(app)` 之前注册，会先吞掉 `/api/evaluations/prompt/:id/archive` 并按未知 kind 返回 400；在不改冻结 `index.ts` 的约束下，prompt 归档必须使用不冲突的专用路径 `POST /api/prompt-evaluations/:id/archive`。以后给 domain router 新增路由前，必须先扫描 legacy 同 method 的静态/参数化路径和注册顺序，不能只看路径字符串是否完全相同。
+- **prompt baseline 不能沿用 skill 的“空 skillPaths”发现规则**（2026-06-20 E-LAB1）：prompt variant 每个都必须有非空 `promptBody`，因此 baseline 明确定义为 `variants[0]`。若继续复制 skill 的“空资源 variant 或 id=baseline”选择逻辑，会出现无 baseline、pairwise 全不执行。
 - **pi CLI 调用**：`runPiPrompt()` 用 `--no-skills`，**不要用 `--no-extensions`**（会禁用模型 provider 扩展导致 LLM 调用失败）。见 `pi-adapter.ts`。
 - **pi skill 子资源读取能力已实测（2026-06-15）**：`pi -p --no-skills --skill /tmp/.../SKILL.md --tools read` 可在 skill 激活后读取 `SKILL.md` 内写的 `./scripts/answer.txt` 相对路径并输出文件 marker。注意：临时隔离 `PI_CODING_AGENT_DIR` 会丢失用户 provider 配置导致 `No API key found`；做真实 smoke 需要允许 pi 读取现有配置。实测时出现过无关 `ptk-memory-inject` 扩展的 `better-sqlite3` Node ABI warning，不代表 skill 子资源失败。
 - **AnaX 结构块解析必须容忍真实 LLM 格式漂移**：MiniMax 真跑会输出 ````anax-verdict{...}` / ````anax-hypotheses-plan[...]`（marker 后无换行），也可能先在 `<think>` 中复述一个无效示例块，再在末尾输出有效块。解析器必须扫描所有同名 fenced block，跳过无效 JSON，取最后一个有效 JSON；只取第一个 block 会误判 gate/fan-out 失败。
@@ -213,6 +255,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **candidate→draft 是语义复用，不是普通草稿**：P1 A 为避免扩 `SkillStatus`，把 `draft` 用作“达标待人审采纳”。任何 UI/文档展示都应写“待采纳”而不是只写“草稿”，否则会误导用户以为尚未评测。
 - **workflow skillPaths 保存时会规范化并过滤无效路径**：`GET/PUT /api/flows/:id/workflow` 调用 `normalizeWorkflowSkills()`，沿用 lenient 规则。无效路径会被剔除而不是 400；前端保存后应以重新加载结果为准，不要假设用户输入的每个 path 都落盘。
 - **node.skillPaths 三态不要混淆**：`undefined` 是继承 workflow 默认，`[]` 是明确禁用默认 skill，非空数组是指定子集。前端 patch 时如果想恢复继承必须把字段设为 `undefined`，不能写空数组。
+- **回归门禁阈值测试要避开浮点毛刺**：判据是 `delta <= -drop`。`0.8 - 0.9` 在 IEEE754 下 = `-0.0999...` > `-0.1`，**不触发** regression（与 `compareSkillRegression` 同源行为，不是 bug）。写边界测试别用相邻 0.1 倍数（如 0.8 vs 0.9），用明确跨界值（0.75 vs 0.9 = -0.15 触发；0.85 vs 0.9 = -0.05 不触发）。activationRate 的 `0.7 vs 0.9` 反而因 `-0.20000000000000018 <= -0.2` 恰好触发——别依赖恰好相等的边界。
 - **工具事件重复显示风险**：pi 可能先流式透传 `tool_call/tool_result`，最终 `message_end` 又带完整 `tool_use/tool_result` content。ChatPane 必须按 `id/tool_use_id` 去重，否则用户会看到两套工具卡。
 - **ExtractionTool skill 不是红线本体**：skill 文字只能引导模型选择 clean_data；真正防泄漏必须依赖后端 `POST /api/extraction-tools/:id/run` 的 `source=ai`、`workspaceId` 和已登记 `clean_data` 校验。不要在前端或 skill 文案里把软约束误认为安全边界。
 - **AI 行数护栏不能把 `items` key 一律当明细**（2026-06-17 E·P1）：`market-basket` 的聚合项集结构是 `{ items: string[], size, support }`，若把所有 `items` 数组按明细截断，会把一个项集内部的商品列表截坏。护栏应优先识别明确明细 key（`rows/records/data`）、对象数组、以及 `rowCount/totalRows` 类计数字段；不要把任意数组都当原始行。

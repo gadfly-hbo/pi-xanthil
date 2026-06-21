@@ -3,6 +3,7 @@ import { Archive, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronRight, 
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { downloadArchiveTextFile, downloadArchivesZip, downloadEvaluationArchiveManifest, downloadEvaluationJson, downloadSkillEvaluationMarkdown } from "@/lib/evaluation-export";
+import { ArchiveList, EvalHistoryList, ExportActions, ResultCard as SharedResultCard, SummaryTable as SharedSummaryTable } from "@/components/eval-shared";
 import type { AutonomousRunResult, EvaluationArchiveIndexItem, EvaluationError, PiModel, PiSkill, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseSummary, SkillVariant, SkillVariantSummary } from "@/types";
 
 interface Props {
@@ -600,17 +601,7 @@ export function SkillLabPane(p: Props) {
         </button>
         {error && <p className="mt-2 break-words text-xs text-rose-500">{error}</p>}
 
-        <div className="mt-6 text-xs font-medium text-neutral-500">历史评估</div>
-        <div className="mt-2 space-y-1">
-          {history.map((item) => (
-            <button key={item.evaluationId} onClick={() => void selectEvaluation(item.evaluationId)} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800", result?.evaluationId === item.evaluationId && "bg-neutral-100 dark:bg-neutral-800")}>
-              <StatusIcon status={item.status} />
-              <span className="min-w-0 flex-1 truncate">{new Date(item.startedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-              <span className="text-[10px] text-neutral-400">{item.variants.length}v/{item.tasks.length}t/{item.repeat}x</span>
-            </button>
-          ))}
-          {history.length === 0 && <p className="px-2 py-2 text-xs text-neutral-400">还没有 Skill 评估历史。</p>}
-        </div>
+        <EvalHistoryList items={history} selectedId={result?.evaluationId} onSelect={(item) => void selectEvaluation(item.evaluationId)} emptyText="还没有 Skill 评估历史。" renderMeta={(item) => <span className="text-[10px] text-neutral-400">{item.variants.length}v/{item.tasks.length}t/{item.repeat}x</span>} />
 
         {/* 治理队列 */}
         <div className="mt-6 flex items-center gap-2 text-xs font-medium text-neutral-500">
@@ -699,45 +690,7 @@ export function SkillLabPane(p: Props) {
           )}
         </div>
 
-        <div className="mt-6 flex items-center gap-2 text-xs font-medium text-neutral-500">
-          <Archive className="h-3.5 w-3.5" />
-          <span className="min-w-0 flex-1">最近归档</span>
-          <button
-            type="button"
-            disabled={archives.length === 0}
-            onClick={() => downloadEvaluationArchiveManifest(archives)}
-            className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
-            manifest
-          </button>
-          <button
-            type="button"
-            disabled={archives.length === 0 || zipping}
-            onClick={() => void downloadAllArchivesZip()}
-            className="inline-flex items-center gap-0.5 rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
-            {zipping ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <Download className="h-2.5 w-2.5" />}
-            zip
-          </button>
-        </div>
-        <div className="mt-2 space-y-1">
-          {archives.slice(0, 5).map((item) => (
-            <div key={item.baseName} className="rounded-md border border-neutral-200 px-2 py-1.5 text-xs dark:border-neutral-800">
-              <div className="flex items-center gap-2">
-                <span className={cn("rounded px-1 py-0.5 text-[10px] font-medium", item.kind === "skill" ? "bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300")}>{item.kind}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[10.5px]" title={item.evaluationId}>{item.evaluationId}</span>
-              </div>
-              <div className="mt-1 truncate font-mono text-[10px] text-neutral-400" title={`${item.markdownRelPath} / ${item.jsonRelPath}`}>
-                {item.markdownRelPath}
-              </div>
-              <div className="mt-2 flex gap-1">
-                <button type="button" onClick={() => void downloadArchiveFile(item, "md")} className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">MD</button>
-                <button type="button" onClick={() => void downloadArchiveFile(item, "json")} className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">JSON</button>
-              </div>
-            </div>
-          ))}
-          {archives.length === 0 && <p className="px-2 py-2 text-xs text-neutral-400">还没有归档报告。</p>}
-        </div>
+        <ArchiveList archives={archives} zipping={zipping} onDownload={(item, format) => void downloadArchiveFile(item, format)} onDownloadManifest={() => downloadEvaluationArchiveManifest(archives)} onDownloadZip={() => void downloadAllArchivesZip()} />
       </aside>
 
       <main className="min-w-0 flex-1 overflow-y-auto p-5">
@@ -775,15 +728,11 @@ export function SkillLabPane(p: Props) {
                 <p className="mt-1 text-xs leading-5 text-neutral-500">{result.results.length} 次运行 · {result.durationSec.toFixed(2)}s · {statusLabel(result.status)}</p>
               </div>
               <div className="flex shrink-0 items-center gap-2">
-                <button type="button" onClick={() => downloadEvaluationJson("skill", result.evaluationId, result)} className={exportButtonClass} title="导出完整 JSON">
-                  <Download className="h-3.5 w-3.5" />JSON
-                </button>
-                <button type="button" onClick={() => downloadSkillEvaluationMarkdown(result)} className={exportButtonClass} title="导出 Markdown 报告">
-                  <Download className="h-3.5 w-3.5" />Markdown
-                </button>
-                <button type="button" onClick={() => void archiveCurrentEvaluation()} className={exportButtonClass} title="归档 Markdown 与 JSON 到 workspace">
-                  <Archive className="h-3.5 w-3.5" />归档
-                </button>
+                <ExportActions actions={[
+                  { key: "json", title: "导出完整 JSON", onClick: () => downloadEvaluationJson("skill", result.evaluationId, result), label: <><Download className="h-3.5 w-3.5" />JSON</> },
+                  { key: "md", title: "导出 Markdown 报告", onClick: () => downloadSkillEvaluationMarkdown(result), label: <><Download className="h-3.5 w-3.5" />Markdown</> },
+                  { key: "archive", title: "归档 Markdown 与 JSON 到 workspace", onClick: () => void archiveCurrentEvaluation(), label: <><Archive className="h-3.5 w-3.5" />归档</> },
+                ]} />
                 <button
                   type="button"
                   disabled={curating}
@@ -815,34 +764,9 @@ export function SkillLabPane(p: Props) {
 }
 
 function SummaryTable({ summaries }: { summaries: SkillVariantSummary[] }) {
-  return <div className="mt-4 overflow-x-auto">
-    <table className="w-full text-left text-xs">
-      <thead className="border-b border-neutral-200 text-neutral-500 dark:border-neutral-800">
-        <tr>
-          <th className="py-2 pr-3 font-medium">Variant</th>
-          <th className="py-2 pr-3 font-medium">成功</th>
-          <th className="py-2 pr-3 font-medium">激活率</th>
-          <th className="py-2 pr-3 font-medium">平均耗时</th>
-          <th className="py-2 pr-3 font-medium">平均 token</th>
-          <th className="py-2 pr-3 font-medium">平均成本</th>
-          <th className="py-2 pr-3 font-medium">输出字符</th>
-        </tr>
-      </thead>
-      <tbody>
-        {summaries.map((item) => (
-          <tr key={item.variantId} className="border-b border-neutral-100 dark:border-neutral-900">
-            <td className="py-2 pr-3 font-medium">{item.variantLabel}</td>
-            <td className="py-2 pr-3">{item.success}/{item.total}</td>
-            <td className="py-2 pr-3">{Math.round(item.activationRate * 100)}%</td>
-            <td className="py-2 pr-3">{item.avgDurationSec.toFixed(2)}s</td>
-            <td className="py-2 pr-3">{Math.round(item.avgTotalTokens)}</td>
-            <td className="py-2 pr-3">${item.avgTotalCost.toFixed(5)}</td>
-            <td className="py-2 pr-3">{Math.round(item.avgOutputChars)}</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>;
+  return <SharedSummaryTable rows={summaries} rowKey={(item) => item.variantId} columns={[
+    { key: "variant", label: "Variant", className: "font-medium", render: (item) => item.variantLabel }, { key: "success", label: "成功", render: (item) => `${item.success}/${item.total}` }, { key: "activation", label: "激活率", render: (item) => `${Math.round(item.activationRate * 100)}%` }, { key: "duration", label: "平均耗时", render: (item) => `${item.avgDurationSec.toFixed(2)}s` }, { key: "tokens", label: "平均 token", render: (item) => Math.round(item.avgTotalTokens) }, { key: "cost", label: "平均成本", render: (item) => `$${item.avgTotalCost.toFixed(5)}` }, { key: "chars", label: "输出字符", render: (item) => Math.round(item.avgOutputChars) },
+  ]} />;
 }
 
 function PairwiseSummaryTable({ summaries }: { summaries: SkillPairwiseSummary[] }) {
@@ -907,17 +831,7 @@ function TaskSummaryTable({ result }: { result: SkillEvaluationDetail }) {
 }
 
 function ResultCard({ result }: { result: SkillEvaluationRunResult }) {
-  return <details className="rounded-md border border-neutral-200 px-3 py-2 text-xs dark:border-neutral-800">
-    <summary className="cursor-pointer">
-      <span className="inline-flex items-center gap-2">
-        <StatusIcon status={result.status} />
-        <span className="font-medium">{result.variantLabel}</span>
-        <span className="text-neutral-400">{result.taskId} · attempt {result.attempt}</span>
-        <span className={cn("rounded px-1.5 py-0.5 text-[10px]", result.activation.activated ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400")}>
-          {result.activation.activated ? "activated" : "not activated"}
-        </span>
-      </span>
-    </summary>
+  return <SharedResultCard collapsible title={result.variantLabel} status={result.status} meta={<>{result.taskId} · attempt {result.attempt} · {result.activation.activated ? "activated" : "not activated"}</>}>
     <div className="mt-2 grid gap-2 text-neutral-500 md:grid-cols-4">
       <div>耗时 {result.durationSec.toFixed(2)}s</div>
       <div>Token {result.totalTokens}</div>
@@ -937,7 +851,7 @@ function ResultCard({ result }: { result: SkillEvaluationRunResult }) {
     )}
     {result.error && <p className="mt-2 whitespace-pre-wrap rounded-md bg-rose-50 px-3 py-2 text-xs text-rose-600 dark:bg-rose-950/30">{formatEvaluationError(result.error)}</p>}
     {result.output && <pre className="mt-2 max-h-80 overflow-auto whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-[11px] leading-5 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{result.output}</pre>}
-  </details>;
+  </SharedResultCard>;
 }
 
 function StatusIcon({ status }: { status: "success" | "failed" }) {

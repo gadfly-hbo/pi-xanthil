@@ -3,7 +3,8 @@ import { join, resolve } from "node:path";
 import { db } from "../db.ts";
 import { enableForOrigin, setMemoryEnablement, disableItemEverywhere } from "./shared.ts";
 import { detectSkillActivation } from "../skill-activation.ts";
-import type { SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus } from "../types.ts";
+import { parseEvaluationError, serializeEvaluationError } from "../evaluation-errors.ts";
+import type { CommandCaseSummary, CommandEvalCase, CommandEvalSet, CommandEvaluation, CommandEvaluationDetail, CommandEvaluationRunResult, HookCaseSummary, HookEvalCase, HookEvalSet, HookEvaluation, HookEvaluationDetail, HookEvaluationRunResult, PromptEvalSet, PromptEvalTask, PromptEvaluation, PromptEvaluationDetail, PromptEvaluationRunResult, PromptPairwiseResult, PromptPairwiseSummary, PromptTaskSummary, PromptVariant, PromptVariantSummary, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus, SubAgentCaseSummary, SubAgentEvalCase, SubAgentEvalSet, SubAgentEvaluation, SubAgentEvaluationDetail, SubAgentEvaluationRunResult, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult } from "../types.ts";
 
 /**
  * 【Agent-E · 智能引擎域】db 表 slot —— owner: codex(GPT-5.5)
@@ -35,6 +36,614 @@ export function initEngineTables(): void {
   `);
   db.exec("CREATE INDEX IF NOT EXISTS idx_skill_registry_eval_history_skill ON skill_registry_eval_history(workspace_id, slug, created_at DESC)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_skill_registry_eval_history_registry ON skill_registry_eval_history(registry_id, created_at DESC)");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS prompt_eval_sets (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name TEXT NOT NULL,
+      tasks TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_prompt_eval_sets_ws ON prompt_eval_sets(workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS prompt_evaluations (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      model TEXT NOT NULL,
+      repeat INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      duration_sec REAL NOT NULL DEFAULT 0,
+      variants TEXT NOT NULL,
+      tasks TEXT NOT NULL,
+      variant_summaries TEXT NOT NULL,
+      task_summaries TEXT NOT NULL,
+      pairwise_summaries TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS idx_prompt_evaluations_ws ON prompt_evaluations(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS prompt_evaluation_results (
+      id TEXT PRIMARY KEY,
+      evaluation_id TEXT NOT NULL REFERENCES prompt_evaluations(id),
+      variant_id TEXT NOT NULL,
+      variant_label TEXT NOT NULL,
+      task_id TEXT NOT NULL,
+      attempt INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      duration_sec REAL NOT NULL DEFAULT 0,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      total_cost REAL NOT NULL DEFAULT 0,
+      tool_calls INTEGER NOT NULL DEFAULT 0,
+      output_chars INTEGER NOT NULL DEFAULT 0,
+      output TEXT NOT NULL DEFAULT '',
+      pairwise TEXT,
+      error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_prompt_evaluation_results_eval ON prompt_evaluation_results(evaluation_id);
+    CREATE TABLE IF NOT EXISTS command_case_sets (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name TEXT NOT NULL,
+      command_id TEXT NOT NULL,
+      cases TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_command_case_sets_ws_cmd ON command_case_sets(workspace_id, command_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS command_evaluations (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      command_id TEXT NOT NULL,
+      repeat INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      duration_sec REAL NOT NULL DEFAULT 0,
+      cases TEXT NOT NULL,
+      case_summaries TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_command_evaluations_ws ON command_evaluations(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS command_evaluation_results (
+      id TEXT PRIMARY KEY,
+      evaluation_id TEXT NOT NULL REFERENCES command_evaluations(id),
+      case_id TEXT NOT NULL,
+      case_name TEXT NOT NULL,
+      attempt INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      duration_sec REAL NOT NULL DEFAULT 0,
+      expanded_text TEXT NOT NULL DEFAULT '',
+      skill_slugs TEXT NOT NULL DEFAULT '[]',
+      output TEXT NOT NULL DEFAULT '',
+      expectation TEXT NOT NULL,
+      error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_command_evaluation_results_eval ON command_evaluation_results(evaluation_id);
+    CREATE TABLE IF NOT EXISTS subagent_eval_sets (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name TEXT NOT NULL,
+      cases TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_subagent_eval_sets_ws ON subagent_eval_sets(workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS subagent_evaluations (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      repeat INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      duration_sec REAL NOT NULL DEFAULT 0,
+      cases TEXT NOT NULL,
+      case_summaries TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_subagent_evaluations_ws ON subagent_evaluations(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS subagent_evaluation_results (
+      id TEXT PRIMARY KEY,
+      evaluation_id TEXT NOT NULL REFERENCES subagent_evaluations(id),
+      case_id TEXT NOT NULL,
+      case_name TEXT NOT NULL,
+      attempt INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      duration_sec REAL NOT NULL DEFAULT 0,
+      tool_trajectory TEXT NOT NULL DEFAULT '[]',
+      step_count INTEGER NOT NULL DEFAULT 0,
+      total_tokens INTEGER NOT NULL DEFAULT 0,
+      total_cost REAL NOT NULL DEFAULT 0,
+      tool_calls INTEGER NOT NULL DEFAULT 0,
+      report_path TEXT,
+      output TEXT NOT NULL DEFAULT '',
+      expectation TEXT NOT NULL,
+      error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_subagent_evaluation_results_eval ON subagent_evaluation_results(evaluation_id);
+    CREATE TABLE IF NOT EXISTS hook_eval_sets (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name TEXT NOT NULL,
+      cases TEXT NOT NULL,
+      created_at INTEGER NOT NULL,
+      updated_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_hook_eval_sets_ws ON hook_eval_sets(workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS hook_evaluations (
+      id TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      repeat INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      duration_sec REAL NOT NULL DEFAULT 0,
+      cases TEXT NOT NULL,
+      case_summaries TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_hook_evaluations_ws ON hook_evaluations(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS hook_evaluation_results (
+      id TEXT PRIMARY KEY,
+      evaluation_id TEXT NOT NULL REFERENCES hook_evaluations(id),
+      case_id TEXT NOT NULL,
+      case_name TEXT NOT NULL,
+      attempt INTEGER NOT NULL,
+      status TEXT NOT NULL,
+      started_at INTEGER NOT NULL,
+      ended_at INTEGER NOT NULL,
+      duration_sec REAL NOT NULL DEFAULT 0,
+      matched_hook_ids TEXT NOT NULL DEFAULT '[]',
+      blocked INTEGER NOT NULL DEFAULT 0,
+      block_reason TEXT,
+      mutated_input TEXT,
+      side_effect_kinds TEXT NOT NULL DEFAULT '[]',
+      trigger_count INTEGER NOT NULL DEFAULT 0,
+      expectation TEXT NOT NULL,
+      error TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_hook_evaluation_results_eval ON hook_evaluation_results(evaluation_id);
+    CREATE TABLE IF NOT EXISTS tool_case_sets (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name         TEXT NOT NULL,
+      tool_id      TEXT NOT NULL,
+      cases        TEXT NOT NULL,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tool_case_sets_ws_tool ON tool_case_sets(workspace_id, tool_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS tool_evaluations (
+      id             TEXT PRIMARY KEY,
+      workspace_id   TEXT NOT NULL REFERENCES workspaces(id),
+      tool_id        TEXT NOT NULL,
+      repeat         INTEGER NOT NULL,
+      status         TEXT NOT NULL,
+      started_at     INTEGER NOT NULL,
+      ended_at       INTEGER NOT NULL,
+      duration_sec   REAL NOT NULL DEFAULT 0,
+      cases          TEXT NOT NULL,
+      case_summaries TEXT NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_tool_evaluations_ws ON tool_evaluations(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS tool_evaluation_results (
+      id            TEXT PRIMARY KEY,
+      evaluation_id TEXT NOT NULL REFERENCES tool_evaluations(id),
+      case_id       TEXT NOT NULL,
+      case_name     TEXT NOT NULL,
+      attempt       INTEGER NOT NULL,
+      status        TEXT NOT NULL,
+      started_at    INTEGER NOT NULL,
+      ended_at      INTEGER NOT NULL,
+      duration_sec  REAL NOT NULL DEFAULT 0,
+      input_path    TEXT NOT NULL,
+      output_path   TEXT NOT NULL,
+      stdout        TEXT NOT NULL DEFAULT '',
+      stderr        TEXT NOT NULL DEFAULT '',
+      summary       TEXT,
+      expectation   TEXT NOT NULL,
+      error         TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_tool_evaluation_results_eval ON tool_evaluation_results(evaluation_id);
+    CREATE TABLE IF NOT EXISTS skill_eval_sets (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      name         TEXT NOT NULL,
+      tasks        TEXT NOT NULL,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_eval_sets_ws ON skill_eval_sets(workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS skill_evaluations (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL REFERENCES workspaces(id),
+      model             TEXT NOT NULL,
+      repeat            INTEGER NOT NULL,
+      status            TEXT NOT NULL,
+      started_at        INTEGER NOT NULL,
+      ended_at          INTEGER NOT NULL,
+      duration_sec      REAL NOT NULL DEFAULT 0,
+      variants          TEXT NOT NULL,
+      tasks             TEXT NOT NULL,
+      context_prefix    TEXT NOT NULL DEFAULT '',
+      variant_summaries TEXT NOT NULL,
+      task_summaries    TEXT NOT NULL,
+      pairwise_summaries TEXT NOT NULL DEFAULT '[]'
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_evaluations_ws ON skill_evaluations(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS skill_evaluation_results (
+      id            TEXT PRIMARY KEY,
+      evaluation_id TEXT NOT NULL REFERENCES skill_evaluations(id),
+      variant_id    TEXT NOT NULL,
+      variant_label TEXT NOT NULL,
+      task_id       TEXT NOT NULL,
+      attempt       INTEGER NOT NULL,
+      status        TEXT NOT NULL,
+      started_at    INTEGER NOT NULL,
+      ended_at      INTEGER NOT NULL,
+      duration_sec  REAL NOT NULL DEFAULT 0,
+      skill_paths   TEXT NOT NULL,
+      total_tokens  INTEGER NOT NULL DEFAULT 0,
+      total_cost    REAL NOT NULL DEFAULT 0,
+      tool_calls    INTEGER NOT NULL DEFAULT 0,
+      output_chars  INTEGER NOT NULL DEFAULT 0,
+      output        TEXT NOT NULL DEFAULT '',
+      activation    TEXT NOT NULL,
+      pairwise      TEXT,
+      error         TEXT
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_evaluation_results_eval ON skill_evaluation_results(evaluation_id);
+  `);
+  try { db.exec("ALTER TABLE skill_evaluations ADD COLUMN pairwise_summaries TEXT NOT NULL DEFAULT '[]'"); } catch { /* column exists or read-only */ }
+  try { db.exec("ALTER TABLE skill_evaluation_results ADD COLUMN pairwise TEXT"); } catch { /* column exists or read-only */ }
+}
+
+type PromptEvalSetRow = Omit<PromptEvalSet, "tasks"> & { tasks: string };
+type PromptEvaluationRow = Omit<PromptEvaluation, "variants" | "tasks" | "variantSummaries" | "taskSummaries" | "pairwiseSummaries"> & {
+  variants: string;
+  tasks: string;
+  variantSummaries: string;
+  taskSummaries: string;
+  pairwiseSummaries: string;
+};
+type PromptEvaluationResultRow = Omit<PromptEvaluationRunResult, "pairwise" | "error"> & {
+  pairwise: string | null;
+  error: unknown;
+};
+
+export function createPromptEvalSet(workspaceId: string, name: string, tasks: PromptEvalTask[]): PromptEvalSet {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare("INSERT INTO prompt_eval_sets (id, workspace_id, name, tasks, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(id, workspaceId, name, JSON.stringify(tasks), now, now);
+  return { id, workspaceId, name, tasks, createdAt: now, updatedAt: now };
+}
+
+export function getPromptEvalSet(id: string): PromptEvalSet | undefined {
+  const row = db.prepare("SELECT id, workspace_id AS workspaceId, name, tasks, created_at AS createdAt, updated_at AS updatedAt FROM prompt_eval_sets WHERE id = ?")
+    .get(id) as unknown as PromptEvalSetRow | undefined;
+  return row ? { ...row, tasks: parseJsonArray<PromptEvalTask>(row.tasks) } : undefined;
+}
+
+export function listPromptEvalSets(workspaceId: string): PromptEvalSet[] {
+  const rows = db.prepare("SELECT id, workspace_id AS workspaceId, name, tasks, created_at AS createdAt, updated_at AS updatedAt FROM prompt_eval_sets WHERE workspace_id = ? ORDER BY updated_at DESC")
+    .all(workspaceId) as unknown as PromptEvalSetRow[];
+  return rows.map((row) => ({ ...row, tasks: parseJsonArray<PromptEvalTask>(row.tasks) }));
+}
+
+export function updatePromptEvalSet(id: string, name: string, tasks: PromptEvalTask[]): PromptEvalSet | undefined {
+  const existing = getPromptEvalSet(id);
+  if (!existing) return undefined;
+  const updatedAt = Date.now();
+  db.prepare("UPDATE prompt_eval_sets SET name = ?, tasks = ?, updated_at = ? WHERE id = ?")
+    .run(name, JSON.stringify(tasks), updatedAt, id);
+  return { ...existing, name, tasks, updatedAt };
+}
+
+export function deletePromptEvalSet(id: string): boolean {
+  return db.prepare("DELETE FROM prompt_eval_sets WHERE id = ?").run(id).changes > 0;
+}
+
+export function savePromptEvaluation(
+  workspaceId: string,
+  model: string,
+  repeat: number,
+  variants: PromptVariant[],
+  tasks: PromptEvalTask[],
+  summary: Omit<PromptEvaluationDetail, "workspaceId" | "model" | "repeat" | "variants" | "tasks">,
+): PromptEvaluationDetail {
+  db.prepare("INSERT INTO prompt_evaluations (id, workspace_id, model, repeat, status, started_at, ended_at, duration_sec, variants, tasks, variant_summaries, task_summaries, pairwise_summaries) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(summary.evaluationId, workspaceId, model, repeat, summary.status, summary.startedAt, summary.endedAt, summary.durationSec, JSON.stringify(variants), JSON.stringify(tasks), JSON.stringify(summary.variantSummaries), JSON.stringify(summary.taskSummaries), JSON.stringify(summary.pairwiseSummaries));
+  const insert = db.prepare("INSERT INTO prompt_evaluation_results (id, evaluation_id, variant_id, variant_label, task_id, attempt, status, started_at, ended_at, duration_sec, total_tokens, total_cost, tool_calls, output_chars, output, pairwise, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  for (const result of summary.results) {
+    insert.run(result.id, summary.evaluationId, result.variantId, result.variantLabel, result.taskId, result.attempt, result.status, result.startedAt, result.endedAt, result.durationSec, result.totalTokens, result.totalCost, result.toolCalls, result.outputChars, result.output, result.pairwise ? JSON.stringify(result.pairwise) : null, serializeEvaluationError(result.error));
+  }
+  return { evaluationId: summary.evaluationId, workspaceId, model, repeat, status: summary.status, startedAt: summary.startedAt, endedAt: summary.endedAt, durationSec: summary.durationSec, variants, tasks, results: summary.results, variantSummaries: summary.variantSummaries, taskSummaries: summary.taskSummaries, pairwiseSummaries: summary.pairwiseSummaries };
+}
+
+export function listPromptEvaluations(workspaceId: string): PromptEvaluation[] {
+  const rows = db.prepare("SELECT id AS evaluationId, workspace_id AS workspaceId, model, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, variants, tasks, variant_summaries AS variantSummaries, task_summaries AS taskSummaries, pairwise_summaries AS pairwiseSummaries FROM prompt_evaluations WHERE workspace_id = ? ORDER BY started_at DESC")
+    .all(workspaceId) as unknown as PromptEvaluationRow[];
+  return rows.map(parsePromptEvaluationRow);
+}
+
+export function getPromptEvaluation(id: string): PromptEvaluationDetail | undefined {
+  const row = db.prepare("SELECT id AS evaluationId, workspace_id AS workspaceId, model, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, variants, tasks, variant_summaries AS variantSummaries, task_summaries AS taskSummaries, pairwise_summaries AS pairwiseSummaries FROM prompt_evaluations WHERE id = ?")
+    .get(id) as unknown as PromptEvaluationRow | undefined;
+  if (!row) return undefined;
+  const results = db.prepare("SELECT id, variant_id AS variantId, variant_label AS variantLabel, task_id AS taskId, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, total_tokens AS totalTokens, total_cost AS totalCost, tool_calls AS toolCalls, output_chars AS outputChars, output, pairwise, error FROM prompt_evaluation_results WHERE evaluation_id = ? ORDER BY variant_label, task_id, attempt")
+    .all(id) as unknown as PromptEvaluationResultRow[];
+  return { ...parsePromptEvaluationRow(row), results: results.map((result) => ({ ...result, status: result.status === "failed" ? "failed" : "success", pairwise: result.pairwise ? parseJsonObject<PromptPairwiseResult | null>(result.pairwise, null) : null, error: parseEvaluationError(result.error) })) };
+}
+
+function parsePromptEvaluationRow(row: PromptEvaluationRow): PromptEvaluation {
+  return { ...row, status: row.status === "failed" ? "failed" : "success", variants: parseJsonArray<PromptVariant>(row.variants), tasks: parseJsonArray<PromptEvalTask>(row.tasks), variantSummaries: parseJsonArray<PromptVariantSummary>(row.variantSummaries), taskSummaries: parseJsonArray<PromptTaskSummary>(row.taskSummaries), pairwiseSummaries: parseJsonArray<PromptPairwiseSummary>(row.pairwiseSummaries) };
+}
+
+type CommandCaseSetRow = Omit<CommandEvalSet, "cases"> & { cases: string };
+type CommandEvaluationRow = Omit<CommandEvaluation, "cases" | "caseSummaries"> & { cases: string; caseSummaries: string };
+type CommandEvaluationResultRow = Omit<CommandEvaluationRunResult, "skillSlugs" | "expectation" | "error"> & {
+  skillSlugs: string;
+  expectation: string;
+  error: unknown;
+};
+
+export function createCommandCaseSet(workspaceId: string, name: string, commandId: string, cases: CommandEvalCase[]): CommandEvalSet {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare("INSERT INTO command_case_sets (id, workspace_id, name, command_id, cases, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(id, workspaceId, name, commandId, JSON.stringify(cases), now, now);
+  return { id, workspaceId, name, commandId, cases, createdAt: now, updatedAt: now };
+}
+
+export function getCommandCaseSet(id: string): CommandEvalSet | undefined {
+  const row = db.prepare("SELECT id, workspace_id AS workspaceId, name, command_id AS commandId, cases, created_at AS createdAt, updated_at AS updatedAt FROM command_case_sets WHERE id = ?")
+    .get(id) as unknown as CommandCaseSetRow | undefined;
+  return row ? { ...row, cases: parseJsonArray<CommandEvalCase>(row.cases) } : undefined;
+}
+
+export function listCommandCaseSets(workspaceId: string, commandId?: string): CommandEvalSet[] {
+  const rows = commandId
+    ? db.prepare("SELECT id, workspace_id AS workspaceId, name, command_id AS commandId, cases, created_at AS createdAt, updated_at AS updatedAt FROM command_case_sets WHERE workspace_id = ? AND command_id = ? ORDER BY updated_at DESC").all(workspaceId, commandId) as unknown as CommandCaseSetRow[]
+    : db.prepare("SELECT id, workspace_id AS workspaceId, name, command_id AS commandId, cases, created_at AS createdAt, updated_at AS updatedAt FROM command_case_sets WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId) as unknown as CommandCaseSetRow[];
+  return rows.map((row) => ({ ...row, cases: parseJsonArray<CommandEvalCase>(row.cases) }));
+}
+
+export function updateCommandCaseSet(id: string, name: string, commandId: string, cases: CommandEvalCase[]): CommandEvalSet | undefined {
+  const existing = getCommandCaseSet(id);
+  if (!existing) return undefined;
+  const updatedAt = Date.now();
+  db.prepare("UPDATE command_case_sets SET name = ?, command_id = ?, cases = ?, updated_at = ? WHERE id = ?")
+    .run(name, commandId, JSON.stringify(cases), updatedAt, id);
+  return { ...existing, name, commandId, cases, updatedAt };
+}
+
+export function deleteCommandCaseSet(id: string): boolean {
+  return db.prepare("DELETE FROM command_case_sets WHERE id = ?").run(id).changes > 0;
+}
+
+export function saveCommandEvaluation(
+  workspaceId: string,
+  commandId: string,
+  repeat: number,
+  cases: CommandEvalCase[],
+  summary: Omit<CommandEvaluationDetail, "workspaceId" | "commandId" | "repeat" | "cases">,
+): CommandEvaluationDetail {
+  db.prepare("INSERT INTO command_evaluations (id, workspace_id, command_id, repeat, status, started_at, ended_at, duration_sec, cases, case_summaries) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(summary.evaluationId, workspaceId, commandId, repeat, summary.status, summary.startedAt, summary.endedAt, summary.durationSec, JSON.stringify(cases), JSON.stringify(summary.caseSummaries));
+  const insert = db.prepare("INSERT INTO command_evaluation_results (id, evaluation_id, case_id, case_name, attempt, status, started_at, ended_at, duration_sec, expanded_text, skill_slugs, output, expectation, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  for (const result of summary.results) {
+    insert.run(result.id, summary.evaluationId, result.caseId, result.caseName, result.attempt, result.status, result.startedAt, result.endedAt, result.durationSec, result.expandedText, JSON.stringify(result.skillSlugs), result.output, JSON.stringify(result.expectation), serializeEvaluationError(result.error));
+  }
+  return { ...summary, workspaceId, commandId, repeat, cases };
+}
+
+export function listCommandEvaluations(workspaceId: string): CommandEvaluation[] {
+  const rows = db.prepare("SELECT id AS evaluationId, workspace_id AS workspaceId, command_id AS commandId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM command_evaluations WHERE workspace_id = ? ORDER BY started_at DESC")
+    .all(workspaceId) as unknown as CommandEvaluationRow[];
+  return rows.map(parseCommandEvaluationRow);
+}
+
+export function getCommandEvaluation(id: string): CommandEvaluationDetail | undefined {
+  const row = db.prepare("SELECT id AS evaluationId, workspace_id AS workspaceId, command_id AS commandId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM command_evaluations WHERE id = ?")
+    .get(id) as unknown as CommandEvaluationRow | undefined;
+  if (!row) return undefined;
+  const results = db.prepare("SELECT id, case_id AS caseId, case_name AS caseName, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, expanded_text AS expandedText, skill_slugs AS skillSlugs, output, expectation, error FROM command_evaluation_results WHERE evaluation_id = ? ORDER BY case_name, attempt")
+    .all(id) as unknown as CommandEvaluationResultRow[];
+  return {
+    ...parseCommandEvaluationRow(row),
+    results: results.map((result) => ({
+      ...result,
+      status: result.status === "failed" ? "failed" : "success",
+      skillSlugs: parseJsonArray<string>(result.skillSlugs),
+      expectation: JSON.parse(result.expectation) as CommandEvaluationRunResult["expectation"],
+      error: parseEvaluationError(result.error),
+    })),
+  };
+}
+
+function parseCommandEvaluationRow(row: CommandEvaluationRow): CommandEvaluation {
+  return { ...row, status: row.status === "failed" ? "failed" : "success", cases: parseJsonArray<CommandEvalCase>(row.cases), caseSummaries: parseJsonArray<CommandCaseSummary>(row.caseSummaries) };
+}
+
+type SubAgentEvalSetRow = Omit<SubAgentEvalSet, "cases"> & { cases: string };
+type SubAgentEvaluationRow = Omit<SubAgentEvaluation, "cases" | "caseSummaries"> & { cases: string; caseSummaries: string };
+type SubAgentEvaluationResultRow = Omit<SubAgentEvaluationRunResult, "toolTrajectory" | "expectation" | "error"> & { toolTrajectory: string; expectation: string; error: unknown };
+
+export function createSubAgentEvalSet(workspaceId: string, name: string, cases: SubAgentEvalCase[]): SubAgentEvalSet {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare("INSERT INTO subagent_eval_sets (id, workspace_id, name, cases, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(id, workspaceId, name, JSON.stringify(cases), now, now);
+  return { id, workspaceId, name, cases, createdAt: now, updatedAt: now };
+}
+
+export function getSubAgentEvalSet(id: string): SubAgentEvalSet | undefined {
+  const row = db.prepare("SELECT id, workspace_id AS workspaceId, name, cases, created_at AS createdAt, updated_at AS updatedAt FROM subagent_eval_sets WHERE id = ?")
+    .get(id) as unknown as SubAgentEvalSetRow | undefined;
+  return row ? { ...row, cases: parseJsonArray<SubAgentEvalCase>(row.cases) } : undefined;
+}
+
+export function listSubAgentEvalSets(workspaceId: string): SubAgentEvalSet[] {
+  const rows = db.prepare("SELECT id, workspace_id AS workspaceId, name, cases, created_at AS createdAt, updated_at AS updatedAt FROM subagent_eval_sets WHERE workspace_id = ? ORDER BY updated_at DESC")
+    .all(workspaceId) as unknown as SubAgentEvalSetRow[];
+  return rows.map((row) => ({ ...row, cases: parseJsonArray<SubAgentEvalCase>(row.cases) }));
+}
+
+export function updateSubAgentEvalSet(id: string, name: string, cases: SubAgentEvalCase[]): SubAgentEvalSet | undefined {
+  const existing = getSubAgentEvalSet(id);
+  if (!existing) return undefined;
+  const updatedAt = Date.now();
+  db.prepare("UPDATE subagent_eval_sets SET name = ?, cases = ?, updated_at = ? WHERE id = ?").run(name, JSON.stringify(cases), updatedAt, id);
+  return { ...existing, name, cases, updatedAt };
+}
+
+export function deleteSubAgentEvalSet(id: string): boolean {
+  return db.prepare("DELETE FROM subagent_eval_sets WHERE id = ?").run(id).changes > 0;
+}
+
+export function saveSubAgentEvaluation(
+  workspaceId: string,
+  repeat: number,
+  cases: SubAgentEvalCase[],
+  summary: Omit<SubAgentEvaluationDetail, "workspaceId" | "repeat" | "cases">,
+): SubAgentEvaluationDetail {
+  db.prepare("INSERT INTO subagent_evaluations (id, workspace_id, repeat, status, started_at, ended_at, duration_sec, cases, case_summaries) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(summary.evaluationId, workspaceId, repeat, summary.status, summary.startedAt, summary.endedAt, summary.durationSec, JSON.stringify(cases), JSON.stringify(summary.caseSummaries));
+  const insert = db.prepare("INSERT INTO subagent_evaluation_results (id, evaluation_id, case_id, case_name, attempt, status, started_at, ended_at, duration_sec, tool_trajectory, step_count, total_tokens, total_cost, tool_calls, report_path, output, expectation, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  for (const result of summary.results) {
+    insert.run(result.id, summary.evaluationId, result.caseId, result.caseName, result.attempt, result.status, result.startedAt, result.endedAt, result.durationSec, JSON.stringify(result.toolTrajectory), result.stepCount, result.totalTokens, result.totalCost, result.toolCalls, result.reportPath, result.output, JSON.stringify(result.expectation), serializeEvaluationError(result.error));
+  }
+  return { ...summary, workspaceId, repeat, cases };
+}
+
+export function listSubAgentEvaluations(workspaceId: string): SubAgentEvaluation[] {
+  const rows = db.prepare("SELECT id AS evaluationId, workspace_id AS workspaceId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM subagent_evaluations WHERE workspace_id = ? ORDER BY started_at DESC")
+    .all(workspaceId) as unknown as SubAgentEvaluationRow[];
+  return rows.map(parseSubAgentEvaluationRow);
+}
+
+export function getSubAgentEvaluation(id: string): SubAgentEvaluationDetail | undefined {
+  const row = db.prepare("SELECT id AS evaluationId, workspace_id AS workspaceId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM subagent_evaluations WHERE id = ?")
+    .get(id) as unknown as SubAgentEvaluationRow | undefined;
+  if (!row) return undefined;
+  const results = db.prepare("SELECT id, case_id AS caseId, case_name AS caseName, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, tool_trajectory AS toolTrajectory, step_count AS stepCount, total_tokens AS totalTokens, total_cost AS totalCost, tool_calls AS toolCalls, report_path AS reportPath, output, expectation, error FROM subagent_evaluation_results WHERE evaluation_id = ? ORDER BY case_name, attempt")
+    .all(id) as unknown as SubAgentEvaluationResultRow[];
+  return {
+    ...parseSubAgentEvaluationRow(row),
+    results: results.map((result) => ({
+      ...result,
+      status: result.status === "failed" ? "failed" : "success",
+      toolTrajectory: parseJsonArray<string>(result.toolTrajectory),
+      expectation: JSON.parse(result.expectation) as SubAgentEvaluationRunResult["expectation"],
+      error: parseEvaluationError(result.error),
+    })),
+  };
+}
+
+function parseSubAgentEvaluationRow(row: SubAgentEvaluationRow): SubAgentEvaluation {
+  return { ...row, status: row.status === "failed" ? "failed" : "success", cases: parseJsonArray<SubAgentEvalCase>(row.cases), caseSummaries: parseJsonArray<SubAgentCaseSummary>(row.caseSummaries) };
+}
+
+type HookEvalSetRow = Omit<HookEvalSet, "cases"> & { cases: string };
+type HookEvaluationRow = Omit<HookEvaluation, "cases" | "caseSummaries"> & { cases: string; caseSummaries: string };
+type HookEvaluationResultRow = Omit<HookEvaluationRunResult, "matchedHookIds" | "blocked" | "blockReason" | "mutatedInput" | "sideEffectKinds" | "expectation" | "error"> & {
+  matchedHookIds: string;
+  blocked: number;
+  blockReason: string | null;
+  mutatedInput: string | null;
+  sideEffectKinds: string;
+  expectation: string;
+  error: unknown;
+};
+
+export function createHookEvalSet(workspaceId: string, name: string, cases: HookEvalCase[]): HookEvalSet {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare("INSERT INTO hook_eval_sets (id, workspace_id, name, cases, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)")
+    .run(id, workspaceId, name, JSON.stringify(cases), now, now);
+  return { id, workspaceId, name, cases, createdAt: now, updatedAt: now };
+}
+
+export function getHookEvalSet(id: string): HookEvalSet | undefined {
+  const row = db.prepare("SELECT id, workspace_id AS workspaceId, name, cases, created_at AS createdAt, updated_at AS updatedAt FROM hook_eval_sets WHERE id = ?")
+    .get(id) as unknown as HookEvalSetRow | undefined;
+  return row ? { ...row, cases: parseJsonArray<HookEvalCase>(row.cases) } : undefined;
+}
+
+export function listHookEvalSets(workspaceId: string): HookEvalSet[] {
+  const rows = db.prepare("SELECT id, workspace_id AS workspaceId, name, cases, created_at AS createdAt, updated_at AS updatedAt FROM hook_eval_sets WHERE workspace_id = ? ORDER BY updated_at DESC")
+    .all(workspaceId) as unknown as HookEvalSetRow[];
+  return rows.map((row) => ({ ...row, cases: parseJsonArray<HookEvalCase>(row.cases) }));
+}
+
+export function updateHookEvalSet(id: string, name: string, cases: HookEvalCase[]): HookEvalSet | undefined {
+  const existing = getHookEvalSet(id);
+  if (!existing) return undefined;
+  const updatedAt = Date.now();
+  db.prepare("UPDATE hook_eval_sets SET name = ?, cases = ?, updated_at = ? WHERE id = ?").run(name, JSON.stringify(cases), updatedAt, id);
+  return { ...existing, name, cases, updatedAt };
+}
+
+export function deleteHookEvalSet(id: string): boolean {
+  return db.prepare("DELETE FROM hook_eval_sets WHERE id = ?").run(id).changes > 0;
+}
+
+export function saveHookEvaluation(
+  workspaceId: string,
+  repeat: number,
+  cases: HookEvalCase[],
+  summary: Omit<HookEvaluationDetail, "workspaceId" | "repeat" | "cases">,
+): HookEvaluationDetail {
+  db.prepare("INSERT INTO hook_evaluations (id, workspace_id, repeat, status, started_at, ended_at, duration_sec, cases, case_summaries) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)")
+    .run(summary.evaluationId, workspaceId, repeat, summary.status, summary.startedAt, summary.endedAt, summary.durationSec, JSON.stringify(cases), JSON.stringify(summary.caseSummaries));
+  const insert = db.prepare("INSERT INTO hook_evaluation_results (id, evaluation_id, case_id, case_name, attempt, status, started_at, ended_at, duration_sec, matched_hook_ids, blocked, block_reason, mutated_input, side_effect_kinds, trigger_count, expectation, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  for (const result of summary.results) {
+    insert.run(result.id, summary.evaluationId, result.caseId, result.caseName, result.attempt, result.status, result.startedAt, result.endedAt, result.durationSec, JSON.stringify(result.matchedHookIds), result.blocked ? 1 : 0, result.blockReason, result.mutatedInput === null ? null : JSON.stringify(result.mutatedInput), JSON.stringify(result.sideEffectKinds), result.triggerCount, JSON.stringify(result.expectation), serializeEvaluationError(result.error));
+  }
+  return { ...summary, workspaceId, repeat, cases };
+}
+
+export function listHookEvaluations(workspaceId: string): HookEvaluation[] {
+  const rows = db.prepare("SELECT id AS evaluationId, workspace_id AS workspaceId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM hook_evaluations WHERE workspace_id = ? ORDER BY started_at DESC")
+    .all(workspaceId) as unknown as HookEvaluationRow[];
+  return rows.map(parseHookEvaluationRow);
+}
+
+export function getHookEvaluation(id: string): HookEvaluationDetail | undefined {
+  const row = db.prepare("SELECT id AS evaluationId, workspace_id AS workspaceId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM hook_evaluations WHERE id = ?")
+    .get(id) as unknown as HookEvaluationRow | undefined;
+  if (!row) return undefined;
+  const results = db.prepare("SELECT id, case_id AS caseId, case_name AS caseName, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, matched_hook_ids AS matchedHookIds, blocked, block_reason AS blockReason, mutated_input AS mutatedInput, side_effect_kinds AS sideEffectKinds, trigger_count AS triggerCount, expectation, error FROM hook_evaluation_results WHERE evaluation_id = ? ORDER BY case_name, attempt")
+    .all(id) as unknown as HookEvaluationResultRow[];
+  return {
+    ...parseHookEvaluationRow(row),
+    results: results.map((result) => ({
+      ...result,
+      status: result.status === "failed" ? "failed" : "success",
+      matchedHookIds: parseJsonArray<string>(result.matchedHookIds),
+      blocked: result.blocked === 1,
+      blockReason: result.blockReason ?? null,
+      mutatedInput: result.mutatedInput === null ? null : parseJsonObject<Record<string, unknown>>(result.mutatedInput, {}),
+      sideEffectKinds: parseJsonArray<string>(result.sideEffectKinds),
+      expectation: JSON.parse(result.expectation) as HookEvaluationRunResult["expectation"],
+      error: parseEvaluationError(result.error),
+    })),
+  };
+}
+
+function parseHookEvaluationRow(row: HookEvaluationRow): HookEvaluation {
+  return { ...row, status: row.status === "failed" ? "failed" : "success", cases: parseJsonArray<HookEvalCase>(row.cases), caseSummaries: parseJsonArray<HookCaseSummary>(row.caseSummaries) };
+}
+
+function parseJsonArray<T>(value: string): T[] {
+  try { const parsed = JSON.parse(value) as unknown; return Array.isArray(parsed) ? parsed as T[] : []; } catch { return []; }
+}
+
+function parseJsonObject<T>(value: string, fallback: T): T {
+  try { const parsed = JSON.parse(value) as unknown; return typeof parsed === "object" && parsed !== null ? parsed as T : fallback; } catch { return fallback; }
 }
 
 type SkillRegistryRow = {
@@ -498,4 +1107,356 @@ function normalizeSkillRegressionStatus(value: string): SkillRegressionStatus {
 function normalizeSkillRegistryRetestTrigger(value: string): SkillRegistryRetestTrigger {
   if (value === "manual_evaluate" || value === "version_bump" || value === "model_upgrade" || value === "retest_all_active") return value;
   return "manual_evaluate";
+}
+
+// ---- tool evaluations ----
+
+export function createToolCaseSet(workspaceId: string, name: string, toolId: string, cases: ToolEvalCase[]): ToolCaseSet {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO tool_case_sets (id, workspace_id, name, tool_id, cases, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)",
+  ).run(id, workspaceId, name, toolId, JSON.stringify(cases), now, now);
+  return { id, workspaceId, name, toolId, cases, createdAt: now, updatedAt: now };
+}
+
+export function getToolCaseSet(id: string): ToolCaseSet | undefined {
+  const row = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, name, tool_id AS toolId, cases, created_at AS createdAt, updated_at AS updatedAt FROM tool_case_sets WHERE id = ?",
+  ).get(id) as unknown as ToolCaseSetRow | undefined;
+  return row ? parseToolCaseSetRow(row) : undefined;
+}
+
+export function listToolCaseSets(workspaceId: string, toolId?: string): ToolCaseSet[] {
+  const rows = toolId
+    ? db.prepare(
+      "SELECT id, workspace_id AS workspaceId, name, tool_id AS toolId, cases, created_at AS createdAt, updated_at AS updatedAt FROM tool_case_sets WHERE workspace_id = ? AND tool_id = ? ORDER BY updated_at DESC",
+    ).all(workspaceId, toolId) as unknown as ToolCaseSetRow[]
+    : db.prepare(
+      "SELECT id, workspace_id AS workspaceId, name, tool_id AS toolId, cases, created_at AS createdAt, updated_at AS updatedAt FROM tool_case_sets WHERE workspace_id = ? ORDER BY updated_at DESC",
+    ).all(workspaceId) as unknown as ToolCaseSetRow[];
+  return rows.map(parseToolCaseSetRow);
+}
+
+export function updateToolCaseSet(id: string, name: string, toolId: string, cases: ToolEvalCase[]): ToolCaseSet | undefined {
+  const existing = getToolCaseSet(id);
+  if (!existing) return undefined;
+  const updatedAt = Date.now();
+  db.prepare("UPDATE tool_case_sets SET name = ?, tool_id = ?, cases = ?, updated_at = ? WHERE id = ?")
+    .run(name, toolId, JSON.stringify(cases), updatedAt, id);
+  return { ...existing, name, toolId, cases, updatedAt };
+}
+
+export function deleteToolCaseSet(id: string): boolean {
+  const result = db.prepare("DELETE FROM tool_case_sets WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+type ToolCaseSetRow = Omit<ToolCaseSet, "cases"> & {
+  cases: string;
+};
+
+function parseToolCaseSetRow(row: ToolCaseSetRow): ToolCaseSet {
+  return {
+    ...row,
+    cases: parseJsonArray<ToolEvalCase>(row.cases),
+  };
+}
+
+export function saveToolEvaluation(
+  workspaceId: string,
+  toolId: string,
+  repeat: number,
+  cases: ToolEvalCase[],
+  summary: Omit<ToolEvaluationDetail, "workspaceId" | "toolId" | "repeat" | "cases">,
+): ToolEvaluationDetail {
+  db.prepare(
+    "INSERT INTO tool_evaluations (id, workspace_id, tool_id, repeat, status, started_at, ended_at, duration_sec, cases, case_summaries) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    summary.evaluationId,
+    workspaceId,
+    toolId,
+    repeat,
+    summary.status,
+    summary.startedAt,
+    summary.endedAt,
+    summary.durationSec,
+    JSON.stringify(cases),
+    JSON.stringify(summary.caseSummaries),
+  );
+  const insert = db.prepare(
+    "INSERT INTO tool_evaluation_results (id, evaluation_id, case_id, case_name, attempt, status, started_at, ended_at, duration_sec, input_path, output_path, stdout, stderr, summary, expectation, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const result of summary.results) {
+    insert.run(
+      result.id,
+      summary.evaluationId,
+      result.caseId,
+      result.caseName,
+      result.attempt,
+      result.status,
+      result.startedAt,
+      result.endedAt,
+      result.durationSec,
+      result.inputPath,
+      result.outputPath,
+      result.stdout,
+      result.stderr,
+      result.summary ? JSON.stringify(result.summary) : null,
+      JSON.stringify(result.expectation),
+      serializeEvaluationError(result.error),
+    );
+  }
+  return {
+    evaluationId: summary.evaluationId,
+    workspaceId,
+    toolId,
+    repeat,
+    status: summary.status,
+    startedAt: summary.startedAt,
+    endedAt: summary.endedAt,
+    durationSec: summary.durationSec,
+    cases,
+    caseSummaries: summary.caseSummaries,
+    results: summary.results,
+  };
+}
+
+export function listToolEvaluations(workspaceId: string): ToolEvaluation[] {
+  const rows = db.prepare(
+    "SELECT id AS evaluationId, workspace_id AS workspaceId, tool_id AS toolId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM tool_evaluations WHERE workspace_id = ? ORDER BY started_at DESC",
+  ).all(workspaceId) as unknown as ToolEvaluationRow[];
+  return rows.map(parseToolEvaluationRow);
+}
+
+export function getToolEvaluation(id: string): ToolEvaluationDetail | undefined {
+  const row = db.prepare(
+    "SELECT id AS evaluationId, workspace_id AS workspaceId, tool_id AS toolId, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, cases, case_summaries AS caseSummaries FROM tool_evaluations WHERE id = ?",
+  ).get(id) as unknown as ToolEvaluationRow | undefined;
+  if (!row) return undefined;
+  const evaluation = parseToolEvaluationRow(row);
+  const results = db.prepare(
+    "SELECT id, case_id AS caseId, case_name AS caseName, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, input_path AS inputPath, output_path AS outputPath, stdout, stderr, summary, expectation, error FROM tool_evaluation_results WHERE evaluation_id = ? ORDER BY case_name, attempt",
+  ).all(id) as unknown as ToolEvaluationResultRow[];
+  return {
+    ...evaluation,
+    results: results.map(parseToolEvaluationResultRow),
+  };
+}
+
+type ToolEvaluationRow = Omit<ToolEvaluation, "cases" | "caseSummaries"> & {
+  cases: string;
+  caseSummaries: string;
+};
+
+type ToolEvaluationResultRow = Omit<ToolEvaluationRunResult, "summary" | "expectation" | "error"> & {
+  summary: string | null;
+  expectation: string;
+  error: unknown;
+};
+
+function parseToolEvaluationRow(row: ToolEvaluationRow): ToolEvaluation {
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    cases: parseJsonArray<ToolEvalCase>(row.cases),
+    caseSummaries: parseJsonArray<ToolCaseSummary>(row.caseSummaries),
+  };
+}
+
+function parseToolEvaluationResultRow(row: ToolEvaluationResultRow): ToolEvaluationRunResult {
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    summary: row.summary ? parseJsonObject(row.summary, {}) : null,
+    expectation: parseJsonObject(row.expectation, { kind: "must-fail" }),
+    error: parseEvaluationError(row.error),
+  };
+}
+
+// ---- skill evaluations ----
+
+export function createSkillEvalSet(workspaceId: string, name: string, tasks: SkillEvalTask[]): SkillEvalSet {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO skill_eval_sets (id, workspace_id, name, tasks, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?)",
+  ).run(id, workspaceId, name, JSON.stringify(tasks), now, now);
+  return { id, workspaceId, name, tasks, createdAt: now, updatedAt: now };
+}
+
+export function getSkillEvalSet(id: string): SkillEvalSet | undefined {
+  const row = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, name, tasks, created_at AS createdAt, updated_at AS updatedAt FROM skill_eval_sets WHERE id = ?",
+  ).get(id) as unknown as SkillEvalSetRow | undefined;
+  return row ? parseSkillEvalSetRow(row) : undefined;
+}
+
+export function listSkillEvalSets(workspaceId: string): SkillEvalSet[] {
+  const rows = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, name, tasks, created_at AS createdAt, updated_at AS updatedAt FROM skill_eval_sets WHERE workspace_id = ? ORDER BY updated_at DESC",
+  ).all(workspaceId) as unknown as SkillEvalSetRow[];
+  return rows.map(parseSkillEvalSetRow);
+}
+
+export function updateSkillEvalSet(id: string, name: string, tasks: SkillEvalTask[]): SkillEvalSet | undefined {
+  const existing = getSkillEvalSet(id);
+  if (!existing) return undefined;
+  const updatedAt = Date.now();
+  db.prepare("UPDATE skill_eval_sets SET name = ?, tasks = ?, updated_at = ? WHERE id = ?")
+    .run(name, JSON.stringify(tasks), updatedAt, id);
+  return { ...existing, name, tasks, updatedAt };
+}
+
+export function deleteSkillEvalSet(id: string): boolean {
+  const result = db.prepare("DELETE FROM skill_eval_sets WHERE id = ?").run(id);
+  return result.changes > 0;
+}
+
+type SkillEvalSetRow = Omit<SkillEvalSet, "tasks"> & {
+  tasks: string;
+};
+
+function parseSkillEvalSetRow(row: SkillEvalSetRow): SkillEvalSet {
+  return {
+    ...row,
+    tasks: parseJsonArray<SkillEvalTask>(row.tasks),
+  };
+}
+
+export function saveSkillEvaluation(
+  workspaceId: string,
+  model: string,
+  repeat: number,
+  variants: SkillVariant[],
+  tasks: SkillEvalTask[],
+  contextPrefix: string | undefined,
+  summary: Omit<SkillEvaluationDetail, "workspaceId" | "model" | "repeat" | "variants" | "tasks" | "contextPrefix">,
+): SkillEvaluationDetail {
+  db.prepare(
+    "INSERT INTO skill_evaluations (id, workspace_id, model, repeat, status, started_at, ended_at, duration_sec, variants, tasks, context_prefix, variant_summaries, task_summaries, pairwise_summaries) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    summary.evaluationId,
+    workspaceId,
+    model,
+    repeat,
+    summary.status,
+    summary.startedAt,
+    summary.endedAt,
+    summary.durationSec,
+    JSON.stringify(variants),
+    JSON.stringify(tasks),
+    contextPrefix ?? "",
+    JSON.stringify(summary.variantSummaries),
+    JSON.stringify(summary.taskSummaries),
+    JSON.stringify(summary.pairwiseSummaries),
+  );
+  const insert = db.prepare(
+    "INSERT INTO skill_evaluation_results (id, evaluation_id, variant_id, variant_label, task_id, attempt, status, started_at, ended_at, duration_sec, skill_paths, total_tokens, total_cost, tool_calls, output_chars, output, activation, pairwise, error) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const result of summary.results) {
+    insert.run(
+      result.id,
+      summary.evaluationId,
+      result.variantId,
+      result.variantLabel,
+      result.taskId,
+      result.attempt,
+      result.status,
+      result.startedAt,
+      result.endedAt,
+      result.durationSec,
+      JSON.stringify(result.skillPaths),
+      result.totalTokens,
+      result.totalCost,
+      result.toolCalls,
+      result.outputChars,
+      result.output,
+      JSON.stringify(result.activation),
+      result.pairwise ? JSON.stringify(result.pairwise) : null,
+      serializeEvaluationError(result.error),
+    );
+  }
+  return {
+    evaluationId: summary.evaluationId,
+    workspaceId,
+    model,
+    repeat,
+    status: summary.status,
+    startedAt: summary.startedAt,
+    endedAt: summary.endedAt,
+    durationSec: summary.durationSec,
+    variants,
+    tasks,
+    contextPrefix: contextPrefix ?? "",
+    results: summary.results,
+    variantSummaries: summary.variantSummaries,
+    taskSummaries: summary.taskSummaries,
+    pairwiseSummaries: summary.pairwiseSummaries,
+  };
+}
+
+export function listSkillEvaluations(workspaceId: string): SkillEvaluation[] {
+  const rows = db.prepare(
+    "SELECT id AS evaluationId, workspace_id AS workspaceId, model, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, variants, tasks, context_prefix AS contextPrefix, variant_summaries AS variantSummaries, task_summaries AS taskSummaries, pairwise_summaries AS pairwiseSummaries FROM skill_evaluations WHERE workspace_id = ? ORDER BY started_at DESC",
+  ).all(workspaceId) as unknown as SkillEvaluationRow[];
+  return rows.map(parseSkillEvaluationRow);
+}
+
+export function getSkillEvaluation(id: string): SkillEvaluationDetail | undefined {
+  const row = db.prepare(
+    "SELECT id AS evaluationId, workspace_id AS workspaceId, model, repeat, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, variants, tasks, context_prefix AS contextPrefix, variant_summaries AS variantSummaries, task_summaries AS taskSummaries, pairwise_summaries AS pairwiseSummaries FROM skill_evaluations WHERE id = ?",
+  ).get(id) as unknown as SkillEvaluationRow | undefined;
+  if (!row) return undefined;
+  const evaluation = parseSkillEvaluationRow(row);
+  const results = db.prepare(
+    "SELECT id, variant_id AS variantId, variant_label AS variantLabel, task_id AS taskId, attempt, status, started_at AS startedAt, ended_at AS endedAt, duration_sec AS durationSec, skill_paths AS skillPaths, total_tokens AS totalTokens, total_cost AS totalCost, tool_calls AS toolCalls, output_chars AS outputChars, output, activation, pairwise, error FROM skill_evaluation_results WHERE evaluation_id = ? ORDER BY variant_label, task_id, attempt",
+  ).all(id) as unknown as SkillEvaluationResultRow[];
+  return {
+    ...evaluation,
+    results: results.map(parseSkillEvaluationResultRow),
+  };
+}
+
+type SkillEvaluationRow = Omit<SkillEvaluation, "variants" | "tasks" | "variantSummaries" | "taskSummaries" | "pairwiseSummaries"> & {
+  variants: string;
+  tasks: string;
+  variantSummaries: string;
+  taskSummaries: string;
+  pairwiseSummaries: string;
+};
+
+type SkillEvaluationResultRow = Omit<SkillEvaluationRunResult, "skillPaths" | "activation" | "pairwise" | "error"> & {
+  skillPaths: string;
+  activation: string;
+  pairwise: string | null;
+  error: unknown;
+};
+
+function parseSkillEvaluationRow(row: SkillEvaluationRow): SkillEvaluation {
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    variants: parseJsonArray<SkillVariant>(row.variants),
+    tasks: parseJsonArray<SkillEvalTask>(row.tasks),
+    variantSummaries: parseJsonArray<SkillVariantSummary>(row.variantSummaries),
+    taskSummaries: parseJsonArray<SkillTaskSummary>(row.taskSummaries),
+    pairwiseSummaries: parseJsonArray<SkillPairwiseSummary>(row.pairwiseSummaries),
+  };
+}
+
+function parseSkillEvaluationResultRow(row: SkillEvaluationResultRow): SkillEvaluationRunResult {
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    skillPaths: parseJsonArray<string>(row.skillPaths),
+    activation: parseJsonObject(row.activation, {
+      activated: false,
+      matchedKeywords: [],
+      matchedSkillPaths: [],
+      evidence: [],
+    }),
+    pairwise: row.pairwise ? parseJsonObject<SkillPairwiseResult | null>(row.pairwise, null) : null,
+    error: parseEvaluationError(row.error),
+  };
 }

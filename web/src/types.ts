@@ -606,6 +606,7 @@ export interface MemoryItem {
   type: MemoryItemType;
   title: string;
   body: string;
+  tags: string[];                // 分层标签：检索结构化精筛维度（task:/industry:/method:/data:/problem: 软约定）
   source: MemoryItemSource;
   sourceEventIds: string[];
   confidence: number;            // [0,1]
@@ -629,6 +630,7 @@ export interface MemoryItemInput {
   type: MemoryItemType;
   title: string;
   body: string;
+  tags?: string[];               // 缺省 []
   source?: MemoryItemSource;
   sourceEventIds?: string[];
   confidence?: number;
@@ -644,6 +646,7 @@ export interface MemoryCandidate {
   type: MemoryItemType;
   title: string;
   body: string;
+  tags?: string[];               // 缺省 []
   scope: "global" | "chat" | "workflow";
   sourceEventIds: string[];
   confidence: number;
@@ -658,6 +661,7 @@ export interface MemoryReview {
   type: MemoryItemType;
   title: string;
   body: string;
+  tags: string[];                // 透传候选标签，采纳成 item 时不丢
   scope: "global" | "chat" | "workflow";
   sourceEventIds: string[];
   confidence: number;
@@ -1410,6 +1414,125 @@ export interface SkillEvaluationDetail extends SkillEvaluation {
   results: SkillEvaluationRunResult[];
 }
 
+// ---- Prompt evaluations (实验场·prompts lab) ----
+
+export interface PromptVariant {
+  id: string;
+  label: string;
+  promptBody: string;
+  role: "system" | "prefix";
+  templateId?: string;
+}
+
+export interface PromptEvalTask {
+  id: string;
+  prompt: string;
+  expectedPoints?: string[];
+  rubric?: string;
+  mustResist?: boolean;
+  attackKind?: PromptAttackKind;
+}
+
+export type PromptAttackKind = "ignore-instructions" | "privilege-escalation" | "exfiltration" | "jailbreak";
+
+export interface PromptEvalSet {
+  id: string;
+  workspaceId: string;
+  name: string;
+  tasks: PromptEvalTask[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export type PromptPairwiseVerdict = "win" | "tie" | "loss" | "not_judged";
+
+export interface PromptPairwiseResult {
+  baselineResultId: string;
+  variantResultId: string;
+  taskId: string;
+  attempt: number;
+  verdict: PromptPairwiseVerdict;
+  scoreDelta: number | null;
+  baselineScore: number | null;
+  variantScore: number | null;
+  confidence: number | null;
+  reason: string;
+  error: EvaluationError | null;
+  judgeRuns?: PromptPairwiseResult[];
+}
+
+export interface PromptPairwiseSummary {
+  variantId: string;
+  variantLabel: string;
+  judged: number;
+  skipped: number;
+  win: number;
+  tie: number;
+  loss: number;
+  avgScoreDelta: number;
+  avgConfidence: number | null;
+}
+
+export interface PromptEvaluationRunResult {
+  id: string;
+  variantId: string;
+  variantLabel: string;
+  taskId: string;
+  attempt: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  totalTokens: number;
+  totalCost: number;
+  toolCalls: number;
+  outputChars: number;
+  output: string;
+  pairwise: PromptPairwiseResult | null;
+  error: EvaluationError | null;
+}
+
+export interface PromptVariantSummary {
+  variantId: string;
+  variantLabel: string;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationSec: number;
+  avgTotalTokens: number;
+  avgTotalCost: number;
+  avgToolCalls: number;
+  avgOutputChars: number;
+}
+
+export interface PromptTaskSummary {
+  taskId: string;
+  total: number;
+  success: number;
+  failed: number;
+}
+
+export interface PromptEvaluation {
+  evaluationId: string;
+  workspaceId: string;
+  model: string;
+  repeat: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  variants: PromptVariant[];
+  tasks: PromptEvalTask[];
+  variantSummaries: PromptVariantSummary[];
+  taskSummaries: PromptTaskSummary[];
+  pairwiseSummaries: PromptPairwiseSummary[];
+}
+
+export interface PromptEvaluationDetail extends PromptEvaluation {
+  results: PromptEvaluationRunResult[];
+}
+
+
 export type ToolExpectation =
   | { kind: "golden"; goldenDir: string; ignorePaths?: string[]; normalizeWhitespace?: boolean }
   | { kind: "schema"; jsonPath: string; schema: Record<string, unknown> }
@@ -1494,13 +1617,276 @@ export interface ToolEvaluationDetail extends ToolEvaluation {
 export interface ToolEvaluationRunSummary extends ToolEvaluationDetail {
 }
 
+// ---- Command evaluations (实验场·command lab) ----
+
+export type CommandExpectation =
+  | { kind: "expand-contains"; substrings: string[]; forbidUnresolved?: boolean }
+  | { kind: "expand-golden"; goldenText: string; normalizeWhitespace?: boolean }
+  | { kind: "skill-attached"; expectedSkillSlugs: string[]; exact?: boolean }
+  | { kind: "run-contains"; substrings: string[] }
+  | { kind: "run-llm-judge"; rubric: string; model: string; minScore?: number };
+
+export interface CommandEvalCase {
+  id: string;
+  name: string;
+  argsText: string;
+  expected: CommandExpectation;
+  timeoutMs?: number;
+}
+
+export interface CommandEvalSet {
+  id: string;
+  workspaceId: string;
+  name: string;
+  commandId: string;
+  cases: CommandEvalCase[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface CommandEvaluationRunResult {
+  id: string;
+  caseId: string;
+  caseName: string;
+  attempt: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  expandedText: string;
+  skillSlugs: string[];
+  output: string;
+  expectation: CommandExpectation;
+  error: EvaluationError | null;
+}
+
+export interface CommandCaseSummary {
+  caseId: string;
+  caseName: string;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationSec: number;
+}
+
+export interface CommandEvaluation {
+  evaluationId: string;
+  workspaceId: string;
+  commandId: string;
+  repeat: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  cases: CommandEvalCase[];
+  caseSummaries: CommandCaseSummary[];
+}
+
+export interface CommandEvaluationDetail extends CommandEvaluation {
+  results: CommandEvaluationRunResult[];
+}
+
+// ---- SubAgent evaluations (实验场·subagents lab) ----
+
+export type SubAgentExpectation =
+  | { kind: "tool-sequence"; required?: string[]; forbidden?: string[]; orderedSubsequence?: boolean }
+  | { kind: "step-budget"; maxSteps: number }
+  | { kind: "token-budget"; maxTokens: number }
+  | { kind: "report-presence" }
+  | { kind: "llm-judge"; rubric: string; model: string; minScore?: number };
+
+export interface SubAgentEvalCase {
+  id: string;
+  name: string;
+  templateId?: string;
+  personaOverride?: string;
+  toolIdsOverride?: string[];
+  brief: string;
+  dataFiles: string[];
+  expected: SubAgentExpectation;
+  timeoutMs?: number;
+}
+
+export interface SubAgentEvalSet {
+  id: string;
+  workspaceId: string;
+  name: string;
+  cases: SubAgentEvalCase[];
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface SubAgentEvaluationRunResult {
+  id: string;
+  caseId: string;
+  caseName: string;
+  attempt: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  toolTrajectory: string[];
+  stepCount: number;
+  totalTokens: number;
+  totalCost: number;
+  toolCalls: number;
+  reportPath: string | null;
+  output: string;
+  expectation: SubAgentExpectation;
+  error: EvaluationError | null;
+}
+
+export interface SubAgentCaseSummary {
+  caseId: string;
+  caseName: string;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationSec: number;
+  avgStepCount: number;
+  avgTotalTokens: number;
+  avgTotalCost: number;
+}
+
+export interface SubAgentEvaluation {
+  evaluationId: string;
+  workspaceId: string;
+  repeat: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  cases: SubAgentEvalCase[];
+  caseSummaries: SubAgentCaseSummary[];
+}
+
+export interface SubAgentEvaluationDetail extends SubAgentEvaluation {
+  results: SubAgentEvaluationRunResult[];
+}
+
+// ---- Hook evaluations (实验场·hooks lab，范式 B 护栏单测) ----
+export type HookExpectation =
+  | { kind: "must-block"; reasonPattern?: string }                       // 预期 tool_call 被拦截（可选 reason 正则）
+  | { kind: "must-allow" }                                               // 预期不被拦截
+  | { kind: "golden-mutation"; expectedInput: Record<string, unknown> }  // mutate 后 input 深等于期望
+  | { kind: "match"; expectedHookIds: string[] }                         // 命中的 hook 集合（顺序无关，全等）
+  | { kind: "trigger-count"; count: number };                            // 命中并会触发的 hook 数
+
+export interface HookEvalCase {
+  id: string;
+  name: string;
+  event: HookEvent;                      // 生命周期事件
+  payload: Record<string, unknown>;      // 合成事件字段：toolName / input / args / reason / role / isError …
+  hookIds?: string[];                    // 参与的 hooks.json 规则子集（缺省=全部 enabled）
+  expected: HookExpectation;
+}
+export interface HookEvalSet {
+  id: string;
+  workspaceId: string;
+  name: string;
+  cases: HookEvalCase[];
+  createdAt: number;
+  updatedAt: number;
+}
+// 纯 verdict（evaluateHookFixture 产出，无副作用执行）
+export interface HookVerdict {
+  matchedHookIds: string[];
+  blocked: boolean;
+  blockReason: string | null;
+  mutatedInput: Record<string, unknown> | null;   // 有 mutate 命中时=应用 set 后的 input 副本；否则 null
+  sideEffectKinds: string[];                       // 会触发的旁路动作种类(command/notify/log)——仅枚举，绝不执行
+  triggerCount: number;
+}
+export interface HookEvaluationRunResult extends HookVerdict {
+  id: string;
+  caseId: string;
+  caseName: string;
+  attempt: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  expectation: HookExpectation;
+  error: EvaluationError | null;
+}
+export interface HookCaseSummary {
+  caseId: string;
+  caseName: string;
+  total: number;
+  success: number;
+  failed: number;
+  avgDurationSec: number;
+}
+export interface HookEvaluation {
+  evaluationId: string;
+  workspaceId: string;
+  repeat: number;
+  status: "success" | "failed";
+  startedAt: number;
+  endedAt: number;
+  durationSec: number;
+  cases: HookEvalCase[];
+  caseSummaries: HookCaseSummary[];
+}
+export interface HookEvaluationDetail extends HookEvaluation {
+  results: HookEvaluationRunResult[];
+}
+
 export interface EvaluationArchiveResult {
   markdownPath: string;
   jsonPath: string;
 }
 
+// ---- 跨 lab 回归看板 + CI gate (Phase5 P5-2) ----
+
+export type LabKind = "skill" | "tool" | "prompt" | "command" | "subagent" | "hook";
+
+export interface LabTimelinePoint {
+  lab: LabKind;
+  resourceId: string;
+  evaluationId: string;
+  startedAt: number;
+  status: "success" | "failed";
+  durationSec: number;
+  score: number | null;
+  passRate: number | null;
+  winRate: number | null;
+  activationRate: number | null;
+}
+
+export interface LabTimeline {
+  lab: LabKind;
+  resourceId: string;
+  points: LabTimelinePoint[];
+}
+
+export interface RegressionGateThresholds {
+  scoreDrop: number;
+  passRateDrop: number;
+  winRateDrop: number;
+  activationRateDrop: number;
+}
+
+export type RegressionGateDecision = "pass" | "regression" | "insufficient_data";
+
+export interface RegressionGateVerdict {
+  lab: LabKind;
+  resourceId: string;
+  decision: RegressionGateDecision;
+  reason: string | null;
+  thresholds: RegressionGateThresholds;
+  current: LabTimelinePoint | null;
+  previous: LabTimelinePoint | null;
+  deltas: {
+    score: number | null;
+    passRate: number | null;
+    winRate: number | null;
+    activationRate: number | null;
+  };
+}
+
 export interface EvaluationArchiveIndexItem {
-  kind: "skill" | "tool";
+  kind: "skill" | "tool" | "prompt" | "command" | "subagent";
   evaluationId: string;
   baseName: string;
   markdownPath: string;

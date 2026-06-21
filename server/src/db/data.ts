@@ -210,6 +210,7 @@ function rowToMemoryItem(r: MemoryItemRow): MemoryItem {
     type: r.type as MemoryItemType,
     title: r.title,
     body: r.body,
+    tags: [], // X-MEM2-CONTRACT 占位桩：D-MEM2-TAG 加 tags 列后改为 parseStringArray(r.tags)
     source: r.source as MemoryItemSource,
     sourceEventIds: parseStringArray(r.source_event_ids),
     confidence: r.confidence,
@@ -589,6 +590,7 @@ function rowToMemoryReview(r: MemoryReviewRow): MemoryReview {
     type: r.type as MemoryItemType,
     title: r.title,
     body: r.body,
+    tags: [], // X-MEM2-CONTRACT 占位桩：D-MEM2-TAG 加 memory_reviews.tags 列后改为 parseStringArray(r.tags)
     scope: r.scope as MemoryItem["scope"],
     sourceEventIds: parseStringArray(r.source_event_ids),
     confidence: r.confidence,

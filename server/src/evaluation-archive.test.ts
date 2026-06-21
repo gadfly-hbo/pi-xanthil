@@ -3,8 +3,8 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import assert from "node:assert/strict";
 import test from "node:test";
-import { archiveSkillEvaluation, archiveToolEvaluation, listEvaluationArchives } from "./evaluation-archive.ts";
-import type { SkillEvaluationDetail, ToolEvaluationDetail } from "./types.ts";
+import { archiveSkillEvaluation, archiveSubAgentEvaluation, archiveToolEvaluation, listEvaluationArchives } from "./evaluation-archive.ts";
+import type { SkillEvaluationDetail, SubAgentEvaluationDetail, ToolEvaluationDetail } from "./types.ts";
 
 function makeWorkspaceRoot(): string {
   return mkdtempSync(join(tmpdir(), "pi-xanthil-evaluation-archive-test-"));
@@ -72,6 +72,24 @@ test("archiveToolEvaluation writes markdown and json reports", () => {
   assert.equal(existsSync(archived.jsonPath), true);
   assert.match(readFileSync(archived.markdownPath, "utf8"), /Tool Evaluation Report/);
   assert.equal(JSON.parse(readFileSync(archived.jsonPath, "utf8")).toolId, "fake-tool");
+});
+
+test("archiveSubAgentEvaluation includes trajectory metrics", () => {
+  const root = makeWorkspaceRoot();
+  const archived = archiveSubAgentEvaluation(root, {
+    evaluationId: "subagent-eval-1",
+    workspaceId: "workspace-1",
+    repeat: 1,
+    status: "success",
+    startedAt: 0,
+    endedAt: 1000,
+    durationSec: 1,
+    cases: [{ id: "case", name: "Case", personaOverride: "analyst", brief: "Analyze", dataFiles: [], expected: { kind: "tool-sequence", required: ["read", "write"] } }],
+    caseSummaries: [{ caseId: "case", caseName: "Case", total: 1, success: 1, failed: 0, avgDurationSec: 1, avgStepCount: 2, avgTotalTokens: 30, avgTotalCost: 0.01 }],
+    results: [],
+  } satisfies SubAgentEvaluationDetail);
+  assert.match(readFileSync(archived.markdownPath, "utf8"), /SubAgent Evaluation Report/);
+  assert.equal(listEvaluationArchives(root)[0]?.kind, "subagent");
 });
 
 test("listEvaluationArchives returns paired archive reports newest first", () => {

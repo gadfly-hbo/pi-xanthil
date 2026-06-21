@@ -3,6 +3,7 @@ import { Archive, BarChart3, CheckCircle2, Download, FileDown, FolderOpen, Loade
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { downloadArchiveTextFile, downloadEvaluationArchiveManifest, downloadEvaluationJson, downloadToolEvaluationMarkdown } from "@/lib/evaluation-export";
+import { ArchiveList, EvalHistoryList, ExportActions, ResultCard as SharedResultCard, SummaryTable as SharedSummaryTable } from "@/components/eval-shared";
 import type { EvaluationArchiveIndexItem, EvaluationError, ExtractionTool, PiModel, ToolCaseSet, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, ToolExpectation } from "@/types";
 
 interface Props {
@@ -410,47 +411,8 @@ export function ToolLabPane(p: Props) {
         </button>
         {error && <p className="mt-2 break-words text-xs text-rose-500">{error}</p>}
 
-        <div className="mt-6 text-xs font-medium text-neutral-500">历史评估</div>
-        <div className="mt-2 space-y-1">
-          {history.map((item) => (
-            <button key={item.evaluationId} onClick={() => void selectEvaluation(item.evaluationId)} className={cn("flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800", result?.evaluationId === item.evaluationId && "bg-neutral-100 dark:bg-neutral-800")}>
-              <StatusIcon status={item.status} />
-              <span className="min-w-0 flex-1 truncate">{new Date(item.startedAt).toLocaleString("zh-CN", { month: "2-digit", day: "2-digit", hour: "2-digit", minute: "2-digit" })}</span>
-              <span className="text-[10px] text-neutral-400">{item.toolId} · {item.cases.length}c/{item.repeat}x</span>
-            </button>
-          ))}
-          {history.length === 0 && <p className="px-2 py-2 text-xs text-neutral-400">还没有 Tool 评估历史。</p>}
-        </div>
-        <div className="mt-6 flex items-center gap-2 text-xs font-medium text-neutral-500">
-          <Archive className="h-3.5 w-3.5" />
-          <span className="min-w-0 flex-1">最近归档</span>
-          <button
-            type="button"
-            disabled={archives.length === 0}
-            onClick={() => downloadEvaluationArchiveManifest(archives)}
-            className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-500 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:hover:bg-neutral-800"
-          >
-            manifest
-          </button>
-        </div>
-        <div className="mt-2 space-y-1">
-          {archives.slice(0, 5).map((item) => (
-            <div key={item.baseName} className="rounded-md border border-neutral-200 px-2 py-1.5 text-xs dark:border-neutral-800">
-              <div className="flex items-center gap-2">
-                <span className={cn("rounded px-1 py-0.5 text-[10px] font-medium", item.kind === "skill" ? "bg-sky-50 text-sky-700 dark:bg-sky-950/30 dark:text-sky-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300")}>{item.kind}</span>
-                <span className="min-w-0 flex-1 truncate font-mono text-[10.5px]" title={item.evaluationId}>{item.evaluationId}</span>
-              </div>
-              <div className="mt-1 truncate font-mono text-[10px] text-neutral-400" title={`${item.markdownRelPath} / ${item.jsonRelPath}`}>
-                {item.markdownRelPath}
-              </div>
-              <div className="mt-2 flex gap-1">
-                <button type="button" onClick={() => void downloadArchiveFile(item, "md")} className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">MD</button>
-                <button type="button" onClick={() => void downloadArchiveFile(item, "json")} className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10px] font-medium text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">JSON</button>
-              </div>
-            </div>
-          ))}
-          {archives.length === 0 && <p className="px-2 py-2 text-xs text-neutral-400">还没有归档报告。</p>}
-        </div>
+        <EvalHistoryList items={history} selectedId={result?.evaluationId} onSelect={(item) => void selectEvaluation(item.evaluationId)} emptyText="还没有 Tool 评估历史。" renderMeta={(item) => <span className="max-w-32 truncate text-[10px] text-neutral-400">{item.toolId} · {item.cases.length}c/{item.repeat}x</span>} />
+        <ArchiveList archives={archives} onDownload={(item, format) => void downloadArchiveFile(item, format)} onDownloadManifest={() => downloadEvaluationArchiveManifest(archives)} />
       </aside>
 
       <main className="min-w-0 flex-1 overflow-y-auto p-5">
@@ -461,18 +423,11 @@ export function ToolLabPane(p: Props) {
                 <div className="flex items-center gap-2 text-base font-semibold"><BarChart3 className="h-4 w-4" />Tool 测评报告</div>
                 <p className="mt-1 text-xs leading-5 text-neutral-500">{result.toolId} · {result.results.length} 次运行 · {result.durationSec.toFixed(2)}s · {statusLabel(result.status)}</p>
               </div>
-              <div className="flex shrink-0 items-center gap-2">
-                <button type="button" onClick={() => downloadEvaluationJson("tool", result.evaluationId, result)} className={exportButtonClass} title="导出完整 JSON">
-                  <Download className="h-3.5 w-3.5" />JSON
-                </button>
-                <button type="button" onClick={() => downloadToolEvaluationMarkdown(result)} className={exportButtonClass} title="导出 Markdown 报告">
-                  <Download className="h-3.5 w-3.5" />Markdown
-                </button>
-                <button type="button" onClick={() => void archiveCurrentEvaluation()} className={exportButtonClass} title="归档 Markdown 与 JSON 到 workspace">
-                  <Archive className="h-3.5 w-3.5" />归档
-                </button>
-                <StatusIcon status={result.status} />
-              </div>
+              <ExportActions actions={[
+                { key: "json", title: "导出完整 JSON", onClick: () => downloadEvaluationJson("tool", result.evaluationId, result), label: <><Download className="h-3.5 w-3.5" />JSON</> },
+                { key: "md", title: "导出 Markdown 报告", onClick: () => downloadToolEvaluationMarkdown(result), label: <><Download className="h-3.5 w-3.5" />Markdown</> },
+                { key: "archive", title: "归档 Markdown 与 JSON 到 workspace", onClick: () => void archiveCurrentEvaluation(), label: <><Archive className="h-3.5 w-3.5" />归档</> },
+              ]} trailing={<StatusIcon status={result.status} />} />
             </div>
             {archiveMessage && <p className="mt-2 break-all rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300">{archiveMessage}</p>}
             <SummaryTable result={result} />
@@ -594,40 +549,14 @@ function CaseEditor(p: {
 }
 
 function SummaryTable({ result }: { result: ToolEvaluationDetail }) {
-  return <div className="mt-4 overflow-x-auto">
-    <table className="w-full text-left text-xs">
-      <thead className="border-b border-neutral-200 text-neutral-500 dark:border-neutral-800">
-        <tr>
-          <th className="py-2 pr-3 font-medium">Case</th>
-          <th className="py-2 pr-3 font-medium">成功</th>
-          <th className="py-2 pr-3 font-medium">失败</th>
-          <th className="py-2 pr-3 font-medium">平均耗时</th>
-        </tr>
-      </thead>
-      <tbody>
-        {result.caseSummaries.map((item) => (
-          <tr key={item.caseId} className="border-b border-neutral-100 dark:border-neutral-900">
-            <td className="py-2 pr-3 font-medium">{item.caseName}</td>
-            <td className="py-2 pr-3">{item.success}/{item.total}</td>
-            <td className="py-2 pr-3">{item.failed}</td>
-            <td className="py-2 pr-3">{item.avgDurationSec.toFixed(2)}s</td>
-          </tr>
-        ))}
-      </tbody>
-    </table>
-  </div>;
+  return <SharedSummaryTable rows={result.caseSummaries} rowKey={(item) => item.caseId} columns={[
+    { key: "case", label: "Case", className: "font-medium", render: (item) => item.caseName }, { key: "success", label: "成功", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "失败", render: (item) => item.failed }, { key: "duration", label: "平均耗时", render: (item) => `${item.avgDurationSec.toFixed(2)}s` },
+  ]} />;
 }
 
 function ResultCard({ result }: { result: ToolEvaluationRunResult }) {
   const failureSummary = result.status === "failed" ? buildFailureSummary(result) : null;
-  return <details className="rounded-md border border-neutral-200 px-3 py-2 text-xs dark:border-neutral-800">
-    <summary className="cursor-pointer">
-      <span className="inline-flex items-center gap-2">
-        <StatusIcon status={result.status} />
-        <span className="font-medium">{result.caseName}</span>
-        <span className="text-neutral-400">attempt {result.attempt} · {result.expectation.kind}</span>
-      </span>
-    </summary>
+  return <SharedResultCard collapsible title={result.caseName} status={result.status} meta={<>attempt {result.attempt} · {result.expectation.kind}</>}>
     <div className="mt-2 grid gap-2 text-neutral-500 md:grid-cols-3">
       <div>耗时 {result.durationSec.toFixed(2)}s</div>
       <div>summary success {result.summary?.success ?? "-"}</div>
@@ -650,7 +579,7 @@ function ResultCard({ result }: { result: ToolEvaluationRunResult }) {
     {(result.stdout || result.stderr) && (
       <pre className="mt-2 max-h-64 overflow-auto whitespace-pre-wrap rounded-md bg-neutral-50 p-3 text-[11px] leading-5 text-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{[result.stdout, result.stderr].filter(Boolean).join("\n")}</pre>
     )}
-  </details>;
+  </SharedResultCard>;
 }
 
 function hasConfiguredCases(cases: DraftCase[]): boolean {
@@ -882,7 +811,6 @@ function inputClass(extra = ""): string {
 }
 
 const pathButtonClass = "inline-flex h-8 shrink-0 items-center gap-1 rounded-md border border-neutral-200 px-2 text-[11px] font-normal text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800";
-const exportButtonClass = "inline-flex h-8 items-center gap-1 rounded-md border border-neutral-200 px-2 text-xs text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800";
 
 function EmptyState({ text }: { text: string }) {
   return <div className="flex h-full items-center justify-center text-sm text-neutral-400">{text}</div>;

@@ -6,6 +6,12 @@ import { BusinessRequirementPane } from "@/components/BusinessRequirementPane";
 import { MultiAgentExecutionPane } from "@/components/MultiAgentExecutionPane";
 import { SkillLabPane } from "@/components/SkillLabPane";
 import { ToolLabPane } from "@/components/ToolLabPane";
+import { CommandLabPane } from "@/components/CommandLabPane";
+import { SubAgentLabPane } from "@/components/SubAgentLabPane";
+import { HookLabPane } from "@/components/HookLabPane";
+import { PromptLabPane } from "@/components/PromptLabPane";
+import { LabOverviewPane } from "@/components/LabOverviewPane";
+import { RegressionDashboardPane } from "@/components/RegressionDashboardPane";
 import { AnaXPane } from "@/components/AnaXPane";
 import { HypothesisPane } from "@/components/HypothesisPane";
 import { ChangeManagementPane } from "@/components/ChangeManagementPane";
@@ -189,16 +195,22 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
         <ToolLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} />
       )}
       {activeTab === "aggregate" && activeSubTab === "hooks_lab" && (
-        <Placeholder icon={FlaskConical} title="hooks 实验场" hint="hooks 试运行实验场，即将推出" />
+        <HookLabPane workspaceId={ctx.activeWorkspaceId} />
       )}
       {activeTab === "aggregate" && activeSubTab === "command_lab" && (
-        <Placeholder icon={FlaskConical} title="command 实验场" hint="command 试运行实验场，即将推出" />
+        <CommandLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} />
       )}
       {activeTab === "aggregate" && activeSubTab === "subagents_lab" && (
-        <Placeholder icon={FlaskConical} title="subagents 实验场" hint="subagents 试运行实验场，即将推出" />
+        <SubAgentLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} />
       )}
       {activeTab === "aggregate" && activeSubTab === "prompts_lab" && (
-        <Placeholder icon={FlaskConical} title="prompts 实验场" hint="prompts 试运行实验场，即将推出" />
+        <PromptLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} onModelChange={ctx.setModel} />
+      )}
+      {activeTab === "aggregate" && String(activeSubTab) === "lab_overview" && (
+        <LabOverviewPane workspaceId={ctx.activeWorkspaceId} onNavigate={(target) => ctx.setActiveSubTab(target)} onOpenRegression={() => ctx.setActiveSubTab("lab_regression" as Parameters<typeof ctx.setActiveSubTab>[0])} />
+      )}
+      {activeTab === "aggregate" && String(activeSubTab) === "lab_regression" && (
+        <RegressionDashboardPane workspaceId={ctx.activeWorkspaceId} />
       )}
       {(activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti") && activeSubTab === "dlf" && (
         <Placeholder icon={FlaskConical} title="DLF" hint="DLF 模块管理，即将推出" />

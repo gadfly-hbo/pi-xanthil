@@ -6,6 +6,24 @@ import type {
   MemoryInjectionRecord,
   MemoryItem,
   MemoryItemListResponse,
+  CommandEvalCase,
+  CommandEvalSet,
+  CommandEvaluation,
+  CommandEvaluationDetail,
+  EvaluationArchiveResult,
+  HookEvalCase,
+  HookEvalSet,
+  HookEvaluation,
+  HookEvaluationDetail,
+  LabKind,
+  LabTimeline,
+  RegressionGateThresholds,
+  RegressionGateVerdict,
+  PromptEvalSet,
+  PromptEvalTask,
+  PromptEvaluation,
+  PromptEvaluationDetail,
+  PromptVariant,
   SkillAutoDistillResult,
   SkillCoverageGapCluster,
   SkillCoverageGapDistillResult,
@@ -20,6 +38,10 @@ import type {
   SkillRegistryRetestActiveResult,
   SkillVersionContent,
   SkillStatus,
+  SubAgentEvalCase,
+  SubAgentEvalSet,
+  SubAgentEvaluation,
+  SubAgentEvaluationDetail,
   SubAgentTask,
   SubAgentTaskInput,
   WorkflowAgentsBoard,
@@ -60,6 +82,128 @@ export interface SessionConsolidationResult {
 }
 
 export const engineApi = {
+  listPromptEvaluations: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-evaluations`).then(json<PromptEvaluation[]>),
+  getPromptEvaluation: (evaluationId: string) =>
+    fetch(`/api/prompt-evaluations/${encodeURIComponent(evaluationId)}`).then(json<PromptEvaluationDetail>),
+  runPromptEvaluation: (workspaceId: string, payload: {
+    model: string;
+    repeat: number;
+    judgeRepeat: number;
+    variants: PromptVariant[];
+    tasks: PromptEvalTask[];
+    dataContextPaths?: string[];
+  }) => fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-evaluations/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then(json<PromptEvaluationDetail>),
+  listPromptEvalSets: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-eval-sets`).then(json<PromptEvalSet[]>),
+  createPromptEvalSet: (workspaceId: string, payload: { name: string; tasks: PromptEvalTask[] }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-eval-sets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<PromptEvalSet>),
+  updatePromptEvalSet: (setId: string, payload: { name?: string; tasks?: PromptEvalTask[] }) =>
+    fetch(`/api/prompt-eval-sets/${encodeURIComponent(setId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<PromptEvalSet>),
+  deletePromptEvalSet: (setId: string) =>
+    fetch(`/api/prompt-eval-sets/${encodeURIComponent(setId)}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
+  archivePromptEvaluation: (evaluationId: string) =>
+    fetch(`/api/prompt-evaluations/${encodeURIComponent(evaluationId)}/archive`, { method: "POST" }).then(json<EvaluationArchiveResult>),
+  listCommandEvaluations: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/command-evaluations`).then(json<CommandEvaluation[]>),
+  getCommandEvaluation: (evaluationId: string) =>
+    fetch(`/api/command-evaluations/${encodeURIComponent(evaluationId)}`).then(json<CommandEvaluationDetail>),
+  runCommandEvaluation: (workspaceId: string, payload: {
+    commandId: string;
+    repeat: number;
+    model?: string;
+    cases: CommandEvalCase[];
+  }) => fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/command-evaluations/run`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(payload),
+  }).then(json<CommandEvaluationDetail>),
+  listCommandCaseSets: (workspaceId: string, commandId?: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/command-case-sets${commandId ? `?commandId=${encodeURIComponent(commandId)}` : ""}`).then(json<CommandEvalSet[]>),
+  createCommandCaseSet: (workspaceId: string, payload: { name: string; commandId: string; cases: CommandEvalCase[] }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/command-case-sets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<CommandEvalSet>),
+  updateCommandCaseSet: (setId: string, payload: { name?: string; commandId?: string; cases?: CommandEvalCase[] }) =>
+    fetch(`/api/command-case-sets/${encodeURIComponent(setId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<CommandEvalSet>),
+  deleteCommandCaseSet: (setId: string) =>
+    fetch(`/api/command-case-sets/${encodeURIComponent(setId)}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
+  archiveCommandEvaluation: (evaluationId: string) =>
+    fetch(`/api/command-evaluations/${encodeURIComponent(evaluationId)}/archive`, { method: "POST" }).then(json<EvaluationArchiveResult>),
+  listSubAgentEvaluations: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/subagent-evaluations`).then(json<SubAgentEvaluation[]>),
+  getSubAgentEvaluation: (evaluationId: string) =>
+    fetch(`/api/subagent-evaluations/${encodeURIComponent(evaluationId)}`).then(json<SubAgentEvaluationDetail>),
+  runSubAgentEvaluation: (workspaceId: string, payload: { model: string; repeat: number; cases: SubAgentEvalCase[] }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/subagent-evaluations/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<SubAgentEvaluationDetail>),
+  listSubAgentEvalSets: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/subagent-case-sets`).then(json<SubAgentEvalSet[]>),
+  createSubAgentEvalSet: (workspaceId: string, payload: { name: string; cases: SubAgentEvalCase[] }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/subagent-case-sets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<SubAgentEvalSet>),
+  updateSubAgentEvalSet: (setId: string, payload: { name?: string; cases?: SubAgentEvalCase[] }) =>
+    fetch(`/api/subagent-case-sets/${encodeURIComponent(setId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<SubAgentEvalSet>),
+  deleteSubAgentEvalSet: (setId: string) =>
+    fetch(`/api/subagent-case-sets/${encodeURIComponent(setId)}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
+  archiveSubAgentEvaluation: (evaluationId: string) =>
+    fetch(`/api/subagent-evaluations/${encodeURIComponent(evaluationId)}/archive`, { method: "POST" }).then(json<EvaluationArchiveResult>),
+  listHookEvaluations: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/hook-evaluations`).then(json<HookEvaluation[]>),
+  getHookEvaluation: (evaluationId: string) =>
+    fetch(`/api/hook-evaluations/${encodeURIComponent(evaluationId)}`).then(json<HookEvaluationDetail>),
+  runHookEvaluation: (workspaceId: string, payload: { repeat: number; cases: HookEvalCase[] }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/hook-evaluations/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<HookEvaluationDetail>),
+  listHookEvalSets: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/hook-case-sets`).then(json<HookEvalSet[]>),
+  createHookEvalSet: (workspaceId: string, payload: { name: string; cases: HookEvalCase[] }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/hook-case-sets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<HookEvalSet>),
+  updateHookEvalSet: (setId: string, payload: { name?: string; cases?: HookEvalCase[] }) =>
+    fetch(`/api/hook-case-sets/${encodeURIComponent(setId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<HookEvalSet>),
+  deleteHookEvalSet: (setId: string) =>
+    fetch(`/api/hook-case-sets/${encodeURIComponent(setId)}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
+  archiveHookEvaluation: (evaluationId: string) =>
+    fetch(`/api/hook-evaluations/${encodeURIComponent(evaluationId)}/archive`, { method: "POST" }).then(json<EvaluationArchiveResult>),
   consolidateSessionTrace: (workspaceId: string, sessionId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidate-trace`, {
       method: "POST",
@@ -272,4 +416,28 @@ export const engineApi = {
       json<SkillRegistryEvalHistoryResult>,
     );
   },
+
+  // 跨 lab 回归看板 + CI gate (Phase5 P5-2)
+  listLabTimelines: (
+    workspaceId: string,
+    query?: { lab?: LabKind; resourceId?: string },
+  ) => {
+    const params = new URLSearchParams();
+    if (query?.lab) params.set("lab", query.lab);
+    if (query?.resourceId) params.set("resourceId", query.resourceId);
+    const qs = params.toString();
+    return fetch(`/api/workspaces/${workspaceId}/lab-timelines${qs ? `?${qs}` : ""}`).then(
+      json<LabTimeline[]>,
+    );
+  },
+
+  evaluateLabRegressionGate: (
+    workspaceId: string,
+    body: { lab: LabKind; resourceId: string; thresholds?: Partial<RegressionGateThresholds> },
+  ) =>
+    fetch(`/api/workspaces/${workspaceId}/lab-regression-gate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<RegressionGateVerdict>),
 };

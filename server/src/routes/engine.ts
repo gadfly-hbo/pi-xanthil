@@ -26,6 +26,54 @@ import {
   listSkillRegistryEntries,
   listSkillRegistryEvalHistory,
   updateSkillRegistryEntry,
+  createPromptEvalSet,
+  deletePromptEvalSet,
+  getPromptEvalSet,
+  getPromptEvaluation,
+  listPromptEvalSets,
+  listPromptEvaluations,
+  savePromptEvaluation,
+  updatePromptEvalSet,
+  createCommandCaseSet,
+  deleteCommandCaseSet,
+  getCommandCaseSet,
+  getCommandEvaluation,
+  listCommandCaseSets,
+  listCommandEvaluations,
+  saveCommandEvaluation,
+  updateCommandCaseSet,
+  createSubAgentEvalSet,
+  deleteSubAgentEvalSet,
+  getSubAgentEvalSet,
+  getSubAgentEvaluation,
+  listSubAgentEvalSets,
+  listSubAgentEvaluations,
+  saveSubAgentEvaluation,
+  updateSubAgentEvalSet,
+  createHookEvalSet,
+  deleteHookEvalSet,
+  getHookEvalSet,
+  getHookEvaluation,
+  listHookEvalSets,
+  listHookEvaluations,
+  saveHookEvaluation,
+  updateHookEvalSet,
+  createToolCaseSet,
+  getToolCaseSet,
+  listToolCaseSets,
+  updateToolCaseSet,
+  deleteToolCaseSet,
+  saveToolEvaluation,
+  listToolEvaluations,
+  getToolEvaluation,
+  createSkillEvalSet,
+  getSkillEvalSet,
+  listSkillEvalSets,
+  updateSkillEvalSet,
+  deleteSkillEvalSet,
+  saveSkillEvaluation,
+  listSkillEvaluations,
+  getSkillEvaluation,
 } from "../db/engine.ts";
 import { readTree, readFlowFile, writeFlowFile, copyLocalFolderIntoFlow, copyFlowSnapshot, inferWorkflow, moveAllFiles } from "../flow-fs.ts";
 import { normalizeWorkflowModels, normalizeWorkflowSkills, type WorkflowLike } from "../workflow-config.ts";
@@ -51,11 +99,31 @@ import { moveManagedDirToTrash } from "../trash.ts";
 import { listSkills } from "../skills.ts";
 import { buildSkillDistillationPrompt, buildSkillRevisionPrompt, extractSkillMarkdown, parseSkillName, SKILL_DISTILL_SYSTEM_PROMPT, SKILL_REVISE_SYSTEM_PROMPT, slugifySkillName } from "../skill-distillation.ts";
 import { parseSkillEvaluationRunRequest } from "../skill-evaluation-api.ts";
+import { buildLabTimelines } from "../lab-timeline.ts";
+import { evaluateRegressionGate, parseRegressionGateThresholds } from "../regression-gate.ts";
+import type { LabKind } from "../types.ts";
+import { parsePromptEvaluationRunRequest } from "../prompt-evaluation-api.ts";
+import { runPromptEvaluation } from "../prompt-evaluation-runner.ts";
+import { archivePromptEvaluation } from "../evaluation-archive.ts";
+import { parseCommandEvaluationRunRequest, parseCommandEvaluationCases } from "../command-evaluation-api.ts";
+import { runCommandEvaluation } from "../command-evaluation-runner.ts";
+import { archiveCommandEvaluation } from "../evaluation-archive.ts";
+import { parseSubAgentEvaluationCases, parseSubAgentEvaluationRunRequest } from "../subagent-evaluation-api.ts";
+import { runSubAgentEvaluation } from "../subagent-evaluation-runner.ts";
+import { archiveSubAgentEvaluation } from "../evaluation-archive.ts";
+import { parseHookEvaluationCases, parseHookEvaluationRunRequest } from "../hook-evaluation-api.ts";
+import { runHookEvaluation } from "../hook-evaluation-runner.ts";
+import { runToolEvaluation } from "../tool-evaluation-runner.ts";
+import { runSkillEvaluation } from "../skill-evaluation-runner.ts";
+import { parseToolEvaluationCases, parseToolEvaluationRunRequest } from "../tool-evaluation-api.ts";
+import { getExtractionTool } from "../../tools/registry.ts";
+import { archiveHookEvaluation } from "../evaluation-archive.ts";
+import { type Hook } from "../types.ts";
 import { autoTriggerCuration } from "../skill-curator.ts";
 import { retrieveSkills, rankSkillSimilarity } from "../skill-retrieval.ts";
 import { analyzeSkillCoverageGaps, type SkillCoverageGapCluster, type SkillCoverageTask } from "../skill-coverage-gap.ts";
 import { expandCommand } from "../command-expand.ts";
-import { COMMANDS_CONFIG_PATH, FAVORITES_ROOT, PORT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
+import { COMMANDS_CONFIG_PATH, FAVORITES_ROOT, HOOKS_CONFIG_PATH, PORT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
 import { listSystemPromptOverviews } from "../system-prompts.ts";
 import type { SkillRegistryConflict, SkillRegistryConflictsResult, SkillRegistryEntry, SkillSource, SkillStatus, XanCommand, XanCommandParam, XanCommandParamType } from "../types.ts";
 import {
@@ -84,6 +152,539 @@ export const engineRouter = Router();
 engineRouter.get("/api/prompts/system", (_req, res) => {
   res.json(listSystemPromptOverviews());
 });
+
+engineRouter.get("/api/workspaces/:id/prompt-evaluations", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listPromptEvaluations(req.params.id));
+});
+
+engineRouter.get("/api/workspaces/:id/prompt-eval-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listPromptEvalSets(req.params.id));
+});
+
+engineRouter.post("/api/workspaces/:id/prompt-eval-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const name = String(req.body?.name ?? "").trim();
+  const tasks = parsePromptEvalTasks(req.body?.tasks);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (tasks.length === 0) return res.status(400).json({ error: "tasks required" });
+  res.json(createPromptEvalSet(req.params.id, name, tasks));
+});
+
+engineRouter.patch("/api/prompt-eval-sets/:id", (req, res) => {
+  const existing = getPromptEvalSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "prompt eval set not found" });
+  const name = req.body?.name === undefined ? existing.name : String(req.body.name ?? "").trim();
+  const tasks = req.body?.tasks === undefined ? existing.tasks : parsePromptEvalTasks(req.body.tasks);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (tasks.length === 0) return res.status(400).json({ error: "tasks required" });
+  res.json(updatePromptEvalSet(existing.id, name, tasks));
+});
+
+engineRouter.delete("/api/prompt-eval-sets/:id", (req, res) => {
+  const existing = getPromptEvalSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "prompt eval set not found" });
+  res.json({ ok: deletePromptEvalSet(existing.id) });
+});
+
+engineRouter.get("/api/prompt-evaluations/:id", (req, res) => {
+  const evaluation = getPromptEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "prompt evaluation not found" });
+  res.json(evaluation);
+});
+
+engineRouter.post("/api/workspaces/:id/prompt-evaluations/run", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parsePromptEvaluationRunRequest(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const summary = await runPromptEvaluation({
+      workspaceRoot: workspace.rootPath,
+      workspaceId: workspace.id,
+      evaluationId: randomUUID(),
+      model: parsed.value.model,
+      variants: parsed.value.variants,
+      tasks: parsed.value.tasks,
+      repeat: parsed.value.repeat,
+      judgeRepeat: parsed.value.judgeRepeat,
+      dataContextPaths: parsed.value.dataContextPaths,
+    });
+    res.json(savePromptEvaluation(workspace.id, parsed.value.model, parsed.value.repeat, parsed.value.variants, parsed.value.tasks, summary));
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.post("/api/prompt-evaluations/:id/archive", (req, res) => {
+  const evaluation = getPromptEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "prompt evaluation not found" });
+  const workspace = getWorkspace(evaluation.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  res.json(archivePromptEvaluation(workspace.rootPath, evaluation));
+});
+
+engineRouter.get("/api/workspaces/:id/command-evaluations", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listCommandEvaluations(req.params.id));
+});
+
+engineRouter.get("/api/workspaces/:id/command-case-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const commandId = typeof req.query.commandId === "string" && req.query.commandId.trim() ? req.query.commandId.trim() : undefined;
+  res.json(listCommandCaseSets(req.params.id, commandId));
+});
+
+engineRouter.post("/api/workspaces/:id/command-case-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const name = String(req.body?.name ?? "").trim();
+  const commandId = String(req.body?.commandId ?? "").trim();
+  const cases = parseCommandEvaluationCases(req.body?.cases);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (!commandId) return res.status(400).json({ error: "commandId required" });
+  if (cases.length === 0) return res.status(400).json({ error: "cases required" });
+  res.json(createCommandCaseSet(req.params.id, name, commandId, cases));
+});
+
+engineRouter.patch("/api/command-case-sets/:id", (req, res) => {
+  const existing = getCommandCaseSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "command case set not found" });
+  const name = req.body?.name === undefined ? existing.name : String(req.body.name ?? "").trim();
+  const commandId = req.body?.commandId === undefined ? existing.commandId : String(req.body.commandId ?? "").trim();
+  const cases = req.body?.cases === undefined ? existing.cases : parseCommandEvaluationCases(req.body.cases);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (!commandId) return res.status(400).json({ error: "commandId required" });
+  if (cases.length === 0) return res.status(400).json({ error: "cases required" });
+  res.json(updateCommandCaseSet(existing.id, name, commandId, cases));
+});
+
+engineRouter.delete("/api/command-case-sets/:id", (req, res) => {
+  const existing = getCommandCaseSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "command case set not found" });
+  res.json({ ok: deleteCommandCaseSet(existing.id) });
+});
+
+engineRouter.get("/api/command-evaluations/:id", (req, res) => {
+  const evaluation = getCommandEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "command evaluation not found" });
+  res.json(evaluation);
+});
+
+engineRouter.post("/api/workspaces/:id/command-evaluations/run", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseCommandEvaluationRunRequest(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const allCommands = readCommandsFile();
+  const command = allCommands.find((candidate) => candidate.id === parsed.value.commandId && candidate.enabled);
+  if (!command) return res.status(400).json({ error: "command not found or disabled" });
+  try {
+    const summary = await runCommandEvaluation({
+      workspaceRoot: workspace.rootPath,
+      workspaceId: workspace.id,
+      evaluationId: randomUUID(),
+      command,
+      allCommands,
+      cases: parsed.value.cases,
+      repeat: parsed.value.repeat,
+      model: parsed.value.model,
+    });
+    res.json(saveCommandEvaluation(workspace.id, command.id, parsed.value.repeat, parsed.value.cases, summary));
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.post("/api/command-evaluations/:id/archive", (req, res) => {
+  const evaluation = getCommandEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "command evaluation not found" });
+  const workspace = getWorkspace(evaluation.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  res.json(archiveCommandEvaluation(workspace.rootPath, evaluation));
+});
+
+engineRouter.get("/api/workspaces/:id/subagent-evaluations", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listSubAgentEvaluations(req.params.id));
+});
+
+engineRouter.get("/api/workspaces/:id/subagent-case-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listSubAgentEvalSets(req.params.id));
+});
+
+engineRouter.post("/api/workspaces/:id/subagent-case-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const name = String(req.body?.name ?? "").trim();
+  const cases = parseSubAgentEvaluationCases(req.body?.cases);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (!cases.length) return res.status(400).json({ error: "cases required" });
+  res.json(createSubAgentEvalSet(req.params.id, name, cases));
+});
+
+engineRouter.patch("/api/subagent-case-sets/:id", (req, res) => {
+  const existing = getSubAgentEvalSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "subagent case set not found" });
+  const name = req.body?.name === undefined ? existing.name : String(req.body.name ?? "").trim();
+  const cases = req.body?.cases === undefined ? existing.cases : parseSubAgentEvaluationCases(req.body.cases);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (!cases.length) return res.status(400).json({ error: "cases required" });
+  res.json(updateSubAgentEvalSet(existing.id, name, cases));
+});
+
+engineRouter.delete("/api/subagent-case-sets/:id", (req, res) => {
+  const existing = getSubAgentEvalSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "subagent case set not found" });
+  res.json({ ok: deleteSubAgentEvalSet(existing.id) });
+});
+
+engineRouter.get("/api/subagent-evaluations/:id", (req, res) => {
+  const evaluation = getSubAgentEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "subagent evaluation not found" });
+  res.json(evaluation);
+});
+
+engineRouter.post("/api/workspaces/:id/subagent-evaluations/run", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseSubAgentEvaluationRunRequest(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const summary = await runSubAgentEvaluation({
+      workspaceRoot: workspace.rootPath,
+      workspaceId: workspace.id,
+      evaluationId: randomUUID(),
+      model: parsed.value.model,
+      repeat: parsed.value.repeat,
+      cases: parsed.value.cases,
+    });
+    res.json(saveSubAgentEvaluation(workspace.id, parsed.value.repeat, parsed.value.cases, summary));
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.post("/api/subagent-evaluations/:id/archive", (req, res) => {
+  const evaluation = getSubAgentEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "subagent evaluation not found" });
+  const workspace = getWorkspace(evaluation.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  res.json(archiveSubAgentEvaluation(workspace.rootPath, evaluation));
+});
+
+// hooks lab：读全局 hooks.json（与 px-hook-runner / dataRouter GET /api/hooks 同源），只取顶层数组或 { hooks }。
+function readHooksForEval(): Hook[] {
+  if (!existsSync(HOOKS_CONFIG_PATH)) return [];
+  try {
+    const parsed = JSON.parse(readFileSync(HOOKS_CONFIG_PATH, "utf8")) as unknown;
+    const arr: unknown[] = Array.isArray(parsed)
+      ? parsed
+      : Array.isArray((parsed as { hooks?: unknown })?.hooks)
+        ? (parsed as { hooks: unknown[] }).hooks
+        : [];
+    return arr.filter((item): item is Hook => {
+      if (typeof item !== "object" || item === null) return false;
+      const hook = item as Record<string, unknown>;
+      return typeof hook.id === "string" && typeof hook.event === "string" && typeof hook.action === "object" && hook.action !== null;
+    });
+  } catch {
+    return [];
+  }
+}
+
+engineRouter.get("/api/workspaces/:id/hook-evaluations", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listHookEvaluations(req.params.id));
+});
+
+engineRouter.get("/api/workspaces/:id/hook-case-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listHookEvalSets(req.params.id));
+});
+
+engineRouter.post("/api/workspaces/:id/hook-case-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const name = String(req.body?.name ?? "").trim();
+  const cases = parseHookEvaluationCases(req.body?.cases);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (!cases.length) return res.status(400).json({ error: "cases required" });
+  res.json(createHookEvalSet(req.params.id, name, cases));
+});
+
+engineRouter.patch("/api/hook-case-sets/:id", (req, res) => {
+  const existing = getHookEvalSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "hook case set not found" });
+  const name = req.body?.name === undefined ? existing.name : String(req.body.name ?? "").trim();
+  const cases = req.body?.cases === undefined ? existing.cases : parseHookEvaluationCases(req.body.cases);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (!cases.length) return res.status(400).json({ error: "cases required" });
+  res.json(updateHookEvalSet(existing.id, name, cases));
+});
+
+engineRouter.delete("/api/hook-case-sets/:id", (req, res) => {
+  const existing = getHookEvalSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "hook case set not found" });
+  res.json({ ok: deleteHookEvalSet(existing.id) });
+});
+
+engineRouter.get("/api/hook-evaluations/:id", (req, res) => {
+  const evaluation = getHookEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "hook evaluation not found" });
+  res.json(evaluation);
+});
+
+engineRouter.post("/api/workspaces/:id/hook-evaluations/run", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseHookEvaluationRunRequest(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const summary = runHookEvaluation({
+      workspaceId: workspace.id,
+      evaluationId: randomUUID(),
+      hooks: readHooksForEval(),
+      cases: parsed.value.cases,
+      repeat: parsed.value.repeat,
+    });
+    res.json(saveHookEvaluation(workspace.id, parsed.value.repeat, parsed.value.cases, summary));
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.post("/api/hook-evaluations/:id/archive", (req, res) => {
+  const evaluation = getHookEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "hook evaluation not found" });
+  const workspace = getWorkspace(evaluation.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  res.json(archiveHookEvaluation(workspace.rootPath, evaluation));
+});
+
+// ---- tool evaluations（从 index.ts 迁入·P5-C0 批1·只搬不改，路径不变）----
+engineRouter.post("/api/workspaces/:id/tool-evaluations/run", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseToolEvaluationRunRequest(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const tool = getExtractionTool(parsed.value.toolId);
+  if (!tool) return res.status(404).json({ error: "extraction tool not found" });
+  try {
+    const summary = await runToolEvaluation({
+      workspaceRoot: workspace.rootPath,
+      workspaceId: workspace.id,
+      evaluationId: randomUUID(),
+      tool,
+      cases: parsed.value.cases,
+      repeat: parsed.value.repeat,
+    });
+    const evaluation = saveToolEvaluation(
+      workspace.id,
+      parsed.value.toolId,
+      parsed.value.repeat,
+      parsed.value.cases,
+      summary,
+    );
+    res.json(evaluation);
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.get("/api/workspaces/:id/tool-evaluations", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listToolEvaluations(req.params.id));
+});
+
+engineRouter.get("/api/workspaces/:id/tool-case-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const toolId = typeof req.query.toolId === "string" && req.query.toolId.trim() ? req.query.toolId.trim() : undefined;
+  res.json(listToolCaseSets(req.params.id, toolId));
+});
+
+engineRouter.post("/api/workspaces/:id/tool-case-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const name = String(req.body?.name ?? "").trim();
+  const toolId = String(req.body?.toolId ?? "").trim();
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (!toolId) return res.status(400).json({ error: "toolId required" });
+  if (!getExtractionTool(toolId)) return res.status(404).json({ error: "extraction tool not found" });
+  const cases = parseToolEvaluationCases(req.body?.cases);
+  if (cases.length === 0) return res.status(400).json({ error: "cases required" });
+  res.json(createToolCaseSet(req.params.id, name, toolId, cases));
+});
+
+engineRouter.patch("/api/tool-case-sets/:id", (req, res) => {
+  const existing = getToolCaseSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "tool case set not found" });
+  const name = req.body?.name === undefined ? existing.name : String(req.body.name ?? "").trim();
+  const toolId = req.body?.toolId === undefined ? existing.toolId : String(req.body.toolId ?? "").trim();
+  const cases = req.body?.cases === undefined ? existing.cases : parseToolEvaluationCases(req.body.cases);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (!toolId) return res.status(400).json({ error: "toolId required" });
+  if (!getExtractionTool(toolId)) return res.status(404).json({ error: "extraction tool not found" });
+  if (cases.length === 0) return res.status(400).json({ error: "cases required" });
+  res.json(updateToolCaseSet(existing.id, name, toolId, cases));
+});
+
+engineRouter.delete("/api/tool-case-sets/:id", (req, res) => {
+  const existing = getToolCaseSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "tool case set not found" });
+  res.json({ ok: deleteToolCaseSet(existing.id) });
+});
+
+engineRouter.get("/api/tool-evaluations/:id", (req, res) => {
+  const evaluation = getToolEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "tool evaluation not found" });
+  res.json(evaluation);
+});
+
+// ---- skill evaluations（从 index.ts 迁入·P5-C0 批2·只搬不改，路径不变；curate/apply/archive 仍留 index.ts）----
+engineRouter.get("/api/workspaces/:id/skill-evaluations", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listSkillEvaluations(req.params.id));
+});
+
+const LAB_KINDS: LabKind[] = ["skill", "tool", "prompt", "command", "subagent", "hook"];
+
+function parseLabKind(value: unknown): LabKind | undefined {
+  return LAB_KINDS.includes(value as LabKind) ? (value as LabKind) : undefined;
+}
+
+// 跨 lab 回归看板：聚合六类评测历史为统一时间线（只读，不重算/不触发评测）
+engineRouter.get("/api/workspaces/:id/lab-timelines", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const lab = typeof req.query.lab === "string" ? parseLabKind(req.query.lab) : undefined;
+  const resourceId = typeof req.query.resourceId === "string" ? req.query.resourceId : undefined;
+  res.json(buildLabTimelines(req.params.id, { lab, resourceId }));
+});
+
+// CI gate：给定资源 + 阈值判 pass/regression
+engineRouter.post("/api/workspaces/:id/lab-regression-gate", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const lab = parseLabKind(req.body?.lab);
+  if (!lab) return res.status(400).json({ error: "lab required (skill|tool|prompt|command|subagent|hook)" });
+  const resourceId = String(req.body?.resourceId ?? "").trim();
+  if (!resourceId) return res.status(400).json({ error: "resourceId required" });
+  const thresholds = parseRegressionGateThresholds(req.body);
+  res.json(evaluateRegressionGate({ workspaceId: req.params.id, lab, resourceId, thresholds }));
+});
+
+engineRouter.get("/api/workspaces/:id/skill-eval-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listSkillEvalSets(req.params.id));
+});
+
+engineRouter.post("/api/workspaces/:id/skill-eval-sets", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const name = String(req.body?.name ?? "").trim();
+  const tasks = parseSkillEvalSetTasks(req.body?.tasks);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (tasks.length === 0) return res.status(400).json({ error: "tasks required" });
+  res.json(createSkillEvalSet(req.params.id, name, tasks));
+});
+
+engineRouter.patch("/api/skill-eval-sets/:id", (req, res) => {
+  const existing = getSkillEvalSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "skill eval set not found" });
+  const name = req.body?.name === undefined ? existing.name : String(req.body.name ?? "").trim();
+  const tasks = req.body?.tasks === undefined ? existing.tasks : parseSkillEvalSetTasks(req.body.tasks);
+  if (!name) return res.status(400).json({ error: "name required" });
+  if (tasks.length === 0) return res.status(400).json({ error: "tasks required" });
+  res.json(updateSkillEvalSet(existing.id, name, tasks));
+});
+
+engineRouter.delete("/api/skill-eval-sets/:id", (req, res) => {
+  const existing = getSkillEvalSet(req.params.id);
+  if (!existing) return res.status(404).json({ error: "skill eval set not found" });
+  res.json({ ok: deleteSkillEvalSet(existing.id) });
+});
+
+engineRouter.get("/api/skill-evaluations/:id", (req, res) => {
+  const evaluation = getSkillEvaluation(req.params.id);
+  if (!evaluation) return res.status(404).json({ error: "skill evaluation not found" });
+  res.json(evaluation);
+});
+
+engineRouter.post("/api/workspaces/:id/skill-evaluations/run", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseSkillEvaluationRunRequest(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  try {
+    const variants = parsed.value.variants.map((variant) => ({
+      ...variant,
+      skillPaths: validateSkillPaths(workspace.rootPath, variant.skillPaths, { mode: "strict" }) ?? [],
+    }));
+    const summary = await runSkillEvaluation({
+      workspaceRoot: workspace.rootPath,
+      workspaceId: workspace.id,
+      evaluationId: randomUUID(),
+      model: parsed.value.model,
+      variants,
+      tasks: parsed.value.tasks,
+      repeat: parsed.value.repeat,
+      judgeRepeat: parsed.value.judgeRepeat,
+      contextPrefix: parsed.value.contextPrefix,
+      dataContextPaths: parsed.value.dataContextPaths,
+    });
+    const evaluation = saveSkillEvaluation(
+      workspace.id,
+      parsed.value.model,
+      parsed.value.repeat,
+      variants,
+      parsed.value.tasks,
+      parsed.value.contextPrefix,
+      summary,
+    );
+    res.json(evaluation);
+    autoTriggerCuration({
+      workspaceRoot: workspace.rootPath,
+      workspaceId: workspace.id,
+      model: parsed.value.model,
+      evaluation,
+    });
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+function parseSkillEvalSetTasks(value: unknown): Array<{ id: string; prompt: string; expectedPoints?: string[]; rubric?: string }> {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    if (typeof item !== "object" || item === null) return [];
+    const raw = item as Record<string, unknown>;
+    const prompt = String(raw.prompt ?? "").trim();
+    if (!prompt) return [];
+    const id = String(raw.id ?? `task_${index + 1}`).trim() || `task_${index + 1}`;
+    const expectedPoints = Array.isArray(raw.expectedPoints)
+      ? raw.expectedPoints.map((point) => String(point).trim()).filter(Boolean)
+      : [];
+    const rubric = String(raw.rubric ?? "").trim();
+    return [{
+      id,
+      prompt,
+      ...(expectedPoints.length ? { expectedPoints } : {}),
+      ...(rubric ? { rubric } : {}),
+    }];
+  });
+}
+
+function parsePromptEvalTasks(value: unknown): import("../types.ts").PromptEvalTask[] {
+  if (!Array.isArray(value)) return [];
+  return value.flatMap((item, index) => {
+    if (typeof item !== "object" || item === null) return [];
+    const raw = item as Record<string, unknown>;
+    const prompt = String(raw.prompt ?? "").trim();
+    if (!prompt) return [];
+    const id = String(raw.id ?? `task_${index + 1}`).trim() || `task_${index + 1}`;
+    const expectedPoints = Array.isArray(raw.expectedPoints)
+      ? raw.expectedPoints.filter((point): point is string => typeof point === "string" && point.trim().length > 0).map((point) => point.trim())
+      : undefined;
+    const rubric = typeof raw.rubric === "string" && raw.rubric.trim() ? raw.rubric.trim() : undefined;
+    return [{ id, prompt, expectedPoints, rubric }];
+  });
+}
 
 const ZHUANTI_ANAX_SOURCE_NAME = "AnaX 专题";
 

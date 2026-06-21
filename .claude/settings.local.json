@@ -225,7 +225,14 @@
       "Bash(grep -n \"</aside>\\\\|</main>\\\\|</div>\\\\s*$\\\\|ToolDetail tool={tool}\\\\|^  \\);\\\\|^}\" web/src/components/ToolUsePane.tsx)",
       "Bash(grep -nA0 \"\")",
       "Bash(grep -n \"原始派发 —\\\\`\\\\|花名册为接缝外纯前端增量\" docs/wiki.html)",
-      "Bash(awk 'NR>=219 && /^\\\\];/ {print NR\": \"$0; exit}' docs/wiki.html)"
+      "Bash(awk 'NR>=219 && /^\\\\];/ {print NR\": \"$0; exit}' docs/wiki.html)",
+      "Bash(grep -o '`' docs/wiki.html)",
+      "Bash(grep -o '`' /Users/huangbo/Dev/Projects/pi-xanthil/docs/wiki.html)",
+      "Bash(grep -o '`' docs/实验场改造-任务派发.md)",
+      "Bash(echo \"exit:$?\")",
+      "Bash(sed -i '' '1644,1807d' server/src/db.ts)",
+      "Bash(sed -i '' '624,671d' server/src/db.ts)",
+      "Bash(grep -n \"批1=tool\\(低风险先行\\)、批2=skill。\\\\` },\" docs/wiki.html)"
     ]
   }
 }

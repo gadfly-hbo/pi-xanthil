@@ -23,6 +23,8 @@
 
 import { spawn } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
+// hook 匹配/verdict 判定内核（与实验场 hooks 评测共用同一 matchesHook/safePreview，唯一真源；本文件保留 record/runSideEffect 执行）。
+import { type Hook, safePreview, matchesHook } from "./hook-eval-core.ts";
 
 // pi 扩展 API 的最小本地形状（避免引入 @earendil-works/pi-coding-agent 运行时依赖）。
 interface PiExtAPI {
@@ -36,24 +38,6 @@ interface PiHandlerCtx {
     getSessionId?: () => string | null;
     getSessionFile?: () => string | null;
   };
-}
-
-// 与 types.ts 契约对齐（此文件不在项目 tsconfig 内，故本地内联）。
-type HookActionKind = "command" | "log" | "block" | "mutate" | "notify";
-interface HookAction {
-  kind: HookActionKind;
-  command?: string;
-  reason?: string;
-  set?: Record<string, string>;
-}
-interface HookMatch { toolName?: string; pattern?: string }
-interface Hook {
-  id: string;
-  name: string;
-  enabled: boolean;
-  event: string;
-  match?: HookMatch;
-  action: HookAction;
 }
 
 const CONFIG_PATH = process.env.PX_HOOKS_CONFIG ?? "";
@@ -87,37 +71,6 @@ function loadHooks(): Hook[] {
   } catch {
     return []; // 文件不存在 / 解析失败 → 视为无 hook
   }
-}
-
-function truncate(s: string, n: number): string {
-  return s.length > n ? `${s.slice(0, n)}…` : s;
-}
-
-// 安全参数预览：只挑低敏感、对匹配有用的字段，绝不 dump 完整 message/tool 内容。
-function safePreview(event: Record<string, unknown>): string {
-  const picked: Record<string, unknown> = {};
-  for (const k of ["toolName", "turnIndex", "reason", "role", "isError"]) {
-    if (k in event) picked[k] = event[k];
-  }
-  const args = (event.args ?? event.input) as Record<string, unknown> | undefined;
-  if (args && typeof args === "object" && typeof args.command === "string") {
-    picked.command = truncate(args.command, 120);
-  }
-  return truncate(JSON.stringify(picked), 200);
-}
-
-function matches(hook: Hook, event: Record<string, unknown>, preview: string): boolean {
-  const m = hook.match;
-  if (!m) return true;
-  if (m.toolName && event.toolName !== m.toolName) return false;
-  if (m.pattern) {
-    try {
-      if (!new RegExp(m.pattern).test(preview)) return false;
-    } catch {
-      return false; // 非法正则 → 不命中
-    }
-  }
-  return true;
 }
 
 function record(rec: Record<string, unknown>): void {
@@ -196,7 +149,7 @@ export default function (pi: PiExtAPI): void {
     let blockReason: string | null = null;
 
     for (const hook of hooks) {
-      if (!matches(hook, safeEvent, preview)) continue;
+      if (!matchesHook(hook, safeEvent, preview)) continue;
       const kind = hook.action.kind;
       if (kind === "block") {
         const reason = hook.action.reason || `blocked by hook ${hook.id}`;
@@ -223,7 +176,7 @@ export default function (pi: PiExtAPI): void {
       const preview = safePreview(safeEvent);
       const sessionId = getSessionId(ctx);
       for (const hook of hooks) {
-        if (matches(hook, safeEvent, preview)) runSideEffect(hook, eventName, safeEvent, preview, sessionId);
+        if (matchesHook(hook, safeEvent, preview)) runSideEffect(hook, eventName, safeEvent, preview, sessionId);
       }
     });
   }

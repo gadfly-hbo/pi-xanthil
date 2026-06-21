@@ -6,7 +6,7 @@ import { join } from "node:path";
 import { spawn, type ChildProcessWithoutNullStreams } from "node:child_process";
 import { createServer, type AddressInfo } from "node:net";
 import test from "node:test";
-import type { SkillEvaluationDetail, ToolEvaluationDetail } from "./types.ts";
+import type { SkillEvaluationDetail, SubAgentEvalSet, SubAgentEvaluationDetail, ToolEvaluationDetail } from "./types.ts";
 
 interface Workspace {
   id: string;
@@ -27,7 +27,7 @@ interface ToolCaseSet {
 }
 
 interface EvaluationArchiveIndexItem {
-  kind: "skill" | "tool";
+  kind: "skill" | "tool" | "subagent";
   evaluationId: string;
   baseName: string;
   markdownRelPath: string;
@@ -168,9 +168,35 @@ test("eval set and case set HTTP CRUD routes work", async (t) => {
     const toolSetsAfterDelete = await json<ToolCaseSet[]>(baseUrl, `/api/workspaces/${workspace.id}/tool-case-sets?toolId=extract-tmall-profile`);
     assert.equal(toolSetsAfterDelete.some((item) => item.id === tool.id), false);
 
+    const subagent = await json<SubAgentEvalSet>(baseUrl, `/api/workspaces/${workspace.id}/subagent-case-sets`, {
+      method: "POST",
+      body: JSON.stringify({ name: "SubAgent Cases", cases: [{ id: "case_1", name: "Case", personaOverride: "analyst", brief: "Write a report", dataFiles: [], expected: { kind: "report-presence" } }] }),
+    });
+    assert.equal(subagent.name, "SubAgent Cases");
+    const updatedSubagent = await json<SubAgentEvalSet>(baseUrl, `/api/subagent-case-sets/${subagent.id}`, {
+      method: "PATCH",
+      body: JSON.stringify({ name: "Renamed SubAgent Cases" }),
+    });
+    assert.equal(updatedSubagent.name, "Renamed SubAgent Cases");
+    const subagentSets = await json<SubAgentEvalSet[]>(baseUrl, `/api/workspaces/${workspace.id}/subagent-case-sets`);
+    assert.equal(subagentSets.some((item) => item.id === subagent.id), true);
+    await json<{ ok: true }>(baseUrl, `/api/subagent-case-sets/${subagent.id}`, { method: "DELETE" });
+
+    const subagentEvaluation = await json<SubAgentEvaluationDetail>(baseUrl, `/api/workspaces/${workspace.id}/subagent-evaluations/run`, {
+      method: "POST",
+      body: JSON.stringify({ model: "fake-model", repeat: 1, cases: [{ id: "case_1", name: "Case", personaOverride: "analyst", brief: "Write a report", dataFiles: [], expected: { kind: "report-presence" } }] }),
+    });
+    assert.equal(subagentEvaluation.status, "failed");
+    assert.equal(subagentEvaluation.results.length, 1);
+    const loadedSubagentEvaluation = await json<SubAgentEvaluationDetail>(baseUrl, `/api/subagent-evaluations/${subagentEvaluation.evaluationId}`);
+    assert.equal(loadedSubagentEvaluation.results[0]?.caseId, "case_1");
+    const archivedSubagent = await json<{ markdownPath: string; jsonPath: string }>(baseUrl, `/api/subagent-evaluations/${subagentEvaluation.evaluationId}/archive`, { method: "POST" });
+    assert.match(archivedSubagent.markdownPath, /subagent-evaluation-/);
+
     process.env.XANTHIL_DATA_DIR = dataDir;
     const db = await import("./db.ts");
-    const skillEvaluation = db.saveSkillEvaluation(
+    const dbEngine = await import("./db/engine.ts");
+    const skillEvaluation = dbEngine.saveSkillEvaluation(
       workspace.id,
       "model-a",
       1,
@@ -207,7 +233,7 @@ test("eval set and case set HTTP CRUD routes work", async (t) => {
     assert.match(archivedSkill.markdownPath, /skill-evaluation-skill-api-smoke\.md$/);
     assert.match(archivedSkill.jsonPath, /skill-evaluation-skill-api-smoke\.json$/);
 
-    const toolEvaluation = db.saveToolEvaluation(
+    const toolEvaluation = dbEngine.saveToolEvaluation(
       workspace.id,
       "extract-tmall-profile",
       1,
@@ -229,9 +255,10 @@ test("eval set and case set HTTP CRUD routes work", async (t) => {
     assert.match(archivedTool.jsonPath, /tool-evaluation-tool-api-smoke\.json$/);
 
     const archives = await json<EvaluationArchiveIndexItem[]>(baseUrl, `/api/workspaces/${workspace.id}/evaluation-archives`);
-    assert.equal(archives.length, 2);
+    assert.equal(archives.length, 3);
     assert.equal(archives.find((item) => item.kind === "skill")?.evaluationId, "skill-api-smoke");
     assert.equal(archives.find((item) => item.kind === "tool")?.evaluationId, "tool-api-smoke");
+    assert.equal(archives.find((item) => item.kind === "subagent")?.evaluationId, subagentEvaluation.evaluationId);
     assert.match(archives[0]?.markdownRelPath ?? "", /^evaluations\/archive\//);
     assert.match(archives[0]?.jsonRelPath ?? "", /^evaluations\/archive\//);
     const skillArchive = archives.find((item) => item.kind === "skill");

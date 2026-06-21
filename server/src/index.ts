@@ -4,6 +4,7 @@ import { homedir } from "node:os";
 import { basename, dirname, extname, join, resolve, sep } from "node:path";
 import { randomUUID } from "node:crypto";
 import { sessionDir, standardDirIn } from "./workspace-dirs.ts";
+import { asConfigString, coerceSubAgentTemplate, readSubAgentTemplates, writeSubAgentTemplates, resolveSubAgentPersona, resolveSubAgentTemplate, resolveSubAgentCwd, resolveAllowedSubAgentDataFiles, buildSubAgentSystemPrompt, runSubAgentTurn } from "./subagent-core.ts";
 import {
   createForkBranch,
   listForkBranches,
@@ -63,14 +64,10 @@ import {
   createRuleMemoryProposal,
   createRuleMemory,
   createSession,
-  createSkillEvalSet,
-  createToolCaseSet,
   createWorkflowEvaluation,
   createWorkspace,
   deleteRuleMemory,
   deleteSession,
-  deleteSkillEvalSet,
-  deleteToolCaseSet,
   deleteWorkspace,
   finishFlowRun,
   getFileAnalysis,
@@ -82,17 +79,12 @@ import {
   getWorkflowEvaluation,
   getMemoryEvaluation,
   getMemoryProposal,
-  getSkillEvaluation,
-  getSkillEvalSet,
-  getToolEvaluation,
-  getToolCaseSet,
   getWorkspace,
   getWorkspacePath,
   listFlowRuns,
   listFlows,
   listMessages,
   listRuleMemories,
-  listSkillEvalSets,
   getTraceOverview,
   getTraceTimeline,
   getTraceTrend,
@@ -109,9 +101,6 @@ import {
   listMemoryFailureAttributions,
   detectRuleConflicts,
   listRuleConflicts,
-  listSkillEvaluations,
-  listToolEvaluations,
-  listToolCaseSets,
   listWorkspacePaths,
   listWorkspaces,
   recordMemoryFeedback,
@@ -120,12 +109,8 @@ import {
   renameSession,
   renameWorkspace,
   setFileAnalysis,
-  saveSkillEvaluation,
-  saveToolEvaluation,
   updateFlowSourceName,
   updateSessionRuntime,
-  updateSkillEvalSet,
-  updateToolCaseSet,
   updateRuleMemory,
   updateWorkspacePathHash,
   createChangeProposal,
@@ -165,11 +150,9 @@ import { renderMarkdownReportToHtml } from "./html-report.ts";
 import { runWorkflowEvaluation } from "./evaluation-runner.ts";
 import { runMemoryEvaluation } from "./memory-evaluation-runner.ts";
 import { archiveSkillEvaluation, archiveToolEvaluation, listEvaluationArchives } from "./evaluation-archive.ts";
-import { runSkillEvaluation } from "./skill-evaluation-runner.ts";
-import { parseSkillEvaluationRunRequest } from "./skill-evaluation-api.ts";
 import { applySkillCurationProposals, autoTriggerCuration, curateSkillEvaluation } from "./skill-curator.ts";
-import { runToolEvaluation } from "./tool-evaluation-runner.ts";
-import { parseToolEvaluationCases, parseToolEvaluationRunRequest, resolveToolEvaluationCasePaths } from "./tool-evaluation-api.ts";
+import { parseToolEvaluationCases, resolveToolEvaluationCasePaths } from "./tool-evaluation-api.ts";
+import { getSkillEvaluation, getToolEvaluation } from "./db/engine.ts";
 import { DEFAULT_REVIEW_PROMPT, buildReviewPrompt, buildAutoFixPrompt, AUTO_FIX_SYSTEM_PROMPT, parseReviewScore, type ReviewAnnotation, type ReviewHistoryEntry } from "./report-review.ts";
 import { readFlowFile, readTree, safeResolve, writeFlowFile } from "./flow-fs.ts";
 import { compactPiSession, getPiSessionStats, runPiPrompt, runPiTurn, type PiRun } from "./pi-adapter.ts";
@@ -1530,115 +1513,10 @@ app.get("/api/sessions/:id/artifacts/file", (req, res) => {
 
 const subagentRuns = new Map<string, PiRun>();
 
-const DEFAULT_SUBAGENT_PERSONA = "你是数据分析子 agent，独立完成一项被委派的分析子任务，不依赖主对话历史。";
-const DEFAULT_SUBAGENT_MAX_RETRIES = 3;
-const LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
-
-const asConfigRecord = (v: unknown): Record<string, unknown> => (
-  typeof v === "object" && v !== null ? v as Record<string, unknown> : {}
-);
-
-const asConfigString = (v: unknown): string => (typeof v === "string" ? v : v == null ? "" : String(v));
-
-function hasExternalUrl(text: string): boolean {
-  const urls = text.match(/https?:\/\/[^\s"'<>）)]+/gi) ?? [];
-  return urls.some((raw) => {
-    try {
-      const host = new URL(raw).hostname;
-      return !LOCALHOST_HOSTS.has(host);
-    } catch {
-      return true;
-    }
-  });
-}
-
 // 本地单用户工具：写端点仅放行 loopback 请求（对齐 command-mgmt /api/commands PUT 范式）。
 function isLoopbackRequest(req: { ip?: string; socket?: { remoteAddress?: string } }): boolean {
   const addrs = [req.ip, req.socket?.remoteAddress].filter((v): v is string => typeof v === "string");
   return addrs.some((a) => a === "127.0.0.1" || a === "::1" || a === "::ffff:127.0.0.1");
-}
-
-function coerceSubAgentTemplate(input: unknown): SubAgentTemplate | null {
-  const o = asConfigRecord(input);
-  const id = asConfigString(o.id).trim();
-  const name = asConfigString(o.name).trim();
-  const persona = asConfigString(o.persona).trim();
-  if (!id || !name || !persona) return null;
-  if (hasExternalUrl(persona)) return null;
-
-  const toolIds = Array.isArray(o.toolIds)
-    ? Array.from(new Set(o.toolIds.map((x) => asConfigString(x).trim()).filter(Boolean)))
-    : [];
-  const hasMaxRetries = Object.prototype.hasOwnProperty.call(o, "maxRetries");
-  const maxRetriesRaw = Number(o.maxRetries);
-  const maxRetries = hasMaxRetries && Number.isFinite(maxRetriesRaw)
-    ? Math.max(0, Math.min(5, Math.trunc(maxRetriesRaw)))
-    : DEFAULT_SUBAGENT_MAX_RETRIES;
-
-  return {
-    id,
-    name,
-    enabled: o.enabled !== false,
-    persona,
-    toolIds,
-    dataScope: "clean_data",
-    maxRetries,
-    source: "custom",
-  };
-}
-
-function readSubAgentTemplates(): SubAgentTemplate[] {
-  if (!existsSync(SUBAGENTS_CONFIG_PATH)) return [];
-  try {
-    const raw = readFileSync(SUBAGENTS_CONFIG_PATH, "utf8");
-    const parsed = JSON.parse(raw) as unknown;
-    const arr: unknown[] = Array.isArray(parsed)
-      ? parsed
-      : Array.isArray((parsed as { subagents?: unknown })?.subagents)
-        ? (parsed as { subagents: unknown[] }).subagents
-        : Array.isArray((parsed as { templates?: unknown })?.templates)
-          ? (parsed as { templates: unknown[] }).templates
-          : [];
-    return arr.map((it) => coerceSubAgentTemplate(it)).filter((t): t is SubAgentTemplate => t !== null);
-  } catch {
-    return [];
-  }
-}
-
-function writeSubAgentTemplates(templates: SubAgentTemplate[]): void {
-  mkdirSync(dirname(SUBAGENTS_CONFIG_PATH), { recursive: true });
-  writeFileSync(SUBAGENTS_CONFIG_PATH, JSON.stringify(templates, null, 2), "utf8");
-}
-
-function resolveSubAgentPersona(templateId?: string): string {
-  const id = templateId?.trim();
-  if (!id) return DEFAULT_SUBAGENT_PERSONA;
-  const template = readSubAgentTemplates().find((t) => t.id === id && t.enabled);
-  return template?.persona.trim() || DEFAULT_SUBAGENT_PERSONA;
-}
-
-function resolveSubAgentTemplate(templateId?: string): SubAgentTemplate | undefined {
-  const id = templateId?.trim();
-  if (!id) return undefined;
-  return readSubAgentTemplates().find((t) => t.id === id && t.enabled);
-}
-
-function resolveSubAgentCwd(
-  workspaceRoot: string,
-  workspaceId: string,
-  taskId: string,
-  parentSessionId: string,
-  allowedToolIds: string[] | undefined,
-): string {
-  if (allowedToolIds === undefined) return workspaceRoot;
-  const cwd = join(sessionDir(workspaceRoot, parentSessionId), ".subagent-cwd", taskId);
-  mkdirSync(cwd, { recursive: true });
-  writeFileSync(join(cwd, ".mcp.json"), JSON.stringify({
-    mcpServers: {
-      "xanthil-data-tools": buildExtractionToolsMcpServer(workspaceId, allowedToolIds),
-    },
-  }, null, 2), "utf8");
-  return cwd;
 }
 
 type SubAgentTraceKind =
@@ -1918,19 +1796,10 @@ async function runDelegatedSubAgent(
   mkdirSync(reportDir, { recursive: true });
   const startedAt = Date.now();
   // 仅放行落在 020_clean 内的数据文件（防越界 / 防读原始明细）。
-  const allowed = dataFiles
-    .map((f) => { try { return safeResolve(cleanDir, basename(f)); } catch { return ""; } })
-    .filter((abs) => abs !== "" && (() => { try { return statSync(abs).isFile(); } catch { return false; } })());
-  const fileList = allowed.length > 0 ? allowed.map((p) => `- ${p}`).join("\n") : "（未指定数据文件，请在报告中说明缺数据）";
+  const allowed = resolveAllowedSubAgentDataFiles(cleanDir, dataFiles);
   const template = resolveSubAgentTemplate(templateId);
   const persona = template?.persona.trim() || resolveSubAgentPersona(undefined);
-  const systemPrompt = `${persona}
-[硬性约束]
-1. 只允许用 read 工具读取下列指定数据文件，禁止读取其他任何数据或原始明细：
-${fileList}
-2. 必须把分析报告用 write 工具写入目录：${reportDir}（文件名自拟，建议 .md）。不得写到其他位置。
-3. 完成后，最后一条消息用 2-4 句话给出结论摘要（供回流主对话），不要复述报告全文。
-4. 不要提问，自主完成。`;
+  const systemPrompt = buildSubAgentSystemPrompt(persona, allowed, reportDir);
   let summaryText = "";
   const subAgentCwd = resolveSubAgentCwd(workspaceRoot, workspaceId, taskId, parentSessionId, template ? template.toolIds : undefined);
   const maxRetries = template ? template.maxRetries : 0;
@@ -1951,8 +1820,8 @@ ${fileList}
       let lastErrorContext = "";
       let lastMessageError = "";
       let sawToolError = false;
-      const run = runPiTurn({
-        workspaceRoot: subAgentCwd,
+      const run = runSubAgentTurn({
+        cwd: subAgentCwd,
         piSessionId: `subagent-${taskId}`,
         text: textForPi,
         model,
@@ -2065,19 +1934,10 @@ async function resumeDelegatedSubAgent(
   const cleanDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "clean_data");
   mkdirSync(reportDir, { recursive: true });
   const startedAt = Date.now();
-  const allowed = dataFiles
-    .map((f) => { try { return safeResolve(cleanDir, basename(f)); } catch { return ""; } })
-    .filter((abs) => abs !== "" && (() => { try { return statSync(abs).isFile(); } catch { return false; } })());
-  const fileList = allowed.length > 0 ? allowed.map((p) => `- ${p}`).join("\n") : "（未指定数据文件，请在报告中说明缺数据）";
+  const allowed = resolveAllowedSubAgentDataFiles(cleanDir, dataFiles);
   const template = resolveSubAgentTemplate(templateId);
   const persona = template?.persona.trim() || resolveSubAgentPersona(undefined);
-  const systemPrompt = `${persona}
-[硬性约束]
-1. 只允许用 read 工具读取下列指定数据文件，禁止读取其他任何数据或原始明细：
-${fileList}
-2. 必须把分析报告用 write 工具写入目录：${reportDir}（文件名自拟，建议 .md）。不得写到其他位置。
-3. 完成后，最后一条消息用 2-4 句话给出结论摘要（供回流主对话），不要复述报告全文。
-4. 不要提问，自主完成。`;
+  const systemPrompt = buildSubAgentSystemPrompt(persona, allowed, reportDir);
   const subAgentCwd = resolveSubAgentCwd(workspaceRoot, workspaceId, taskId, parentSessionId, template ? template.toolIds : undefined);
   let summaryText = "";
   let lastErrorContext = "";
@@ -2090,8 +1950,8 @@ ${fileList}
       templateId: template?.id,
       model,
     }, reportDir);
-    const run = runPiTurn({
-      workspaceRoot: subAgentCwd,
+    const run = runSubAgentTurn({
+      cwd: subAgentCwd,
       piSessionId: `subagent-${taskId}`,
       text: buildSubAgentResumePrompt(brief, correction, correctedResult),
       model,
@@ -3782,167 +3642,6 @@ app.post("/api/workspaces/:id/memory-evaluations", (req, res) => {
   void runMemoryEvaluation(evaluation.id);
 });
 
-app.get("/api/workspaces/:id/skill-evaluations", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  res.json(listSkillEvaluations(req.params.id));
-});
-
-app.get("/api/workspaces/:id/skill-eval-sets", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  res.json(listSkillEvalSets(req.params.id));
-});
-
-app.post("/api/workspaces/:id/skill-eval-sets", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const name = String(req.body?.name ?? "").trim();
-  const tasks = parseSkillEvalSetTasks(req.body?.tasks);
-  if (!name) return res.status(400).json({ error: "name required" });
-  if (tasks.length === 0) return res.status(400).json({ error: "tasks required" });
-  res.json(createSkillEvalSet(req.params.id, name, tasks));
-});
-
-app.patch("/api/skill-eval-sets/:id", (req, res) => {
-  const existing = getSkillEvalSet(req.params.id);
-  if (!existing) return res.status(404).json({ error: "skill eval set not found" });
-  const name = req.body?.name === undefined ? existing.name : String(req.body.name ?? "").trim();
-  const tasks = req.body?.tasks === undefined ? existing.tasks : parseSkillEvalSetTasks(req.body.tasks);
-  if (!name) return res.status(400).json({ error: "name required" });
-  if (tasks.length === 0) return res.status(400).json({ error: "tasks required" });
-  res.json(updateSkillEvalSet(existing.id, name, tasks));
-});
-
-app.delete("/api/skill-eval-sets/:id", (req, res) => {
-  const existing = getSkillEvalSet(req.params.id);
-  if (!existing) return res.status(404).json({ error: "skill eval set not found" });
-  res.json({ ok: deleteSkillEvalSet(existing.id) });
-});
-
-app.get("/api/skill-evaluations/:id", (req, res) => {
-  const evaluation = getSkillEvaluation(req.params.id);
-  if (!evaluation) return res.status(404).json({ error: "skill evaluation not found" });
-  res.json(evaluation);
-});
-
-app.post("/api/workspaces/:id/skill-evaluations/run", async (req, res) => {
-  const workspace = getWorkspace(req.params.id);
-  if (!workspace) return res.status(404).json({ error: "workspace not found" });
-  const parsed = parseSkillEvaluationRunRequest(req.body);
-  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-  try {
-    const variants = parsed.value.variants.map((variant) => ({
-      ...variant,
-      skillPaths: validateSkillPaths(workspace.rootPath, variant.skillPaths, { mode: "strict" }) ?? [],
-    }));
-    const summary = await runSkillEvaluation({
-      workspaceRoot: workspace.rootPath,
-      workspaceId: workspace.id,
-      evaluationId: randomUUID(),
-      model: parsed.value.model,
-      variants,
-      tasks: parsed.value.tasks,
-      repeat: parsed.value.repeat,
-      judgeRepeat: parsed.value.judgeRepeat,
-      contextPrefix: parsed.value.contextPrefix,
-      dataContextPaths: parsed.value.dataContextPaths,
-    });
-    const evaluation = saveSkillEvaluation(
-      workspace.id,
-      parsed.value.model,
-      parsed.value.repeat,
-      variants,
-      parsed.value.tasks,
-      parsed.value.contextPrefix,
-      summary,
-    );
-    res.json(evaluation);
-    autoTriggerCuration({
-      workspaceRoot: workspace.rootPath,
-      workspaceId: workspace.id,
-      model: parsed.value.model,
-      evaluation,
-    });
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.post("/api/workspaces/:id/tool-evaluations/run", async (req, res) => {
-  const workspace = getWorkspace(req.params.id);
-  if (!workspace) return res.status(404).json({ error: "workspace not found" });
-  const parsed = parseToolEvaluationRunRequest(req.body);
-  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
-  const tool = getExtractionTool(parsed.value.toolId);
-  if (!tool) return res.status(404).json({ error: "extraction tool not found" });
-  try {
-    const summary = await runToolEvaluation({
-      workspaceRoot: workspace.rootPath,
-      workspaceId: workspace.id,
-      evaluationId: randomUUID(),
-      tool,
-      cases: parsed.value.cases,
-      repeat: parsed.value.repeat,
-    });
-    const evaluation = saveToolEvaluation(
-      workspace.id,
-      parsed.value.toolId,
-      parsed.value.repeat,
-      parsed.value.cases,
-      summary,
-    );
-    res.json(evaluation);
-  } catch (err) {
-    res.status(400).json({ error: String(err) });
-  }
-});
-
-app.get("/api/workspaces/:id/tool-evaluations", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  res.json(listToolEvaluations(req.params.id));
-});
-
-app.get("/api/workspaces/:id/tool-case-sets", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const toolId = typeof req.query.toolId === "string" && req.query.toolId.trim() ? req.query.toolId.trim() : undefined;
-  res.json(listToolCaseSets(req.params.id, toolId));
-});
-
-app.post("/api/workspaces/:id/tool-case-sets", (req, res) => {
-  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
-  const name = String(req.body?.name ?? "").trim();
-  const toolId = String(req.body?.toolId ?? "").trim();
-  if (!name) return res.status(400).json({ error: "name required" });
-  if (!toolId) return res.status(400).json({ error: "toolId required" });
-  if (!getExtractionTool(toolId)) return res.status(404).json({ error: "extraction tool not found" });
-  const cases = parseToolEvaluationCases(req.body?.cases);
-  if (cases.length === 0) return res.status(400).json({ error: "cases required" });
-  res.json(createToolCaseSet(req.params.id, name, toolId, cases));
-});
-
-app.patch("/api/tool-case-sets/:id", (req, res) => {
-  const existing = getToolCaseSet(req.params.id);
-  if (!existing) return res.status(404).json({ error: "tool case set not found" });
-  const name = req.body?.name === undefined ? existing.name : String(req.body.name ?? "").trim();
-  const toolId = req.body?.toolId === undefined ? existing.toolId : String(req.body.toolId ?? "").trim();
-  const cases = req.body?.cases === undefined ? existing.cases : parseToolEvaluationCases(req.body.cases);
-  if (!name) return res.status(400).json({ error: "name required" });
-  if (!toolId) return res.status(400).json({ error: "toolId required" });
-  if (!getExtractionTool(toolId)) return res.status(404).json({ error: "extraction tool not found" });
-  if (cases.length === 0) return res.status(400).json({ error: "cases required" });
-  res.json(updateToolCaseSet(existing.id, name, toolId, cases));
-});
-
-app.delete("/api/tool-case-sets/:id", (req, res) => {
-  const existing = getToolCaseSet(req.params.id);
-  if (!existing) return res.status(404).json({ error: "tool case set not found" });
-  res.json({ ok: deleteToolCaseSet(existing.id) });
-});
-
-app.get("/api/tool-evaluations/:id", (req, res) => {
-  const evaluation = getToolEvaluation(req.params.id);
-  if (!evaluation) return res.status(404).json({ error: "tool evaluation not found" });
-  res.json(evaluation);
-});
-
 app.get("/api/workspaces/:id/evaluation-archives", (req, res) => {
   const workspace = getWorkspace(req.params.id);
   if (!workspace) return res.status(404).json({ error: "workspace not found" });
@@ -4084,26 +3783,6 @@ function parseEvaluationFlowConfigs(value: unknown): Record<string, EvaluationFl
   return out;
 }
 
-function parseSkillEvalSetTasks(value: unknown): Array<{ id: string; prompt: string; expectedPoints?: string[]; rubric?: string }> {
-  if (!Array.isArray(value)) return [];
-  return value.flatMap((item, index) => {
-    if (typeof item !== "object" || item === null) return [];
-    const raw = item as Record<string, unknown>;
-    const prompt = String(raw.prompt ?? "").trim();
-    if (!prompt) return [];
-    const id = String(raw.id ?? `task_${index + 1}`).trim() || `task_${index + 1}`;
-    const expectedPoints = Array.isArray(raw.expectedPoints)
-      ? raw.expectedPoints.map((point) => String(point).trim()).filter(Boolean)
-      : [];
-    const rubric = String(raw.rubric ?? "").trim();
-    return [{
-      id,
-      prompt,
-      ...(expectedPoints.length ? { expectedPoints } : {}),
-      ...(rubric ? { rubric } : {}),
-    }];
-  });
-}
 
 // ---- REST: workspace paths ----
 app.get("/api/workspaces/:id/paths", (req, res) => {

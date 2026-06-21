@@ -1,10 +1,18 @@
-import type { EvaluationArchiveIndexItem, EvaluationError, SkillEvaluationDetail, SkillEvaluationRunResult, ToolEvaluationDetail, ToolEvaluationRunResult } from "@/types";
+import type { EvaluationArchiveIndexItem, EvaluationError, PromptEvaluationDetail, PromptEvaluationRunResult, SkillEvaluationDetail, SkillEvaluationRunResult, ToolEvaluationDetail, ToolEvaluationRunResult } from "@/types";
 
 const MAX_TEXT_CHARS = 4_000;
 const MAX_DETAIL_ROWS = 20;
 
-export function downloadEvaluationJson(prefix: "skill" | "tool", evaluationId: string, value: unknown): void {
+export function downloadEvaluationJson(prefix: "skill" | "tool" | "prompt", evaluationId: string, value: unknown): void {
   downloadTextFile(`${prefix}-evaluation-${safeFilePart(evaluationId)}.json`, JSON.stringify(value, null, 2), "application/json;charset=utf-8");
+}
+
+export function downloadPromptEvaluationMarkdown(result: PromptEvaluationDetail): void {
+  downloadTextFile(
+    `prompt-evaluation-${safeFilePart(result.evaluationId)}.md`,
+    renderPromptEvaluationMarkdown(result),
+    "text/markdown;charset=utf-8",
+  );
 }
 
 export function downloadSkillEvaluationMarkdown(result: SkillEvaluationDetail): void {
@@ -103,6 +111,60 @@ function renderSkillEvaluationMarkdown(result: SkillEvaluationDetail): string {
     failed.length ? failed.slice(0, MAX_DETAIL_ROWS).map(renderSkillRunFailure).join("\n\n") : "No failed runs.",
     failed.length > MAX_DETAIL_ROWS ? `\n\n_Only the first ${MAX_DETAIL_ROWS} failed runs are shown._` : "",
   ].join("\n");
+}
+
+function renderPromptEvaluationMarkdown(result: PromptEvaluationDetail): string {
+  const failed = result.results.filter((item) => item.status === "failed" || item.error || item.pairwise?.error);
+  return [
+    "# Prompt Evaluation Report",
+    "",
+    "## Summary",
+    "",
+    keyValueTable([
+      ["Evaluation ID", result.evaluationId],
+      ["Workspace ID", result.workspaceId],
+      ["Model", result.model],
+      ["Status", result.status],
+      ["Duration", `${result.durationSec.toFixed(2)}s`],
+      ["Repeat", String(result.repeat)],
+      ["Variants", String(result.variants.length)],
+      ["Tasks", String(result.tasks.length)],
+      ["Runs", String(result.results.length)],
+    ]),
+    "",
+    "## Variant Metrics",
+    "",
+    markdownTable(
+      ["Variant", "Success", "Failed", "Avg Duration", "Avg Tokens", "Avg Cost", "Avg Tools", "Avg Output Chars"],
+      result.variantSummaries.map((item) => [item.variantLabel, `${item.success}/${item.total}`, String(item.failed), `${item.avgDurationSec.toFixed(2)}s`, String(Math.round(item.avgTotalTokens)), `$${item.avgTotalCost.toFixed(5)}`, item.avgToolCalls.toFixed(1), String(Math.round(item.avgOutputChars))]),
+    ),
+    "",
+    "## Pairwise Judge",
+    "",
+    result.pairwiseSummaries.length ? markdownTable(
+      ["Variant", "Judged", "Skipped", "Win", "Tie", "Loss", "Avg Delta", "Avg Confidence"],
+      result.pairwiseSummaries.map((item) => [item.variantLabel, String(item.judged), String(item.skipped), String(item.win), String(item.tie), String(item.loss), item.avgScoreDelta.toFixed(1), item.avgConfidence === null ? "-" : `${Math.round(item.avgConfidence * 100)}%`]),
+    ) : "No pairwise judge results.",
+    "",
+    "## Failed Runs",
+    "",
+    failed.length ? failed.slice(0, MAX_DETAIL_ROWS).map(renderPromptRunFailure).join("\n\n") : "No failed runs.",
+  ].join("\n");
+}
+
+function renderPromptRunFailure(result: PromptEvaluationRunResult): string {
+  return [
+    `### ${escapeMarkdown(result.variantLabel)} / ${escapeMarkdown(result.taskId)} / attempt ${result.attempt}`,
+    "",
+    keyValueTable([
+      ["Status", result.status],
+      ["Duration", `${result.durationSec.toFixed(2)}s`],
+      ["Tokens", String(result.totalTokens)],
+      ["Cost", `$${result.totalCost.toFixed(5)}`],
+      ["Error", formatEvaluationError(result.error ?? result.pairwise?.error ?? null) || "-"],
+    ]),
+    result.output ? fenced("text", truncateText(result.output)) : "",
+  ].filter(Boolean).join("\n");
 }
 
 function renderToolEvaluationMarkdown(result: ToolEvaluationDetail): string {
