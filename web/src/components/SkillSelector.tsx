@@ -13,9 +13,11 @@ interface Props {
   scope: Scope | null;
   selectedPaths: string[];
   onChange: (paths: string[]) => void;
+  align?: "left" | "right";
+  direction?: "up" | "down";
 }
 
-export function SkillSelector({ scope, selectedPaths, onChange }: Props) {
+export function SkillSelector({ scope, selectedPaths, onChange, align = "left", direction = "up" }: Props) {
   const [skills, setSkills] = useState<PiSkill[]>([]);
   const [registryEntries, setRegistryEntries] = useState<SkillRegistryEntry[]>([]);
   const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set());
@@ -99,7 +101,7 @@ export function SkillSelector({ scope, selectedPaths, onChange }: Props) {
   };
 
   return (
-    <div className="relative">
+    <div className={cn("relative", direction === "down" && selected.length > 0 && "pb-6")}>
       <button
         type="button"
         onClick={() => setOpen((value) => !value)}
@@ -111,7 +113,11 @@ export function SkillSelector({ scope, selectedPaths, onChange }: Props) {
         <ChevronDown className="h-3 w-3" strokeWidth={1.75} />
       </button>
       {open && (
-        <div className="absolute bottom-9 left-0 z-30 w-80 rounded-lg border border-neutral-200 bg-white p-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900">
+        <div className={cn(
+          "absolute z-30 w-[min(20rem,calc(100vw-2rem))] rounded-lg border border-neutral-200 bg-white p-2 shadow-xl dark:border-neutral-700 dark:bg-neutral-900",
+          direction === "up" ? "bottom-9" : "top-9",
+          align === "left" ? "left-0" : "right-0",
+        )}>
           <button
             type="button"
             onClick={() => onChange([])}
@@ -170,7 +176,11 @@ export function SkillSelector({ scope, selectedPaths, onChange }: Props) {
         </div>
       )}
       {selected.length > 0 && (
-        <div className="absolute bottom-8 left-0 flex max-w-[420px] gap-1 overflow-hidden">
+        <div className={cn(
+          "absolute flex max-w-[min(26.25rem,calc(100vw-2rem))] gap-1 overflow-hidden",
+          direction === "up" ? "bottom-8" : "top-8",
+          align === "left" ? "left-0" : "right-0",
+        )}>
           {selected.map((skill) => (
             <span key={skill.path} className="inline-flex shrink-0 items-center gap-1 rounded bg-neutral-100 px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
               {skill.name}

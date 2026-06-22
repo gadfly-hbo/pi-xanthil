@@ -23,6 +23,7 @@ import type {
   PromptEvalTask,
   PromptEvaluation,
   PromptEvaluationDetail,
+  PromptDraft,
   PromptVariant,
   SkillAutoDistillResult,
   SkillCoverageGapCluster,
@@ -208,6 +209,10 @@ export const engineApi = {
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidate-trace`, {
       method: "POST",
     }).then(json<SessionConsolidationResult>),
+  distillSessionPrompt: (workspaceId: string, sessionId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/distill-prompt`, {
+      method: "POST",
+    }).then(json<{ draft: PromptDraft | null }>),
   getSessionConsolidationCount: (workspaceId: string, sessionId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidation-count`)
       .then(json<{ count: number }>),

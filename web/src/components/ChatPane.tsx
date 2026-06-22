@@ -1,15 +1,17 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
-import { Archive, ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Square, Wrench, X } from "lucide-react";
+import { Archive, ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Square, WandSparkles, Wrench, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
 import { MemoryFeedbackInline } from "@/components/MemoryFeedbackInline";
 import { hasToolBlocks, hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
+import { PromptDistillDialog } from "@/components/PromptDistillDialog";
+import { PromptSelector } from "@/components/PromptSelector";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { textOf, type PiModel, type SessionRuntime, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
+import { textOf, type PiModel, type PromptDraft, type PromptTemplateInput, type SessionRuntime, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
 
 type FolderScope =
   | { type: "workspace"; workspaceId: string }
@@ -259,6 +261,11 @@ export function ChatPane(p: Props) {
   const [consolidationCount, setConsolidationCount] = useState(0);
   const [consolidatingTrace, setConsolidatingTrace] = useState(false);
   const [consolidationNotice, setConsolidationNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
+  const [distillingPrompt, setDistillingPrompt] = useState(false);
+  const [promptDraft, setPromptDraft] = useState<PromptDraft | null>(null);
+  const [savingPrompt, setSavingPrompt] = useState(false);
+  const [promptDistillError, setPromptDistillError] = useState("");
+  const [promptNotice, setPromptNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [drawerWidth, setDrawerWidth] = useState(() => {
     if (typeof window === "undefined") return DRAWER_DEFAULT;
     const raw = window.localStorage.getItem(DRAWER_WIDTH_KEY);
@@ -338,6 +345,40 @@ export function ChatPane(p: Props) {
       setConsolidationNotice({ tone: "error", text: `沉淀失败：${error instanceof Error ? error.message : String(error)}` });
     } finally {
       setConsolidatingTrace(false);
+    }
+  }
+
+  async function distillPrompt() {
+    if (!p.workspaceId || !activeSessionId || distillingPrompt) return;
+    setDistillingPrompt(true);
+    setPromptNotice(null);
+    setPromptDistillError("");
+    try {
+      const result = await api.distillSessionPrompt(p.workspaceId, activeSessionId);
+      if (!result.draft) {
+        setPromptNotice({ tone: "success", text: "本轮暂无可沉淀 Prompt" });
+        return;
+      }
+      setPromptDraft(result.draft);
+    } catch (error) {
+      setPromptNotice({ tone: "error", text: `Prompt 沉淀失败：${error instanceof Error ? error.message : String(error)}` });
+    } finally {
+      setDistillingPrompt(false);
+    }
+  }
+
+  async function saveDistilledPrompt(input: PromptTemplateInput) {
+    if (!p.workspaceId || savingPrompt) return;
+    setSavingPrompt(true);
+    setPromptDistillError("");
+    try {
+      await api.createPromptTemplate(p.workspaceId, { ...input, workspaceId: p.workspaceId });
+      setPromptDraft(null);
+      setPromptNotice({ tone: "success", text: `Prompt 已入库：${input.title}` });
+    } catch (error) {
+      setPromptDistillError(error instanceof Error ? error.message : String(error));
+    } finally {
+      setSavingPrompt(false);
     }
   }
 
@@ -477,6 +518,22 @@ export function ChatPane(p: Props) {
     requestAnimationFrame(autosize);
   }
 
+  function insertPrompt(body: string) {
+    const textarea = taRef.current;
+    const start = textarea?.selectionStart ?? input.length;
+    const end = textarea?.selectionEnd ?? input.length;
+    setInput(`${input.slice(0, start)}${body}${input.slice(end)}`);
+    setCommandMenuOpen(false);
+    requestAnimationFrame(() => {
+      const nextTextarea = taRef.current;
+      if (!nextTextarea) return;
+      const cursor = start + body.length;
+      nextTextarea.focus();
+      nextTextarea.setSelectionRange(cursor, cursor);
+      autosize();
+    });
+  }
+
   function selectCommand(command: XanCommand) {
     if (commandHasParams(command)) {
       const initialValues = Object.fromEntries((command.params ?? []).map((param) => [param.key, ""]));
@@ -580,6 +637,15 @@ export function ChatPane(p: Props) {
           {consolidatingTrace ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" strokeWidth={1.75} />}
           {consolidatingTrace ? "沉淀中…" : `沉淀 trace（${consolidationCount}）`}
         </button>
+        <button
+          onClick={() => void distillPrompt()}
+          disabled={!p.workspaceId || !activeSessionId || distillingPrompt}
+          title="从本轮成功对话提炼可复用 Prompt 草稿"
+          className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] text-neutral-500 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        >
+          {distillingPrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" strokeWidth={1.75} />}
+          {distillingPrompt ? "提炼中…" : "沉淀 prompt"}
+        </button>
         {p.runtimeNotice && <span className="truncate text-[11px] text-neutral-400" title={p.runtimeNotice}>{p.runtimeNotice}</span>}
         {consolidationNotice && (
           <span
@@ -587,6 +653,14 @@ export function ChatPane(p: Props) {
             title={consolidationNotice.text}
           >
             {consolidationNotice.text}
+          </span>
+        )}
+        {promptNotice && (
+          <span
+            className={cn("truncate text-[11px]", promptNotice.tone === "error" ? "text-red-500" : "text-emerald-600 dark:text-emerald-400")}
+            title={promptNotice.text}
+          >
+            {promptNotice.text}
           </span>
         )}
       </div>
@@ -776,6 +850,7 @@ export function ChatPane(p: Props) {
                   selectedPaths={selectedSkillPaths}
                   onChange={setSelectedSkillPaths}
                 />
+                <PromptSelector workspaceId={p.workspaceId} onInsert={insertPrompt} />
                 {businessRequirementContexts.length > 0 && (
                   <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
                     <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
@@ -833,6 +908,19 @@ export function ChatPane(p: Props) {
             requestAnimationFrame(() => taRef.current?.focus());
           }}
           onSubmit={submitCommandForm}
+        />
+      )}
+
+      {promptDraft && (
+        <PromptDistillDialog
+          draft={promptDraft}
+          saving={savingPrompt}
+          error={promptDistillError}
+          onCancel={() => {
+            setPromptDraft(null);
+            setPromptDistillError("");
+          }}
+          onConfirm={(input) => void saveDistilledPrompt(input)}
         />
       )}
 

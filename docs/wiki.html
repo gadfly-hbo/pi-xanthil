@@ -11,6 +11,21 @@
     --d: #38bdf8; --e: #34d399; --v: #a78bfa; --x: #fbbf24;
     --accent: #38bdf8;
   }
+  :root.light {
+    --bg: #f8fafc; --panel: #ffffff; --panel2: #f1f5f9; --border: #e2e8f0;
+    --fg: #0f172a; --muted: #64748b; --faint: #94a3b8;
+    --d: #0284c7; --e: #059669; --v: #7c3aed; --x: #d97706;
+    --accent: #0284c7;
+  }
+  .light .chip { color: #ffffff; }
+  .light .st-todo { background: #f1f5f9; color: #64748b; }
+  .light .st-doing { background: #e0f2fe; color: #0284c7; }
+  .light .st-done { background: #dcfce7; color: #16a34a; }
+  .light pre.brief { color: #334155; }
+  .light .copy:hover, .light .hbtn:hover { background: #e2e8f0; }
+  .light .copy.done, .light .hbtn.ok, .light .cl-cur { background: #dcfce7; border-color: #86efac; color: #16a34a; }
+  .light .cl-item li, .light .note-item .nt { color: #334155; }
+  .light .note-item .ndel:hover { color: #dc2626; }
   * { box-sizing: border-box; }
   body { margin: 0; background: var(--bg); color: var(--fg);
     font-family: "PingFang SC","Noto Sans CJK SC","Helvetica Neue",Arial,sans-serif;
@@ -94,7 +109,7 @@
   .hbtn.ok { background: #10331f; border-color: #1f6b3b; color: #4ade80; }
 
   /* 长条横向可折叠卡片（任务派发 / 快修） */
-  #taskGrid, #doneGrid, #hotfixGrid { display: flex; flex-direction: column; gap: 8px; }
+  #taskGrid, #doneGrid, #hotfixGrid, #promptList { display: flex; flex-direction: column; gap: 8px; }
   .bar { background: var(--panel); border: 1px solid var(--border); border-left: 4px solid var(--border);
     border-radius: 8px; overflow: hidden; }
   .bar.is-done { opacity: .55; }
@@ -119,12 +134,18 @@
   .bar.open .bar-body { display: block; }
   .bar-body pre.brief { max-height: 420px; }
 </style>
+<script>
+  if (localStorage.getItem("px_theme") === "light") {
+    document.documentElement.classList.add("light");
+  }
+</script>
 </head>
 <body>
 <div class="wrap">
   <header>
     <h1>苍耳 pi-Xanthil</h1>
     <span class="ver" id="verBadge">v2.0</span>
+    <button id="themeToggle" class="hbtn" style="margin-left:auto; display:flex; align-items:center; gap:4px">🌓 切换主题</button>
   </header>
   <p class="tagline">本地优先的 AI 数据分析工作台 · 多 Agent 协同开发 Wiki（任务派发 + 快修 + 随手记 + 版本历史）</p>
 
@@ -216,6 +237,31 @@
 5. **列改动清单 + 回流终审**：列出改了哪些文件、各一句话说明 bug 与 fix；声明已回流总控终审。总控代码复核 + 集成校验是质量关口，快修**不跳过**（快修未经该域 owner 领域校验，终审更重要）。
 
 ⛔ **不要执行任何 git 操作**（add / commit / push / PR）。提交时机 / 粒度由用户手动决定。最后提示用户："快修已就绪并通过自检，待总控终审后可自行提交。"</script>
+    <script type="text/plain" id="src-tooluse"># pi-xanthil · 工具注册快修 SOP（本地 python 脚本 → 平台工具，通用 prompt，适用任意 agent）
+
+你正在为 pi-xanthil 做一次**工具注册快修（tool-use registration hotfix）**：把本地离线 python 脚本接驳成平台可调用的工具。这是机械接线工作，按下方契约逐字施工即可，**无需架构改动 / 高级推理**。
+
+依次执行，每步简述结果：
+
+1. **判红线（不可破）**：本工作**只在 `server/tools/` 下新增目录**。不碰数据探索子树（`web/src/components/DataExplorationPane.tsx` 及 `data-exploration/`）、不碰 `draw_data`/`clean_data` 读写路径、不碰接缝层骨架（`index.ts` `db.ts` `App.tsx` `api.ts` `types.ts` `constants.ts`）。需动这些 → 停下交总控。
+
+2. **建目录三件套**：每个工具一个 `server/tools/<tool-id>/` 目录，含三件：
+   - `script.py`：原离线代码（原样放入）。
+   - `main.py`：入参桥接层，实现标准 `--input <路径> --output <路径>` 接口，内部读 input、调 script 逻辑、写 output。
+   - `tool.json`：平台注册 manifest。`id` 必须与目录名一致、`entry` 设为 `main.py`、`runtime` 为 `python3`，按性质标 `riskLevel`（纯本地分析无外呼=L0），填 `category`/`input`/`output`/`parameters`。字段写法参考已有工具（如 `server/tools/audience-cluster/tool.json`）。
+
+3. **无需改 registry.ts**：`server/tools/registry.ts` 是**目录扫描型**注册器（运行时扫各目录 tool.json 自动登记），建好目录即自动注册，**不要**去 registry.ts 里加名字。
+
+4. **校验（两道都要）**：
+   - python：对每个 `main.py` + `script.py` 跑 `python3 -m py_compile <文件>`，必须无报错。⚠️ `npm typecheck/build` 是 TS 链路、**测不到 python 工具**，不能只靠它。
+   - TS：跑 `npm run typecheck` + `npm run build`，必须全绿。
+   任一不绿 → 停下修复，不进入下一步。
+
+5. **移除直连大模型的工具**：若发现内置「直接调用大模型」的工具（违「本地优先」红线），移除之并在回报里说明。
+
+6. **列改动清单 + 回流终审**：列出新增/删除了哪些目录与文件、各一句话说明；声明已回流总控终审。
+
+⛔ **不要执行任何 git 操作**（add / commit / push / PR）。提交时只 `git add server/tools/` 本批目录，**不要**裹入工作树里其它工作线的未提交改动。最后提示用户："工具注册快修已就绪并通过自检，待总控终审后可自行提交。"</script>
   </section>
 
   <section id="changelog" class="view">
@@ -244,6 +290,65 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【chat 框接入 prompts/command】（总控拆卡 2026-06-22）。日常-数据分析 & 专题-对话搜索共用的 ChatPane 三处改造：1-1 框内调用 prompt 模板、1-2 沉淀 trace 旁加沉淀 prompt(LLM 半自动提炼→确认入库)、改造2 command 深化(暂缓)。关键架构：复用 D 既有 prompt_templates 表 + listPromptTemplates/createPromptTemplate API，零新表零新 D 路由；沉淀走「E 服务端产草稿(不写库)→前端确认→调既有 D create 落库」，不做 E→D self-HTTP(V-OBS 教训)。X-PROMPT0 契约先行解锁 E-PROMPT1/2。════
+  { dom: "X", status: "done", created: "2026-06-22 10:00", title: "【chat·prompts 接入·契约】X-PROMPT0：PromptDraft 沉淀草稿类型 + distill 路由签名审定（复用 D prompt_templates，无新表）", brief:
+`来源：用户需求「chat 框接入 prompts 管理」(2026-06-22)。改造拆两件：1-1 框内调用 prompt 模板；1-2 沉淀 prompt(从成功对话提炼可复用 prompt 入 prompt 库)。架构判定(总控)：**复用 D 既有 prompt_templates 表 + createPromptTemplate/listPromptTemplates API，零新表零新 D 路由**；沉淀走「E 服务端 LLM 产草稿(不写库)→前端确认编辑→调既有 D createPromptTemplate 落库」，避免 E→D self-HTTP(吸取 V-OBS 教训)。本卡=接缝契约，总控自做先行。
+范围(接缝层·总控自做)：
+1. types.ts 双侧(server/web)加 \`PromptDraft\`：{ title; category; body; variables: string[]; tags: string[]; sourceSessionId?: string }——distill 路由返回体，字段对齐 PromptTemplateInput(types.ts:114) 便于前端直接喂 createPromptTemplate。单一真源 server/types.ts，web 镜像，禁本地重声明。
+2. 审定 distill 路由签名(E 实装，位次写死)：\`POST /api/workspaces/:id/sessions/:sessionId/distill-prompt\` → 200 { draft: PromptDraft } | { draft: null }(本轮无可沉淀)。归 routes/engine.ts，非 index.ts。
+3. 确认既有契约可直接复用、无需改：PromptTemplate/PromptTemplateInput(types.ts:103)、api.listPromptTemplates/createPromptTemplate(web/src/lib/api/data.ts:303)、{{var}} 占位约定(PROMPT_VARIABLE_RE)。
+依赖：无(先行)。验收：PromptDraft 双侧对齐无重声明、字段与 PromptTemplateInput 兼容、typecheck+build 绿。解锁 E-PROMPT1 / E-PROMPT2。
+✅ 总控自做 done（2026-06-22）：types.ts 双侧(server:84 / web:128)加 PromptDraft(title/category/body/variables/tags/sourceSessionId?)，紧邻 PromptTemplatePatch、字段与 PromptTemplateInput 兼容；带契约注释块写明 distill 路由签名(POST .../distill-prompt → { draft: PromptDraft } | { draft: null })、不写库 + 前端确认后调既有 createPromptTemplate 落库的口径。无本地重声明、未碰他域 slot。门禁：server+web typecheck 绿、web build 绿(chunk-size 警告为既有 baseline)。**E-PROMPT1 / E-PROMPT2 已解锁。**` },
+  { dom: "E", status: "done", created: "2026-06-22 10:01", title: "【chat·改造1-1】E-PROMPT1：chat 框接入 prompts 调用（独立「Prompt 库」按钮 + 变量填充）", brief:
+`来源：用户需求 1-1(2026-06-22)。在 ChatPane composer 工具行(模型/Skill 选择器一带)加 prompt 调用入口。用户决策=**独立「Prompt 库」下拉按钮**(非复用 / 斜杠菜单，prompt 与 command 概念分明)。
+范围(纯 E 前端，零接缝)：
+1. 新建 PromptSelector.tsx(镜像 SkillSelector.tsx 交互/样式)：下拉列出 api.listPromptTemplates(workspaceId)(含全局)，带搜索 + 分类/标签过滤；每项显示 title/category/变量数。
+2. 选中行为：把模板 body 插入输入框(setInput/taRef)。若 body 含 {{var}}：复用 ChatPane 既有 CommandParamDialog 范式弹「变量填充表单」(每变量一输入框)→替换占位→插入输入框，**不自动发送**(留用户复核)。变量提取复用 PROMPT_VARIABLE_RE(PromptsManagementPane:16，可抽 lib 小工具或局部复制)。
+3. 挂载点：ChatPane composer 工具行，SkillSelector 之后；无 workspaceId 时禁用。
+依赖：X-PROMPT0(仅用既有 listPromptTemplates，技术上可与契约并行；待 PromptSelector 归属确认后开工)。验收：下拉能列模板、搜索可用、无变量模板直接插入、含变量模板弹表单填充后插入、不自动发送；现有 / 命令菜单 + Skill 选择器无回归；typecheck+build 绿。约束：不碰接缝层(types/constants/api 注册表)，listPromptTemplates 已存在不新增 API。分支 feat/engine-prompt-invoke。
+✅ 总控终审通过（2026-06-22）：新建 PromptSelector.tsx(下拉=搜索+分类+标签三过滤、列 title/category/全局标注/变量数；选中无变量直插、含变量弹确认表单填充后插入、**均不自动发送**) + ChatPane 挂载于 SkillSelector 后 + insertPrompt(游标位插入、闭命令菜单、复位游标+autosize)。复用既有 api.listPromptTemplates(D，含全局)，零新 API。终审核验：未碰接缝层(constants/App/api 注册表/types——types 的 +14 是 X-PROMPT0)、红线净(纯前端 GET、无 LLM/draw_data)、server+web typecheck 绿、web build 绿。变量正则局部复制(契约允许)、tag 过滤为 benign 加分。**遗留=浏览器 UI 实跑(列模板/搜索/变量填充插入/不自动发送/无回归)由用户提交前点检**(总控无法驱动浏览器)。E-PROMPT2 可开工。` },
+  { dom: "E", status: "done", created: "2026-06-22 10:02", title: "【chat·改造1-2】E-PROMPT2：沉淀 prompt（沉淀 trace 旁，LLM 半自动提炼草稿 + 确认编辑入库）", brief:
+`来源：用户需求 1-2(2026-06-22)。ChatPane 头部「沉淀 trace」按钮旁加「沉淀 prompt」，从本轮任务成功执行的对话提炼可复用 prompt 入 prompt 库。用户决策提取方式=**LLM 半自动 + 确认框**(服务端 LLM 提炼草稿→前端预填编辑框→确认入库；非纯摘原话——prompt 要直接复用，需提纯 + 参数化)。
+范围(E 服务端 + E 前端；落库走既有 D API)：
+1. server 新建 prompt-distillation.ts(E slot)：镜像 memory-consolidation.ts / consolidate-trace 的 LLM 抽取范式(runPiPrompt over session messages)，产物=PromptDraft——LLM 提炼「让任务成功的那条可复用 prompt」，把一次性上下文(具体文件名/数值)抽成 {{var}} 占位，拟 title/category/tags。**只返回草稿，不写库**。
+2. routes/engine.ts 加 POST .../distill-prompt(签名见 X-PROMPT0)，调 prompt-distillation 返回 { draft }；usage/trace 记法仿 consolidate-trace(engine.ts:1492)。
+3. ChatPane：头部「沉淀 trace」旁加「沉淀 prompt」按钮(同 disabled 条件：需 workspaceId + activeSessionId)；点击→distill-prompt→拿 draft→弹**确认编辑 Dialog**(新组件 PromptDistillDialog，预填 title/category/body/variables/tags，全可改)→确认调既有 api.createPromptTemplate(workspaceId,input) 落库→成功提示。
+依赖：X-PROMPT0(PromptDraft 契约 + 路由签名)。验收：成功对话点「沉淀 prompt」拿到含 {{var}} 草稿、确认框可编辑、入库后 prompts 管理「模板库」可见、本轮无可沉淀时友好提示、确认前可取消；现有沉淀 trace 无回归；server tsc + web build 绿、红线净(只读 session 衍生，不碰 draw_data)。约束：不碰接缝层；**不做 E→D self-HTTP**(落库由前端调 D createPromptTemplate)；prompt-distillation.ts 为新 E 文件。分支 feat/engine-prompt-distill。
+✅ 总控终审通过（2026-06-22）：① prompt-distillation.ts(runPiPrompt 抽取范式、系统 prompt 含 PII/数据行防护、NO_DRAFT 处理、frontmatter 解析 + 变量归一、12k 截断、distillText 可注入；默认模型 minimax-cn/MiniMax-M3 与 DEFAULT_CONSOLIDATION_MODEL 一致；**只返回草稿不写库**)；② routes/engine.ts POST .../distill-prompt 镜像 consolidate-trace(trace 事件 prompt_distillation/_failed + trackUsageEvent)，返回 { draft: PromptDraft|null }；③ engineApi.distillSessionPrompt；④ ChatPane「沉淀 prompt」按钮(WandSparkles，同 trace disabled 条件) + PromptDistillDialog(预填 title/category/body/variables/tags 全可改、title/body 必填校验、取消不保存) + saveDistilledPrompt 调既有 api.createPromptTemplate 落库。**架构约束达成：落库走前端调 D API，无 E→D self-HTTP**。终审核验：types.ts +14 实为 X-PROMPT0(E 无重声明)、未碰接缝注册表、prompt-distillation 无 execSync/spawn/self-HTTP/直写库(V-OBS 净)、server+web typecheck 绿、web build 绿、新测 5/5(含「creates a draft without writing storage」坐实不写库)。**遗留=浏览器 UI 实跑(成功对话沉淀→草稿→编辑→入库→模板库可见→无可沉淀提示→沉淀 trace 无回归)由用户提交前点检**。【chat 改造 1-1/1-2 全部 done；改造2 暂缓待评估】。` },
+  { dom: "X", status: "todo", created: "2026-06-22 10:03", title: "【chat·改造2·暂缓】command 管理深化接入（待 1-1/1-2 落地后评估增量诉求）", brief:
+`来源：用户需求 改造2(2026-06-22)，明确「放 prompts 接入后再考虑」。**现状核查(总控)**：chat 框已接入 command 管理——输入 / 触发命令菜单(ChatPane listCommands→XanCommand)，带参命令有 CommandParamDialog 表单、展开走服务端。即「调用」侧已闭环，无需重复造。
+待评估增量(1-1/1-2 落地后与用户确认范围)：① 是否要独立「命令」入口按钮(类比 Prompt 库，降低 / 记忆负担)；② 是否要「沉淀 command」(从对话提炼 slash 命令)。
+依赖：E-PROMPT1 / E-PROMPT2 落地 + 用户确认改造2 具体诉求。**本卡暂不开工**。
+✅ 已结论（2026-06-22）：① 独立命令入口按钮/沉淀 command 均判性价比低暂不做；② 用户校准 command 定位=可调 tools/skills/prompts 三类，真需求是「场景调用框」——见下方暂挂卡 X-CMDPACK，已入需求池。本卡完结。` },
+  { dom: "X", status: "todo", created: "2026-06-22 11:00", title: "【chat·command 场景调用框·暂挂提醒】command = {prompt+skills+tools} 场景包 + chat 一键装配框", brief:
+`暂挂提醒卡（非活跃派发，先挂着防遗忘）。完整方案见需求池 docs/backlog/command-场景调用框.md。
+来源：chat 改造收尾（2026-06-22）用户校准——command 应能调 tools/skills/prompts 三类；现三类在 chat 框已各自可用(@工具/SkillSelector/Prompt 库)，故 chat 内 command 调用框**暂不做**。后续真需求=把三类按场景打成定制集合，特定数据分析场景一键调用、免去分别找三处。
+认知锚点：XanCommand 现已 = prompt(template)+skills(skillSlugs)二合一，缺第三腿 tools；补 toolIds 即成 {prompt+skills+tools} 场景包。
+捞出顺序(独立成卡)：X 契约先行(XanCommand 扩 toolIds+参数映射,向后兼容) → D(CommandManagementPane 场景集合编辑) → E(ChatPane 调用框列场景一键装配 + tool 关联档2 预填 @工具卡)。红线：tool 那条腿必走 @工具卡数据安全闸门,不绕 /api/extraction-tools/:id/run 校验,保人确认在环。
+暂缓理由：先用 / 命令 + 三选择器跑出真实高频场景,沉淀「哪些 tools/skills/prompts 常一起用」再定组合模型,避免过早写死。**本卡不开工,等用户捞出。**` },
+
+  // ════ 【chat·委派/skill 抽屉 UX】（总控拆卡 2026-06-22）。用户截图反馈委派子 agent 抽屉里 skill 选择器等窗口体验差(下拉溢出被裁/tooltip 盖按钮/右列过挤)。纯 E 前端 UX 修复,零接缝零 D。════
+  { dom: "E", status: "done", created: "2026-06-22 14:00", title: "【chat·委派/skill 抽屉 UX】E-DRAWER-UX：SkillSelector 下拉防溢出 + 委派卡 embedded 单列重排", brief:
+`来源：用户截图反馈(2026-06-22)——chat 框「委派子 agent」抽屉里 skill 选择器等窗口体验差。根因(总控核查)：① SkillSelector.tsx:114 下拉硬编码 absolute bottom-9 left-0 z-30 w-80(固定 320px·向上·左对齐)，在委派卡 220px 右列贴抽屉右缘时向右溢出被裁、向上展开易顶上缘；② native title「选择本轮允许 pi 使用的 skill」悬浮盖住 继承/禁用 按钮(布局过挤)；③ DelegateSubAgentCard.tsx:372 在 360–460px 抽屉用 2 列 grid minmax(0,1fr)_220px，右列太窄 model/skill子集/数据文件全挤。
+复用面(已核)：SkillSelector 仅 ChatPane composer(宽松正常) + DelegateSubAgentCard(窄抽屉出问题)两处，改它须守 ChatPane 无回归。
+范围(纯 E 前端·零接缝·零 D)：
+A. SkillSelector 下拉健壮化：加可选 props align(left|right,默认 left)+direction(up|down,默认 up)或边界自适应；w-80 改为不超视口(如 w-[min(20rem,calc(100vw-2rem))])。ChatPane composer 保持默认(up+left)零回归。
+B. DelegateSubAgentCard embedded 模式：2 列 grid 改单列堆叠(brief→model→skill子集→数据文件 依次满抽屉宽)，skill 下拉在满宽容器 left-0 不溢出；SkillSelector 与三按钮(继承/禁用/指定)拉开独立行，tooltip 不盖按钮。非 embedded 独立卡保持 2 列不变。
+C. tooltip：靠 B 留白消除遮挡，不引第三方库(不新增依赖)。
+约束：不碰接缝层(types/constants/api 注册表)；不新增依赖；SkillSelector 改动守 ChatPane composer 无回归。验收：委派抽屉点「指定」开 skill 下拉完整可见不裁/不溢右缘、tooltip 不盖按钮、抽屉宽下不局促；ChatPane composer skill 下拉仍向上左对齐+勾选/标签正常；typecheck+build 绿；浏览器实跑点检两处。分支 feat/engine-drawer-ux。
+✅ 总控终审通过（2026-06-22）：A=SkillSelector 加 align(left|right)/direction(up|down) props 默认 left/up + 下拉宽度 w-[min(20rem,calc(100vw-2rem))] 不超视口 + 选中标签行同步 direction/align 并 clamp；B=DelegateSubAgentCard embedded 模式 grid 改单列 grid-cols-[minmax(0,1fr)] + 全程 min-w-0 防撑破 + ModelSelect max-w-full，SkillSelector 从挤在标题行移到三按钮下方独立行(align=left/direction=down)，非 embedded 保持 2 列；C=靠 B 留白消除 tooltip 遮挡、未引依赖。终审核验：ChatPane composer 的 SkillSelector 调用未变(不传 props→默认 up+left，零回归)、未碰接缝注册表、未新增依赖、仅动 SkillSelector+DelegateSubAgentCard 两文件、server+web typecheck 绿、web build 绿。**遗留=浏览器实跑两处(委派抽屉下拉完整/不溢/tooltip 不盖 + composer 无回归)由用户提交前点检**。` },
+
+  // ════ 【chat·委派关联 agent 模版】（总控拆卡 2026-06-22）。用户反馈委派子 agent 未接「控制·subagents 管理」的 agent 模版。总控核查=后端整条 templateId 链路早已就绪，缺口纯在前端没选择器。纯 E 前端补接，零接缝零 server。════
+  { dom: "E", status: "done", created: "2026-06-22 14:30", title: "【chat·委派关联 agent 模版】E-DELEGATE-TEMPLATE：委派子 agent 接 subagents 管理模版（纯前端·后端已就绪）", brief:
+`来源：用户反馈(2026-06-22)——委派子 agent 与「控制·subagents 管理」的 agent 模版未关联，无法在委派时选用模版。**总控核查：后端整条链路早已支持 templateId**——SubAgentTaskInput.templateId / SubAgentTask.templateId(持久化)双侧已定义；/api/sessions/:id/delegate 读 req.body.templateId(index.ts:1770)→runDelegatedSubAgent→resolveSubAgentTemplate(subagent-core.ts) 应用 persona + toolIds(最小工具权限)+持久化(同 resume 路径)。**缺口纯在前端**：DelegateSubAgentCard 无模版选择器，templateId 从未被传。
+认知：SubAgentTemplate = persona(角色 prompt)+toolIds(挂载计算工具白名单)+dataScope:"clean_data"(红线锁死)+maxRetries；**无 model 字段**，model 仍归本卡。模版与卡内控件正交：模版给 persona+工具，卡给 model+skill 子集+数据文件，可叠加。
+范围(纯 E 前端·零接缝·零 server·复用既有 D GET listSubAgents + 既有 templateId 字段)：
+1. DelegateSubAgentCard 加「agent 模版」选择器：useEffect 拉 api.listSubAgents() 取 enabled 项；下拉含「默认(引擎内置 persona)」+ 各模版(显示 name/persona 摘要/toolIds 数)；state selectedTemplateId，sessionId 变更时重置。放在 ModelSelect 下方一行。
+2. submit() 的 delegateSubAgent 输入加 templateId: selectedTemplateId || undefined。
+3. 交互提示正交关系(模版=persona+计算工具；模型/skill/数据 仍由本卡选)；可显示选中模版的 toolIds 让用户知道子 agent 获得哪些工具。
+约束：不碰接缝层与 server(后端已就绪)；不改 SubAgentManagementPane(只读其 listSubAgents)；不新增依赖；SubAgentTemplate 无 model 字段勿臆造。验收：委派抽屉能选 agent 模版、选中后开始委派的任务带 templateId、子 agent 实际用该模版 persona+toolIds；不选=默认行为同现状；resume/retry 仍恢复原模版(已有)；typecheck+build 绿；浏览器实跑点检。分支 feat/engine-delegate-template。
+✅ 总控终审通过（2026-06-22）：DelegateSubAgentCard 加「agent 模版」select(ModelSelect 下方)——useEffect 拉 api.listSubAgents() 取 enabled、选项=「默认(引擎内置 persona)」+各模版(name·persona 摘要·toolIds 数)、选中后展示 persona+计算工具明细 + 正交提示「模版给 persona+计算工具，模型/skill/数据 仍由本卡设」、sessionId 变更重置；submit() 加 templateId: selectedTemplateId||undefined。终审核验：仅动 DelegateSubAgentCard 单文件、未碰 server(后端 templateId 链路本就齐全)/接缝/SubAgentManagementPane、未新增依赖、**未臆造 model 字段**(model 仍卡控)、server+web typecheck 绿、web build 绿。**遗留=浏览器实跑(选模版→任务带 templateId→子 agent 用该 persona+toolIds；不选=默认)由用户提交前点检**。` },
+
   // ════ 【记忆模块 v2.0·最小补齐】（总控拆卡 2026-06-21）。基于「Tag+SQL 经验记忆」方法论与 clean-slate 重建现状深度对比，补三缺口：①分层标签+结构化精筛 ③离线 Dream Worker(主动升降级) ④记忆→skill 进化连线。加法式、不改既有范式。先行 X-MEM2-CONTRACT(契约,委派 E 代笔)→解锁 D/E 实装；缺口4 依赖缺口1 的 tag 维度。════
   { dom: "X", status: "done", created: "2026-06-21 16:00", delegate: "E", title: "【记忆v2.0·缺口1·契约】MemoryItem 加 tags 分层标签 + 列 migration 口径审定（阻塞缺口1实装）", brief:
 `来源：记忆模块 v2.0 对比结论——现 MemoryItem 无 tags 字段，检索唯一结构维度只有 scope/type，主力是词法 relevance(memory-injection.ts SCORE_WEIGHTS relevance=0.45)。大库后无法「少、准、可控」精筛(正是方法论批判点)。本卡=接缝契约，口径已写死，委派 E 代笔、总控加重终审。
@@ -1127,7 +1232,8 @@ function buildCard(t, i) {
         '<span class="agent">' + d.agent + '</span>' +
         '<span class="st ' + st.cls + '">' + st.label + '</span>' +
         (t.delegate && DOMAINS[t.delegate] ? '<span class="st" style="background:#ede9fe;color:#6d28d9;border:1px solid #ddd6fe">⇄ ' + DOMAINS[t.delegate].agent + '</span>' : '') +
-        '<button class="copy copy-sm" data-i="' + i + '">📋 复制</button>' +
+        '<button class="copy copy-sm" data-task-title-i="' + i + '">📋 复制标题</button>' +
+        '<button class="copy copy-sm" data-i="' + i + '">📋 复制全部</button>' +
       '</span>' +
     '</div>' +
     '<div class="bar-body"><pre class="brief"></pre></div>';
@@ -1159,12 +1265,14 @@ document.body.addEventListener("click", (e) => {
   const isPrompt = !!btn.dataset.prompt;
   const isHf = btn.dataset.hf != null;
   const isTask = btn.dataset.i != null;
-  if (!isPrompt && !isHf && !isTask) return; // 随手记等按钮有独立 handler，此处跳过
+  const isTaskTitle = btn.dataset.taskTitleI != null;
+  if (!isPrompt && !isHf && !isTask && !isTaskTitle) return; // 随手记等按钮有独立 handler，此处跳过
   const text = isPrompt
     ? document.getElementById("src-" + btn.dataset.prompt).textContent.trim()
     : isHf ? (HOTFIX[+btn.dataset.hf].title + "\n\n" + HOTFIX[+btn.dataset.hf].brief)
+    : isTaskTitle ? TASKS[+btn.dataset.taskTitleI].title
     : (TASKS[+btn.dataset.i].title + "\n\n" + TASKS[+btn.dataset.i].brief);
-  const label = isPrompt ? "📋 复制 prompt" : "📋 复制";
+  const label = isPrompt ? "📋 复制 prompt" : isTaskTitle ? "📋 复制标题" : (isTask ? "📋 复制全部" : "📋 复制");
   copyText(text).then(() => {
     btn.textContent = "✓ 已复制"; btn.classList.add("done");
     setTimeout(() => { btn.textContent = label; btn.classList.remove("done"); }, 1800);
@@ -1182,20 +1290,29 @@ const PROMPTS = [
   { id: "resume", title: "/px-resume · Session 开场", desc: "读状态/背景/任务 → 先汇报再开干（无 git）" },
   { id: "wrapup", title: "/px-wrapup · Session 收尾", desc: "校验 → 覆盖 notes §0 → 沉淀知识 → 列改动清单（无 git）" },
   { id: "hotfix", title: "/px-hotfix · 快修通道", desc: "跨域小修小补 → 判红线 / 最小改动 / 校验 / 回流终审（无 git）" },
+  { id: "tooluse", title: "/px-hotfix · 工具注册", desc: "本地 python 脚本接驳为平台工具 → 目录三件套 / py_compile+校验 / 自动注册（快修·派 antigravity）" },
 ];
 const promptList = document.getElementById("promptList");
 PROMPTS.forEach((p) => {
   const src = document.getElementById("src-" + p.id);
   const card = document.createElement("div");
-  card.className = "card";
+  card.className = "bar";
+  card.style.borderLeftColor = "var(--accent)";
   card.innerHTML =
-    '<div class="card-top" style="background:var(--accent)"></div>' +
-    '<div class="card-body">' +
-      '<div class="task-title">' + p.title + '</div>' +
-      '<div style="color:var(--muted);font-size:13px;margin:-4px 0 2px">' + p.desc + '</div>' +
+    '<div class="bar-head">' +
+      '<span class="chev">▶</span>' +
+      '<span class="chip" style="background:var(--accent)" title="常用 prompt">🧩</span>' +
+      '<span class="b-title"></span>' +
+      '<span class="b-meta">' +
+        '<button class="copy copy-sm" data-prompt="' + p.id + '">📋 复制 prompt</button>' +
+      '</span>' +
+    '</div>' +
+    '<div class="bar-body">' +
+      '<div class="b-desc" style="color:var(--muted);font-size:13px;margin:4px 0 8px"></div>' +
       '<pre class="brief"></pre>' +
-      '<button class="copy" data-prompt="' + p.id + '">📋 复制 prompt</button>' +
     '</div>';
+  card.querySelector(".b-title").textContent = p.title;
+  card.querySelector(".b-desc").textContent = p.desc;
   card.querySelector(".brief").textContent = src ? src.textContent.trim() : "";
   promptList.appendChild(card);
 });
@@ -1358,6 +1475,12 @@ document.querySelectorAll(".tab").forEach((tab) => {
     tab.classList.add("active");
     document.getElementById(tab.dataset.view).classList.add("active");
   });
+});
+
+/* ── 主题切换 ── */
+document.getElementById("themeToggle").addEventListener("click", () => {
+  const isLight = document.documentElement.classList.toggle("light");
+  localStorage.setItem("px_theme", isLight ? "light" : "dark");
 });
 </script>
 </body>

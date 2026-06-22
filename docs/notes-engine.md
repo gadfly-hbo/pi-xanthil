@@ -9,22 +9,27 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-21 · 记忆 v2.0 缺口4：高频 experience 聚类升级为 skill registry candidate，接通实验场评测入口。
+- 最近更新：2026-06-22 · E-PROMPT2：ChatPane 接入「沉淀 prompt」，完成 LLM 提炼草稿→人审编辑→D Prompt 库入库闭环。
 - 进度：
-  - **记忆→skill 连线已闭环**（`server/src/memory-to-skill.ts` + `.test.ts`）：只读调用 D `/memory/items?type=experience&enabledOnly=1`，过滤退役项，按 `method:` 主 tag 聚类、无 method 时回退 `task:`；默认门槛为 confidence≥0.75 的 experience≥3、累计 usedCount≥6、positiveSignals≥3。
-  - `POST /api/workspaces/:id/memory/promote-skills` 默认 `dryRun=true`，返回全部簇、pass/fail 理由与可升级数，零 LLM/零写入；显式 `dryRun:false` 后单次最多升级 5 簇。
-  - 正式升级复用既有 `distillSkillCandidate()`→`buildSkillDistillationPrompt`/`extractSkillMarkdown`/`slugifySkillName`/active-only conflict 检测/registry snapshot 全管道，产物固定 `source:"distilled"`、`status:"candidate"`，不自动 active，后续进入实验场评测与人审。
-  - 为既有 `distillSkillCandidate()` 增加可选 `distillText` DI，仅用于确定性测试；生产缺省仍走 `runPiPrompt`，行为不变。
+  - 新增 `server/src/prompt-distillation.ts`：只读取最新 user turn 及其成功 assistant 回复；最新任务未完成/失败则直接返回 `null`，不回退沉淀旧任务、不调用 LLM。
+  - LLM 把驱动成功结果的目标/步骤/格式/约束提炼为可直接复用 prompt，将一次性文件名、日期、地区、指标、数值抽成 `{{var}}`；原始输出用 frontmatter + body，校验后返回 X-PROMPT0 `PromptDraft`，只返回不写库。
+  - `POST /api/workspaces/:id/sessions/:sessionId/distill-prompt` 已落 `routes/engine.ts`，校验 workspace/session 归属并记录 session usage、`prompt_distillation` success/failed trace；无 E→D self-HTTP。
+  - `web/src/lib/api/engine.ts` 增加域内 `distillSessionPrompt`；`ChatPane` 在「沉淀 trace」旁增加「沉淀 prompt」按钮，含 loading、无草稿、失败与入库成功提示，原 trace 状态机不变。
+  - 新增 `PromptDistillDialog.tsx`，title/category/body/variables/tags 全可编辑；取消不落库，确认后由浏览器调用既有 D `api.createPromptTemplate` 写当前 workspace Prompt 库，保存错误留在弹窗内。
+  - 红线：runner 仅消费 DB 中 session message 衍生内容，不读 `draw_data`、workspace 文件或数据探索产物；server 新链路无 `fetch`，Prompt 库写入只发生在前端确认后。
 - 校验：
   - `npm run typecheck` ✅（server + web 全绿）。
   - `npm run build` ✅（仅既有 ECharts import 与 chunk-size warning）。
-  - 相关 memory/skill 回归测试 42/42 ✅；`memory-to-skill.test.ts` 8/8 ✅，覆盖阈值命中/不命中、method→task 回退、退役过滤、dry-run 零蒸馏、D API 读取、候选 transcript、真实 registry candidate 状态。
+  - `prompt-distillation.test.ts` 5/5 ✅：最新成功轮次、失败不回退、frontmatter 解析/变量归一、无成功轮次零 LLM、确定性草稿生成。
+  - `memory-consolidation.test.ts` 8/8 ✅：既有「沉淀 trace」回归全绿。
 - 下一步：
-  - 总控回流终审本卡：确认默认聚类阈值、method 优先/task 回退口径，以及 `candidate` registry 即实验场复核入口的产品语义。
-  - 可选实跑：用真实模型对一个合格经验簇执行 `dryRun:false`，在 skill registry/实验场确认候选可见并完成一次评测；当前自动化测试已用确定性模型输出验证 registry candidate 写入。
+  - 总控回流终审 E-PROMPT2，重点核对：只取最新 user turn、不回退旧任务；frontmatter 非 JSON 输出；server 只返草稿、浏览器确认后才写 D 库。
+  - 真实模型 + 浏览器 smoke：完成一轮成功对话→沉淀 prompt→确认 `{{var}}` 参数化质量→编辑/取消→确认入库→在 prompts 管理「模板库」可见；另测最新失败轮次友好空提示与既有沉淀 trace。
+  - 如真实模型偶发 frontmatter 漂移，先收集原始输出再增强 parser；禁止为此改冻结 `index.ts` 或复制其 JSON parser。
 - 阻塞：无。
 - 开放问题（需总控）：
-  1. 默认阈值暂定 `highConfidence=0.75 / minHighConfidenceItems=3 / minUsedCount=6 / minPositiveSignals=3`，method tag 优先于 task tag；请确认是否作为 v2.0 初始产品口径。
+  1. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空。
+  2. 记忆→skill 默认阈值仍待确认：`highConfidence=0.75 / minHighConfidenceItems=3 / minUsedCount=6 / minPositiveSignals=3`，method tag 优先于 task tag。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -106,6 +111,17 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 ---
 
 ## 三、关键决策沉淀
+
+**日常 / chat prompt 调用（E-PROMPT1）**
+- 2026-06-22：Prompt 调用使用 composer 工具行的独立「Prompt 库」按钮，不复用 `/` command 菜单。原因是 prompt 是可编辑文本模板，command 是服务端展开的执行入口；混用会模糊用户心智并增加现有 command 补全回归风险。
+- 2026-06-22：选择模板只负责把渲染后的 body 插入当前 textarea 光标/选区，**不自动发送**。用户必须能在发送前复核和继续编辑；否决“选中即发送”与“覆盖整个输入框”两种行为。
+- 2026-06-22：变量识别以 body 中实际 `{{var}}` 为准，局部复用 prompts 管理页同口径正则；本卡没有抽共享 utility，因为那会为一个很小的纯函数跨改 D 域 `PromptsManagementPane`。后续若第三处调用也需变量解析，再由总控裁决抽到共享 lib，避免过早扩大改动面。
+
+**日常 / chat prompt 沉淀（E-PROMPT2）**
+- 2026-06-22：沉淀范围严格绑定**最新 user turn**，只收集该 turn 后无 error 的 assistant 文本。若最新 turn 失败或尚未完成，返回 `draft:null`；否决“向前寻找最近成功轮次”，否则用户点击当前任务时可能误存旧任务 prompt。
+- 2026-06-22：模型原始输出使用 frontmatter + body，而不是 JSON。原因是项目约定 LLM→JSON 必须走 `index.ts` 统一 parser，但该 parser 位于冻结接缝且未导出；本卡不触碰 `index.ts`、也不复制第二套 JSON parser。HTTP 响应仍严格转换为 X-PROMPT0 `PromptDraft`。
+- 2026-06-22：E server 只负责生成草稿和 usage/trace，不通过 self-HTTP 调 D 写库。真正写入由 `PromptDistillDialog` 人审确认后，浏览器调用既有 `createPromptTemplate`；这样取消操作零副作用，也保持 D 为 prompt_templates 唯一写入边界。
+- 2026-06-22：草稿 `variables` 以 body 实际 `{{var}}` 占位为真源，LLM 声明但正文未使用的变量会被丢弃；Dialog 中仍允许用户同时修改 body 与 variables，最终以用户确认内容入库。
 
 **实验场 / prompt 评测**
 - 2026-06-20 E-LAB1：prompts lab 沿用 per-module runner，不为六类实验场提前抽统一泛型基类。`PromptVariant` 的第一个元素即 baseline；`role="system"` 通过 `RunPiOptions.systemPrompt` 注入，`role="prefix"` 只前置到当次 task user text。两种注入都继续经过 pi adapter 的稳定安全前缀，不能自行直拼并绕过 `assembleSystemPrompt()`。

@@ -21,3 +21,4 @@
 | 模拟决策 | （方案待迁入本池） | 2026-06-11 | 暂缓 | 模拟推演 / 决策智能模块，已从产品剥离；原方案散见会话与 `decision-intelligence` 记忆，捞出前需补齐方案文件 |
 | agent-loop 工作流闭环 | [agent-loop-工作流闭环.md](agent-loop-工作流闭环.md) | 2026-06-13 | 暂缓 | 给工作流 runner 加"gate 失败→带证据回跳上游重跑+预算约束"的反馈闭环，让 DAG 单向流升级为 agent-loop；植入工作流而非另开模块，MVP=SQL 修复 loop |
 | subagents 看板 · 节点级运行落库 | [subagents看板-节点级运行落库.md](subagents看板-节点级运行落库.md) | 2026-06-20 | 暂缓 | 工作流节点运行态不落库（只流式广播），新建 `flow_node_runs` 表 + runner 落库，让看板到真 agent 粒度统计；方案 A（流水线级聚合）先做，本条为治本增强排后续 |
+| command 场景调用框 | [command-场景调用框.md](command-场景调用框.md) | 2026-06-22 | 暂缓 | command 升级为 {prompt+skills+tools} 场景包：XanCommand 已含 prompt(template)+skills(skillSlugs)，补第三腿 tools(`toolIds`+参数映射)，再做 chat 调用框把场景包列出一键装配，免去分别找三处；三类零件 chat 已各自可用故现不做，待沉淀高频组合后捞出 |

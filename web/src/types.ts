@@ -127,6 +127,20 @@ export interface PromptTemplatePatch {
   tags?: string[];
 }
 
+// 沉淀 prompt 草稿（chat 改造 1-2 · 总控 X-PROMPT0 接缝审定）。
+// distill 路由 `POST /api/workspaces/:id/sessions/:sessionId/distill-prompt`(E 实装于 routes/engine.ts)
+// 的返回体：E 服务端 LLM 从会话提炼出可复用 prompt 草稿，**只返回不写库**；
+// 前端确认编辑后调既有 createPromptTemplate(D) 落库。字段对齐 PromptTemplateInput 便于直接喂入。
+// 本轮无可沉淀内容时路由返回 { draft: null }。
+export interface PromptDraft {
+  title: string;
+  category: string;
+  body: string;
+  variables: string[];
+  tags: string[];
+  sourceSessionId?: string;
+}
+
 // 系统 prompt 聚合（只读 · server/src/system-prompts.ts:listSystemPromptOverviews）。
 export interface SystemPromptOverview {
   source: string;

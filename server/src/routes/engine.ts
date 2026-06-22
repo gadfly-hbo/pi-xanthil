@@ -92,6 +92,7 @@ import { runPiPrompt, runPiTurn } from "../pi-adapter.ts";
 import { fireMemoryConsolidation, postMemoryCandidateToDIngest, runMemoryConsolidation, type MemoryConsolidationTargetKind } from "../memory-consolidation.ts";
 import { runMemoryMaintenance } from "../memory-maintenance.ts";
 import { DEFAULT_MEMORY_SKILL_THRESHOLDS, fetchMemoryExperiences, runMemoryToSkillPromotion, type MemorySkillThresholds } from "../memory-to-skill.ts";
+import { runPromptDistillation } from "../prompt-distillation.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
 import type { ClientMessage, Flow, PiEvent, RetrievalContext, Session } from "../types.ts";
@@ -1554,6 +1555,47 @@ engineRouter.post("/api/workspaces/:id/sessions/:sessionId/consolidate-trace", a
       ok: false,
       error,
     });
+  }
+});
+
+engineRouter.post("/api/workspaces/:id/sessions/:sessionId/distill-prompt", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const session = getSession(req.params.sessionId);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  if (session.workspaceId !== workspace.id) return res.status(403).json({ error: "session belongs to another workspace" });
+
+  const traceEventId = traceEngineSessionEvent(session, "prompt_distillation", "running", "手动沉淀 prompt", { trigger: "manual" });
+  const model = String(req.body?.model ?? "").trim() || undefined;
+  try {
+    const draft = await runPromptDistillation({
+      workspaceRoot: workspace.rootPath,
+      sessionId: session.id,
+      messages: listMessages(session.id),
+      model,
+      timeoutMs: 180_000,
+      onEvent: (event) => trackUsageEvent({
+        workspaceId: workspace.id,
+        targetKind: "session",
+        targetId: session.id,
+        title: "手动 Prompt 沉淀",
+      }, event),
+    });
+    updateEngineSessionTrace(
+      traceEventId,
+      "success",
+      draft ? `Prompt 草稿已生成：${draft.title}` : "本轮无可沉淀 Prompt",
+      { trigger: "manual", hasDraft: Boolean(draft) },
+    );
+    res.json({ draft });
+  } catch (err) {
+    const error = String(err instanceof Error ? err.message : err);
+    updateEngineSessionTrace(traceEventId, "failed", `Prompt 沉淀失败：${error}`, { trigger: "manual", error });
+    traceEngineSessionEvent(session, "prompt_distillation_failed", "failed", error, {
+      targetKind: "session",
+      targetId: session.id,
+    });
+    res.status(500).json({ error });
   }
 });
 

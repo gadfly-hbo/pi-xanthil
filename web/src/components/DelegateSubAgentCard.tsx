@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { gateway } from "@/lib/ws";
 import { SkillSelector } from "@/components/SkillSelector";
-import type { PiEvent, PiModel, ServerMessage, SubAgentTask, SubAgentTraceKind, WorkspacePath } from "@/types";
+import type { PiEvent, PiModel, ServerMessage, SubAgentTask, SubAgentTemplate, SubAgentTraceKind, WorkspacePath } from "@/types";
 
 function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (value: string) => void }) {
   const groups = models.reduce<Record<string, PiModel[]>>((acc, model) => {
@@ -16,7 +16,7 @@ function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: st
     <select
       value={value}
       onChange={(event) => onChange(event.target.value)}
-      className="w-full rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[12px] outline-none dark:border-neutral-700"
+      className="min-w-0 max-w-full w-full rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[12px] outline-none dark:border-neutral-700"
     >
       <option value="">默认模型</option>
       {Object.entries(groups).map(([provider, items]) => (
@@ -36,6 +36,11 @@ function statusLabel(task: SubAgentTask): string {
   if (task.status === "failed") return "失败";
   if (task.status === "waiting_for_help") return "等待人工修正";
   return "已中止";
+}
+
+function personaSummary(persona: string): string {
+  const normalized = persona.trim().replace(/\s+/g, " ");
+  return normalized.length > 80 ? `${normalized.slice(0, 80)}…` : normalized;
 }
 
 type TraceRow = {
@@ -146,6 +151,9 @@ interface Props {
 export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, onBackflow, embedded = false }: Props) {
   const [brief, setBrief] = useState("");
   const [selectedModel, setSelectedModel] = useState(model);
+  const [templates, setTemplates] = useState<SubAgentTemplate[]>([]);
+  const [selectedTemplateId, setSelectedTemplateId] = useState("");
+  const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [skillMode, setSkillMode] = useState<"inherit" | "disabled" | "specified">("inherit");
   const [specifiedSkillPaths, setSpecifiedSkillPaths] = useState<string[]>([]);
   const [cleanFiles, setCleanFiles] = useState<WorkspacePath[]>([]);
@@ -164,6 +172,10 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   const [resumingTaskId, setResumingTaskId] = useState("");
 
   const running = useMemo(() => tasks.some((task) => task.status === "running"), [tasks]);
+  const selectedTemplate = useMemo(
+    () => templates.find((template) => template.id === selectedTemplateId) ?? null,
+    [selectedTemplateId, templates],
+  );
   const canSubmit = brief.trim().length > 0 && !submitting && (skillMode !== "specified" || specifiedSkillPaths.length > 0);
 
   async function refreshTasks() {
@@ -176,7 +188,26 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   }, [model]);
 
   useEffect(() => {
+    let cancelled = false;
+    setLoadingTemplates(true);
+    api.listSubAgents()
+      .then((items) => {
+        if (!cancelled) setTemplates(items.filter((item) => item.enabled));
+      })
+      .catch((err) => {
+        if (!cancelled) setError(`加载 agent 模版失败：${String(err)}`);
+      })
+      .finally(() => {
+        if (!cancelled) setLoadingTemplates(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, []);
+
+  useEffect(() => {
     setBrief("");
+    setSelectedTemplateId("");
     setSkillMode("inherit");
     setSpecifiedSkillPaths([]);
     setSelectedFiles([]);
@@ -265,6 +296,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
         brief: text,
         dataFiles: selectedFiles,
         model: selectedModel || undefined,
+        templateId: selectedTemplateId || undefined,
         skillPaths: skillMode === "inherit" ? undefined : skillMode === "disabled" ? [] : specifiedSkillPaths,
       });
       setTasks((current) => [task, ...current.filter((item) => item.id !== task.id)]);
@@ -369,8 +401,11 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
         </button>
       </div>
 
-      <div className="mt-3 grid gap-3 md:grid-cols-[minmax(0,1fr)_220px]">
-        <div>
+      <div className={cn(
+        "mt-3 grid min-w-0 gap-3",
+        embedded ? "grid-cols-[minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)_220px]",
+      )}>
+        <div className="min-w-0">
           <textarea
             value={brief}
             onChange={(event) => setBrief(event.target.value)}
@@ -389,12 +424,43 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
             </button>
           </div>
         </div>
-        <div className="space-y-3">
+        <div className="min-w-0 space-y-3">
           <ModelSelect models={models} value={selectedModel} onChange={setSelectedModel} />
+          <div className="rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-800 dark:bg-neutral-900">
+            <label className="block text-[12px] text-neutral-500 dark:text-neutral-400">
+              agent 模版
+              <select
+                value={selectedTemplateId}
+                onChange={(event) => setSelectedTemplateId(event.target.value)}
+                disabled={loadingTemplates}
+                className="mt-1 min-w-0 w-full rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[12px] text-neutral-700 outline-none disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-200"
+              >
+                <option value="">{loadingTemplates ? "正在加载模版…" : "默认（引擎内置 persona）"}</option>
+                {templates.map((template) => (
+                  <option key={template.id} value={template.id}>
+                    {template.name} · {personaSummary(template.persona)} · {template.toolIds.length} 个工具
+                  </option>
+                ))}
+              </select>
+            </label>
+            {selectedTemplate ? (
+              <div className="mt-2 space-y-1 text-[10.5px] leading-4 text-neutral-400">
+                <p title={selectedTemplate.persona}>{personaSummary(selectedTemplate.persona)}</p>
+                <p title={selectedTemplate.toolIds.join(", ")}>
+                  计算工具：{selectedTemplate.toolIds.length > 0 ? selectedTemplate.toolIds.join("、") : "无"}
+                </p>
+              </div>
+            ) : (
+              <p className="mt-2 text-[10.5px] leading-4 text-neutral-400">使用引擎内置 persona，不额外挂载模版计算工具。</p>
+            )}
+            <p className="mt-1 text-[10.5px] leading-4 text-neutral-400">
+              模版提供 persona 与计算工具；模型、skill 子集和数据文件仍由本卡设置。
+            </p>
+          </div>
           <div className="rounded-md border border-neutral-200 bg-white p-2 dark:border-neutral-800 dark:bg-neutral-900">
             <div className="mb-2 flex items-center justify-between gap-2">
               <span className="text-[12px] text-neutral-500 dark:text-neutral-400">skill 子集</span>
-              {skillMode === "specified" && (
+              {!embedded && skillMode === "specified" && (
                 <SkillSelector
                   scope={workspaceId ? { type: "workspace", workspaceId } : null}
                   selectedPaths={specifiedSkillPaths}
@@ -443,6 +509,17 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
                 指定{specifiedSkillPaths.length > 0 ? ` ${specifiedSkillPaths.length}` : ""}
               </button>
             </div>
+            {embedded && skillMode === "specified" && (
+              <div className="mt-2 flex min-w-0 items-center">
+                <SkillSelector
+                  scope={workspaceId ? { type: "workspace", workspaceId } : null}
+                  selectedPaths={specifiedSkillPaths}
+                  onChange={setSpecifiedSkillPaths}
+                  align="left"
+                  direction="down"
+                />
+              </div>
+            )}
             <p className="mt-1 text-[10.5px] leading-4 text-neutral-400">
               {skillMode === "inherit"
                 ? "子 agent 使用默认 skill 策略。"
