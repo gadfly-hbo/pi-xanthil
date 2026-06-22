@@ -2477,3 +2477,65 @@ export interface PresentationTaskResult {
   chartSpecs?: PresentationChartSpec[]; // dataset 出图；缺省=无图
   datasetMeta?: PresentationDatasetMeta | null;
 }
+
+// ── 体检模块契约（X-HEALTH0 接缝，总控审定口径代笔）──
+// 确定性规则巡检（零 LLM）：问题=已越界(截面)；风险=趋势指向越界(需时序)。
+export type HealthSuite = "daily" | "weekly" | "monthly" | "quarterly" | "yearly";
+export type HealthCategory = "数据质量" | "指标异常" | "勾稽一致" | "趋势风险";
+export type HealthFindingKind = "问题" | "风险";
+export type FindingLifecycle = "new" | "recurring" | "worsening" | "resolved";
+export type DatasetShape = "timeseries" | "snapshot" | "dimension";
+
+export interface HealthRuleNeeds {
+  timeSeries: boolean;
+  crossDataset?: boolean;
+  ontologyRefs?: Array<"metric" | "link" | "object">;
+}
+
+export interface HealthRuleMeta {
+  id: string;
+  category: HealthCategory;
+  title: string;
+  description: string;
+  suites: HealthSuite[];
+  kind: HealthFindingKind;
+  needs: HealthRuleNeeds;
+  thresholds: Record<string, number>;
+  enabled: boolean;
+}
+
+export interface HealthFinding {
+  id: string;
+  runId: string;
+  ruleId: string;
+  category: HealthCategory;
+  kind: HealthFindingKind;
+  severity: "info" | "warn" | "critical";
+  lifecycle: FindingLifecycle;
+  signature: string; // 跨 run 识别同一问题的稳定指纹
+  firstSeenRunId: string | null;
+  title: string;
+  evidence: Record<string, unknown>; // 须自解释到可手工复算
+  boundTo?: { datasetPathId?: string; objectId?: string; metricId?: string; column?: string };
+  suggestion: string; // 规则模板，非 LLM
+  detectedAt: number;
+}
+
+export interface HealthRun {
+  id: string;
+  workspaceId: string;
+  suite: HealthSuite;
+  datasetPathIds: string[];
+  startedAt: number;
+  finishedAt: number | null;
+  problemCount: number;
+  riskCount: number;
+  status: "running" | "done" | "error";
+}
+
+export interface OntologyGap {
+  datasetPathId: string;
+  column: string;
+  reason: string;
+  suggestedConcept?: string;
+}

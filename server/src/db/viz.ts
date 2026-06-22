@@ -236,6 +236,45 @@ function initOntoTables(): void {
       updated_at     INTEGER NOT NULL
     );
   `);
+  // ── 体检模块（V-HEALTH2）──
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS health_runs (
+      id              TEXT PRIMARY KEY,
+      workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      suite           TEXT NOT NULL,
+      dataset_path_ids TEXT NOT NULL DEFAULT '[]',
+      started_at      INTEGER NOT NULL,
+      finished_at     INTEGER,
+      problem_count   INTEGER NOT NULL DEFAULT 0,
+      risk_count      INTEGER NOT NULL DEFAULT 0,
+      status          TEXT NOT NULL DEFAULT 'running'
+    );
+    CREATE TABLE IF NOT EXISTS health_findings (
+      id                   TEXT PRIMARY KEY,
+      run_id               TEXT NOT NULL REFERENCES health_runs(id) ON DELETE CASCADE,
+      rule_id              TEXT NOT NULL,
+      category             TEXT NOT NULL,
+      kind                 TEXT NOT NULL,
+      severity             TEXT NOT NULL,
+      lifecycle            TEXT NOT NULL,
+      signature            TEXT NOT NULL,
+      first_seen_run_id    TEXT,
+      title                TEXT NOT NULL,
+      evidence_json        TEXT NOT NULL DEFAULT '{}',
+      bound_to_json        TEXT NOT NULL DEFAULT '{}',
+      suggestion           TEXT NOT NULL DEFAULT '',
+      detected_at          INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS ontology_gaps (
+      id              TEXT PRIMARY KEY,
+      run_id          TEXT NOT NULL REFERENCES health_runs(id) ON DELETE CASCADE,
+      dataset_path_id TEXT NOT NULL,
+      column_name     TEXT NOT NULL,
+      reason          TEXT NOT NULL,
+      suggested_concept TEXT,
+      created_at      INTEGER NOT NULL
+    );
+  `);
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_ontologies_ws ON ontologies(workspace_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_object_types_onto ON object_types(ontology_id);`);
@@ -246,6 +285,9 @@ function initOntoTables(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_onto_actions_onto ON onto_actions(ontology_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_onto_prompts_ws ON onto_prompts(workspace_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_extract_jobs_onto ON extract_jobs(ontology_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_health_runs_ws ON health_runs(workspace_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_health_findings_run ON health_findings(run_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_ontology_gaps_run ON ontology_gaps(run_id);`);
   } catch {
     // ignore
   }
@@ -964,4 +1006,179 @@ export function updateExtractJob(id: string, patch: Partial<Omit<ExtractJob, "id
     "UPDATE extract_jobs SET status = ?, total_chunks = ?, done_chunks = ?, created_objects = ?, created_links = ?, created_logic_rules = ?, created_actions = ?, skipped_objects = ?, skipped_links = ?, has_fatal = ?, issues_json = ?, error = ?, updated_at = ? WHERE id = ?"
   ).run(next.status, next.totalChunks, next.doneChunks, next.createdObjects, next.createdLinks, next.createdLogicRules, next.createdActions, next.skippedObjects, next.skippedLinks, next.hasFatal ? 1 : 0, JSON.stringify(next.issues), next.error ?? null, next.updatedAt, id);
   return next;
+}
+
+// ── 体检模块 health_runs / health_findings / ontology_gaps（V-HEALTH2）──
+
+import type { HealthRun, HealthFinding, OntologyGap, FindingLifecycle, HealthSuite, HealthCategory, HealthFindingKind } from "../types.ts";
+
+interface HealthRunRow {
+  id: string;
+  workspace_id: string;
+  suite: string;
+  dataset_path_ids: string;
+  started_at: number;
+  finished_at: number | null;
+  problem_count: number;
+  risk_count: number;
+  status: string;
+}
+
+interface HealthFindingRow {
+  id: string;
+  run_id: string;
+  rule_id: string;
+  category: string;
+  kind: string;
+  severity: string;
+  lifecycle: string;
+  signature: string;
+  first_seen_run_id: string | null;
+  title: string;
+  evidence_json: string;
+  bound_to_json: string;
+  suggestion: string;
+  detected_at: number;
+}
+
+interface OntologyGapRow {
+  run_id: string;
+  dataset_path_id: string;
+  column_name: string;
+  reason: string;
+  suggested_concept: string | null;
+}
+
+function parseHealthRun(r: HealthRunRow): HealthRun {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    suite: r.suite as HealthSuite,
+    datasetPathIds: JSON.parse(r.dataset_path_ids) as string[],
+    startedAt: r.started_at,
+    finishedAt: r.finished_at,
+    problemCount: r.problem_count,
+    riskCount: r.risk_count,
+    status: r.status as HealthRun["status"],
+  };
+}
+
+function parseHealthFinding(r: HealthFindingRow): HealthFinding {
+  return {
+    id: r.id,
+    runId: r.run_id,
+    ruleId: r.rule_id,
+    category: r.category as HealthCategory,
+    kind: r.kind as HealthFindingKind,
+    severity: r.severity as HealthFinding["severity"],
+    lifecycle: r.lifecycle as FindingLifecycle,
+    signature: r.signature,
+    firstSeenRunId: r.first_seen_run_id,
+    title: r.title,
+    evidence: JSON.parse(r.evidence_json) as Record<string, unknown>,
+    boundTo: r.bound_to_json && r.bound_to_json !== "{}" ? (JSON.parse(r.bound_to_json) as HealthFinding["boundTo"]) : undefined,
+    suggestion: r.suggestion,
+    detectedAt: r.detected_at,
+  };
+}
+
+export function insertHealthRun(workspaceId: string, suite: HealthSuite, datasetPathIds: string[]): HealthRun {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO health_runs (id, workspace_id, suite, dataset_path_ids, started_at, finished_at, problem_count, risk_count, status) VALUES (?, ?, ?, ?, ?, NULL, 0, 0, 'running')"
+  ).run(id, workspaceId, suite, JSON.stringify(datasetPathIds), now);
+  return { id, workspaceId, suite, datasetPathIds, startedAt: now, finishedAt: null, problemCount: 0, riskCount: 0, status: "running" };
+}
+
+export function updateHealthRun(id: string, patch: { finishedAt?: number; problemCount?: number; riskCount?: number; status?: HealthRun["status"] }): HealthRun | undefined {
+  const existing = db.prepare("SELECT * FROM health_runs WHERE id = ?").get(id) as unknown as HealthRunRow | undefined;
+  if (!existing) return undefined;
+  const finishedAt = patch.finishedAt ?? existing.finished_at;
+  const problemCount = patch.problemCount ?? existing.problem_count;
+  const riskCount = patch.riskCount ?? existing.risk_count;
+  const status = patch.status ?? existing.status;
+  db.prepare(
+    "UPDATE health_runs SET finished_at = ?, problem_count = ?, risk_count = ?, status = ? WHERE id = ?"
+  ).run(finishedAt, problemCount, riskCount, status, id);
+  return parseHealthRun({ ...existing, finished_at: finishedAt, problem_count: problemCount, risk_count: riskCount, status });
+}
+
+export function listHealthRuns(workspaceId: string): HealthRun[] {
+  const rows = db.prepare("SELECT * FROM health_runs WHERE workspace_id = ? ORDER BY started_at DESC").all(workspaceId) as unknown as HealthRunRow[];
+  return rows.map(parseHealthRun);
+}
+
+export function getHealthRun(id: string): HealthRun | undefined {
+  const r = db.prepare("SELECT * FROM health_runs WHERE id = ?").get(id) as unknown as HealthRunRow | undefined;
+  return r ? parseHealthRun(r) : undefined;
+}
+
+export function insertHealthFindings(findings: HealthFinding[]): void {
+  const stmt = db.prepare(
+    "INSERT INTO health_findings (id, run_id, rule_id, category, kind, severity, lifecycle, signature, first_seen_run_id, title, evidence_json, bound_to_json, suggestion, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)"
+  );
+  for (const f of findings) {
+    stmt.run(
+      f.id, f.runId, f.ruleId, f.category, f.kind, f.severity, f.lifecycle, f.signature,
+      f.firstSeenRunId, f.title, JSON.stringify(f.evidence), f.boundTo ? JSON.stringify(f.boundTo) : "{}",
+      f.suggestion, f.detectedAt,
+    );
+  }
+}
+
+export function listHealthFindings(runId: string): HealthFinding[] {
+  const rows = db.prepare("SELECT * FROM health_findings WHERE run_id = ? ORDER BY detected_at DESC").all(runId) as unknown as HealthFindingRow[];
+  return rows.map(parseHealthFinding);
+}
+
+export function listFindingsByRun(
+  workspaceId: string,
+  suite?: HealthSuite,
+  datasetPathIds?: string[],
+): HealthFinding[] {
+  // 取最近一次同 suite + 同数据集组合的 done run 的 findings 作为 priorFindings
+  let sql = "SELECT id, suite, dataset_path_ids FROM health_runs WHERE workspace_id = ? AND status = 'done'";
+  const params: (string | HealthSuite)[] = [workspaceId];
+  if (suite) {
+    sql += " AND suite = ?";
+    params.push(suite);
+  }
+  sql += " ORDER BY started_at DESC LIMIT 20";
+  const runs = db.prepare(sql).all(...params) as unknown as Array<{ id: string; suite: string; dataset_path_ids: string }>;
+  if (runs.length === 0) return [];
+  // 按 datasetPathIds 组合匹配（排序后 JSON 比对，顺序无关）
+  const targetKey = datasetPathIds ? [...datasetPathIds].sort().join(",") : null;
+  for (const r of runs) {
+    if (!targetKey) {
+      // 无 datasetPathIds 过滤 → 取第一条
+      return listHealthFindings(r.id);
+    }
+    const runIds = JSON.parse(r.dataset_path_ids) as string[];
+    const runKey = [...runIds].sort().join(",");
+    if (runKey === targetKey) {
+      return listHealthFindings(r.id);
+    }
+  }
+  return [];
+}
+
+export function insertOntologyGaps(runId: string, gaps: OntologyGap[]): void {
+  const stmt = db.prepare(
+    "INSERT INTO ontology_gaps (run_id, dataset_path_id, column_name, reason, suggested_concept, created_at) VALUES (?, ?, ?, ?, ?, ?)"
+  );
+  const now = Date.now();
+  for (const g of gaps) {
+    stmt.run(runId, g.datasetPathId, g.column, g.reason, g.suggestedConcept ?? null, now);
+  }
+}
+
+export function listOntologyGaps(runId: string): OntologyGap[] {
+  const rows = db.prepare("SELECT * FROM ontology_gaps WHERE run_id = ?").all(runId) as unknown as OntologyGapRow[];
+  return rows.map((r) => ({
+    datasetPathId: r.dataset_path_id,
+    column: r.column_name,
+    reason: r.reason,
+    suggestedConcept: r.suggested_concept ?? undefined,
+  }));
 }

@@ -1,6 +1,6 @@
 import type { Tab } from '@/components/MainHeader';
 
-export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'readme' | 'hypothesis' | 'extraction' | 'aggregate_compute' | 'draw_data' | 'clean_data' | 'data_exploration' | 'report' | 'presentation_version' | 'report_review' | 'golden_strategy' | 'decision_tree' | 'toc' | 'skill' | 'tool' | 'rules' | 'indicators' | 'cases' | 'trace' | 'token_stats' | 'the-crowd' | 'weather' | 'business_district' | 'industry' | 'competitor' | 'own_product' | 'kb_docs' | 'kb_search' | 'sql_connect' | 'operational_model' | 'change_mgmt' | 'knowledge_graph' | 'dlf' | 'quick_notes' | 'tool_use' | 'failure_memory' | 'process_memory' | 'anax_view' | 'anax_chat' | 'hooks_mgmt' | 'skills_mgmt' | 'command_mgmt' | 'plugin_mgmt' | 'subagents_mgmt' | 'llm_mgmt' | 'prompts_mgmt' | 'hooks_lab' | 'command_lab' | 'subagents_lab' | 'prompts_lab' | 'lab_overview' | 'lab_regression' | 'onto_readme' | 'onto_objects' | 'onto_links' | 'onto_metrics' | 'onto_logic' | 'onto_actions' | 'onto_graph' | 'onto_import' | 'actions';
+export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'readme' | 'hypothesis' | 'extraction' | 'aggregate_compute' | 'draw_data' | 'clean_data' | 'data_exploration' | 'report' | 'presentation_version' | 'report_review' | 'golden_strategy' | 'decision_tree' | 'toc' | 'skill' | 'tool' | 'rules' | 'indicators' | 'cases' | 'trace' | 'token_stats' | 'the-crowd' | 'weather' | 'business_district' | 'industry' | 'competitor' | 'own_product' | 'kb_docs' | 'kb_search' | 'sql_connect' | 'operational_model' | 'change_mgmt' | 'knowledge_graph' | 'dlf' | 'quick_notes' | 'tool_use' | 'failure_memory' | 'process_memory' | 'anax_view' | 'anax_chat' | 'hooks_mgmt' | 'skills_mgmt' | 'command_mgmt' | 'plugin_mgmt' | 'subagents_mgmt' | 'llm_mgmt' | 'prompts_mgmt' | 'hooks_lab' | 'command_lab' | 'subagents_lab' | 'prompts_lab' | 'lab_overview' | 'lab_regression' | 'onto_readme' | 'onto_objects' | 'onto_links' | 'onto_metrics' | 'onto_logic' | 'onto_actions' | 'onto_graph' | 'onto_import' | 'actions' | 'health_data' | 'health_dashboard' | 'health_report' | 'health_trend';
 
 export const SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'extraction', label: '数据提取' }, { id: 'aggregate_compute', label: '聚合计算' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }, { id: 'dlf', label: 'DLF' }];
 
@@ -38,6 +38,9 @@ export const XAN_DB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'the-crow
 // 知识库二级 tab：资料库(上传/分类/标签) / 检索(全文+语义召回) / readme。面板与检索由 Agent-D 实装。
 export const KNOWLEDGE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'kb_docs', label: '资料库' }, { id: 'kb_search', label: '检索' }, { id: 'readme', label: 'readme' }];
 
+// 体检模块二级 tab（X-HEALTH0 接缝）：聚合数据入口 / 体检台 / 体检报告 / 趋势 / readme。
+export const HEALTH_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'health_data', label: '聚合数据入口' }, { id: 'health_dashboard', label: '体检台' }, { id: 'health_report', label: '体检报告' }, { id: 'health_trend', label: '趋势' }, { id: 'readme', label: 'readme' }];
+
 export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'aggregate') return AGGREGATE_SUB_TABS;
   if (tab === 'rule_memory') return RULE_MEMORY_SUB_TABS;
@@ -47,6 +50,7 @@ export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'explore') return EXPLORE_SUB_TABS;
   if (tab === 'multi') return MULTI_SUB_TABS;
   if (tab === 'zhuanti') return ZHUANTI_SUB_TABS;
+  if (tab === 'health') return HEALTH_SUB_TABS;
   if (VIEW_ONLY_TABS.has(tab)) return SUB_TABS.slice(0, 1);
   return SUB_TABS;
 }

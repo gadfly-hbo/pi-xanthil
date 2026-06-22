@@ -1,0 +1,15 @@
+{
+  "id": "extract-labels",
+  "name": "动态提取标签",
+  "version": "1.0.0",
+  "description": "支持批量处理文件夹，自动按条件提取占比和TGI",
+  "entry": "main.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv", ""],
+    "modes": ["file", "directory"]
+  },
+  "output": ["extracted_labels.csv"],
+  "riskLevel": "L0"
+}

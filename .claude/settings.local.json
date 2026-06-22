@@ -232,7 +232,11 @@
       "Bash(echo \"exit:$?\")",
       "Bash(sed -i '' '1644,1807d' server/src/db.ts)",
       "Bash(sed -i '' '624,671d' server/src/db.ts)",
-      "Bash(grep -n \"批1=tool\\(低风险先行\\)、批2=skill。\\\\` },\" docs/wiki.html)"
+      "Bash(grep -n \"批1=tool\\(低风险先行\\)、批2=skill。\\\\` },\" docs/wiki.html)",
+      "Bash(awk 'NR>=293 && NR<=400' docs/wiki.html)",
+      "Bash(grep -c '`')",
+      "WebFetch(domain:arxiv.org)",
+      "Bash(awk '/TASKS *=/{f=1} f&&/\\\\{/{c++} f{print NR\": \"$0} f&&/\\\\},?$/{if\\(c>=1\\){n++}; if\\(n>=2\\)exit}' docs/wiki.html)"
     ]
   }
 }

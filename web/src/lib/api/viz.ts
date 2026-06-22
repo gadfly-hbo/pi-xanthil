@@ -20,6 +20,11 @@ import type {
   ActionTask,
   ActionFeedback,
   ExtractJob,
+  HealthSuite,
+  HealthRuleMeta,
+  HealthFinding,
+  HealthRun,
+  OntologyGap,
 } from "@/types";
 
 // 单一真源：Action 契约由 @/types 持有（总控），此处仅 re-export 供本域消费者引用。
@@ -181,4 +186,14 @@ export const vizApi = {
     fetch(`/api/action-tasks/${encodeURIComponent(taskId)}/feedback`).then(json<ActionFeedback>),
   submitActionFeedback: (taskId: string, data: Omit<ActionFeedback, "id" | "taskId" | "createdAt">) =>
     fetch(`/api/action-tasks/${encodeURIComponent(taskId)}/feedback`, jsonBody("POST", data)).then(json<ActionFeedback>),
+
+  // ---- 体检（V-HEALTH3）----
+  listHealthRules: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/health/rules`).then(json<{ rules: HealthRuleMeta[] }>),
+  runHealthSuite: (workspaceId: string, suite: HealthSuite, body: { datasetPathIds: string[]; thresholds?: Record<string, number> }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/health/runs?suite=${suite}`, jsonBody("POST", body)).then(json<{ run: HealthRun; findings: HealthFinding[]; gaps: OntologyGap[] }>),
+  listHealthRuns: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/health/runs`).then(json<HealthRun[]>),
+  listHealthFindings: (workspaceId: string, runId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/health/runs/${encodeURIComponent(runId)}/findings`).then(json<{ findings: HealthFinding[]; gaps: OntologyGap[] }>),
 };

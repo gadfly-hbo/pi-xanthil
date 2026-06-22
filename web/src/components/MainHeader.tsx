@@ -1,7 +1,7 @@
-import { PanelLeftOpen, Compass, Network, Users, Calculator, BookOpen, Database, Library, Telescope, type LucideIcon } from "lucide-react";
+import { PanelLeftOpen, Compass, Network, Users, Calculator, BookOpen, Database, Library, Telescope, Activity, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/cn";
 
-export type Tab = "explore" | "zhuanti" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "knowledge_base" | "onto_xanthil";
+export type Tab = "explore" | "zhuanti" | "multi" | "aggregate" | "rule_memory" | "xan_db" | "knowledge_base" | "onto_xanthil" | "health";
 
 // 模块命名映射（2026-06-18 改名，权威见 Orchestration.md §〇）：explore=「日常」(曾"探索") · multi=「重复」(曾"工作流"，产物仍称 工作流/flow) · zhuanti=「专题」。
 // ⚠️ 仅 label 展示名可改；Tab id / DB kind="multi" / 路由不可改（零迁移）。
@@ -14,6 +14,7 @@ export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "xan_db", label: "数据库", icon: Database },
   { id: "knowledge_base", label: "知识库", icon: Library },
   { id: "onto_xanthil", label: "本体库", icon: Network },
+  { id: "health", label: "体检", icon: Activity },
 ];
 
 interface Props {

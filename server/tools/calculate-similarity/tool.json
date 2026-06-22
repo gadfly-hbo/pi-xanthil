@@ -1,0 +1,24 @@
+{
+  "id": "calculate-similarity",
+  "name": "号货匹配度计算",
+  "version": "1.0.0",
+  "description": "批量计算商品人群与账号人群的匹配度",
+  "entry": "main.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv", ""],
+    "modes": ["file", "directory"]
+  },
+  "output": ["similarity_results.csv"],
+  "parameters": [
+    {
+      "name": "account_file",
+      "label": "账号基准人群文件",
+      "type": "string",
+      "description": "账号基准人群文件路径 (CSV格式)",
+      "required": true
+    }
+  ],
+  "riskLevel": "L0"
+}

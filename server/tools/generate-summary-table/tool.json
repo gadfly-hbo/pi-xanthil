@@ -1,0 +1,15 @@
+{
+  "id": "generate-summary-table",
+  "name": "横向单品优质特征汇总宽表",
+  "version": "1.0.0",
+  "description": "将提取的长表转换为横向单品优质特征汇总宽表（取占比与TGI的交集）",
+  "entry": "main.py",
+  "runtime": "python3",
+  "category": "analysis",
+  "input": {
+    "accept": [".csv"],
+    "modes": ["file"]
+  },
+  "output": ["summary_table.csv"],
+  "riskLevel": "L0"
+}

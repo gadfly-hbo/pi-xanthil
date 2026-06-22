@@ -9,25 +9,28 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-19 · PresentationVersionPane 接入 BI dataset → chartSpecs 自动出图（V-agent 停用后 viz 归 D 承接）
+- 最近更新：2026-06-22 · 体检模块 V-HEALTH1/2/3 实装完成 + 四轮终审修复完毕（V-agent 停用后 viz 归 D 承接）
 - 进度：
-  - **dataset → echarts 闭环（D-A + D-B 一并落）**：`PresentationVersionPane` 加「关联数据集」select；选数据集 → 服务端确定性聚合产出 `chartSpecs[]`（echarts EChartsOption）→ 前端预览页"汇报版本"tab 在 Markdown 上方栅格渲染 `<ReactECharts>` 卡片；不选数据集 → 行为完全不变（纯 Markdown + iframe 故事线）。
-  - **新增 `server/src/presentation-charts.ts`**：`buildChartSpecsFromDataset(detail)` 按 `slot` 派发 `member_retention` / `member_recall` 的确定性聚合（复用 retention/recall 的 alias 列匹配 + `toRatio` 百分比归一化），产 2 个图/slot：规模柱状图 + 留存/回购率折线图。`summarizeDatasetForLlm(detail)` 仅产出 schema + 数值列 min/max/mean 摘要喂给 LLM；**不喂任何 row 内容**。
-  - **`/api/report-versions/generate` 扩展**：接 `datasetId?` → `getBiDatasetById` → 跑确定性聚合 → 响应增 `chartSpecs?` + `datasetMeta?`；LLM prompt 仅追加 dataset 摘要文本（与 businessRequirementContext 同位置注入），不动现有 prompt 主结构。
-  - **故事线 iframe 不渲图**：iframe `sandbox=""` 禁脚本，echarts 进不去；当前选择把图表块放在汇报 Markdown 上方而非嵌进故事线 HTML，避免破坏 iframe 隔离契约。
+  - **V-HEALTH-SPIKE**（done 2026-06-22）：纯调研，产出 `docs/体检-spike结论.md`。结论：行数据通道✅、三态分类✅、聚合数据入口✅、本体填充度⚠️（偏概念无 link）。当前仅月粒度有数据。
+  - **X-HEALTH0 代笔**（done 2026-06-22，总控卡委派 §六，**四轮终审通过**）：types.ts 双侧 9 类型 + constants.ts HEALTH_SUB_TABS + getSubTabsForTab health 分支 + MainHeader Activity icon + HealthTabs.tsx 骨架。
+  - **V-HEALTH1 引擎**（done 2026-06-22）：`server/src/health-check-engine.ts`（596 行）— 数据画像(normalizeTimeValue/normalizeTimeColumn/classifyAggregation/inferFrequency) + 5 种子规则(R-DQ-01/R-DQ-02/R-AN-01/R-TR-01/R-CR-01) + runHealthSuite + classifyLifecycle + detectOntologyGaps + listHealthRules。零 LLM/零 IO。27 单测全绿。
+  - **V-HEALTH2 db+路由**（done 2026-06-22，四轮终审修复）：`db/viz.ts` 三表(health_runs[workspace_id FK CASCADE]/health_findings/ontology_gaps) + 8 CRUD。`routes/viz.ts` 5 路由(均 workspace-scoped)：GET rules / POST runs(校验 pathId 归属→非 ws pathId 400 不落空 run) / GET runs / GET runs/:runId/findings(校验 runId 归属) / POST export-html(复用 renderMarkdownReportToHtml)。run 编排 fetch D 域 API(不直 import D 域函数)。priorFindings 按 suite+datasetPathIds 组合匹配。
+  - **V-HEALTH3 前端**（done 2026-06-22，四轮终审修复）：`api/viz.ts` 4 health 方法(workspace-scoped)。`health-ui-state.ts` module store。4 pane：HealthDataPane(SQL 导出+数据提取真实接入面板，run 后读 results[].outputs 过滤表格文件逐个 addWorkspacePath 登记到 clean_data)/HealthDashboardPane(套餐+选集+**阈值表单**+触发→run 后跳报告+接入更多跳转)/HealthReportPane(**run 选择器**+effect cancellation guard+findings 分组+lifecycle 标注+gap 清单+**MD/HTML 导出**)/HealthTrendPane(生命周期流)。
 - 校验：
   - `npm run typecheck`：✅ server + web 全绿。
-  - `npm run build`：✅ 全绿（仅历史 chunk size 警告 + echarts-for-react 静/动态混合 import 警告，与 `BiDashboardPane` 同模式，非本次引入）。
-  - 探索域 LLM 隔离 grep（额外校验）：✅ 净，`DataExplorationPane` 子树未触碰，无 `(generate|chat|extract|clarify|sink|distill).*api\.` 匹配。
+  - `npm run build`：✅ 全绿（仅历史 chunk size 警告）。
+  - 引擎红线 grep：✅ 净（零 runPiPrompt/spawn/IO）。
+  - 27 单测全绿；重复路由=1（无重复）。
+  - 实跑通过：run1=19 findings(9问题+10风险)+10 gaps → run2=recurring → 跨 ws pathId 400 → HTML 导出 4039 字节有 body/h1。
 - 下一步：
-  - ① **故事线 iframe 嵌图降级方案**：当前故事线 HTML 不含图表（受 sandbox 限制）。可后续把 chartSpecs 渲染成静态 SVG 内联进 storylineHtml（echarts 服务端 SSR or 自写极简 SVG），让单文件故事线也带图。需总控拍板优先级。
-  - ② **slot 扩展**：当前确定性聚合只覆盖 `member_retention` + `member_recall`。若 BI dataset 后续接入新 slot（例如清洗后的客户分群、行为序列），`buildChartSpecsFromDataset` 需扩展 dispatch 分支；此前 chartSpecs 会返回空数组（前端降级为纯 Markdown，不报错）。
-  - ③ KICKOFF P0-B 看板画布持续推进（继承上次 session 主线）。
+  - ① **浏览器实跑点检**（用户提交前做）：体检台选集+套餐+阈值触发→报告 lifecycle+gap 可读→趋势展健康档案→导出 HTML。
+  - ② 本体积累正循环：体检 gap 清单 → 驱动补本体（`docs/backlog/本体持续积累机制.md`）。
+  - ③ 导出 HTML 端点已通，前端 exportHtml 已调（fetch POST → 下载 blob）。
 - 阻塞 / 待总控：
-  - 无代码阻塞。本次改动已落地、typecheck/build 双绿、隔离边界清。
+  - 无代码阻塞。四轮终审全部通过。
 - 开放问题：
-  - 故事线 iframe 是否需要嵌图？嵌的话走 SVG 内联还是 base64 PNG？
-  - chartSpecs 是否应该落盘（与 storylineHtml 同目录写一份 JSON）以便重渲染/分享？目前只在 API 响应里返一次，刷新页面就没了。
+  - finding id 用 `{runId}-{原id}` 保证跨 run 唯一，signature 用 `ruleId::pathId::column` 做跨 run 比对。
+  - HealthTabs 的 runId 用 module store(`health-ui-state.ts`) 传递，后续可由总控在 TabContext 加专用字段。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -119,6 +122,21 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - **轮询定时器泄漏**：使用 `setInterval` 轮询 job 进度时，必须在 job 达到终态（`success` / `failed` / `aborted`）时在轮询回调内显式调用 `clearInterval`，否则即便组件未卸载，前端仍会持续发起无效的 fetch。
 - **故事线 iframe sandbox 与 echarts 不兼容**（2026-06-19）：`PresentationVersionPane` 故事线 tab 用 `<iframe sandbox="">` 渲染 storylineHtml（无脚本、无外链，防 XSS / 数据回传），echarts 需要 JS 运行时，因此**图表块不能直接嵌进 storylineHtml**。当前选择把 chartSpecs 渲染在汇报版本 Markdown 上方的卡片栅格里，故事线 HTML 仍是无图的纯文字流程。若后续要让 storylineHtml 带图，必须走静态 SVG 内联或 PNG base64（不能解 sandbox），属于独立功能项，不要在 chartSpecs 渲染分支里临时撕口子。
 - **echarts-for-react 静/动态 import 警告**（2026-06-19，无害）：`PresentationVersionPane` 静态 import `echarts-for-react`，与 `BiDashboardPane` 同模式；但仓库里 `CompetitorPane` / `IndustryPane` / `WeatherPane` 是动态 import，rollup build 会打 warning："dynamic import will not move module into another chunk"。这是历史遗留组合（V 域三个 Pane 用动态 import），新增 Pane 默认跟 `BiDashboardPane` 走静态 import 即可，不要为了消警告改既有动态 import 的 Pane。
+- **体检模块·跨域数据读取必须走 fetch D 域 API**（2026-06-22，四轮终审教训）：V-HEALTH2 run 编排最初直接 import `getWorkspacePath` + `readFileSync` + `parseAggregationBuffer` 读 clean_data 行数据，被终审判为"绕过跨域调用口径 + 跨 workspace pathId 无校验导致数据泄漏"。正确做法：服务端 `fetch(http://localhost:${PORT}/api/bi/aggregations?workspaceId=…)` 先列表校验 pathId 归属本 ws，再逐集 `fetch(…/:pathId/data)` 取行数据。**禁止 V 域路由直接 import D 域 db 函数或 workspace_paths 表读取函数用于 health**——这既是安全边界（pathId 归属校验），也是 Orchestration §五.3 跨域走 HTTP 的契约要求。
+- **体检模块·非本 ws pathId 必须 400 拒绝、不落空 run**（2026-06-22）：pathId 归属校验必须在 `insertHealthRun` **之前**完成，有非法 pathId 直接 400 返回、不落 running 状态的空 run。否则会留下 status=running 永不结束的孤儿 run 记录。
+- **体检模块·lifecycle priorFindings 必须按 suite + datasetPathIds 组合匹配**（2026-06-22）：跨 run 比对取 priorFindings 时，不能只按 workspace 取最近一次 run——切换套餐（daily→monthly）或换数据集后，旧 run 的 findings 会被误标为 resolved。`listFindingsByRun` 必须接受 suite + datasetPathIds 参数，按排序后组合键匹配同配置的上一 run。
+- **体检模块·findings 路由必须 workspace-scoped + runId 归属校验**（2026-06-22）：`GET /api/health/runs/:runId/findings` 不带 workspaceId 是安全漏洞——任何 runId 可被任意 ws 访问。必须改为 `GET /api/workspaces/:id/health/runs/:runId/findings` + 校验 runId 归属本 ws。
+- **体检模块·接入面板必须调 addWorkspacePath 登记产物**（2026-06-22）：SQL export / extraction-tool run 产出的文件不会自动进 clean_data 聚合集列表——必须调 `api.addWorkspacePath(workspaceId, "clean_data", path, "file")` 登记。SQL export 用 `result.path`（规范化路径）不要用用户原始输入；tool run 读 `run.results[].outputs` 过滤表格文件（.csv/.tsv/.xlsx/.xls）逐个登记，登记失败不吞 catch、收集错误显示给用户。
+- **体检模块·跨 ws 切换需 effect cancellation guard**（2026-06-22）：报告页 useEffect 在 workspaceId 变化时除了清空 state，还必须加 `cancelled` flag + cleanup return——否则旧 ws 的异步请求晚返回时会覆盖新 ws 的 state。
+- **体检模块·HTML 导出复用 renderMarkdownReportToHtml**（2026-06-22）：新增 `POST /api/workspaces/:id/health/export-html` 端点，server 端调 `html-report.ts` 的 `renderMarkdownReportToHtml`，前端 POST markdown 内容获取渲染后 HTML 下载。不要在前端拼 `<pre>` 假装 HTML 报告。
+- **体检模块跨域数据读取必须走 HTTP fetch**（2026-06-22）：V-HEALTH2 run 编排读行数据时，不能直接 `import { getWorkspacePath } from "../db.ts"` + `readFileSync` + `parseAggregationBuffer`——这绕过了 D 域 `/api/bi/aggregations` 端点的 workspace 归属校验，导致任意 pathId 可读其他 workspace 的 clean_data（终审阻断项）。正确做法：服务端 `fetch("http://localhost:${PORT}/api/bi/aggregations?workspaceId=...")` 先列表校验 pathId 归属，再逐集 `fetch(".../:pathId/data")` 取行数据。这遵循 Orchestration §五.3 跨域走 HTTP fetch 而非直接 import。
+- **体检 pathId 校验必须在落 run 之前**（2026-06-22）：非本 workspace 的 pathId 不能静默跳过（会落一个空 run 返回成功，误导用户）。正确做法：先 fetch 列表端点校验全部 pathId 归属，有非法直接 400 返回，不 insertHealthRun。
+- **体检 lifecycle 比对必须限定同 suite + 同数据集组合**（2026-06-22）：`listFindingsByRun` 若只按 workspace 取最近 run，切换套餐或选集后会产生错误的 resolved/recurring。正确做法：传 suite + datasetPathIds 参数，按排序后组合键匹配 prior run。
+- **体检 findings 路由必须 workspace-scoped**（2026-06-22）：全局 `/api/health/runs/:runId/findings` 缺 workspace 归属校验。正确做法：`/api/workspaces/:id/health/runs/:runId/findings` + 校验 runId 归属本 workspace。
+- **体检跨 pane runId 传递用 module store**（2026-06-22）：不能用 `ctx.activeSessionId` 传 health runId（语义不符且默认空）。正确做法：`web/src/lib/health-ui-state.ts` module-level 变量 `getHealthSelectedRunId/setHealthSelectedRunId`，dashboard run 后 set、report mount 时 get。跨 workspace 切换时 report useEffect 清空 state + cancelled guard 防旧请求覆盖。
+- **体检接入面板必须调 addWorkspacePath 登记产物**（2026-06-22）：SQL export / extraction tool run 产出的文件不会自动进入 clean_data 聚合集列表。正确做法：SQL export 后用 `result.path`（exportSql 返回的规范化路径，非用户原始输入）调 `api.addWorkspacePath(workspaceId, "clean_data", path, "file")`；tool run 后遍历 `run.results[].outputs` 过滤表格文件(.csv/.tsv/.xlsx/.xls)逐个登记。登记失败不吞 catch，收集错误显示给用户。
+- **体检 HTML 导出必须复用 renderMarkdownReportToHtml**（2026-06-22）：不能在前端拼 `<pre>` 放 Markdown——那不是渲染后的 HTML 报告。正确做法：新增 `POST /api/workspaces/:id/health/export-html` 端点，server 端调 `renderMarkdownReportToHtml(reportName, markdown)` 返回 HTML，前端 fetch 后下载。
+- **Express 同一路径重复注册**（2026-06-22）：`vizRouter.post("/api/.../export-html", ...)` 重复注册两次时，第二个 handler 永远不可达，不报错但功能失效。多文件 cat >> 追加时尤其注意。
 
 ---
 

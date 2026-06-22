@@ -52,6 +52,14 @@ import {
   createExtractJob,
   getExtractJob,
   updateExtractJob,
+  insertHealthRun,
+  updateHealthRun,
+  listHealthRuns,
+  insertHealthFindings,
+  listHealthFindings,
+  listFindingsByRun,
+  insertOntologyGaps,
+  listOntologyGaps,
 } from "../db/viz.ts";
 import { getWorkspacePath, getWorkspace } from "../db.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
@@ -59,7 +67,9 @@ import { extractOntologyFromText, runChunkedExtraction } from "../onto-extract.t
 import { exportOntology, type ExportFormat } from "../onto-export.ts";
 import { readFlowFile } from "../flow-fs.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
-import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind } from "../types.ts";
+import { runHealthSuite, classifyAggregation, listHealthRules } from "../health-check-engine.ts";
+import { renderMarkdownReportToHtml } from "../html-report.ts";
+import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind, HealthSuite, HealthFinding, OntologyGap } from "../types.ts";
 
 function validateArtifactPath(path: string, source: string): void {
   const segments = path.split(/[\\/]/).filter(Boolean);
@@ -726,5 +736,130 @@ vizRouter.post("/api/action-tasks/:id/feedback", (req, res) => {
       review: b.review || "",
       score: Number(b.score) || 0,
     }));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ── 体检模块（V-HEALTH2）──确定性规则巡检，零 LLM ──
+
+// 数据读取走 D 域 API（Orchestration §五.3 跨域走 HTTP fetch），不直接 import D 域函数。
+// 先 fetch 列表端点校验 pathId 归属本 workspace，再逐集 fetch 行数据。
+
+import { PORT } from "../config.ts";
+
+const SELF_BASE = `http://localhost:${PORT}`;
+
+vizRouter.get("/api/workspaces/:id/health/rules", (_req, res) => {
+  res.json({ rules: listHealthRules() });
+});
+
+vizRouter.post("/api/workspaces/:id/health/runs", async (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) { res.status(404).json({ error: "workspace not found" }); return; }
+  const suite = String(req.query.suite ?? "monthly") as HealthSuite;
+  const validSuites: HealthSuite[] = ["daily", "weekly", "monthly", "quarterly", "yearly"];
+  if (!validSuites.includes(suite)) { res.status(400).json({ error: "invalid suite" }); return; }
+  const datasetPathIds: string[] = Array.isArray(req.body?.datasetPathIds) ? req.body.datasetPathIds : [];
+  const thresholds: Record<string, number> | undefined = req.body?.thresholds;
+  if (datasetPathIds.length === 0) { res.status(400).json({ error: "datasetPathIds required" }); return; }
+
+  // 1. fetch D 域列表端点校验 pathId 归属（在落 run 之前，有非法直接 400）
+  const listResp = await fetch(`${SELF_BASE}/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`);
+  if (!listResp.ok) { res.status(500).json({ error: `failed to fetch aggregations list: ${listResp.status}` }); return; }
+  const listData = await listResp.json() as Array<{ pathId: string }>;
+  const validPathIds = new Set(listData.map((d) => d.pathId));
+  const invalid = datasetPathIds.filter((pid) => !validPathIds.has(pid));
+  if (invalid.length > 0) {
+    res.status(400).json({ error: `pathIds not found in this workspace: ${invalid.join(",")}` });
+    return;
+  }
+
+  const runId = insertHealthRun(workspaceId, suite, datasetPathIds).id;
+  try {
+    // 2. 逐集 fetch 行数据（pathId 已全部校验通过）
+    const datasets: import("../health-check-engine.ts").HealthDatasetInput[] = [];
+    for (const pathId of datasetPathIds) {
+      const dataResp = await fetch(`${SELF_BASE}/api/bi/aggregations/${encodeURIComponent(pathId)}/data?limit=100000`);
+      if (!dataResp.ok) throw new Error(`failed to fetch data for pathId ${pathId}: ${dataResp.status}`);
+      const data = await dataResp.json() as { columns: string[]; rows: Array<Record<string, import("../types.ts").BiCell>> };
+      datasets.push({ pathId, columns: data.columns, rows: data.rows });
+    }
+
+    // 3. 读本体（同进程直 import，非跨域）
+    const ontologies = listOntologies(workspaceId);
+    let objects: import("../types.ts").ObjectType[] = [];
+    let links: import("../types.ts").LinkType[] = [];
+    for (const ont of ontologies) {
+      objects = objects.concat(listObjectTypes(ont.id));
+      links = links.concat(listLinks(ont.id));
+    }
+    const metrics = listMetrics(workspaceId);
+
+    // 4. 取上次同 suite + 同数据集组合的 run 的 findings 作为 priorFindings
+    const priorFindings = listFindingsByRun(workspaceId, suite, datasetPathIds);
+
+    // 5. 跑引擎
+    const { findings, gaps } = runHealthSuite({
+      suite,
+      datasets,
+      metrics,
+      links,
+      objects,
+      businessContexts: [],
+      thresholds,
+      priorFindings,
+    });
+
+    // 6. 落 findings + gaps（id 加 runId 前缀保证跨 run 唯一）
+    const findingsWithRun = findings.map((f) => ({ ...f, runId, id: `${runId}-${f.id}` }));
+    insertHealthFindings(findingsWithRun);
+    insertOntologyGaps(runId, gaps);
+
+    // 7. 更新 run
+    const problemCount = findings.filter((f) => f.kind === "问题").length;
+    const riskCount = findings.filter((f) => f.kind === "风险").length;
+    updateHealthRun(runId, {
+      finishedAt: Date.now(),
+      problemCount,
+      riskCount,
+      status: "done",
+    });
+
+    res.json({ run: { id: runId, workspaceId, suite, datasetPathIds, startedAt: Date.now(), finishedAt: Date.now(), problemCount, riskCount, status: "done" as const }, findings: findingsWithRun, gaps });
+  } catch (err) {
+    updateHealthRun(runId, { finishedAt: Date.now(), status: "error" });
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+vizRouter.get("/api/workspaces/:id/health/runs", (req, res) => {
+  try {
+    res.json(listHealthRuns(req.params.id));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.get("/api/workspaces/:id/health/runs/:runId/findings", (req, res) => {
+  try {
+    // 校验 runId 归属本 workspace
+    const runs = listHealthRuns(req.params.id);
+    if (!runs.some((r) => r.id === req.params.runId)) {
+      res.status(404).json({ error: "run not found in this workspace" });
+      return;
+    }
+    const findings = listHealthFindings(req.params.runId);
+    const gaps = listOntologyGaps(req.params.runId);
+    res.json({ findings, gaps });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// 体检报告 → HTML 导出（复用 renderMarkdownReportToHtml，前端 POST markdown 内容）
+vizRouter.post("/api/workspaces/:id/health/export-html", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) { res.status(404).json({ error: "workspace not found" }); return; }
+  const markdown = String(req.body?.markdown ?? "");
+  const reportName = String(req.body?.reportName ?? "体检报告");
+  if (!markdown.trim()) { res.status(400).json({ error: "markdown required" }); return; }
+  try {
+    const html = renderMarkdownReportToHtml(reportName, markdown);
+    res.json({ html });
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });

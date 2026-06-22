@@ -9,23 +9,23 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-22 · E-PROMPT2：ChatPane 接入「沉淀 prompt」，完成 LLM 提炼草稿→人审编辑→D Prompt 库入库闭环。
+- 最近更新：2026-06-22 · E-DRAWER-UX + E-DELEGATE-TEMPLATE：修复委派抽屉窄宽布局，并把「控制·subagents 管理」agent 模版接入委派卡。
 - 进度：
-  - 新增 `server/src/prompt-distillation.ts`：只读取最新 user turn 及其成功 assistant 回复；最新任务未完成/失败则直接返回 `null`，不回退沉淀旧任务、不调用 LLM。
-  - LLM 把驱动成功结果的目标/步骤/格式/约束提炼为可直接复用 prompt，将一次性文件名、日期、地区、指标、数值抽成 `{{var}}`；原始输出用 frontmatter + body，校验后返回 X-PROMPT0 `PromptDraft`，只返回不写库。
-  - `POST /api/workspaces/:id/sessions/:sessionId/distill-prompt` 已落 `routes/engine.ts`，校验 workspace/session 归属并记录 session usage、`prompt_distillation` success/failed trace；无 E→D self-HTTP。
-  - `web/src/lib/api/engine.ts` 增加域内 `distillSessionPrompt`；`ChatPane` 在「沉淀 trace」旁增加「沉淀 prompt」按钮，含 loading、无草稿、失败与入库成功提示，原 trace 状态机不变。
-  - 新增 `PromptDistillDialog.tsx`，title/category/body/variables/tags 全可编辑；取消不落库，确认后由浏览器调用既有 D `api.createPromptTemplate` 写当前 workspace Prompt 库，保存错误留在弹窗内。
-  - 红线：runner 仅消费 DB 中 session message 衍生内容，不读 `draw_data`、workspace 文件或数据探索产物；server 新链路无 `fetch`，Prompt 库写入只发生在前端确认后。
+  - `SkillSelector` 增加可选 `align(left|right)` / `direction(up|down)`，默认仍为 `up+left`；下拉宽度限制为不超过 viewport，ChatPane composer 原交互不变。
+  - `DelegateSubAgentCard` 的 embedded 模式改为显式单列 `minmax(0,1fr)`：brief→model→agent 模版→skill 子集→clean_data 文件依次满宽；native model select 加 `min-w-0/max-w-full`，避免其 min-content 撑破抽屉；非 embedded 独立卡仍保留双列。
+  - embedded skill 选择器移到三态按钮下方独立行，并使用 `down+left` 展开；tooltip 不再覆盖「继承/禁用/指定」。浏览器量测：菜单与选择器均完整位于约 437px 抽屉内，ChatPane composer 仍向上左对齐。
+  - `DelegateSubAgentCard` 通过既有 `api.listSubAgents()` 加载 enabled 模版，提供「默认（引擎内置 persona）」与各模版选项，展示 name/persona 摘要/toolIds 数量和明细；不读取或修改 `SubAgentManagementPane`。
+  - 模版与卡内配置正交：模版只提供 persona + extraction tool allowlist；model、skill 子集、clean_data 文件仍由委派卡独立设置。`sessionId` 变化会重置模版选择。
+  - `submit()` 已透传 `templateId: selectedTemplateId || undefined`；默认委派请求不含字段，指定模版请求携带现有契约字段。未改 server、D API 或接缝层。
 - 校验：
   - `npm run typecheck` ✅（server + web 全绿）。
   - `npm run build` ✅（仅既有 ECharts import 与 chunk-size warning）。
-  - `prompt-distillation.test.ts` 5/5 ✅：最新成功轮次、失败不回退、frontmatter 解析/变量归一、无成功轮次零 LLM、确定性草稿生成。
-  - `memory-consolidation.test.ts` 8/8 ✅：既有「沉淀 trace」回归全绿。
+  - 浏览器实跑 ✅：默认请求无 `templateId`；指定模版请求含 `templateId:"tpl-browser-smoke"`；persona/toolIds 展示正确；模版 select 完整位于抽屉边界内。
+  - 浏览器模版数据与 delegate 响应使用 route interception；本机真实 `GET /api/subagents` 返回空数组，未修改 D 配置，也未进行真实 LLM runner E2E。
 - 下一步：
-  - 总控回流终审 E-PROMPT2，重点核对：只取最新 user turn、不回退旧任务；frontmatter 非 JSON 输出；server 只返草稿、浏览器确认后才写 D 库。
-  - 真实模型 + 浏览器 smoke：完成一轮成功对话→沉淀 prompt→确认 `{{var}}` 参数化质量→编辑/取消→确认入库→在 prompts 管理「模板库」可见；另测最新失败轮次友好空提示与既有沉淀 trace。
-  - 如真实模型偶发 frontmatter 漂移，先收集原始输出再增强 parser；禁止为此改冻结 `index.ts` 或复制其 JSON parser。
+  - 总控终审 E-DRAWER-UX / E-DELEGATE-TEMPLATE，重点核对 embedded 单列是否符合最终密度，以及模版、model、skill、dataFiles 的正交文案。
+  - 准备至少一条 enabled 真实 subagent 模版后做 runner E2E：指定模版委派→确认 task 持久化 templateId→从 trace/结果核对 persona 与 toolIds allowlist 生效→失败 resume/retry 仍恢复原模版；默认委派行为保持不变。
+  - 补做 E-PROMPT2 真实模型 + 浏览器 smoke：成功对话→沉淀 prompt→检查 `{{var}}` 质量→编辑/取消/入库；另测最新失败轮次友好空提示和既有沉淀 trace。
 - 阻塞：无。
 - 开放问题（需总控）：
   1. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空。
@@ -84,10 +84,12 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **自动沉淀去重 BM25 阈值不归一化（2026-06-18 质量1裁决）**：`findAutoDistillDuplicate`（auto-distill sweep 与 coverage-gap distill 共用）仍使用 BM25 raw score 做相似度排序，但自动阻断判据已改为**只与 `active` skill 比较，跳过 `candidate`**。原因：candidate 本就是待人审候选，互相撞车不应阻断继续产出；这能消除“超级 candidate skill 万能近邻”造成的新候选误跳过。默认 `duplicateThreshold` 已从临时 `100` 回调到 `50`。同 slug / 同路径文件已存在仍硬跳过。`/skill-registry/conflicts` 是人工治理展示端点，本次保留非 archived 全部参与的展示口径；如要支持“只看 active”需另开 UI/接口筛选。长期若 active 超级 skill 仍误杀，再排期做 BM25 归一化，不要继续简单上调 raw 阈值。
 - **workflow skill 子集配置（2026-06-14 P1 C）**：`WorkflowDef.defaultSkillPaths` 是 workflow 级 fallback；`node.skillPaths === undefined` 继承 workflow 默认，`node.skillPaths = []` 明确禁用默认 skill，非空数组则只注入该节点专属子集。runner 的权威逻辑是 `node.skillPaths ?? workflow.defaultSkillPaths`。
 - **ChatPane 抽屉化布局契约（2026-06-14，2026-06-15 polish）**：三个助手面板（Fork/@工具/委派）不再内联在 composer 列，改为 ChatPane 内部右侧可调宽抽屉。ChatPane 根容器横向 flex（左主列 flex-1 + 右抽屉 shrink-0），不动 App 布局、不动成果面板、不动后端。抽屉宽度 clamp [360px, 容器 60%]，localStorage 持久化（key `chatpane.assistDrawerWidth`），零新依赖；拖拽和 mount/window resize 必须共用同一 clamp 逻辑，避免已存大宽度在窄屏把主列压没。ForkBranchPanel 满高 flex 列（去 max-h-[360px]），分支 tabs/输入 shrink-0，会话区 flex-1 overflow-y-auto。抽屉头是三助手标题唯一显示位置，子组件内不再重复标题；ManualAnalysisToolCard / DelegateSubAgentCard 在抽屉内通过 `embedded` 态去自身外层 border/rounded/bg/padding，避免边框套边框，默认非嵌入 card 样式保持不变。
+- **委派抽屉响应式契约（2026-06-22）**：`DelegateSubAgentCard` 的 embedded 模式必须使用单列 `minmax(0,1fr)`，所有 grid/select 子项显式 `min-w-0`，防止 native select 的 min-content 把 360–460px 抽屉撑宽；非 embedded 卡才保留 `md` 双列。`SkillSelector` 默认 `up+left` 供 ChatPane composer 使用，embedded 委派卡显式用 `down+left`，下拉宽度上限为 `min(20rem, 100vw-2rem)`；指定 skill 的 trigger 必须放在三态按钮下方独立行，不能与 tooltip/按钮挤在同一行。
 - **ChatPane fork/delegate 前端边界**：普通日常 chat 仍从 `folderScope.type === "session"` 取活跃 session；专题 `anax_chat` 是明确例外：`folderScope` 传 `{type:"flow", flowId}`（让 clean_data/report/数据 tab 按专题 flow 作用域），但 ChatPane 的 session 工具（@工具/Fork/委派）走 `activeSessionId`，默认只从 `folderScope.type==="session"` 推断 → flow scope 下取不到 → 三按钮禁用。**故 flow scope 复用 ChatPane 必须显式传 `sessionId` prop**（`ChatPane:273 activeSessionId = p.sessionId || folderScope 推断`），专题传 `zhuantiChatSessionId`；卡3 初版只传 folderScope+disabled、漏传 sessionId 致三按钮禁用，2026-06-18 总控快修补上（clean_data 加载 `ChatPane:337-344` 早已支持 flow scope，故只缺 sessionId 一处）。send/runtime 仍由 App 层独立 zhuantiChat* 状态驱动。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
 - **Fork 分支路径作用域回退父 session（2026-06-14 快修2.3）**：fork 分支是独立 session、名下无注册路径。`handleSend` 解析输出/数据路径时必须把作用域回退到父任务 session：`pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id`，用于 `buildRegisteredPathContext` 的 `sessionId` 与 `fallbackOutputDir`。否则 `output-paths.selectOutputPath` 逐级回退（scoped report→scoped clean_data→workspace report→workspace clean_data）会坍缩到 workspace 级最近 clean_data 源目录，导致分支产物写到数据源目录而非任务 `060_reports`。数据安全不受影响：fork 继承的是父 clean_data，`draw_data` 仍被 `buildRegisteredPathContext` 排除且永不作为输出目标。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
 - **subagent ↔ skill 绑定（F 卡，2026-06-16）**：`SubAgentTaskInput.skillPaths?`（双侧 types，三态同 `node.skillPaths`：undefined 继承/[]禁用/非空子集）。delegate 端点(`index.ts /api/sessions/:id/delegate`)用 `skills.ts` 的 **`parseRequestedSkillPaths(workspaceRoot, value, {mode:"strict"})`** 解析（三态 + 数组守卫，复用 `validateSkillPaths`，与 workflow 同校验口径）→ 透传到 `runDelegatedSubAgent` → `runPiTurn({skillPaths})` 经 pi-adapter `--skill` 注入，无新注入机制。前端 `DelegateSubAgentCard` 复用 `SkillSelector` + 三态 `skillMode`。子 agent **成功完成后调 `recordSkillActivationForRun`**，激活进 A 生产遥测（与 flow/workflow/autonomous 同口径）。三态解析有 `skills.test.ts` 单测覆盖。
+- **委派模版前端契约（2026-06-22）**：`DelegateSubAgentCard` 只读既有 `api.listSubAgents()` 并仅展示 enabled 项；默认项用空字符串表示，提交时转 `undefined`，保持引擎内置 persona 的旧行为。指定项只透传既有 `SubAgentTaskInput.templateId`，不得从 `SubAgentTemplate` 臆造 model 字段。模版负责 persona + extraction tool allowlist，卡内 model + skillPaths + dataFiles 与其正交、允许叠加；session 切换必须重置选择，避免把上一任务模版误带入新 session。`templateId` 已由 task 持久化并供 resume/retry 恢复，前端不得在续跑时用当前下拉值覆盖原任务模版。
 - **ChatPane ExtractionTool 展示边界**：前端只展示 X 透传的 tool event / pi content block，不直接触发工具执行；`tool_call` 映射为 running `tool_use`，`tool_result` 回填同 id 卡片，最终 `message_end` 再带同一 tool block 时按 `id/tool_use_id` 去重。真实红线仍在后端 `source=ai` 守卫，前端不得把 `draw_data` 内容或样本送入 LLM。
 - **ExtractionTool skill 桥落盘策略**：生成到 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md`，带 `xanthil-generated-extraction-tool-skill` 标记；只更新带生成标记的文件，遇到用户手写同路径 skill 不覆盖。skill 只描述 MCP 工具契约与 clean_data 限制，不承担安全校验。
 - **工作流活跃前端路径唯一化**：legacy `ExecutionPane` / `AgentFlowPane` / `FlowChatPane` / `FlowWorkflowPane` / `FlowEditorPane` 已删除；新功能只接入 `MultiAgentExecutionPane` 真路径。`execute_flow` WebSocket client message 已从 web types 移除，不得为兼容旧组件重新引入。
@@ -180,7 +182,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 2026-06-16 command 发送入口决策：除了普通 session chat，flow chat 也接入 command 展开，防止同一个 `/cmd` 在不同聊天入口行为分叉。历史消息仍保存用户原文，原因是 command 是用户输入意图，展开 prompt 是 pi 执行细节；如果后续 UI 要展示展开结果，应新增显式 preview/trace，不应覆盖 transcript。
 - 2026-06-16 command 向导前端决策：参数表单提交后直接发送 `/cmd --key=value`，而不是先回填输入框等待二次点击。原因是“口径2”价值核心是直奔结构化向导、降低 prompt 工程学习成本；服务端仍会保存原始 command text 并单源展开，前端没有新增协议字段。无参命令保留为插入输入框，是为了兼容位置参数/自由补充文本。
 - 2026-06-16 覆盖缺口检测决策：缺口建议先做**只读列表 + 手动蒸馏**，不进治理队列。原因是本卡目标是“where to evolve”的发现层，填补由 B 蒸馏链路负责；若直接持久化治理状态，会扩大到队列表、状态机、审计和 UI 分类，超出 E 卡最小闭环。后续如总控要求治理化，应新增 gap proposal 表或复用既有治理队列，但不得绕过 B 的 distilled candidate 与人审门。
-- 2026-06-16 subagents 管理 P0 决策：`GET/PUT /api/subagents` 暂放在 legacy `index.ts` 的委派 runner 邻近位置，而不是先拆到 `routes/engine.ts`。原因是本卡直接改 `runDelegatedSubAgent`，路由与 runner 共享 `coerce/read/write/resolvePersona` helper 最小改动；是否迁移到 E router 留给总控统一裁决。P0 也不改 `subagent_tasks` schema：`templateId` 只透传到当次 runner，不持久化，避免扩大 X 接缝和 DB migration。
+- 2026-06-16 subagents 管理 P0 决策：`GET/PUT /api/subagents` 暂放在 legacy `index.ts` 的委派 runner 邻近位置，而不是先拆到 `routes/engine.ts`。原因是本卡直接改 `runDelegatedSubAgent`，路由与 runner 共享 `coerce/read/write/resolvePersona` helper 最小改动；是否迁移到 E router 留给总控统一裁决。P0 初版曾不持久化 `templateId`；该限制已被后续契约取代，当前 `SubAgentTask.templateId` 已持久化并由 resume/retry 恢复，勿按初版实现回退。
 - 画布**纯预览只读**（`nodesDraggable=false` 等），所有变更经「pi 对话」自然语言完成。
 - `workflow.json` 不存在时从**目录树自动推断节点**（数字前缀排序/单目录包裹展开，标 `inferred:true`）。
 - 创建视图三区（架构+进度+对话）；黑板**正名融合**——把唯一真实价值（`{{id}}` 传递关系）显示在执行流节点卡，删重复输出汇总。

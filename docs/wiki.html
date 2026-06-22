@@ -290,6 +290,143 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【Harness 自进化专题·研究驱动】（总控拆卡 2026-06-22；来源=harness 论文集精读 docs/backlog/{EFC,AHE,SkillOpt,AgingBench,HarnessAudit}-*.md + 记忆 harness-papers-2026）。命题：把 harness(测评/skill/记忆/编排)当可进化的一等工程对象——Life-Harness「改接口不改模型」为整条路线背书。
+  // ── 波次与依赖（必读）── P0=EFC 度量底座(其余三项皆插它)→AHE 可证伪编辑契约；P1=SkillOpt 受控回写器 / AgingBench 记忆老化巡检(可并行)；P2=HarnessAudit 轨迹审计(待多 agent 规模)。前 4 项共用同一套实验场测评台证据，串成专题逐步捞。
+  // ── 落点：主域=E(codex；实验室/Eval/Harness/skill/multi-agent 全归 E)、跨域契约=X(总控；types.ts/cache 契约)、记忆 store 信号=D。冻结卡(P1/P2)待 P0 跑通『同分不同 EFC』验证后由总控解冻。════
+  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·契约+接缝·P0】X-HARNESS0：EFC 度量 + AHE change-manifest 双契约(types.ts) + cache-harness 对接 + 无-git 组件回滚预研（总控自做）", brief:
+`来源：docs/backlog/EFC-反馈效率度量.md + AHE-可证伪编辑契约.md。本卡=接缝契约+预研，总控自做，解锁 P0 两张 E 卡。
+范围(接缝层·总控自做)：
+1. types.ts 双侧(单一真源 server+web 镜像，禁本地重声明)：
+   · FeedbackEvent{ I;V;R;M ∈[0,1]; raw } + EfcScore{ efc; normalized(EFC/D_task); eta(EFC/C_raw) }   // EFC_t=κ·I·V·R·M, κ=10
+   · TaskDemand{ L; H_tool; S_state; N_obs; V_oracle }   // D_task 归一化输入
+   · ChangeManifest{ editId; component:HarnessComponent; failureEvidence; rootCause; targetedFix; predictedFix:string[]; predictedRegression:string[] } + EditVerdict{ fixPrecision;fixRecall;regPrecision;regRecall }
+   · type HarnessComponent='prompt'|'command'|'subagent'|'hook'|'skill'|'memory'|'tool'   // AHE 七类组件对位实验场
+2. cache-harness 对接点：notes-infra 缓存契约(cache.ts/prompt-blocks.ts)暴露 C_raw(token/tool 调用计数)只读 getter，供 η=EFC/C_raw。总控持有，定签名。
+3. 预研(无 git 难点)：实验场编辑无 git → AHE『组件级回滚』缺底座。本卡给出回滚方案口径(编辑快照/版本表 or 复用既有持久化)写死供 E-AHE1 施工；若需 db 新表在此审定 migration。
+验收：types 双侧对齐、typecheck+build 绿、C_raw getter 与回滚方案口径写死可被 E 直接施工。
+约束：仅接缝层，不实装打分逻辑(归 E)。跨域依赖：解锁 E-EFC1 / E-AHE1。` },
+  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·EFC·P0】E-EFC1：EFC 反馈效率度量实现 + 实验场测评台集成 + η 接 cache-harness", brief:
+`来源：docs/backlog/EFC-反馈效率度量.md。落点=实验室/测评台(E)。前置=X-HARNESS0 契约。
+范围(E slot)：
+1. EFC 打分器(server slot 新文件 efc-scoring.ts 或并入既有 *-evaluation-*.ts)：事件级 EFC_t=κ·I·V·R·M(κ=10) + 轨迹级 Σ。先做规则版四因子(不学 θ)：V_t 读 typecheck/build/health-check-engine 结果 + 状态质量门(passing1.0/assert0.42/runtime0.12/timeout0.06)；M_t 读记忆写入信号(跨域 HTTP 读 D)；I/R 先二值/启发式。
+2. 测评台集成：6 测评台(*-evaluation-runner.ts)产出新增 EFC/η 一栏，与既有分数并列(不替换)。
+3. η=EFC/C_raw：经 X-HARNESS0 暴露的 cache getter 取 C_raw。
+4. D_task 归一化：实验场任务先人工标 5 量，算 normalized EFC 供跨任务比。
+验收：跑通≥1 个测评台，呈现『同分不同 EFC』真实样例(分数同 η 不同)；server typecheck+build+engine tests 绿。
+约束：先规则版排序正确即可，不追 R²=0.99 估计器(后续优化批)。types 引用 X，不碰接缝层。跨域依赖：M_t 读 D /api(memory)。` },
+  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AHE·P0】E-AHE1：change-manifest 记录 + attribute 对照器(用 EFC) + 实验场编辑接入", brief:
+`来源：docs/backlog/AHE-可证伪编辑契约.md。落点=实验室(E)。前置=X-HARNESS0(manifest 契约+回滚方案)、E-EFC1(attribute 用 EFC 分)。
+范围(E slot)：
+1. manifest 记录：实验场每次 harness 编辑(prompt/command/subagent/hook/skill)产一份 ChangeManifest(失败证据/根因/目标修复/预期修好+预期回归任务集)，落库(db/engine.ts，表名经 X 审)。先做『人改+手填 manifest』半自动，不做自动 Evolve Agent。
+2. attribute 对照器：下一轮测评后，predictedFix/predictedRegression 与实测任务级 delta 取交集，产 EditVerdict(fix/reg 精确率召回)；delta 质量分用 E-EFC1 的 EFC 而非纯 pass@1。
+3. 组件级回滚：按 X-HARNESS0 写死的回滚方案，无效编辑可回退。
+4. 实验场 UI：编辑流程加 manifest 录入 + verdict 回显(hook-eval-core/subagent-core 之上)。
+验收：一次完整循环(编辑→填 manifest→下轮测评→自动出 verdict)跑通；typecheck+build+tests 绿。
+约束：半自动起步(人改)，不全自动改 harness(MOSS 观望)。跨域依赖：用 E-EFC1 分。` },
+  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·SkillOpt·P1·冻结待 P0 通】E-SKILLOPT1：skill 受控回写器(验证门+严格接受+rejected buffer+slow-update 受保护字段+有界 L_t)", brief:
+`【冻结】待 P0(EFC)跑通『同分不同 EFC』+总控解冻后开工。来源：docs/backlog/SkillOpt-skill受控回写器.md。落点=skill 闭环(E：skill-{curator,distillation,retrieval,activation}.ts / skills.ts)。
+范围(E slot)：
+1. 受控回写器：优化器(独立模型)把测评打分轨迹→有界 add/del/replace 编辑(top L_t，cosine 衰减)。
+2. 严格接受门：候选 skill 仅当 held-out 测评集分数『严格大于』当前才接受(平手也拒)；分数可用 EFC。
+3. rejected-edit buffer：被拒编辑入缓冲作负反馈喂下轮。
+4. slow-update 受保护字段：skill 文件划『跨 epoch 长程经验』块，仅 epoch 级元更新可写(消融去掉跌 22.5 分，最重要)。
+验收：先做『验证门+严格接受』堵 skill 漂移即可交付 MVP；端到端 skill 自动迭代不退化。typecheck+build+tests 绿。
+约束：不绑 paradigm A MVP。跨域依赖：打分复用 E-EFC1。` },
+  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1·冻结】X-AGING0：记忆老化探针/度量契约(types.ts)（总控自做）", brief:
+`【冻结】待总控解冻。来源：docs/backlog/AgingBench-记忆老化巡检.md。本卡=接缝契约，总控自做，解锁 E-AGING1/D-AGING2。
+范围(接缝层)：types.ts 双侧：
+ · type AgingKind='compression'|'interference'|'revision'|'maintenance'   // 写W/读R/用U/存S
+ · CounterfactualProbe{ id; write:'agent'|'oracle'; read:'agent'|'oracle' }   // P1/P2/P3
+ · AgingMetric{ halfLife; decaySlope; finalScore; accumulatorError?; interferenceResistance?; forgetAccuracy?; shockDelta? }
+ · ErrorAttribution{ writeErr; readErr; utilErr }   // 由 P1/P2/P3 Acc 差算
+验收：types 双侧对齐、typecheck+build 绿。约束：仅契约。跨域依赖：解锁 E/D 两卡。` },
+  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1·冻结】E-AGING1：Dream Worker 记忆老化夜间巡检 + 反事实探针 + 定向修复建议", brief:
+`【冻结】待 X-AGING0 契约 + 总控解冻。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 eval/Dream Worker(E：memory-evaluation-*.ts，E-MEM2-DREAM 同源)。
+范围(E slot)：
+1. Dream Worker 夜间任务：先做最痛两类——干扰(相近记忆卡冲突告警)+修订(事实更新后回扫引用它的卡)。
+2. 反事实探针 P1/P2/P3(oracle write/read)：错误归因到写/读/用阶段(同错不同修)，轻量版先小验证集人工标 oracle。
+3. 老化曲线度量(半衰期/衰减斜率/accumulator_error/shock_delta) + 按 profile 出定向修复建议。
+验收：夜间巡检产『干扰/修订』老化清单 + 阶段归因；典型样例验证『行为测试过但事实已错』。typecheck+build+tests 绿。
+约束：不堆模型规模治修订(表征问题，靠显式状态维护)。跨域依赖：记忆 store 信号读 D-AGING2。` },
+  { dom: "D", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1·冻结】D-AGING2：memory-injection 老化信号(卡冲突检测 + 事实更新回扫)", brief:
+`【冻结】待 X-AGING0 契约 + 总控解冻。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 store/注入(D：memory-injection.ts、规则记忆 db/data.ts、RulesPane)。
+范围(D slot)：
+1. 卡冲突检测：相近/可混淆记忆条目识别，暴露 GET 供 E 巡检消费(跨域 HTTP，不被 E import)。
+2. 事实更新回扫：某条记忆被 supersede/更新后，标记引用它的下游卡待校验(对接『验证 file/flag 仍存在』理念)。
+3. RulesPane 展示老化信号(可选)。
+验收：产卡冲突对 + 过期引用清单；数据探索 LLM 隔离 grep 净；typecheck+build 绿。
+约束：守 AGENTS.md 数据安全。跨域依赖：供 E-AGING1 消费。` },
+  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2·冻结】X-AUDIT0：harness 形式化(Π/Φ/Σ)+四类违规+YAML 策略规约契约（总控自做）", brief:
+`【冻结·P2】待多 agent 协作规模上来 + 总控解冻。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。本卡=接缝契约，总控自做。
+范围(接缝层)：types.ts 双侧：
+ · HarnessPolicy{ permissions:Π(role→tools/resources); infoFlow:Φ(allow/deny role pairs); coordination:Σ }
+ · type ViolationClass='V-OT'|'V-OR'|'V-IC'|'V-ID'
+ · Violation{ class; severity; actingRole; evidence } + SafetyAdherence{ tool;resource;flow }   // SAR=1-min(1, ω_low·V_low+ω_high·V_high), ω_high=.30/ω_low=.15
+ · YAML 策略规约 schema(角色工具三层 required/forbidden/unnecessary + 资源参数白名单 + 通信拓扑 + 数据泄露规则)
+验收：types 双侧对齐 + YAML schema 定稿、typecheck+build 绿。约束：仅契约。跨域依赖：解锁 E-AUDIT1。` },
+  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2·冻结】E-AUDIT1：轨迹结构化日志(px-hook-runner)+确定性 access checker(Judge)+SAR 报表", brief:
+`【冻结·P2】待 X-AUDIT0 契约 + 总控解冻。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。落点=multi-agent/hooks(E：multi-agent-runner.ts、px-hook-runner、health-check-engine.ts)。
+范围(E slot)：
+1. Execution 阶段：px-hook-runner 出结构化轨迹日志(工具调用/资源访问/agent 间消息，append-only JSONL)。
+2. Judge 阶段：health-check-engine 扩 trajectory-audit——确定性 access checker 判四类违规(V-OT/OR/IC/ID)，后验非在线拦截。
+3. SAR 报表 + 先审信息流(V-IC/ID)；默认 hub-spoke 拓扑(三域经总控中转减少 spoke-spoke 泄露)。
+验收：对一段 D/E/V handoff 轨迹后验出 SAR + 违规清单；验证『完成≠安全』。typecheck+build+tests 绿。
+约束：后验起步不在线拦截。跨域依赖：策略来自 X-AUDIT0。` },
+  // ════ 【体检模块·新一级模块】（总控拆卡 2026-06-22；深审回炉 v2；SPIKE 定稿 2026-06-22）。用户需求：用固定脚本（零 LLM）扫描业务数据，发现「已发生的问题」与「将发生的风险」，联动本体库(metric/link/object)与知识库(rule_memory/business_context)。频率=日/周/月/季/年「体检套餐」。三决策：①落点=新增一级『体检』模块 ②调度=MVP 先手动触发套餐 ③规则=内置代码逻辑+仅阈值可配。
+  // ── 深审纠正 4 处（必读）── ① 数据面=聚合集行数据 GET /api/bi/aggregations/:pathId/data（BiAggregationData{columns,rows[]}，红线安全=已登记 clean_data，draw_data 403）。② 数据入口=体检自带「聚合数据入口」复用 D 的 SQL/extraction/bi-dataset 三通道（均 legacy index.ts，跨域走 HTTP fetch 不直接 import）。③「机会」=「风险」：问题=已越界(截面)，风险=趋势指向越界(连续单调/斜率外推/到阈距离，需时序)。④ 体检=有记忆的健康档案：finding 生命周期(new/recurring/worsening/resolved)+跨 run 比对，优先级第一。
+  // ── SPIKE 结论（2026-06-22 Agent-D 实跑，详见 docs/体检-spike结论.md）── 全部可行：① 行数据通道实跑通(聚合集24，cohort_month=Excel序列号月粒度6期)，引擎需 normalizeTimeColumn(Excel序列号/ISO/时间戳三格式)。② 形态三态(timeseries/snapshot/dimension)启发式可分，频率用 stride 众数推断不硬编码白名单。③ 入口三通道可用，V-HEALTH2 跨域走 fetch。④ 本体填充偏低(零售46/会员~20 concept，全 draft，from-aggregation 产 dataset/property 但零自动 link)→ 体检第一阶段零本体依赖(只跑数据质量规则)，产 gap 清单驱动本体积累正循环。当前仅月粒度有数据；日/周/季/年零数据但引擎通用探测、体检台如实标注。
+  // ── 状态：SPIKE 完成 → X-HEALTH0 已定稿 → V-HEALTH1/2/3 已解冻 ── 模块归 V 域，执行=Agent-D/opencode（antigravity 已 2026-06-19 停用），接缝先行卡归 X(总控)。════
+  { dom: "X", status: "done", created: "2026-06-22 17:01", title: "【体检·契约+接缝·已定稿】X-HEALTH0：Health 契约(问题/风险+finding生命周期+数据三态) + 一级『体检』tab 接缝挂载（总控自做）", brief:
+`来源：用户需求「体检模块」+ 深审回炉 v2 + SPIKE 定稿(2026-06-22)。本卡=接缝契约+一级 tab 挂载，总控自做。**数据面口径已据 SPIKE 冻结**。解锁 V 三卡。
+范围(接缝层·总控自做)：
+1. types.ts 双侧(单一真源 server，web 镜像，禁本地重声明)：
+   · type HealthSuite = 'daily'|'weekly'|'monthly'|'quarterly'|'yearly'
+   · type HealthCategory = '数据质量'|'指标异常'|'勾稽一致'|'趋势风险'
+   · type HealthFindingKind = '问题'|'风险'   // 问题=已越界(截面)；风险=趋势指向越界(需时序)
+   · type FindingLifecycle = 'new'|'recurring'|'worsening'|'resolved'
+   · type DatasetShape = 'timeseries'|'snapshot'|'dimension'   // SPIKE② 形态三态
+   · HealthRuleMeta { id; category; title; description; suites: HealthSuite[]; kind: HealthFindingKind; needs:{ timeSeries:boolean; crossDataset?:boolean; ontologyRefs?:('metric'|'link'|'object')[] }; thresholds: Record<string,number>; enabled }
+   · HealthFinding { id; runId; ruleId; category; kind; severity:'info'|'warn'|'critical'; lifecycle: FindingLifecycle; signature(跨 run 识别同一问题的稳定指纹); firstSeenRunId; title; evidence: Record<string,unknown>(须自解释到可手工复算); boundTo?:{datasetPathId?;objectId?;metricId?;column?}; suggestion(规则模板，非 LLM); detectedAt }
+   · HealthRun { id; workspaceId; suite; datasetPathIds: string[]; startedAt; finishedAt?; problemCount; riskCount; status:'running'|'done'|'error' }
+   · OntologyGap { datasetPathId; column; reason; suggestedConcept? }   // SPIKE④ 本体缺口
+2. 路由签名(V-HEALTH2 实装，routes/viz.ts)：GET /api/workspaces/:id/health/rules → {rules}；POST /api/workspaces/:id/health/runs?suite=daily body{datasetPathIds?;thresholds?} → {run,findings,gaps?}；GET .../health/runs；GET .../health/runs/:runId/findings。
+3. **数据面定稿(SPIKE)**：引擎读 GET /api/bi/aggregations?workspaceId=(列可选数据集) + /:pathId/data(读行数据，BiAggregationData，红线安全、draw_data 403)。**不新增数据读路由**。上游 SQL/extraction 入口在 legacy index.ts → V-HEALTH2 跨域走 HTTP fetch(Orchestration §五.3)，不直接 import。
+4. db/viz.ts 表口径(V-HEALTH2 写 SQL)：health_runs/health_findings(含 lifecycle/signature/first_seen_run_id)，可选 ontology_gaps；workspace 维度，initVizTables 模式，findings.run_id 外键 CASCADE。
+5. 接缝挂载一级『体检』tab：MainHeader.tsx Tab union 加 'health'+一级 nav 入口；tabs/types.ts SubTab 加 'health_data'/'health_dashboard'/'health_report'/'health_trend'；constants.ts HEALTH_SUB_TABS=[聚合数据入口/体检台/体检报告/趋势/readme]+getSubTabsForTab 分支；App.tsx health→HealthTabs 壳(建骨架 Placeholder，V-HEALTH3 替换)。
+红线/约束：契约层不写规则逻辑/不碰数据；HealthTabs 骨架仅占位。
+依赖：V-HEALTH-SPIKE(已完成)。验收：types 双侧对齐、问题/风险+lifecycle+三态贯通、一级『体检』tab 可切占位子tab、typecheck+build 绿。解锁 V-HEALTH1/2/3。
+（可选·总控决策）SPIKE 建议把 SQL/extraction 端点从 legacy index.ts 迁入 routes/data.ts 便于 V 直调；迁移与否由总控定，不阻塞 V 三卡(默认走 fetch)。` },
+  { dom: "V", status: "done", created: "2026-06-22 17:02", title: "【体检·引擎+种子规则】V-HEALTH1：health-check-engine.ts 纯函数 + 数据画像(三态/Excel日期/stride) + 趋势检测 + 跨run比对 + 种子规则（零 LLM）", brief:
+`依赖 X-HEALTH0 契约绿（SPIKE 已完成、本卡已解冻）。本卡=确定性规则巡检引擎，照 anax-gate 范式(确定性重算/硬阈值)，纯函数好测。执行=Agent-D。
+范围(V slot·新文件 server/src/health-check-engine.ts)：
+1. **数据画像**：normalizeTimeColumn(values)(SPIKE①：Excel序列号/ISO字符串/时间戳 三格式归一) + classifyAggregation(columns,rows)→DatasetShape(SPIKE② 启发式：时序列正则+多周期=timeseries；列名嵌期段=snapshot；否则 dimension) + 频率 stride 众数推断(28-31→月/7→周/90-92→季/365→年，**不硬编码白名单**)。
+2. **引擎** runHealthSuite(ctx)→HealthFinding[]；ctx={suite;datasets:Array<{pathId;shape;rows}>;metrics;links;objects;businessContexts;thresholds;priorFindings?}。按 suite + 规则 needs vs 数据集能力匹配；不匹配跳过+记 gap。
+3. **趋势检测**(风险类核心)：连续单调/线性斜率外推/到阈距离「按此趋势 N 期后越界」，纯算法零 LLM。
+4. **跨 run 比对**：finding.signature 对齐 priorFindings 定 lifecycle(new/recurring/worsening/resolved)。
+5. **种子规则**(每类≥1)：数据质量(空值率/新鲜度,截面,**零本体依赖**)·指标异常(环比突变,需时序)·勾稽一致(link joinKeys 跨集悬挂，**SPIKE④：当前本体零自动 link，此类多退化跳过+记 gap**)·趋势风险(指标连续恶化外推→风险)。复用 anax-gate/onto-validator 判定，不另造第三套。
+6. 退化安全 + listHealthRules() 导出规则元数据(含 needs)。
+7. 单测 health-check-engine.test.ts(照 anax-gate.test.ts)：Excel日期归一、三态分类、stride 频率、趋势外推边界、跨run四态、种子规则命中/退化。
+红线/约束：零 LLM(grep 净 runPiPrompt/spawn/fetch)、零 IO(数据 ctx 注入)；evidence 可手工复算；不碰接缝层；用 X-HEALTH0 契约勿重声明。验收：画像/趋势/跨run/种子规则单测全绿；server typecheck 绿；引擎 grep 无 LLM/网络/IO。分支 feat/viz-health-engine。` },
+  { dom: "V", status: "done", created: "2026-06-22 17:03", title: "【体检·db+路由+数据入口】V-HEALTH2：health 两表 + 4 路由 + run 编排（读行数据→画像→引擎→落库，跨域 fetch）", brief:
+`依赖 X-HEALTH0(表口径+路由签名) + V-HEALTH1(引擎)（SPIKE 已完成、本卡已解冻）。执行=Agent-D。
+范围(V slot·db/viz.ts + routes/viz.ts)：
+1. db/viz.ts 建 health_runs/health_findings(含 lifecycle/signature/first_seen_run_id)，可选 ontology_gaps + CRUD：insertHealthRun/updateHealthRun/listHealthRuns/insertHealthFindings/listHealthFindings/listFindingsByRun(取 priorFindings 供跨run比对)。
+2. routes/viz.ts run 端点编排：按 body.datasetPathIds 逐集 **fetch GET /api/bi/aggregations/:pathId/data 读行数据(红线安全)** → classifyAggregation 画像 → 组 ctx(metrics=listMetrics/links=listLinks/objects=listObjectTypes/businessContexts；priorFindings=上次 run) → runHealthSuite → 落 run+findings(算 lifecycle)+gaps → 返回 {run,findings,gaps}。
+3. **跨域调用(SPIKE③)**：SQL/extraction/bi-dataset 等 D 端点在 legacy index.ts，V-HEALTH2 服务端**走 HTTP fetch(localhost:8787)**，不直接 import(Orchestration §五.3)；读 onto/knowledge 用既有 list*(同进程可直 import)。
+4. status 流转 running→done/error + problemCount/riskCount 落库。
+红线/约束：判定链零 LLM；数据面只读 /api/bi/aggregations 行数据(draw_data 403)；不碰接缝层；用 X-HEALTH0 契约。验收：POST run 真实跑通(读聚合集24 月粒度→画像→引擎→落库→返回 problem+risk+gaps)、跨 run lifecycle 正确、快照/维度集退化不崩；server typecheck 绿、红线 grep 净。分支 feat/viz-health-api。` },
+  { dom: "V", status: "done", created: "2026-06-22 17:04", title: "【体检·前端】V-HEALTH3：聚合数据入口 + 体检台(套餐+阈值+选集+触发) + 报告(问题/风险+生命周期+gap) + 趋势 + 导出", brief:
+`依赖 X-HEALTH0 + V-HEALTH1/2（SPIKE 已完成、本卡已解冻）。把 HealthTabs 占位换真 pane。执行=Agent-D。
+范围(V slot·web 前端 + api/viz.ts)：
+1. api/viz.ts：listHealthRules/runHealthSuite(workspaceId,suite,{datasetPathIds,thresholds})/listHealthRuns/listHealthFindings(runId)。
+2. **聚合数据入口 pane**(health_data)：数据集源=GET /api/bi/aggregations(已登记 clean_data)，列出可勾选；「接入更多」复用 D 的 SQL export/extraction-run 端点(SPIKE③，前端调，不重造聚合计算)。
+3. 体检台(health_dashboard)：套餐(日/周/月/季/年)+勾选数据集+阈值表单(读 listHealthRules.thresholds，按 needs 标注哪些规则因数据/本体不足将跳过；**如实标注「当前仅月粒度有数据」**)+「立即体检」→problem/risk 计数+跳报告。
+4. 体检报告(health_report)：findings 按 category 分组、severity 着色、问题/风险分列、**标 lifecycle(新发/复现/恶化/已修复)**；展示 evidence(可复算)/boundTo/suggestion；附本体 gap 清单(驱动补本体)。
+5. 趋势(health_trend)：finding 生命周期流(老问题趋势/新发/已修复)，体现健康档案。
+6. 导出：报告→markdown→复用 html-report.ts renderMarkdownReportToHtml→下载。
+7. HealthTabs.tsx 真 pane 替换占位(四 pane 分发)。
+红线/约束：纯前端(GET/POST 既有 health + 复用 D 入口端点)、判定无 LLM；不碰接缝层；不新增依赖。验收：数据入口接入、体检台选集+套餐+阈值触发出 problem+risk、报告生命周期+gap 可读、趋势展健康档案、导出 HTML；web typecheck+build 绿；浏览器实跑由用户提交前点检。分支 feat/viz-health-ui。` },
+
   // ════ 【chat 框接入 prompts/command】（总控拆卡 2026-06-22）。日常-数据分析 & 专题-对话搜索共用的 ChatPane 三处改造：1-1 框内调用 prompt 模板、1-2 沉淀 trace 旁加沉淀 prompt(LLM 半自动提炼→确认入库)、改造2 command 深化(暂缓)。关键架构：复用 D 既有 prompt_templates 表 + listPromptTemplates/createPromptTemplate API，零新表零新 D 路由；沉淀走「E 服务端产草稿(不写库)→前端确认→调既有 D create 落库」，不做 E→D self-HTTP(V-OBS 教训)。X-PROMPT0 契约先行解锁 E-PROMPT1/2。════
   { dom: "X", status: "done", created: "2026-06-22 10:00", title: "【chat·prompts 接入·契约】X-PROMPT0：PromptDraft 沉淀草稿类型 + distill 路由签名审定（复用 D prompt_templates，无新表）", brief:
 `来源：用户需求「chat 框接入 prompts 管理」(2026-06-22)。改造拆两件：1-1 框内调用 prompt 模板；1-2 沉淀 prompt(从成功对话提炼可复用 prompt 入 prompt 库)。架构判定(总控)：**复用 D 既有 prompt_templates 表 + createPromptTemplate/listPromptTemplates API，零新表零新 D 路由**；沉淀走「E 服务端 LLM 产草稿(不写库)→前端确认编辑→调既有 D createPromptTemplate 落库」，避免 E→D self-HTTP(吸取 V-OBS 教训)。本卡=接缝契约，总控自做先行。
