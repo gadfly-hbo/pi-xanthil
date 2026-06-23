@@ -3251,3 +3251,261 @@ export function abortAnaxPrecheck(precheckId: string): void {
   const active = activePrechecks.get(precheckId);
   if (active) { active.run?.kill(); activePrechecks.delete(precheckId); }
 }
+// ══════════════════════════════════════════════════════════════
+// E-MONITOR2: 监测指标体系草案 + 监测引擎运行
+// ══════════════════════════════════════════════════════════════
+
+import { PORT as MON_PORT } from "../config.ts";
+import { draftMetricSystem } from "../monitor-llm.ts";
+import { runMonitorChecks, type MonitorDatasetInput, type MonitorRunContext } from "../monitor-engine.ts";
+import {
+  createMonitorMetricSystem, getMonitorMetricSystem, listMonitorMetricSystems,
+  deleteMonitorMetricSystem, insertMonitorRun, finishMonitorRun, insertMonitorFindings,
+  listMonitorRuns as listMonRuns, listMonitorFindings, findPriorMonitorFindings,
+} from "../db/engine.ts";
+import type { ActionItemDraft, BiAggregationDataset, BiCell, HealthFinding, HealthSuite, LinkType, LogicRule, MetricDefinition, MonitorMetricSystemDraft, ObjectType } from "../types.ts";
+
+const MON_BASE = `http://localhost:${MON_PORT}`;
+const VALID_MSUITE = new Set<HealthSuite>(["daily","weekly","monthly","quarterly","yearly"]);
+
+async function fetchMonitorAggregations(workspaceId: string): Promise<BiAggregationDataset[]> {
+  const resp = await fetch(`${MON_BASE}/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`);
+  if (!resp.ok) throw new Error(`aggregations fetch: ${resp.status}`);
+  return await resp.json() as BiAggregationDataset[];
+}
+
+async function fetchMonitorOntologyIds(workspaceId: string): Promise<string[]> {
+  const resp = await fetch(`${MON_BASE}/api/workspaces/${encodeURIComponent(workspaceId)}/ontologies`);
+  if (!resp.ok) throw new Error(`ontologies fetch: ${resp.status}`);
+  const rows = await resp.json() as Array<{ id: string }>;
+  return rows.map((o) => o.id);
+}
+
+async function fetchMonitorOntologyContext(ontologyIds: string[]): Promise<{ objects: ObjectType[]; links: LinkType[]; logics: LogicRule[] }> {
+  let objects: ObjectType[] = [];
+  let links: LinkType[] = [];
+  let logics: LogicRule[] = [];
+  for (const oid of ontologyIds) {
+    const [objR, lkR, lgR] = await Promise.all([
+      fetch(`${MON_BASE}/api/ontologies/${encodeURIComponent(oid)}/objects`),
+      fetch(`${MON_BASE}/api/ontologies/${encodeURIComponent(oid)}/links`),
+      fetch(`${MON_BASE}/api/ontologies/${encodeURIComponent(oid)}/logic-rules`),
+    ]);
+    if (objR.ok) objects = objects.concat((await objR.json()) as ObjectType[]);
+    if (lkR.ok) links = links.concat((await lkR.json()) as LinkType[]);
+    if (lgR.ok) logics = logics.concat((await lgR.json()) as LogicRule[]);
+  }
+  return { objects, links, logics };
+}
+
+async function fetchMonitorMetrics(workspaceId: string): Promise<MetricDefinition[]> {
+  const resp = await fetch(`${MON_BASE}/api/workspaces/${encodeURIComponent(workspaceId)}/metrics`);
+  return resp.ok ? await resp.json() as MetricDefinition[] : [];
+}
+
+async function fetchMonitorConfig(workspaceId: string): Promise<{ metricSystemId?: string; thresholds?: Record<string, number> } | null> {
+  const resp = await fetch(`${MON_BASE}/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/config`);
+  if (resp.status === 404) return null;
+  if (!resp.ok) throw new Error(`monitor config fetch: ${resp.status}`);
+  return await resp.json() as { metricSystemId?: string; thresholds?: Record<string, number> } | null;
+}
+
+engineRouter.get("/api/workspaces/:id/monitor/metric-systems", (req, res) => {
+  const wid = req.params.id;
+  if (!getWorkspace(wid)) { res.status(404).json({ error: "workspace not found" }); return; }
+  try { res.json(listMonitorMetricSystems(wid)); } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+engineRouter.delete("/api/workspaces/:id/monitor/metric-systems/:msId", (req, res) => {
+  const ms = getMonitorMetricSystem(req.params.msId);
+  if (!ms || ms.workspaceId !== req.params.id) { res.status(404).json({ error: "not found" }); return; }
+  try { deleteMonitorMetricSystem(req.params.msId); res.json({ ok: true }); } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+engineRouter.post("/api/workspaces/:id/monitor/metric-system/draft", async (req, res) => {
+  const wid = req.params.id;
+  const ws = getWorkspace(wid);
+  if (!ws) { res.status(404).json({ error: "workspace not found" }); return; }
+  const body = req.body ?? {};
+  const ontologyId = typeof body.ontologyId === "string" ? body.ontologyId : undefined;
+  const model = typeof body.model === "string" ? body.model : undefined;
+  try {
+    const aggs = await fetchMonitorAggregations(wid);
+    let objects: ObjectType[] = [], links: LinkType[] = [], logics: LogicRule[] = [];
+    if (ontologyId) {
+      const workspaceOntologyIds = await fetchMonitorOntologyIds(wid);
+      if (!workspaceOntologyIds.includes(ontologyId)) { res.status(400).json({ error: "ontologyId not found in this workspace" }); return; }
+      const ctx = await fetchMonitorOntologyContext([ontologyId]);
+      objects = ctx.objects; links = ctx.links; logics = ctx.logics;
+    }
+    const metrics = await fetchMonitorMetrics(wid);
+    const result = await draftMetricSystem((ws as { rootPath?: string }).rootPath ?? process.cwd(), { aggregations: aggs, objects, metrics, links, logicRules: logics }, model);
+    if (!result.draft) { res.status(500).json({ error: result.error ?? "draft failed" }); return; }
+    res.json({ draft: result.draft });
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+engineRouter.post("/api/workspaces/:id/monitor/metric-system/adopt", (req, res) => {
+  const wid = req.params.id;
+  if (!getWorkspace(wid)) { res.status(404).json({ error: "workspace not found" }); return; }
+  const draft = req.body?.draft as MonitorMetricSystemDraft | undefined;
+  if (!draft || !Array.isArray(draft.metrics)) { res.status(400).json({ error: "draft required" }); return; }
+  const name = typeof req.body?.name === "string" && req.body.name.trim() ? req.body.name : `metric-system-${new Date().toISOString().slice(0, 10)}`;
+  try { const e = createMonitorMetricSystem(wid, name, draft); res.json({ metricSystemId: e.id, entry: e }); } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+engineRouter.post("/api/workspaces/:id/monitor/runs", async (req, res) => {
+  const wid = req.params.id;
+  if (!getWorkspace(wid)) { res.status(404).json({ error: "workspace not found" }); return; }
+  const suite = String(req.body?.suite ?? "monthly") as HealthSuite;
+  if (!VALID_MSUITE.has(suite)) { res.status(400).json({ error: "invalid suite" }); return; }
+  let msId: string | null = typeof req.body?.metricSystemId === "string" ? req.body.metricSystemId : null;
+  let thresh: Record<string, number> | undefined = req.body?.thresholds ?? undefined;
+  let ms: MonitorMetricSystemDraft | null = null;
+  let runRec: ReturnType<typeof insertMonitorRun> | null = null;
+  try {
+    const cfg = await fetchMonitorConfig(wid);
+    if (!msId && cfg?.metricSystemId) msId = cfg.metricSystemId;
+    if (!thresh && cfg?.thresholds) thresh = cfg.thresholds;
+    if (msId) { const e = getMonitorMetricSystem(msId); if (!e || e.workspaceId !== wid) { res.status(404).json({ error: "metric-system not found" }); return; } ms = e.draft; }
+    if (!ms) { res.status(400).json({ error: "metricSystemId required: initialize and adopt a monitor metric system first" }); return; }
+    const pids = new Set<string>();
+    for (const m of ms.metrics) for (const b of m.bindings) if (b.datasetPathId) pids.add(b.datasetPathId);
+    const aggs = await fetchMonitorAggregations(wid);
+    const validPathIds = new Set(aggs.map((a) => a.pathId));
+    const invalid = Array.from(pids).filter((pid) => !validPathIds.has(pid));
+    if (invalid.length > 0) {
+      res.status(400).json({ error: `pathIds not in this workspace clean_data: ${invalid.join(",")}` });
+      return;
+    }
+    runRec = insertMonitorRun(wid, suite, msId);
+    const datasets: MonitorDatasetInput[] = [];
+    for (const pid of pids) {
+      const dr = await fetch(`${MON_BASE}/api/bi/aggregations/${encodeURIComponent(pid)}/data?limit=100000`);
+      if (!dr.ok) throw new Error(`failed to fetch data for pathId ${pid}: ${dr.status}`);
+      const d = await dr.json() as { columns: string[]; rows: Array<Record<string, BiCell>> };
+      datasets.push({ pathId: pid, columns: d.columns, rows: d.rows });
+    }
+    const ontologyIds = await fetchMonitorOntologyIds(wid);
+    const ontoCtx = await fetchMonitorOntologyContext(ontologyIds);
+    const metrics = await fetchMonitorMetrics(wid);
+    const prior = findPriorMonitorFindings(wid, suite, msId, runRec.id);
+    const { findings } = runMonitorChecks({ suite, datasets, metricSystem: ms, metrics, links: ontoCtx.links, objects: ontoCtx.objects, logicRules: ontoCtx.logics, thresholds: thresh, priorFindings: prior }, runRec.id);
+    insertMonitorFindings(findings);
+    const pc = findings.filter((f) => f.kind === "问题").length;
+    const rc = findings.filter((f) => f.kind === "风险").length;
+    finishMonitorRun(runRec.id, { problemCount: pc, riskCount: rc, status: "done" });
+    res.json({ run: { ...runRec, finishedAt: Date.now(), problemCount: pc, riskCount: rc, status: "done" }, findings });
+  } catch (e) {
+    if (runRec) finishMonitorRun(runRec.id, { problemCount: 0, riskCount: 0, status: "error" });
+    res.status(500).json({ error: String(e) });
+  }
+});
+
+engineRouter.get("/api/workspaces/:id/monitor/runs", (req, res) => {
+  try { res.json(listMonRuns(req.params.id)); } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+engineRouter.get("/api/workspaces/:id/monitor/runs/:runId/findings", (req, res) => {
+  try {
+    const runs = listMonRuns(req.params.id);
+    if (!runs.some((r) => r.id === req.params.runId)) { res.status(404).json({ error: "run not found" }); return; }
+    res.json(listMonitorFindings(req.params.runId));
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+function parseMonitorActionDrafts(text: string): ActionItemDraft[] {
+  const stripped = text.replace(/<thinking>[\s\S]*?<\/thinking>/gi, "");
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(stripped);
+  const raw = (fenced?.[1] ?? stripped).trim();
+  const start = raw.indexOf("[");
+  const end = raw.lastIndexOf("]");
+  if (start < 0 || end <= start) return [];
+  const parsed = JSON.parse(raw.slice(start, end + 1)) as unknown;
+  if (!Array.isArray(parsed)) return [];
+  const scenes = new Set(["开业", "日常", "假日", "大促"]);
+  const lifecycles = new Set(["A获取", "A激活", "R培育", "R复购", "R裂变"]);
+  const priorities = new Set(["high", "medium", "low"]);
+  return parsed.map((rawDraft) => {
+    const d = (rawDraft ?? {}) as Record<string, unknown>;
+    return {
+      title: String(d.title ?? "").trim() || "未命名行动项",
+      rationale: String(d.rationale ?? "").trim() || "来自监测 finding",
+      scene: scenes.has(String(d.scene)) ? String(d.scene) as ActionItemDraft["scene"] : undefined,
+      lifecycle: lifecycles.has(String(d.lifecycle)) ? String(d.lifecycle) as ActionItemDraft["lifecycle"] : undefined,
+      expectedImpact: String(d.expectedImpact ?? "").trim() || "待验证",
+      metricRef: typeof d.metricRef === "string" ? d.metricRef : undefined,
+      priority: priorities.has(String(d.priority)) ? String(d.priority) as ActionItemDraft["priority"] : "medium",
+      effort: priorities.has(String(d.effort)) ? String(d.effort) as ActionItemDraft["effort"] : "medium",
+      confidence: typeof d.confidence === "number" && Number.isFinite(d.confidence) ? Math.max(0, Math.min(1, d.confidence)) : 0.5,
+    };
+  }).filter((d) => d.title.trim().length > 0);
+}
+
+function buildMonitorActionsFallback(findings: HealthFinding[]): ActionItemDraft[] {
+  return findings.slice(0, 5).map((f) => ({
+    title: `处理监测发现：${f.title}`,
+    rationale: `${f.kind} · ${f.severity} · ${f.lifecycle}。${f.diagnosis?.summary ?? f.suggestion ?? "需结合关联指标进一步定位。"}`,
+    expectedImpact: f.suggestion ?? "缩小关键经营指标差距",
+    metricRef: f.boundTo?.column ?? f.category,
+    priority: f.severity === "critical" ? "high" : f.severity === "warn" ? "medium" : "low",
+    effort: "medium",
+    confidence: f.severity === "critical" ? 0.72 : 0.62,
+  }));
+}
+
+engineRouter.post("/api/workspaces/:id/monitor/actions/draft", async (req, res) => {
+  const wid = req.params.id;
+  const ws = getWorkspace(wid);
+  if (!ws) { res.status(404).json({ error: "workspace not found" }); return; }
+  const runId = typeof req.body?.runId === "string" ? req.body.runId : "";
+  const findingIds = Array.isArray(req.body?.findingIds) ? req.body.findingIds.filter((id: unknown): id is string => typeof id === "string") : [];
+  const model = typeof req.body?.model === "string" ? req.body.model : undefined;
+  if (!runId) { res.status(400).json({ error: "runId required" }); return; }
+  const runs = listMonRuns(wid);
+  if (!runs.some((r) => r.id === runId)) { res.status(404).json({ error: "run not found" }); return; }
+  const allFindings = listMonitorFindings(runId);
+  const selected = findingIds.length > 0 ? allFindings.filter((f) => findingIds.includes(f.id)) : allFindings;
+  if (selected.length === 0) { res.json({ drafts: [] }); return; }
+
+  const findingsText = selected.map((f, idx) => ({
+    idx: idx + 1,
+    id: f.id,
+    kind: f.kind,
+    severity: f.severity,
+    lifecycle: f.lifecycle,
+    category: f.category,
+    title: f.title,
+    suggestion: f.suggestion,
+    comparisons: f.comparisons ?? [],
+    diagnosis: f.diagnosis,
+  }));
+  const systemPrompt = `你是经营监测行动项提炼引擎。请只基于输入的监测 findings 生成可执行行动项，输出严格 JSON 数组，不要 Markdown。
+数组元素格式：
+{
+  "title": "行动项标题",
+  "rationale": "依据哪条监测发现/差距/诊断",
+  "scene": "开业|日常|假日|大促，可省略",
+  "lifecycle": "A获取|A激活|R培育|R复购|R裂变，可省略",
+  "expectedImpact": "预期指标影响",
+  "metricRef": "关联指标或对象",
+  "priority": "high|medium|low",
+  "effort": "high|medium|low",
+  "confidence": 0.0到1.0
+}`;
+  const userPrompt = `工作区 ${wid} 的监测 run=${runId} 发现如下。输入是衍生产物，不包含原始行级数据：\n${JSON.stringify(findingsText).slice(0, 16000)}\n\n请生成 1-8 条行动项 JSON 数组。`;
+
+  try {
+    const outText = await runPiPrompt({
+      workspaceRoot: (ws as { rootPath?: string }).rootPath ?? process.cwd(),
+      text: userPrompt,
+      systemPrompt,
+      model: model ?? "minimax-cn/MiniMax-M3",
+      timeoutMs: 120_000,
+    });
+    const drafts = parseMonitorActionDrafts(outText);
+    res.json({ drafts: drafts.length > 0 ? drafts : buildMonitorActionsFallback(selected) });
+  } catch {
+    res.json({ drafts: buildMonitorActionsFallback(selected) });
+  }
+});

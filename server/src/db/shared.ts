@@ -235,10 +235,14 @@ export function finishSubAgentTask(
  * 一次性·幂等 backfill：现有定义按 origin workspace 建启用记录（仅原工作区启用，
  * enabled 沿用该行原值）。INSERT OR IGNORE 保证幂等——已存在的关系（含被手动禁用的）不被覆盖，
  * 新建定义经 CRUD 自带关系也不会被重复插入。每次 boot 调用安全。
+ *
+ * D-POOL1: prompt_templates(workspace_id 非 NULL) + knowledge_docs(scope='global') 一并 backfill；
+ * prompt NULL=恒启用不入表；knowledge scope='workspace' 私有独占不入表。消费侧自己负责合并。
  */
 export function backfillMemoryEnablements(): void {
   const now = Date.now();
   // 局部声明（非模块级 const）：避免循环 import 下 db.ts boot 期调用早于本模块 const 初始化触发 TDZ。
+  // 标准范式：`workspace_id` + `enabled` 列直读。
   const BACKFILL_SOURCES: Array<{ kind: MemoryItemKind; table: string }> = [
     { kind: "rule", table: "rule_memories" },
     { kind: "standard", table: "analysis_standards" },
@@ -256,6 +260,22 @@ export function backfillMemoryEnablements(): void {
       // 表尚未建/列缺失（如 onto 结构表无 enabled）时跳过；onto 粒度由 P3 决定。
     }
   }
+  // D-POOL1 · prompt_templates：仅 workspace_id 非 NULL 入 enablement(origin 启用)；
+  // NULL 模板由消费侧恒启用（不写表保持池清爽，且天然兼容新增 ws 零维护）。
+  try {
+    db.prepare(
+      `INSERT OR IGNORE INTO workspace_memory_enablements(workspace_id, item_kind, item_id, enabled, created_at)
+       SELECT workspace_id, 'prompt', id, 1, ? FROM prompt_templates WHERE workspace_id IS NOT NULL`,
+    ).run(now);
+  } catch { /* 表未建跳过 */ }
+  // D-POOL1 · knowledge_docs：仅 scope='global' 入池建启用(origin 启用)；
+  // 'workspace' 文档私有独占，消费侧靠 listKnowledgeChunksForRetrieval 直接 union 本 ws 私有。
+  try {
+    db.prepare(
+      `INSERT OR IGNORE INTO workspace_memory_enablements(workspace_id, item_kind, item_id, enabled, created_at)
+       SELECT workspace_id, 'knowledge', id, 1, ? FROM knowledge_docs WHERE scope = 'global'`,
+    ).run(now);
+  } catch { /* 表未建跳过 */ }
 }
 
 /** 设置/更新某工作区对某池条目的启用状态（upsert）。 */

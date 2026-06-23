@@ -10,6 +10,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Globe, Library, Pencil, Plus, RefreshCw, Search, Settings2, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { sharedApi } from "@/lib/api/shared";
 import { cn } from "@/lib/cn";
 import type { PromptTemplate, PromptTemplateInput, SystemPromptOverview } from "@/types";
 
@@ -101,35 +102,69 @@ const EMPTY_DRAFT: DraftState = {
 
 function LibraryView({ workspaceId }: { workspaceId: string | null }) {
   const [list, setList] = useState<PromptTemplate[]>([]);
+  const [enabledSet, setEnabledSet] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState("");
   const [categoryFilter, setCategoryFilter] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<string | null>(null);
-  const [includeGlobal, setIncludeGlobal] = useState(true);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [draft, setDraft] = useState<DraftState | null>(null);
   const [saving, setSaving] = useState(false);
+  const [busyEnableId, setBusyEnableId] = useState<string | null>(null);
 
   const reload = useCallback(async () => {
     if (!workspaceId) {
       setList([]);
+      setEnabledSet(new Set());
       return;
     }
     setLoading(true);
     setError(null);
     try {
-      setList(await api.listPromptTemplates(workspaceId, { includeGlobal }));
+      const [tpls, ens] = await Promise.all([
+        api.listPromptTemplates(workspaceId),
+        sharedApi.listMemoryEnablements(workspaceId, "prompt"),
+      ]);
+      setList(tpls);
+      setEnabledSet(new Set(ens.filter((e) => e.enabled).map((e) => e.itemId)));
     } catch (err) {
       setError("加载失败：" + (err instanceof Error ? err.message : String(err)));
     } finally {
       setLoading(false);
     }
-  }, [workspaceId, includeGlobal]);
+  }, [workspaceId]);
 
   useEffect(() => {
     void reload();
   }, [reload]);
+
+  // D-POOL1: NULL 模板恒启用；非 NULL 看 enablement 表。
+  const isEnabled = useCallback(
+    (tpl: PromptTemplate) => tpl.workspaceId === null || enabledSet.has(tpl.id),
+    [enabledSet],
+  );
+
+  const toggleEnablement = useCallback(
+    async (tpl: PromptTemplate, next: boolean) => {
+      if (!workspaceId || tpl.workspaceId === null) return; // NULL 全局不可切
+      setBusyEnableId(tpl.id);
+      try {
+        await sharedApi.setMemoryEnablement(workspaceId, "prompt", tpl.id, next);
+        setEnabledSet((prev) => {
+          const s = new Set(prev);
+          if (next) s.add(tpl.id);
+          else s.delete(tpl.id);
+          return s;
+        });
+      } catch (err) {
+        setError("启用切换失败：" + (err instanceof Error ? err.message : String(err)));
+      } finally {
+        setBusyEnableId(null);
+      }
+    },
+    [workspaceId],
+  );
 
   const allCategories = useMemo(() => {
     const s = new Set<string>();
@@ -263,19 +298,6 @@ function LibraryView({ workspaceId }: { workspaceId: string | null }) {
           />
         </div>
         <button
-          onClick={() => setIncludeGlobal((v) => !v)}
-          title={includeGlobal ? "已包含全局模板，点击仅看本工作区" : "已隐藏全局模板，点击合并显示"}
-          className={cn(
-            "inline-flex h-7 items-center gap-1 rounded-md border px-2 text-[12px]",
-            includeGlobal
-              ? "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950 dark:text-amber-200"
-              : "border-neutral-200 text-neutral-600 dark:border-neutral-800 dark:text-neutral-300",
-          )}
-        >
-          <Globe className="h-3.5 w-3.5" />
-          {includeGlobal ? "含全局" : "仅本ws"}
-        </button>
-        <button
           onClick={() => void reload()}
           disabled={loading}
           className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-200 px-2 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-800 dark:text-neutral-300 dark:hover:bg-neutral-800/60"
@@ -375,52 +397,67 @@ function LibraryView({ workspaceId }: { workspaceId: string | null }) {
               {filtered.map((t) => {
                 const active = selectedId === t.id;
                 const isDraftRow = draft?.id === t.id;
+                const isGlobal = t.workspaceId === null;
+                const enabled = isEnabled(t);
                 return (
                   <li key={t.id}>
-                    <button
-                      onClick={() => {
-                        setSelectedId(t.id);
-                        setDraft(null);
-                      }}
+                    <div
                       className={cn(
-                        "flex w-full flex-col gap-0.5 border-b border-neutral-100 px-3 py-2 text-left transition-colors dark:border-neutral-900",
+                        "flex w-full items-start gap-2 border-b border-neutral-100 px-3 py-2 transition-colors dark:border-neutral-900",
                         active
                           ? "bg-neutral-50 dark:bg-neutral-900"
                           : "hover:bg-neutral-50 dark:hover:bg-neutral-900/60",
                       )}
                     >
-                      <div className="flex items-center gap-1.5">
-                        <span className="truncate text-[13px] font-medium">{t.title}</span>
-                        {t.workspaceId === null && (
-                          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-[10px] text-amber-700 dark:bg-amber-950 dark:text-amber-300">
-                            <Globe className="h-2.5 w-2.5" />
-                            全局
-                          </span>
-                        )}
-                        {isDraftRow && (
-                          <span className="shrink-0 rounded bg-blue-100 px-1 text-[10px] text-blue-700 dark:bg-blue-950 dark:text-blue-300">
-                            编辑中
-                          </span>
-                        )}
-                      </div>
-                      <div className="flex items-center gap-2 text-[11px] text-neutral-500">
-                        {t.category && <span>{t.category}</span>}
-                        {t.variables.length > 0 && <span>·{t.variables.length} 变量</span>}
-                        <span className="ml-auto">{fmtTs(t.updatedAt)}</span>
-                      </div>
-                      {t.tags.length > 0 && (
-                        <div className="flex flex-wrap gap-1">
-                          {t.tags.slice(0, 4).map((tag) => (
-                            <span
-                              key={tag}
-                              className="rounded bg-neutral-100 px-1 text-[10px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
-                            >
-                              #{tag}
+                      <input
+                        type="checkbox"
+                        className="mt-1 shrink-0"
+                        checked={enabled}
+                        disabled={isGlobal || busyEnableId === t.id}
+                        onChange={(e) => void toggleEnablement(t, e.target.checked)}
+                        title={isGlobal ? "全局模板恒启用，不可关闭" : "本工作区启用 / 停用"}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                      <button
+                        onClick={() => {
+                          setSelectedId(t.id);
+                          setDraft(null);
+                        }}
+                        className="flex min-w-0 flex-1 flex-col gap-0.5 text-left"
+                      >
+                        <div className="flex items-center gap-1.5">
+                          <span className="truncate text-[13px] font-medium">{t.title}</span>
+                          {isGlobal && (
+                            <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-[10px] text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                              <Globe className="h-2.5 w-2.5" />
+                              全局
                             </span>
-                          ))}
+                          )}
+                          {isDraftRow && (
+                            <span className="shrink-0 rounded bg-blue-100 px-1 text-[10px] text-blue-700 dark:bg-blue-950 dark:text-blue-300">
+                              编辑中
+                            </span>
+                          )}
                         </div>
-                      )}
-                    </button>
+                        <div className="flex items-center gap-2 text-[11px] text-neutral-500">
+                          {t.category && <span>{t.category}</span>}
+                          {t.variables.length > 0 && <span>·{t.variables.length} 变量</span>}
+                          <span className="ml-auto">{fmtTs(t.updatedAt)}</span>
+                        </div>
+                        {t.tags.length > 0 && (
+                          <div className="flex flex-wrap gap-1">
+                            {t.tags.slice(0, 4).map((tag) => (
+                              <span
+                                key={tag}
+                                className="rounded bg-neutral-100 px-1 text-[10px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+                              >
+                                #{tag}
+                              </span>
+                            ))}
+                          </div>
+                        )}
+                      </button>
+                    </div>
                   </li>
                 );
               })}

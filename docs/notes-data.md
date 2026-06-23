@@ -8,33 +8,43 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-> 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
+> **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
 
-- 最近更新：2026-06-21 · **记忆 v2.0 缺口1 面板补全（注入预览显式 tag 硬过滤 UI 点亮）**
+- 最近更新：2026-06-23 · **D-POOL1 完成**（prompts/knowledge 池化扩展 + scope 列 + 启用勾选 UI）
 - 进度：
-  - **本期 D-MEM2-PREVIEW-TAGS 卡完成**（依赖 X-MEM2-CTX 契约绿：`RetrievalContext.tags` + 引擎 `filterTags` 硬过滤已就绪）：把「显式结构化精筛」在 RulesPane 注入预览区接通——用户在面板选 tag 即可看到「这些 tag 下会注入哪些记忆」（untagged / 非命中被硬过滤）。纯 D 域接线，接缝零触碰。
-    - **① 后端 `server/src/routes/data.ts` GET /memory/preview（:824）**：入参增 tags——复用既有 `readTagsQuery`（同文件 :1121，`?tag=a&tag=b` 重复参数范式）解析 `req.query.tag`；ctx 构造改为 `(query || tags.length) ? { query, tags } : undefined`，透传 `buildMemoryPrompt` → 引擎 `filterTags` 硬过滤。`itemCount` 由全量 `listEnabledMemoryItems().length` 改为**硬过滤后命中数**（OR 命中 `it.tags.some(t => tagSet.has(t))`，与引擎 :363 预过滤同向；**无显式 tags 时退回全量，行为不变**）。
-    - **② web api `web/src/lib/api/data.ts` previewMemoryPrompt（:233）**：options 加 `tags?: string[]`，按 `q.append("tag", t)` 重复参数拼接（同 `listPromptTemplates` 范式 :308）。
-    - **③ 面板 `web/src/components/RulesPane.tsx` 注入预览区**：新增「模拟检索」控件——独立 state `previewTags: Set<string>` + `previewQuery: string`；跨 type `allTags` memo（预览不分 type 取全量条目 tag）；`togglePreviewTag`；预览块内虚线框控件区（tag chips 硬过滤 + 可选 query 输入 boost + 清除按钮）；`refreshPreview` 带上 tags+query（变更即重拉，依赖数组加 `previewQuery`/`previewTags`）。
-- 关键设计决策（详见正文「记忆 v2.0 缺口1：tags 分层标签」段补记）：
-  - **预览 tag 用独立 state（`previewTags`），不复用列表 `tagFilter`**：卡里"强烈建议"复用列表 tagFilter 一套驱动列表+预览，但 `tagFilter`/`availableTags` 是 **activeTab type-scoped**（只在 constraint/experience/episode tab 有值），而注入预览**跨 type 全局**。复用会让选 tag 同时污染列表过滤、且 tag 集不全。取"独立控件 + 跨 type `allTags`"路径——更直观零耦合。否决"复用列表 filter"方案。
-  - **`itemCount` 硬过滤后命中数在 route 直算，不走 snapshot.sourceCount**：曾试 `buildMemoryInjectionSnapshot().sourceCount`，但 `sourceCount` 统计的是注入**部件/kind 数**（businessContext/rules/standards/cases/KG/memory_item 六类各算一），非单条 item 数，granularity 错。改为 route 内对 `listEnabledMemoryItems` 直接按 tagSet OR 过滤计数，与引擎 :363 同向、口径正确。
-  - **不碰 types 接缝**：`MemoryPromptPreview` 维持 5 字段，卡里"可选回带 requestedTagCount"会需要加字段碰 types → YAGNI 跳过，`itemCount` 下降已足够体现"选 tag→条目下降"。
+  - **本期 D-POOL1 卡完成**（前置 X-POOL0：MemoryItemKind 已加 `prompt`/`knowledge`、KnowledgeDocInput.scope 双侧契约就位）：把 prompts 模板库 + 知识库资料库从「工作区独占」升级为「全局池 + 按工作区启用」，knowledge 带 scope(global/workspace)。
+    - **① `db/data.ts` knowledge_docs DDL**：新表加 `scope TEXT NOT NULL DEFAULT 'workspace'`；旧库 idempotent ALTER（同文件 PRAGMA table_info 范式，未碰 db.ts MIGRATIONS 接缝）；rowToKnowledgeDoc 解析 scope；createKnowledgeDoc 收 scope（默认 workspace）；`scope==='global'` 时 `enableForOrigin(wsId, "knowledge", id)`，私有不入 enablement。
+    - **② `listKnowledgeDocs(ws)` 改池**：`scope='global' OR (scope='workspace' AND workspace_id=?)` 拼联合查询；`listKnowledgeChunksForRetrieval` 同口径——召回基集 = 本 ws 私有 ∪ 本 ws 已启用的 global 文档（join `listEnabledItemIds(ws,'knowledge')`），保证 BM25 检索按启用过滤。
+    - **③ `listPromptTemplates` 纯全局池**：弃用 `workspaceId` 过滤（保留参数兼容老调用，作 `_workspaceId`）+ 弃用 `includeGlobal`（保留参数无效化）。category/tags 过滤保留。`createPromptTemplate` 非 NULL ws 落库后 `enableForOrigin(wsId, "prompt", id)`；NULL=全局恒启用不入表（消费侧自合并）。
+    - **④ `backfillMemoryEnablements` 追加两源**：prompt_templates(非 NULL workspace_id 按 origin 写) + knowledge_docs(scope='global' 按 origin 写)。INSERT OR IGNORE 幂等。NULL prompt 与 workspace knowledge 不入表（设计如此）。
+    - **⑤ `routes/data.ts`**：knowledge POST 收 `scope` 字段；knowledge GET `/:docId` 豁免 global 文档的跨 ws 403（共享单实例可读，PATCH/DELETE 守 origin 不变）；prompt route 注释更新 `includeGlobal` 已弃用。
+    - **⑥ web 前端**：types/api 注释更新（PromptTemplate 池化语义说明、`createKnowledgeDoc` payload 加 `scope`）。
+    - **⑦ `PromptsManagementPane.tsx`**：reload 并行拉 `listPromptTemplates` + `listMemoryEnablements(ws,'prompt')`；移除「含全局/仅本ws」切换按钮；模板列表每行加 checkbox（OntologyPane 范式），NULL 全局模板恒启用且 checkbox 禁用、本工作区有 origin 入表的可勾选切换；`toggleEnablement` 走 `sharedApi.setMemoryEnablement`。
+    - **⑧ `KnowledgeBasePane.tsx` DocsView**：reload 并行拉 docs + enablement；草稿表单加 `scope` radio（默认"项目专属"，可选"通用"）；列表行 global 文档显示「通用」徽标 + 启用 checkbox，workspace 私有不显示 checkbox（本就独占）；`toggleEnablement` 同范式。
+- 关键设计决策：
+  - **prompt NULL 恒启用、不写 enablement 表**：用户口径——NULL 模板就是无条件全局，写表反而需要每个新 ws backfill 维护成本。消费侧合并语义 = `enabled=1 ∪ workspace_id IS NULL`，前端 `isEnabled(tpl) = workspaceId === null || enabledSet.has(id)`。同时拿下"按 origin backfill 省 + 不破坏旧行为稳 + 新增 ws 零维护 + NULL 恒启用语义干净"。
+  - **knowledge workspace 私有不入 enablement**：scope='workspace' 本就独占于 origin ws，写 enablement 反而扰动消费侧合并查询。消费层（`listKnowledgeChunksForRetrieval`）直接 union 本 ws 私有 + 本 ws 已启用 global，零冗余、零歧义。
+  - **scope DDL 走域内 PRAGMA+ALTER，不动 db.ts MIGRATIONS**：与同文件 memory_items/reviews 加 tags 列范式一致，避免触碰接缝层；后续如域内表 schema 演进多了再抽 ensureColumn 公共工具（YAGNI）。
+  - **knowledge GET 跨 ws 403 豁免仅限 global**：global 文档"共享单实例·跨 ws 可读"是池化语义的核心，403 守卫从 `workspaceId !== id` 改为 `scope !== 'global' && workspaceId !== id`；PATCH/DELETE 仍守 origin（"共享单实例 = 编辑全局生效，但仅 origin ws 能改"），与本体范式一致。
+  - **listChunksForRetrieval enabled 集为空时 fallback IN('')**：保留 SQL 静态形态、避免动态条件分支；id IN ('') 恒 false，仅返回本 ws 私有，行为正确。
+  - **PromptsPane checkbox 行解构**：原列表行是单 button 整行点击；加 checkbox 后改为 div 容器 + 内部 button 占据除 checkbox 外的可点击区域，checkbox onClick stopPropagation 防误触详情。沿用 RulesPane 范式。
 - 校验：
-  - `npm run typecheck`（server+web）：✅ 0 错误
-  - `npm run build`（web）：✅ 仅遗留 chunk size 警告（与本卡无关）
-  - `node --test src/memory-*.test.ts`：✅ **83/83 全过**（本卡未加测：preview tag 过滤逻辑薄，引擎 filterTags 已被既有用例覆盖）
+  - `npm -w server run typecheck`：✅ 0 错
+  - `npm -w web run typecheck`：✅ 0 错
+  - `npm -w web run build`：✅ 仅 chunk size warning（与本卡无关）
+  - `node --experimental-strip-types --test server/src/prompt-templates.test.ts knowledge-retrieval.test.ts`：✅ 19/19（prompt 7 + knowledge 12）
+  - `node --experimental-strip-types --test server/src/memory-injection.test.ts memory-consolidation.test.ts memory-governance.test.ts memory-ingest-gate.test.ts`：✅ 35/35（确认 backfill 新增两源不破坏既有记忆链路）
   - 数据探索 LLM 隔离 grep：✅ EXIT=1 无匹配（本卡未碰探索子树）
 - 下一步（接续优先级）：
-  - ① 本卡可选增强（YAGNI 暂不做）：`requestedTagCount` 回带 + UI 显示「精筛前 N→后 M」（需总控审 types 扩 `MemoryPromptPreview`）；预览 tag 与列表 tagFilter 联动跳转（选列表 tag → 一键带入预览）；query 解析 tag 误命中收口（白名单前缀过滤，见开放问题）。
-  - ② 上期遗留：`汇报版本数据可视化` 整条（X 契约未铺，需总控先审 types 双侧加 `datasetId? / chartSpecs?`）。
-  - ③ 长尾：`MemoryItemType` 加 `'fact'`、legacy 记忆路由合并、`cases` 子 tab 下线、KB 内联编辑、混合 tokenizer 拆 `text-search-tokenize.ts`、`listMemoryReviews` 分页、`RulesPane.tsx` 拆分（本卡又加 ~35 行，拆分压力略增）。
+  - ① **总控终审 D-POOL1**：检查 backfill 幂等性 + 池化语义闭环 + 浏览器实跑（两 ws 切换看通用文档/模板可见性与启用切换）。
+  - ② **消费侧 chip 计数升级（可选）**：`App.tsx` 顶栏 `knowledgePromptCount` 当前等于 `listKnowledgeDocs(ws).length`，已含 global ∪ workspace，但**未按 enablement 过滤**——理论上应只数"本 ws 已启用的 global ∪ 本 ws 私有"才与检索时实际可见集一致。本次未改是因 chip 计数的 informational 性质（让用户知道有多少可检索），但严格按 brief 第 5 条应改。决策：留给 X 总控确认是否需要严格对齐 retrieval 集合。
+  - ③ 长尾（YAGNI）：knowledge scope 修改（workspace ↔ global 互转 UI）、prompt 全局模板从 UI 改 ws_id=null（当前只能 origin ws 编辑，不能转池）。
 - 阻塞 / 待总控：
-  - 无新阻塞。未碰任何接缝层骨架（`index.ts`/`db.ts`/`App.tsx`/`api.ts`/`constants.ts`/`types.ts` 真源全未碰）；`buildMemoryPrompt` 守冻结签名（仅消费已就绪的 `ctx.tags`，未改签名）。
+  - **PromptsManagementPane 启用 checkbox 行为约束**：NULL 全局模板 checkbox 显示已勾选 + disabled（恒启用，不可关）。但当前 enabledSet 不含 NULL 模板 id，仅靠 `isEnabled()` helper 派生显示态——若未来要在某 ws 关闭某 NULL 全局模板，需要扩张"NULL 也入表 + 默认 enabled=1"语义，目前不做（用户口径明确）。
+  - **chip 计数语义对齐**：见上方下一步 ②。
 - 开放问题：
-  - **query 解析 tag 的误命中（上期遗留，仍未收）**：`前缀:值` 正则会把 query 里偶然的 `http://`、`时间:10点` 当 tag 信号；本卡预览的 query 输入框同样触发该 boost 解析。当前预过滤"有交集即留"，误命中 tag 若不在候选集则全被过滤 → 召回空（潜在坑）。**升级路径**：解析按软约定前缀白名单过滤（仅认 task/industry/method/data/problem:），或显式 tags 走 RetrievalContext（已就绪，本卡预览的硬过滤已用显式 tags 路径，boost query 仍走词法解析）。
-  - **tag 软约定前缀是否硬约束**：当前自由 string、前缀仅软约定（着色+解析宽进任意 `x:y`）。契约明确"非硬枚举便于 LLM 蒸馏与未来收紧"，暂不收。
-  - **预览精筛前后计数是否需可视化**：见下一步①，需总控审 types 扩字段决策。
+  - **scope 修改 UI 暂缺**：现有 KnowledgeBasePane 仅支持新建时设 scope；已存在文档要"转通用/转专属"需走 PATCH，但当前 patch 不接收 scope（仅 title/path/content/tags）。后续如需开放，扩 KnowledgeDocPatch + route 校验。
+  - **`PromptTemplatePatch` 不含 workspaceId 转换**：目前不支持"个人模板转全局"或反向。若需要，要决定 origin ws 关系如何处理。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -59,6 +69,7 @@
 | 统一记忆 memory_items（v2 重构） | 待建 D-PANEL | `db/data.ts`(CRUD+fact adapter) · `routes/data.ts`(/memory/items*) |
 | 知识库 knowledge_docs/chunks（D 卡片 2026-06-19） | `KnowledgeBasePane.tsx`(资料库+检索双视图) · `KnowledgeBaseReadmePane.tsx`(readme) | `db/data.ts`(CRUD+chunkKnowledgeText) · `knowledge-retrieval.ts`(BM25) · `routes/data.ts`(/knowledge*) |
 | Xan数据库 | `WeatherPane`(前端直连) · `IndustryPane`/`CompetitorPane`(经后端 pi) + 待建[商圈/the-crowd] | 天气=外部 API 前端直连；行业/竞品=`routes/data.ts` 的 `*/analyze` 经 `runPiPrompt` |
+| 监测初始化（D-MONITOR1，V-agent 停用后承接 viz slot） | `HealthDataPane.tsx`（角色绑定 + SQL/SQLite 导入 + watermark） | `db/viz.ts` (monitor_configs) · `routes/viz.ts` (/monitor/config) |
 
 db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端方法进 `lib/api/data.ts`。
 
@@ -98,6 +109,11 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **tool-use 数据源约束（2026-06-12 修订）**：旧"试跑"模式已作废。新管理控制台模式不在此跑工具；analysis 工具由 pi-agent 经 MCP 调用，后端 `POST /api/extraction-tools/:id/run` 的 `source=ai` 守卫强制输入必须是已登记 clean_data，draw_data 永久禁止（403）。ingestion 工具由「数据提取」面板手动触发。
 - **tool-use 与 ExtractionPane 差异**：ExtractionPane 允许手动输入任意本地路径（通用提取工具），ToolUsePane 仅允许 clean_data 已登记路径（计算工具链安全约束）。
 - **工具用途分类体系（2026-06-12）**：`ExtractionToolManifest.category` ∈ `"ingestion" | "analysis"`，由 `registry.ts` 的 `normalizeCategory` 默认 `"ingestion"`。`ingestion`=读 HTML/原始 Excel 等半结构化数据，仅「数据提取」面板手动触发，不向 AI 暴露；`analysis`=读 clean_data 聚合 CSV 产出分析结果，经 MCP 暴露给 pi-agent。分类是 manifest 内禀属性，UI 只展示不强改。
+- **监测配置 monitor_configs（2026-06-23，D-MONITOR1）**：每 workspace 单条 upsert（UNIQUE workspace_id），`dataset_bindings` 整列 JSON 替换（不拆 binding 级 CRUD，YAGNI）。**pathId 归属校验范式**：PUT 路由 fetch self `${SELF_BASE}/api/bi/aggregations?workspaceId=...` 拿 clean_data 白名单，非白名单 pathId → 400 不落库——这是 D/viz 跨域读取数据集时的标准防越权范式，沿用 health/runs 模式，不直 import D 域函数（守 §五.3 接缝纪律），不 readFileSync workspace_paths（守数据安全）。后续 monitor metric-system / runs 等若涉及 pathId 引用都按此校验。
+- **viz slot 归 D 承接（2026-06-19 起）**：Orchestration §一明确 V-agent 停用后 viz/前端归 D；本期 D-MONITOR1 改 `db/viz.ts` / `routes/viz.ts` / `HealthDataPane.tsx` 即此条款下的合规操作。后续监测改造（D-MONITOR3）同理。修改前看 wiki 卡 brief 是否点明「落点=…+ monitor 前端」即可。
+- **复用 actions 三表承接监测行动（2026-06-23，D-MONITOR3）**：监测的「finding → 行动项 → 任务 → 反馈」闭环**不另起表**——`HealthReportPane` 用 `ActionItem.sourceKind="session"` + `scopeId=workspaceId` + `reportPath="monitor:${runId}"` 复用 actions 三表与端点。识别 monitor 行动项靠 `reportPath` 前缀 `monitor:`；当前 `sourceKind` 枚举未扩 `"monitor"`，是有意取舍——若后续要按 sourceKind 过滤/统计需总控扩 types。同理 viz slot 内任何"业务实体 → 行动闭环"接入都该走此 reportPath 前缀范式，避免重复造闭环。
+- **大文件前端 Pane 重写的写入技巧（工具限制，2026-06-23）**：当前 edit/write/bash 工具的 JSON 参数对超长 TSX 内容（含反引号 + 模板字符串 + 大量 className）会触发 `JSON Parse error: Unterminated string`。规避路径：① 用 `write` 写 ≤200 行的分片到 `/var/folders/.../opencode/` 临时目录 → `cat part1 part2 ... > target.tsx` 拼装；② 不要把整段 JSX 用反引号传给单个 `bash`/`edit` 调用（即使内容看起来无引号嵌套问题）。本期 HealthReportPane 477 行就是分 5 片 write + 一次 cat 拼装完成。后续大 Pane 重写沿用此范式。
+- **观星台运行后不跳 tab（2026-06-23，D-MONITOR3）**：原 HealthDashboardPane 运行 health 后 `setActiveSubTab("health_report")` 自动跳到行动环——D-MONITOR3 改为留本页 + `resultRef.scrollIntoView` 滚到结果区；只在 findings 存在时展示「去行动环采纳 →」入口让用户主动进入。原因：用户决策避免观察被打断；通用范式=「跑完动作的结果先在原页可见，跨 tab 跳转必须用户主动触发」。
 - **ToolUsePane 定位修正（2026-06-12）**：推翻旧"试跑"设计（选 clean_data 跑工具产出结果），重做为**管理控制台**（列表/详情/验证/跳 ToolLab）。工具新增/修改的代码仍由开发者放 `server/tools/`，UI 不写代码、不在此跑用户数据。理由：tool-use 的工具是给 pi-agent 经 MCP 用的，前端不该像数据提取那样"在 UI 拿工具跑用户数据"。
 - **analysis 工具筛选原则（2026-06-13）**：MCP 暴露给 pi-agent 的 analysis 工具应满足 ① 强领域特色（行业 know-how，不可被通用 SQL/duckdb 替代）② 算法复杂度足（如 STL/Holt-Winters，不是单条 `df.describe()`）③ 单输入聚合 CSV 即可产出结构化结论。**反例**：`csv-summary-stats`（dtype/缺失率/min/max/mean）这种描述统计被判定"太简单不该建"——它属于**探索模块**本职范畴（前端 duckdb-wasm `computeProfile()` 已覆盖），让 LLM 通过 MCP 重做一遍纯属浪费 token。**正例**：apparel-structure（服饰六大行业指标）/ seasonal-forecast（STL+Holt-Winters）。
 - **可选字段缺失处理范式（2026-06-13）**：当 CSV 缺可选字段（如 apparel-structure 缺"商品编号"），**必须返回 None 让该指标完全不出现在输出**，禁止注入伪值（如 `hash(file_path) % 10000` 作伪 ID 会让 SKU 宽深度恒为 1，误导用户）。MD 渲染层用 `if metric in r:` guard 跳过缺失项。这是分析工具数据完整性的核心约束。
@@ -254,6 +270,8 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **路由 ownership 校验范式（与 knowledge 同款）**：所有 `/prompt-templates/:tid` 端点先 `getWorkspace(req.params.id)` 校 workspace 存在 → 再判 `tpl.workspaceId !== null && tpl.workspaceId !== req.params.id`（403）。全局模板（`workspaceId === null`）任意 ws 可读/可改/可删——这是设计意图，全局模板是共享资产。本卡新增端点直接复用此 pattern。
 - **256 KB body 上限**：远小于知识库 5 MB——prompt 模板量级合理上限是 token-级（约 256K bytes ≈ 60K~80K tokens 中英），更大应当拆模板。POST + PATCH 都加 413 守卫。
 - **X 接缝缺漏的工程教训**：本卡触发时发现 wiki §X 标 done 但仓库实际只落地 web 端（constants），types 双侧 + db schema 均缺。**通用做法**：D 卡执行前先 grep 验证 X 卡声明的资产是否真落地（`grep -rn "PromptTemplate\|prompt_templates" server/ web/src/types.ts`），漏盘的就在本卡内一并补救（顺手做不绕路），开放问题里上报让总控决议。**反对**：等 X 卡修好再做 D（任务卡明确写【依赖】X，但 wiki 标 done 是可信凭证缺失，等待会导致整个 prompts 模块阻塞）。沉淀这条是因为同样的"声明 done 但未落地"模式可能在其他模块（hooks/skills/subagents）的 X 接缝里复现。
+- **prompt NULL 恒启用范式（2026-06-23，D-POOL1）**：`prompt_templates.workspace_id IS NULL` 的全局模板不入 `workspace_memory_enablements`，消费侧恒启用。原因是这类模板的设计语义就是"无条件全局"；写入 enablement 表会有（a）新 ws 必须 backfill 维护（b）NULL 无 origin 无法确定自动启用。消费侧合并公式 = `enabled=1 ∪ workspace_id IS NULL`。对应 create 分支：非 NULL 走 `enableForOrigin`，NULL 不调。此范式适用于任何"表中 workspace_id 可空 = 全局"的设计。
+- **knowledge scope 列 + 入池出池范式（2026-06-23，D-POOL1）**：`knowledge_docs.scope ∈ {'global','workspace'}`，默认 workspace（专属）。global 文档入池，create 后 `enableForOrigin(wsId,"knowledge",id)`；workspace 私有不入 enablement（本就独占，写 enablement 反而有歧义）。消费侧 `listKnowledgeChunksForRetrieval` 直接 union（本 ws 私有 ∪ 本 ws 已启用 global），SQL 通过 `d.scope='workspace' AND d.workspace_id=? OR (d.scope='global' AND d.id IN (enabled_set))` 实现。enabled 集为空时 fallback `IN('')` (恒 false) 保持 SQL 静态。GET 路由 403 豁免 global = `scope !== 'global' && workspaceId !== id`，PATCH/DELETE 守 origin。`parseStringArray` + `rowTo*` 皮层级均补 scope 解析。
 
 ---
 

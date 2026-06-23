@@ -60,6 +60,8 @@ import {
   listFindingsByRun,
   insertOntologyGaps,
   listOntologyGaps,
+  getMonitorConfig,
+  upsertMonitorConfig,
 } from "../db/viz.ts";
 import { getWorkspacePath, getWorkspace } from "../db.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
@@ -69,7 +71,7 @@ import { readFlowFile } from "../flow-fs.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { runHealthSuite, classifyAggregation, listHealthRules } from "../health-check-engine.ts";
 import { renderMarkdownReportToHtml } from "../html-report.ts";
-import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind, HealthSuite, HealthFinding, OntologyGap } from "../types.ts";
+import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind, HealthSuite, HealthFinding, OntologyGap, MonitorDatasetBinding, MonitorSourceRole } from "../types.ts";
 
 function validateArtifactPath(path: string, source: string): void {
   const segments = path.split(/[\\/]/).filter(Boolean);
@@ -650,6 +652,7 @@ vizRouter.get("/api/action-items", (req, res) => {
 vizRouter.post("/api/action-items", (req, res) => {
   const b = req.body ?? {};
   try {
+    const status = ["suggested", "adopted", "dismissed"].includes(String(b.status)) ? b.status : "suggested";
     res.json(createActionItem({
       sourceKind: b.sourceKind,
       scopeId: b.scopeId,
@@ -664,7 +667,7 @@ vizRouter.post("/api/action-items", (req, res) => {
       priority: b.priority,
       effort: b.effort,
       confidence: b.confidence,
-      status: "suggested",
+      status,
     }));
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });
@@ -861,5 +864,79 @@ vizRouter.post("/api/workspaces/:id/health/export-html", (req, res) => {
   try {
     const html = renderMarkdownReportToHtml(reportName, markdown);
     res.json({ html });
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ── 监测配置 monitor config（D-MONITOR1）──
+// GET 返回当前 workspace 的 config（不存在返回 null）；PUT upsert。
+// 校验：datasetBindings 中每个 pathId 必须属于本 workspace 的 clean_data 聚合集（同 health/runs 模式）。
+
+const VALID_SUITES = new Set<HealthSuite>(["daily", "weekly", "monthly", "quarterly", "yearly"]);
+const VALID_ROLES = new Set<MonitorSourceRole>(["goal", "source", "industry", "competitor"]);
+
+vizRouter.get("/api/workspaces/:id/monitor/config", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) { res.status(404).json({ error: "workspace not found" }); return; }
+  try {
+    res.json(getMonitorConfig(workspaceId));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+vizRouter.put("/api/workspaces/:id/monitor/config", async (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) { res.status(404).json({ error: "workspace not found" }); return; }
+  const body = req.body ?? {};
+  const suite = String(body.suite ?? "monthly") as HealthSuite;
+  if (!VALID_SUITES.has(suite)) { res.status(400).json({ error: "invalid suite" }); return; }
+
+  const rawBindings = Array.isArray(body.datasetBindings) ? body.datasetBindings : [];
+  const bindings: MonitorDatasetBinding[] = [];
+  for (const b of rawBindings) {
+    if (!b || typeof b !== "object") continue;
+    const pathId = String((b as { datasetPathId?: unknown }).datasetPathId ?? "");
+    const role = (b as { role?: unknown }).role as MonitorSourceRole;
+    if (!pathId || !VALID_ROLES.has(role)) {
+      res.status(400).json({ error: `invalid binding: ${JSON.stringify(b)}` });
+      return;
+    }
+    const label = typeof (b as { label?: unknown }).label === "string" ? (b as { label: string }).label : undefined;
+    bindings.push({ datasetPathId: pathId, role, label, updatedAt: Date.now() });
+  }
+
+  // 校验 pathId 归属本 workspace 的 clean_data 聚合集
+  if (bindings.length > 0) {
+    try {
+      const listResp = await fetch(`${SELF_BASE}/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`);
+      if (!listResp.ok) { res.status(500).json({ error: `failed to fetch aggregations: ${listResp.status}` }); return; }
+      const listData = await listResp.json() as Array<{ pathId: string }>;
+      const valid = new Set(listData.map((d) => d.pathId));
+      const invalid = bindings.map((b) => b.datasetPathId).filter((pid) => !valid.has(pid));
+      if (invalid.length > 0) {
+        res.status(400).json({ error: `pathIds not in this workspace clean_data: ${invalid.join(",")}` });
+        return;
+      }
+    } catch (err) {
+      res.status(500).json({ error: `aggregations fetch error: ${String(err)}` });
+      return;
+    }
+  }
+
+  const ontologyId = typeof body.ontologyId === "string" && body.ontologyId.trim() ? body.ontologyId : undefined;
+  if (ontologyId && !listOntologies(workspaceId).some((o) => o.id === ontologyId)) {
+    res.status(400).json({ error: "ontologyId not found in this workspace" });
+    return;
+  }
+  const metricSystemId = typeof body.metricSystemId === "string" ? body.metricSystemId : undefined;
+  let thresholds: Record<string, number> | undefined;
+  if (body.thresholds && typeof body.thresholds === "object" && !Array.isArray(body.thresholds)) {
+    thresholds = {};
+    for (const [key, value] of Object.entries(body.thresholds as Record<string, unknown>)) {
+      if (typeof value === "number" && Number.isFinite(value)) thresholds[key] = value;
+    }
+  }
+
+  try {
+    const config = upsertMonitorConfig(workspaceId, { suite, datasetBindings: bindings, ontologyId, metricSystemId, thresholds });
+    res.json(config);
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });

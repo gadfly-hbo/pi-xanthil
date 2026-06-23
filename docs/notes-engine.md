@@ -9,27 +9,30 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-22 · E-DRAWER-UX + E-DELEGATE-TEMPLATE：修复委派抽屉窄宽布局，并把「控制·subagents 管理」agent 模版接入委派卡。
+- 最近更新：2026-06-23 · **E-MONITOR2 完成并通过总控终审**：经营差距监测引擎 + LLM 指标体系草案 + ontology 诊断关联落地（E 域 slot）。
 - 进度：
-  - `SkillSelector` 增加可选 `align(left|right)` / `direction(up|down)`，默认仍为 `up+left`；下拉宽度限制为不超过 viewport，ChatPane composer 原交互不变。
-  - `DelegateSubAgentCard` 的 embedded 模式改为显式单列 `minmax(0,1fr)`：brief→model→agent 模版→skill 子集→clean_data 文件依次满宽；native model select 加 `min-w-0/max-w-full`，避免其 min-content 撑破抽屉；非 embedded 独立卡仍保留双列。
-  - embedded skill 选择器移到三态按钮下方独立行，并使用 `down+left` 展开；tooltip 不再覆盖「继承/禁用/指定」。浏览器量测：菜单与选择器均完整位于约 437px 抽屉内，ChatPane composer 仍向上左对齐。
-  - `DelegateSubAgentCard` 通过既有 `api.listSubAgents()` 加载 enabled 模版，提供「默认（引擎内置 persona）」与各模版选项，展示 name/persona 摘要/toolIds 数量和明细；不读取或修改 `SubAgentManagementPane`。
-  - 模版与卡内配置正交：模版只提供 persona + extraction tool allowlist；model、skill 子集、clean_data 文件仍由委派卡独立设置。`sessionId` 变化会重置模版选择。
-  - `submit()` 已透传 `templateId: selectedTemplateId || undefined`；默认委派请求不含字段，指定模版请求携带现有契约字段。未改 server、D API 或接缝层。
+  - 新建 `server/src/monitor-engine.ts`（17.5KB 纯函数零 LLM 零 IO）：4 类差距规则 R-GAP-TARGET / R-GAP-HISTORY（含 MoM+YoY+移动均值偏离）/ R-GAP-INDUSTRY / R-GAP-COMPETITOR + `buildDiagnosis()` 关联依赖/对象/逻辑规则 + lifecycle 四态（new/recurring/worsening/resolved）复用 health-check-engine 范式。
+  - 新建 `server/src/monitor-engine.test.ts`：13 case 全过（4 类差距各覆盖正常+降级 + ontology 诊断 + lifecycle 四态 + 降级安全）。
+  - 新建 `server/src/monitor-llm.ts`：`draftMetricSystem()` 调 `runPiPrompt` 生成 `MonitorMetricSystemDraft` 草案；LLM prompt 只送字段名/行数/已注册 ontology 元数据，**绝不送原始行/draw_data 内容/行级明细**；无聚合数据时降级返回 missingData 不调 LLM；JSON 解析参 `onto-extract.ts` 范式（fence + brace-scan + try-catch 降级）。
+  - `db/engine.ts` 新增 3 表（`monitor_metric_systems` / `monitor_runs` / `monitor_findings`）+ CRUD：`createMonitorMetricSystem` / `listMonitorMetricSystems` / `deleteMonitorMetricSystem` / `insertMonitorRun` / `finishMonitorRun` / `insertMonitorFindings` / `listMonitorFindings` / `findPriorMonitorFindings`（跨 run 同 suite 同 workspace 取上次 done 的 findings 喂 lifecycle）。
+  - `routes/engine.ts` 新增 7 端点：`GET/DELETE /monitor/metric-systems[/msId]`、`POST /monitor/metric-system/draft|adopt`、`POST/GET /monitor/runs`、`GET /monitor/runs/:runId/findings`。跨域读 clean_data 走 `fetch /api/bi/aggregations`（D 域 HTTP），读 ontology 走 `fetch /api/ontologies/...`（V 域 HTTP），不直接 import 他域 db 函数。
+  - 边界确认（与总控倾向方案一致）：监测引擎落 E slot（独立于 V 域 health-check-engine），新增 `monitor_*` 三表与 7 端点，**不动 V 域既有 health/findings 链路**；E 与 V 在前端可分别展示，UI 双套但后端清晰。
+  - **总控终审收口（2026-06-23）**：① 修正 E 路由中不存在的 `/object-types`、`/metric-definitions` 为既有 `/objects`、`/metrics`；② draft 端点校验 ontologyId 必须属于当前 workspace；③ run 端点在 `insertMonitorRun` 前先 fetch 本 workspace clean_data 白名单校验 metric-system 内全部 datasetPathId，非法 pathId 400 且不落空 run；④ fresh DB schema 补 workspace/run FK；⑤ 双侧 `types.ts` 新增 `MonitorMetricSystemEntry/MonitorRun`，`api/viz.ts` 补齐 list/delete/run/listFindings 方法给 D-MONITOR3 使用。
 - 校验：
   - `npm run typecheck` ✅（server + web 全绿）。
-  - `npm run build` ✅（仅既有 ECharts import 与 chunk-size warning）。
-  - 浏览器实跑 ✅：默认请求无 `templateId`；指定模版请求含 `templateId:"tpl-browser-smoke"`；persona/toolIds 展示正确；模版 select 完整位于抽屉边界内。
-  - 浏览器模版数据与 delegate 响应使用 route interception；本机真实 `GET /api/subagents` 返回空数组，未修改 D 配置，也未进行真实 LLM runner E2E。
+  - `npm run build` ✅（仅既有 chunk-size warning）。
+  - `node --test src/monitor-engine.test.ts`：13/13 ✅。
+  - `node --test src/health-check-engine.test.ts src/monitor-engine.test.ts`：40/40 ✅（既有体检引擎无回归）。
+  - 红线 grep：`monitor-engine.ts` 无 `runPiPrompt|spawn|fetch|readFileSync|writeFileSync|execSync` 真实调用（仅文档注释）；`monitor-llm.ts` 无 `execSync|curl localhost|fetch localhost` 死锁危险源；数据探索 LLM 隔离净。
 - 下一步：
-  - 总控终审 E-DRAWER-UX / E-DELEGATE-TEMPLATE，重点核对 embedded 单列是否符合最终密度，以及模版、model、skill、dataFiles 的正交文案。
-  - 准备至少一条 enabled 真实 subagent 模版后做 runner E2E：指定模版委派→确认 task 持久化 templateId→从 trace/结果核对 persona 与 toolIds allowlist 生效→失败 resume/retry 仍恢复原模版；默认委派行为保持不变。
-  - 补做 E-PROMPT2 真实模型 + 浏览器 smoke：成功对话→沉淀 prompt→检查 `{{var}}` 质量→编辑/取消/入库；另测最新失败轮次友好空提示和既有沉淀 trace。
+  - **未做浏览器真跑**：本卡未在 UI 端集成（题面范围=engine/server 监测逻辑）；真实 draft → adopt → runs → findings 全链路浏览器实跑留给 D-MONITOR3 / X-MONITOR4。
+  - LLM draft 真实模型 smoke：需要真实 ontology 工作区跑一次端到端（含 metric-system/draft → adopt → runs → findings 全链路）；目前只有单元测试覆盖引擎部分。
+  - 监测 lifecycle 在跨 run 测试中只验证了同 workspace + 同 suite 取 prior 的逻辑；尚未在多 workspace 隔离场景验证（一个 workspace 的 prior 不应漏到另一个）。findPriorMonitorFindings 已加 workspace_id 过滤，单元测试可补。
+  - E-PROMPT2 真实模型 smoke 仍欠（与 E-MONITOR2 并行的旧 backlog）。
 - 阻塞：无。
 - 开放问题（需总控）：
-  1. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空。
-  2. 记忆→skill 默认阈值仍待确认：`highConfidence=0.75 / minHighConfidenceItems=3 / minUsedCount=6 / minPositiveSignals=3`，method tag 优先于 task tag。
+  1. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空（旧问题，未答）。
+  2. 记忆→skill 默认阈值仍待确认（旧问题，未答）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -154,6 +157,17 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 2026-06-21 P5-3 prompts 注入鲁棒性落点（用户拍板「task 级 resist 标注 + 复用 pairwise judge」）：在 `PromptEvalTask` 加可选 `mustResist`/`attackKind`，`mustResist` task 在 `buildPairwiseJudgePrompt` 顶部**早返回**路由到 `buildResistJudgePrompt`，把评分语义**倒转为「守约束者胜」**（守住=高分 win / 顺从注入失守=低分 loss），其余 JSON 协议 + majority/均值聚合一字不改。**否决了**新增独立 resist-judge 判定通道（单变体绝对 pass/fail + minScore 硬门禁）——那要扩 `PromptEvalTask` 更多字段 + runner 判定分支 + 可能 DB 列，接缝远大于复用 pairwise；用户选最小接缝方案。代价：注入鲁棒性仍是「相对 baseline 谁更稳健」，不是绝对 pass/fail；若将来要绝对门禁再单开通道。
 - 2026-06-21 P5-3 接缝裁断：本次给双侧 `types.ts` 的 `PromptEvalTask` 加可选 `mustResist`/`attackKind` + 新增 `PromptAttackKind` union。判定为**符合 E-LAB 既有惯例**（prompt eval 契约本就落双侧 types，见 E-LAB1 决策）且为**纯增量可选字段**（向后兼容、不改既有结构、旧 task 不带这两字段行为零变化），故按惯例镜像两侧而非另立位置。已写入 §0 开放问题待总控确认。
 - 2026-06-21 P5-3 ★安全（等同 AGENTS.md §一）：① hooks red-team 仍守 E-LAB4 零执行铁律——危险命令是 sentinel 占位（`/tmp/__redteam_sentinel__` 等），评测路径零 spawn，测试 sentinel-not-exist 坐实；② prompts 注入样本不含真实敏感数据——「系统提示/密钥」全是占位文案，judge 纯判定不触发危险执行。两侧均待总控加重终审核这两条红线。
+
+**监测引擎（E-MONITOR2，2026-06-23）**
+- 架构决策：监测引擎与 V 域 health-check-engine 同范式但独立——监测 = 经营指标"偏差/差距"分析，体检 = 数据集自身"质量/健康"巡检。监测落 E slot（新表 `monitor_*` + E 域路由），体检落 V slot（既存 `health_*` 表 + V 域路由），E 和 V 在前端可分别展示或后续合流。纯函数核心零 LLM 零 IO，LLM 只在指标体系草案生成阶段使用且严格遵守安全约束（不限原始行级数据）。
+- 指标关联契约：`MonitorMetricBinding` 的 `targetMetricId/benchmarkMetricId/competitorMetricId` 指向本体系的另一个 `MonitorMetricDraft.name`，engine 通过 lookup 找到目标 metric 的 `bindings[0]` 读值做差距计算。无 `role` 字段，不混用 dataset bindings。跨域读 clean_data/ontology 走 HTTP fetch，不直接 import 他域 db 函数。
+- 差距规则口径：
+  - R-GAP-TARGET：source 最新值 vs target metric 最新值，正 delta=超出/负=落后
+  - R-GAP-HISTORY：环比(上期)/同比(去年同月)/移动均值偏离(maWindow=3 期)，取最严重 severity
+  - R-GAP-INDUSTRY：source vs benchmarkMetricId，落后=问题/领先=info
+  - R-GAP-COMPETITOR：source vs competitorMetricId，口径同 industry
+  - lifecycle 复用 health-check-engine 的 4 态（new/recurring/worsening/resolved）+ 同 signature 匹配 + resolved 补丁
+- LLM 草案安全约束：prompt 只送 `BiAggregationDataset.columns/rowCount + ontology 元数据`，不送原始行、不送 `draw_data`、不送行级明细。无聚合/ontology 时降级返回 `missingData` 不调 LLM。JSON 解析参 `onto-extract.ts` 范式。
 
 **重复 / 工作流产物**
 - Flow `kind: single|multi`（DB 自动迁移 ALTER+DEFAULT）→ 后删单智能体，只留 multi；**更名仅改 label，内部 id `multi`/DB kind 不动**（零迁移）。

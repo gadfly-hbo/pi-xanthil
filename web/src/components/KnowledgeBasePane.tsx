@@ -4,8 +4,9 @@
 // 上传走 file.text() 纯文本读取（.md/.txt/.csv），二进制文件用户应先转 markdown 再上传。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Library, Plus, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
+import { FileText, Globe, Library, Plus, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
+import { sharedApi } from "@/lib/api/shared";
 import type { KnowledgeChunk, KnowledgeChunkHit, KnowledgeDoc } from "@/types";
 
 const TEXT_EXT = new Set([".md", ".markdown", ".txt", ".csv", ".tsv", ".json", ".log"]);
@@ -58,6 +59,7 @@ function highlightChunk(text: string, query: string) {
 
 function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsChanged?: () => void }) {
   const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
+  const [enabledSet, setEnabledSet] = useState<Set<string>>(new Set());
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [showCreate, setShowCreate] = useState(false);
@@ -65,20 +67,26 @@ function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsC
   const [tagFilter, setTagFilter] = useState<string | null>(null);
   const [selectedId, setSelectedId] = useState<string | null>(null);
   const [detail, setDetail] = useState<{ doc: KnowledgeDoc; chunks: KnowledgeChunk[] } | null>(null);
+  const [busyEnableId, setBusyEnableId] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement | null>(null);
 
   const [draftTitle, setDraftTitle] = useState("");
   const [draftContent, setDraftContent] = useState("");
   const [draftTags, setDraftTags] = useState("");
   const [draftPath, setDraftPath] = useState("");
+  const [draftScope, setDraftScope] = useState<"global" | "workspace">("workspace");
 
   const reload = useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
     setError(null);
     try {
-      const list = await api.listKnowledgeDocs(workspaceId);
+      const [list, ens] = await Promise.all([
+        api.listKnowledgeDocs(workspaceId),
+        sharedApi.listMemoryEnablements(workspaceId, "knowledge"),
+      ]);
       setDocs(list);
+      setEnabledSet(new Set(ens.filter((e) => e.enabled).map((e) => e.itemId)));
     } catch (err) {
       setError(`加载失败：${err instanceof Error ? err.message : String(err)}`);
     } finally {
@@ -163,18 +171,42 @@ function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsC
         sourceType: draftPath ? "path" : "upload",
         path: draftPath || null,
         tags,
+        scope: draftScope,
       });
       setShowCreate(false);
       setDraftTitle("");
       setDraftContent("");
       setDraftTags("");
       setDraftPath("");
+      setDraftScope("workspace");
       await reload();
       onDocsChanged?.();
     } catch (err) {
       setError(`保存失败：${err instanceof Error ? err.message : String(err)}`);
     }
   };
+
+  const toggleEnablement = useCallback(
+    async (doc: KnowledgeDoc, next: boolean) => {
+      if (doc.scope !== "global") return; // workspace 私有不参与 enablement
+      setBusyEnableId(doc.id);
+      try {
+        await sharedApi.setMemoryEnablement(workspaceId, "knowledge", doc.id, next);
+        setEnabledSet((prev) => {
+          const s = new Set(prev);
+          if (next) s.add(doc.id);
+          else s.delete(doc.id);
+          return s;
+        });
+        onDocsChanged?.();
+      } catch (err) {
+        setError(`启用切换失败：${err instanceof Error ? err.message : String(err)}`);
+      } finally {
+        setBusyEnableId(null);
+      }
+    },
+    [workspaceId, onDocsChanged],
+  );
 
   const onDelete = async (id: string, title: string) => {
     if (!window.confirm(`确认删除「${title}」？该操作会级联删除所有 chunks，且不可撤销。`)) return;
@@ -285,7 +317,10 @@ function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsC
               </div>
             ) : (
               <ul className="divide-y divide-neutral-200 dark:divide-neutral-800">
-                {filtered.map((d) => (
+                {filtered.map((d) => {
+                  const isGlobal = d.scope === "global";
+                  const enabled = isGlobal && enabledSet.has(d.id);
+                  return (
                   <li
                     key={d.id}
                     onClick={() => setSelectedId(d.id)}
@@ -293,9 +328,31 @@ function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsC
                       selectedId === d.id ? "bg-white dark:bg-neutral-900" : ""
                     }`}
                   >
+                    {isGlobal && (
+                      <input
+                        type="checkbox"
+                        className="mt-1.5 shrink-0"
+                        checked={enabled}
+                        disabled={busyEnableId === d.id}
+                        onChange={(e) => {
+                          e.stopPropagation();
+                          void toggleEnablement(d, e.target.checked);
+                        }}
+                        title={enabled ? "已启用，点击停用" : "未启用，点击启用"}
+                        onClick={(e) => e.stopPropagation()}
+                      />
+                    )}
                     <FileText className="mt-0.5 h-4 w-4 flex-shrink-0 text-neutral-500" />
                     <div className="min-w-0 flex-1">
-                      <div className="truncate text-sm font-medium">{d.title}</div>
+                      <div className="flex items-center gap-1.5">
+                        <span className="truncate text-sm font-medium">{d.title}</span>
+                        {isGlobal && (
+                          <span className="inline-flex shrink-0 items-center gap-0.5 rounded bg-amber-100 px-1 text-[10px] text-amber-700 dark:bg-amber-950 dark:text-amber-300">
+                            <Globe className="h-2.5 w-2.5" />
+                            通用
+                          </span>
+                        )}
+                      </div>
                       <div className="mt-0.5 flex flex-wrap items-center gap-1 text-[11px] text-neutral-500">
                         <span>{fmtTs(d.updatedAt)}</span>
                         <span>·</span>
@@ -321,7 +378,8 @@ function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsC
                       <Trash2 className="h-3.5 w-3.5" />
                     </button>
                   </li>
-                ))}
+                  );
+                })}
               </ul>
             )}
           </div>
@@ -444,6 +502,34 @@ function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsC
                   className="mt-1 block w-full rounded border border-neutral-300 bg-white px-2 py-1 font-mono text-xs dark:border-neutral-700 dark:bg-neutral-800"
                 />
               </label>
+              <fieldset className="block">
+                <legend className="text-xs text-neutral-600 dark:text-neutral-400">作用域 *</legend>
+                <div className="mt-1 flex gap-3 text-xs">
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="kb-scope"
+                      value="workspace"
+                      checked={draftScope === "workspace"}
+                      onChange={() => setDraftScope("workspace")}
+                    />
+                    <span>项目专属（仅本工作区可见）</span>
+                  </label>
+                  <label className="flex items-center gap-1.5">
+                    <input
+                      type="radio"
+                      name="kb-scope"
+                      value="global"
+                      checked={draftScope === "global"}
+                      onChange={() => setDraftScope("global")}
+                    />
+                    <span className="inline-flex items-center gap-1">
+                      <Globe className="h-3 w-3 text-amber-600" />
+                      通用（入全局池，跨工作区可启用）
+                    </span>
+                  </label>
+                </div>
+              </fieldset>
             </div>
             <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">
               <button

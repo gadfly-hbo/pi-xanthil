@@ -97,6 +97,7 @@ export function initDataTables(): void {
 
   // 知识库 knowledge_docs / knowledge_chunks（知识库模块 · 总控 X 接缝审定 schema · CRUD+分块+检索由 Agent-D 实装）。
   // 文档=用户上传/登记的非结构化资料（folder kind 'knowledge'）；chunk 供 BM25 检索召回。不接 draw_data 原始数据。
+  // scope: 'global'=通用入池跨工作区可启用 / 'workspace'=项目专属本工作区独占（D-POOL1）。
   db.exec(`
     CREATE TABLE IF NOT EXISTS knowledge_docs (
       id           TEXT PRIMARY KEY,
@@ -106,10 +107,12 @@ export function initDataTables(): void {
       path         TEXT,
       content      TEXT,
       tags         TEXT NOT NULL DEFAULT '[]',
+      scope        TEXT NOT NULL DEFAULT 'workspace',
       created_at   INTEGER NOT NULL,
       updated_at   INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_knowledge_docs_ws ON knowledge_docs(workspace_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_knowledge_docs_scope ON knowledge_docs(scope);
     CREATE TABLE IF NOT EXISTS knowledge_chunks (
       id       TEXT PRIMARY KEY,
       doc_id   TEXT NOT NULL REFERENCES knowledge_docs(id),
@@ -119,6 +122,15 @@ export function initDataTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_knowledge_chunks_doc ON knowledge_chunks(doc_id, idx);
   `);
+  // 旧库 idempotent ALTER：knowledge_docs 补 scope 列（D-POOL1）。与同文件 memory_items/reviews
+  // 加 tags 列范式一致，不碰 db.ts MIGRATIONS（接缝层归总控）。
+  {
+    const cols = db.prepare("PRAGMA table_info(knowledge_docs)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "scope")) {
+      db.exec("ALTER TABLE knowledge_docs ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace'");
+      db.exec("CREATE INDEX IF NOT EXISTS idx_knowledge_docs_scope ON knowledge_docs(scope)");
+    }
+  }
 
   // prompts 模板库 prompt_templates（prompts_mgmt 模块 · 总控 X 接缝审定 · CRUD 由 Agent-D 实装）。
   // workspace_id 可空 = 全局模板（跨工作区可见）；body 内 {{变量}} 占位仅存储，渲染由调用方做。
@@ -912,6 +924,7 @@ interface KnowledgeDocRow {
   path: string | null;
   content: string | null;
   tags: string;
+  scope: string;
   created_at: number;
   updated_at: number;
 }
@@ -925,6 +938,7 @@ function rowToKnowledgeDoc(r: KnowledgeDocRow): KnowledgeDoc {
     path: r.path,
     content: r.content,
     tags: parseStringArray(r.tags),
+    scope: r.scope === "global" ? "global" : "workspace",
     createdAt: r.created_at,
     updatedAt: r.updated_at,
   };
@@ -979,17 +993,22 @@ export function createKnowledgeDoc(input: KnowledgeDocInput): KnowledgeDoc {
   const now = Date.now();
   const sourceType = input.sourceType === "path" ? "path" : "upload";
   const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string" && !!t) : [];
+  const scope: "global" | "workspace" = input.scope === "global" ? "global" : "workspace";
   db.exec("BEGIN");
   try {
     db.prepare(`
-      INSERT INTO knowledge_docs (id, workspace_id, title, source_type, path, content, tags, created_at, updated_at)
-      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
-    `).run(id, input.workspaceId, title, sourceType, input.path ?? null, content, JSON.stringify(tags), now, now);
+      INSERT INTO knowledge_docs (id, workspace_id, title, source_type, path, content, tags, scope, created_at, updated_at)
+      VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+    `).run(id, input.workspaceId, title, sourceType, input.path ?? null, content, JSON.stringify(tags), scope, now, now);
     writeChunksFor(id, content);
     db.exec("COMMIT");
   } catch (e) {
     db.exec("ROLLBACK");
     throw e;
+  }
+  // D-POOL1: scope='global' 入池，origin 工作区默认启用；'workspace' 私有，独占无需 enablement。
+  if (scope === "global") {
+    enableForOrigin(input.workspaceId, "knowledge", id);
   }
   return getKnowledgeDoc(id) as KnowledgeDoc;
 }
@@ -1012,9 +1031,17 @@ export function getKnowledgeDoc(id: string): KnowledgeDoc | undefined {
   return r ? rowToKnowledgeDoc(r) : undefined;
 }
 
+/**
+ * D-POOL1 池化语义：scope='global' 跨工作区可见；scope='workspace' 仅 origin ws 可见。
+ * 全局文档的"本 ws 是否启用"由 workspace_memory_enablements(item_kind='knowledge') 表决；
+ * 工作区私有文档本就独占，无需 enablement。
+ */
 export function listKnowledgeDocs(workspaceId: string): KnowledgeDoc[] {
-  return (db.prepare("SELECT * FROM knowledge_docs WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId) as unknown as KnowledgeDocRow[])
-    .map(rowToKnowledgeDoc);
+  return (db.prepare(
+    `SELECT * FROM knowledge_docs
+     WHERE scope = 'global' OR (scope = 'workspace' AND workspace_id = ?)
+     ORDER BY updated_at DESC`,
+  ).all(workspaceId) as unknown as KnowledgeDocRow[]).map(rowToKnowledgeDoc);
 }
 
 export function updateKnowledgeDoc(id: string, patch: KnowledgeDocPatch): KnowledgeDoc | undefined {
@@ -1072,6 +1099,9 @@ export function listKnowledgeChunks(docId: string): KnowledgeChunk[] {
 /**
  * Workspace-wide chunk join, with parent doc fields used by BM25 retrieval.
  * Filters by docIds when provided.
+ *
+ * D-POOL1 消费侧池化口径：召回基集 = 本 ws 已启用的 global 文档 ∪ 本 ws 私有(scope='workspace')文档。
+ * workspace 私有文档无需 enablement，本就独占；global 文档跟随 workspace_memory_enablements。
  */
 export function listKnowledgeChunksForRetrieval(workspaceId: string, docIds?: string[]): Array<{
   chunk: KnowledgeChunk;
@@ -1080,8 +1110,16 @@ export function listKnowledgeChunksForRetrieval(workspaceId: string, docIds?: st
   docTags: string[];
   docUpdatedAt: number;
 }> {
+  const enabledGlobalIds = new Set(listEnabledItemIds(workspaceId, "knowledge"));
   const params: string[] = [workspaceId];
-  let where = "d.workspace_id = ?";
+  // 本 ws 私有 OR (global 文档且在已启用集中)。
+  // 已启用集为空时退化为 d.id IN ('')（恒 false），仅返回本 ws 私有。
+  const enabledPlaceholder = enabledGlobalIds.size > 0
+    ? `(${Array.from(enabledGlobalIds).map(() => "?").join(",")})`
+    : "('')";
+  let where =
+    `((d.scope = 'workspace' AND d.workspace_id = ?) OR (d.scope = 'global' AND d.id IN ${enabledPlaceholder}))`;
+  if (enabledGlobalIds.size > 0) params.push(...enabledGlobalIds);
   if (docIds && docIds.length > 0) {
     where += ` AND d.id IN (${docIds.map(() => "?").join(",")})`;
     params.push(...docIds);
@@ -1176,6 +1214,10 @@ export function createPromptTemplate(input: PromptTemplateInput): PromptTemplate
     INSERT INTO prompt_templates (id, workspace_id, title, category, body, variables, tags, created_at, updated_at)
     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)
   `).run(id, wsId, title, category, body, JSON.stringify(variables), JSON.stringify(tags), now, now);
+  // D-POOL1: 非 NULL = 某 ws 创建,落 origin 启用;NULL = 全局模板,消费侧恒启用,不入 enablement 表。
+  if (wsId) {
+    enableForOrigin(wsId, "prompt", id);
+  }
   return getPromptTemplate(id) as PromptTemplate;
 }
 
@@ -1185,23 +1227,17 @@ export function getPromptTemplate(id: string): PromptTemplate | undefined {
 }
 
 /**
- * 列出模板。默认 includeGlobal=true，返回 「该工作区 ∪ 全局(workspace_id IS NULL)」。
+ * D-POOL1 纯全局池：返回全部 prompt_templates（不再按 workspaceId 过滤）。
+ * NULL workspace_id = 全局模板（恒启用），非 NULL = 池条目（跟随 enablement）。
+ * includeGlobal 参数保留兼容（弃用），不再影响结果。
  * filters: category 精确匹配；tags 任一匹配（OR 语义，标签为内嵌 JSON 数组，走 LIKE 兜底）。
  */
 export function listPromptTemplates(
-  workspaceId: string,
+  _workspaceId?: string,
   filters?: { category?: string; tags?: string[]; includeGlobal?: boolean },
 ): PromptTemplate[] {
-  const includeGlobal = filters?.includeGlobal !== false;
   const where: string[] = [];
   const params: (string | number)[] = [];
-  if (includeGlobal) {
-    where.push("(workspace_id = ? OR workspace_id IS NULL)");
-    params.push(workspaceId);
-  } else {
-    where.push("workspace_id = ?");
-    params.push(workspaceId);
-  }
   if (filters?.category) {
     where.push("category = ?");
     params.push(filters.category);
@@ -1216,7 +1252,8 @@ export function listPromptTemplates(
     where.push(`(${ors})`);
     for (const t of cleanTags) params.push(`%"${t}"%`);
   }
-  const sql = `SELECT * FROM prompt_templates WHERE ${where.join(" AND ")} ORDER BY updated_at DESC`;
+  const whereClause = where.length > 0 ? `WHERE ${where.join(" AND ")}` : "";
+  const sql = `SELECT * FROM prompt_templates ${whereClause} ORDER BY updated_at DESC`;
   const rows = db.prepare(sql).all(...params) as unknown as PromptTemplateRow[];
   return rows.map(rowToPromptTemplate);
 }

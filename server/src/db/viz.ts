@@ -28,6 +28,8 @@ import type {
   ActionTaskStatus,
   ExtractJob,
   ExtractJobStatus,
+  MonitorConfig,
+  MonitorDatasetBinding,
 } from "../types.ts";
 import type { ValidationIssue } from "../onto-validator.ts";
 
@@ -274,6 +276,17 @@ function initOntoTables(): void {
       suggested_concept TEXT,
       created_at      INTEGER NOT NULL
     );
+    CREATE TABLE IF NOT EXISTS monitor_configs (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL UNIQUE REFERENCES workspaces(id) ON DELETE CASCADE,
+      suite             TEXT NOT NULL DEFAULT 'monthly',
+      dataset_bindings  TEXT NOT NULL DEFAULT '[]',
+      ontology_id       TEXT,
+      metric_system_id  TEXT,
+      thresholds_json   TEXT,
+      created_at        INTEGER NOT NULL,
+      updated_at        INTEGER NOT NULL
+    );
   `);
   try {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_ontologies_ws ON ontologies(workspace_id);`);
@@ -288,6 +301,7 @@ function initOntoTables(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_health_runs_ws ON health_runs(workspace_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_health_findings_run ON health_findings(run_id);`);
     db.exec(`CREATE INDEX IF NOT EXISTS idx_ontology_gaps_run ON ontology_gaps(run_id);`);
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_monitor_configs_ws ON monitor_configs(workspace_id);`);
   } catch {
     // ignore
   }
@@ -1178,7 +1192,105 @@ export function listOntologyGaps(runId: string): OntologyGap[] {
   return rows.map((r) => ({
     datasetPathId: r.dataset_path_id,
     column: r.column_name,
-    reason: r.reason,
+     reason: r.reason,
     suggestedConcept: r.suggested_concept ?? undefined,
   }));
+}
+
+// ── 监测配置 monitor_configs（D-MONITOR1）──
+// 每 workspace 至多一条 config（workspace_id UNIQUE），PUT 时 upsert。
+
+interface MonitorConfigRow {
+  id: string;
+  workspace_id: string;
+  suite: string;
+  dataset_bindings: string;
+  ontology_id: string | null;
+  metric_system_id: string | null;
+  thresholds_json: string | null;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToMonitorConfig(r: MonitorConfigRow): MonitorConfig {
+  let bindings: MonitorDatasetBinding[] = [];
+  try {
+    const parsed = JSON.parse(r.dataset_bindings) as unknown;
+    if (Array.isArray(parsed)) bindings = parsed as MonitorDatasetBinding[];
+  } catch {
+    // ignore parse error → treat as empty
+  }
+  let thresholds: Record<string, number> | undefined;
+  if (r.thresholds_json) {
+    try {
+      const parsed = JSON.parse(r.thresholds_json) as unknown;
+      if (parsed && typeof parsed === "object") thresholds = parsed as Record<string, number>;
+    } catch {
+      // ignore
+    }
+  }
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    suite: r.suite as HealthSuite,
+    datasetBindings: bindings,
+    ontologyId: r.ontology_id ?? undefined,
+    metricSystemId: r.metric_system_id ?? undefined,
+    thresholds,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function getMonitorConfig(workspaceId: string): MonitorConfig | null {
+  const r = db
+    .prepare("SELECT * FROM monitor_configs WHERE workspace_id = ?")
+    .get(workspaceId) as MonitorConfigRow | undefined;
+  return r ? rowToMonitorConfig(r) : null;
+}
+
+export interface MonitorConfigInput {
+  suite: HealthSuite;
+  datasetBindings: MonitorDatasetBinding[];
+  ontologyId?: string;
+  metricSystemId?: string;
+  thresholds?: Record<string, number>;
+}
+
+export function upsertMonitorConfig(workspaceId: string, input: MonitorConfigInput): MonitorConfig {
+  const now = Date.now();
+  const existing = db
+    .prepare("SELECT id, created_at FROM monitor_configs WHERE workspace_id = ?")
+    .get(workspaceId) as { id: string; created_at: number } | undefined;
+  const bindingsJson = JSON.stringify(input.datasetBindings ?? []);
+  const thresholdsJson = input.thresholds ? JSON.stringify(input.thresholds) : null;
+  if (existing) {
+    db.prepare(
+      "UPDATE monitor_configs SET suite = ?, dataset_bindings = ?, ontology_id = ?, metric_system_id = ?, thresholds_json = ?, updated_at = ? WHERE id = ?",
+    ).run(
+      input.suite,
+      bindingsJson,
+      input.ontologyId ?? null,
+      input.metricSystemId ?? null,
+      thresholdsJson,
+      now,
+      existing.id,
+    );
+    return getMonitorConfig(workspaceId)!;
+  }
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO monitor_configs (id, workspace_id, suite, dataset_bindings, ontology_id, metric_system_id, thresholds_json, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  ).run(
+    id,
+    workspaceId,
+    input.suite,
+    bindingsJson,
+    input.ontologyId ?? null,
+    input.metricSystemId ?? null,
+    thresholdsJson,
+    now,
+    now,
+  );
+  return getMonitorConfig(workspaceId)!;
 }

@@ -12,6 +12,7 @@ import { useTabVisibility } from "@/lib/useTabVisibility";
 import { getSubTabsForTab, ONTO_SUB_TABS, LAB_SUB_TABS, LAB_SUB_IDS, ZHUANTI_SIDEBAR_TABS, ZHUANTI_SIDEBAR_IDS, type SubTab } from "@/lib/constants";
 import { DataTabs } from "@/tabs/DataTabs";
 import { EngineTabs } from "@/tabs/EngineTabs";
+import { HealthTabs } from "@/tabs/HealthTabs";
 import { VizTabs } from "@/tabs/VizTabs";
 import type { TabContext } from "@/tabs/types";
 import type { WorkflowTemplate } from "@/components/WorkflowTemplateLibraryPane";
@@ -198,12 +199,19 @@ export default function App() {
       return;
     }
     try {
-      const docs = await api.listKnowledgeDocs(activeWorkspaceId);
+      // X-POOL2: chip 计数口径须与 listKnowledgeChunksForRetrieval 注入候选一致——
+      // 本 ws 私有(scope!=='global') ∪ 已启用的 global 文档；未启用 global 不计入。
+      const [docs, enablements] = await Promise.all([
+        api.listKnowledgeDocs(activeWorkspaceId),
+        api.listMemoryEnablements(activeWorkspaceId, "knowledge"),
+      ]);
+      const enabledGlobal = new Set(enablements.filter((e) => e.enabled).map((e) => e.itemId));
+      const injectable = docs.filter((d) => d.scope !== "global" || enabledGlobal.has(d.id));
       setKnowledgePromptInfo({
-        count: docs.length,
-        updatedAt: docs.reduce<number | null>((latest, doc) => latest === null ? doc.updatedAt : Math.max(latest, doc.updatedAt), null),
+        count: injectable.length,
+        updatedAt: injectable.reduce<number | null>((latest, doc) => latest === null ? doc.updatedAt : Math.max(latest, doc.updatedAt), null),
       });
-      if (docs.length === 0) setKnowledgePromptEnabled(false);
+      if (injectable.length === 0) setKnowledgePromptEnabled(false);
     } catch {
       setKnowledgePromptInfo({ count: 0, updatedAt: null });
       setKnowledgePromptEnabled(false);
@@ -618,7 +626,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "readme" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "readme" : tab === "health" ? "health_data" : "view");
     if (tab === "explore") {
       setActiveSessionId(sessions[0]?.id ?? null);
     }
@@ -1008,6 +1016,7 @@ export default function App() {
             <DataTabs ctx={tabCtx} />
             <EngineTabs ctx={tabCtx} />
             <VizTabs ctx={tabCtx} />
+            <HealthTabs ctx={tabCtx} />
           </div>
 
           {activeTab === "explore" && activeSessionId && activeSubTab === "view" &&

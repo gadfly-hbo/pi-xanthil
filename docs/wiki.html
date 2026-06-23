@@ -290,6 +290,119 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【全局池池化扩展·prompts + 知识库】（总控拆卡 2026-06-23；来源=本会话「数据架构盘点」）。命题：把「工作区独占」里可跨工作区复用的资产(prompts 模板、知识库资料)纳入既有「全局池 + 按工作区启用」机制(workspace_memory_enablements)，知识库带 scope(通用/项目专属)。判据=「资产 vs 痕迹」：可复用资产入池、运行痕迹(trace/评测结果/分析产物)保持独占。用户决策(2026-06-23)：知识库加 scope 列(文档级 通用/专属)；本体并入 D 卡收尾(已完成池化，仅缺 backfill)。════
+  // ── 现状核查(证据，避免重复造) ── ① ontology 已完成池化：db/viz.ts:387 listOntologies 返回全局池 + OntologyPane 启用 checkbox(kind='ontology')，本批不重做，仅补 backfill 存量+清过时注释。② prompt_templates 现有「workspace_id 可空=全局可见」朴素共享，但无按工作区独立启用 → 本批叠加 enablement(kind='prompt')。③ prompt_templates / knowledge_docs 均无 enabled 列 → backfill 不能套用现有 SELECT 模式(见 X-POOL2)。── 落点：契约/接缝(types.ts/db.ts/db/shared.ts)=X 总控；db/data.ts CRUD + 控制/知识库前端=D(V 停用归 D)。
+  { dom: "X", status: "done", created: "2026-06-23 16:30", title: "【池化扩展·契约+接缝·P0】X-POOL0：MemoryItemKind 加 prompt/knowledge + knowledge_docs.scope 列 DDL + 池化语义审定（总控自做）", brief:
+`来源：本会话「数据架构盘点」总控决策。本卡=接缝契约，总控自做，解锁 D-POOL1。
+范围(接缝层·总控自做)：
+1. types.ts 双侧(server+web 镜像，单一真源、禁本地重声明)：MemoryItemKind 增加 'prompt' | 'knowledge' 两类；同步清理 'ontology' 那条"P3 落地"过时注释(实际已落地)。
+2. 审定 knowledge_docs.scope 列 DDL(交 D 在 db/data.ts 落地，本卡写死口径)：scope TEXT NOT NULL DEFAULT 'workspace'，值域仅 'global' | 'workspace'；旧库走 idempotent ALTER 加列(默认 workspace = 不入池、零行为变更)，注册到 db.ts MIGRATIONS 递增版本。
+3. 审定 KnowledgeDocInput 增加可选 scope（默认 workspace）；PromptTemplate 不加列(沿用 workspace_id 归属 + enablement)。
+4. 池化语义口径(写死给 D 照做)：
+   · prompts：listPromptTemplates 返回全局池(所有工作区 + workspace_id 为 NULL 的全局模板)；createPromptTemplate 落库即 enableForOrigin(kind='prompt')，本工作区默认启用。
+   · 知识库：listKnowledgeDocs(ws) 返回 = scope='global' 的全工作区文档 ∪ 本工作区 scope='workspace' 文档；createKnowledgeDoc 当 scope='global' 时 enableForOrigin(kind='knowledge')，workspace 私有不入池；searchKnowledge 检索同口径，不得越过启用边界召回。
+验收：双侧 types 对齐、无本地重声明；scope 列 DDL/migration 口径定稿；server+web typecheck+build 绿。解锁 D-POOL1。
+✅ 总控自做 done（2026-06-23）：types.ts 双侧 MemoryItemKind 增加 'prompt'|'knowledge'、清除 'ontology' 那条"P3 落地"过时注释(实际已落地)；KnowledgeDoc / KnowledgeDocInput 双侧增加可选 scope('global'|'workspace')——设可选以契约先行、不打穿 D 域 db/data.ts 的 row 映射 build。scope 列 DDL(scope TEXT NOT NULL DEFAULT 'workspace')与池化语义已写死本卡交 D-POOL1 落地。验证：server typecheck ✅ + web typecheck ✅ + web build ✅(仅既有 chunk warning)。D-POOL1 可开工。` },
+
+  { dom: "D", status: "done", created: "2026-06-23 16:31", title: "【池化扩展·落地·P0】D-POOL1：prompts/知识库 list 改池 + create 即启用 + scope 列 + 两 Pane 勾选/scope 选择", brief:
+`前置：X-POOL0 契约(MemoryItemKind 'prompt'/'knowledge'、scope 列 DDL、池化语义)。落点=D 数据基座 db/data.ts + 控制(prompts)/知识库前端(V 停用归 D)。
+目标：把 prompts 模板库、知识库资料库从「工作区独占」升级为「全局池 + 按工作区启用」，知识库带 scope(通用/项目专属)。
+范围：
+A. 后端 db/data.ts(按 X 口径，不碰接缝层)：
+  1. knowledge_docs 按 X-POOL0 DDL 加 scope 列 + 旧库 idempotent ALTER + 注册 migration；KnowledgeDocInput 加 scope，createKnowledgeDoc 写入。
+  2. listPromptTemplates 改返回全局池(参 db/viz.ts:387 listOntologies 模式，去掉/弱化 workspaceId 过滤)。
+  3. listKnowledgeDocs(ws) 改：scope='global' 全工作区 ∪ 本工作区 scope='workspace'；searchKnowledge 遵循同口径。
+  4. createPromptTemplate / createKnowledgeDoc：落库后调 enableForOrigin(import 自 db/shared.ts，已存在)——prompt 全量启用本工作区；knowledge 仅 scope='global' 时启用。
+  5. 消费侧按 enablement 过滤：getKnowledgePrompt 及顶栏知识库 chip 计数只统计/注入本工作区已启用文档；prompts 若有注入/选择器同理(用 listEnabledItemIds(ws,kind))。
+B. 前端：
+  6. PromptsManagementPane：模板列表加「本工作区启用」勾选(参 OntologyPane toggleEnablement / RulesPane)——listMemoryEnablements(ws,'prompt') + setMemoryEnablement。
+  7. KnowledgeBasePane(资料库 view)：上传/新建时选 scope=[通用 | 项目专属]；列表对池来的(global)显示「本工作区启用」勾选，本工作区私有(workspace)不显示勾选(本就独占)。
+铁律：不碰接缝层(types.ts / db.ts 注册表 / db/shared.ts CRUD 本体)；scope 列 SQL 按 X 写死照抄；知识库属 'knowledge' folder，不读 draw_data；改完 server+web typecheck+build 绿。
+验收：prompts 与知识文档可在各工作区独立勾选启用；标「通用」的知识文档跨工作区可见可启用、「项目专属」仅本工作区；顶栏知识库 chip 计数随启用变化；typecheck+build 绿。
+✅ 总控终审通过（2026-06-23）：逐行核 db/data.ts(listPromptTemplates 纯池 SELECT * / createPromptTemplate 仅非 NULL enableForOrigin / listKnowledgeDocs=global全ws∪本ws私有 / createKnowledgeDoc 仅 global 入池 / listKnowledgeChunksForRetrieval 消费侧按 enablement 过滤+空集退化 ('') 防 SQL 错)、routes/data.ts(GET 仅 global 跨 ws 豁免 403、PATCH 不豁免=global 只 origin 可改，安全到位)、前端两 Pane(NULL/global 恒启用 disabled + scope radio 通用/专属 + 启用勾选)均正确。门禁复跑：server+web typecheck ✅ + web build ✅ + prompt/knowledge/memory 相关 41/41 tests ✅ + 数据探索 LLM 隔离 grep EXIT=1 ✅。一处 chip 计数偏差(全池长度≠注入候选)由 X-POOL2 总控自做修正。` },
+
+  { dom: "X", status: "done", created: "2026-06-23 16:32", title: "【池化扩展·收尾+终审·P0】X-POOL2：backfill 补 ontology/prompt/knowledge 三源 + 全链终审 + 注入边界核对（总控自做）", brief:
+`前置：D-POOL1 回流。总控自做(db/shared.ts 接缝)+ 终审 + 收口。
+范围：
+1. db/shared.ts BACKFILL_SOURCES 补三源(存量回填启用关系，启动幂等)：
+   · ontology(table=ontologies)——本体收尾，回填存量本体本工作区启用；
+   · prompt(table=prompt_templates)；
+   · knowledge(table=knowledge_docs，仅 scope='global')。
+   注意：prompt_templates / knowledge_docs 无 enabled 列 → 不能套用现有 SELECT workspace_id,?,id,enabled,? 模式；为这两源改用 enabled 常量 1 的变体(形如 SELECT workspace_id, ?, id, 1, ? FROM 表 [WHERE scope='global'])，保持 INSERT OR IGNORE + try/catch 幂等、不破坏 boot。
+2. 终审(逐行核接缝)：types.ts 双侧 kind 对齐无本地重声明；scope 列 migration 版本递增不撞他域；list* 池化语义与 X-POOL0 一致；create* enableForOrigin 落点正确；消费侧(注入/计数/检索)确按 enablement 过滤、不泄露未启用内容。
+3. 运行验证：server+web typecheck、web build；冒烟——A 工作区建「通用」知识文档 → B 工作区可见且默认未勾 → 勾选后顶栏 chip+1；prompts 同理；本体存量经 backfill 在本工作区已启用。
+4. 收口：更新 notes-data.md / notes-infra.md §0；确认 types.ts ontology 注释已清；置 X/D 卡 done，待用户 review 提交。
+约束：不执行 git；不清无关脏工作区。
+✅ 总控自做+终审 done（2026-06-23）：① backfill 核准——D 代笔的 db/shared.ts 追加 prompt(WHERE workspace_id IS NOT NULL，skip NULL 全局模板)+ knowledge(WHERE scope='global')两源；两表无 enabled 列故用常量 1 变体(SELECT ...,id,1,?)，INSERT OR IGNORE + 双 try/catch 幂等，与上轮敲定「NULL 恒启用/skip NULL」口径一致。② 接缝终审：types.ts 双侧 kind/scope 对齐、无本地重声明；diff 中 ontologyId/ontologyObjectIds 属监测专题(X-MONITOR0)既有契约，非本批越界。③ chip 计数偏差修正(总控自做 App.tsx 接缝)：refreshKnowledgePromptInfo 原取 listKnowledgeDocs 全池长度→改为与 listKnowledgeChunksForRetrieval 注入口径一致(本 ws 私有 ∪ 已启用 global)，typecheck+build 复绿。整专题(X-POOL0/D-POOL1/X-POOL2)全 done，待用户提交。` },
+
+  // ════ 【监测模块·经营指标监控改造】（总控拆卡 2026-06-23）。用户确认方案：一级「监测」作为所有分析起点；二级 tab 调整为「初始化 / 观星台 / 行动环 / readme」。readme 保留；原「趋势」合并进「观星台」，趋势本身属于监测指标逻辑范围。原 health 内部命名可保留，UI 统一称「监测」。V-agent 已停用，viz/前端交付由 D 承接，回流总控终审。════
+  { dom: "X", status: "done", created: "2026-06-23 15:00", title: "【监测·契约+接缝·P0】X-MONITOR0：经营指标监测契约 + tab 接缝 + API 签名审定（总控自做）", brief:
+`目标：把现有「体检/health」模块升级为「经营指标监测」工作台，先定契约与接缝，解锁 D/E 实装。
+范围(接缝层·总控自做)：
+1. 二级 tab 口径定稿：health_data→初始化，health_dashboard→观星台，health_report→行动环，readme 保留；health_trend 从 tab 列表移除/隐藏，趋势能力并入观星台。
+2. types.ts 双侧审定新增/扩展契约（命名可沿用 health 内核，但 UI 文案为监测）：MonitorSourceRole("goal"|"source"|"industry"|"competitor")、MonitorConfig、MonitorMetricBinding、MonitorMetricSystemDraft、MonitorComparison、MonitorFindingDiagnosis、MonitorActionSource 等；禁止各域本地重声明。
+3. API 签名审定：
+   · 初始化：保存/读取 monitor config；SQL/SQLite 导入继续复用数据库模块端点与 addWorkspacePath 登记。
+   · 指标体系：POST /api/workspaces/:id/monitor/metric-system/draft；POST /api/workspaces/:id/monitor/metric-system/adopt。
+   · 运行监测：POST /api/workspaces/:id/monitor/runs；GET runs/findings 仍 workspace-scoped。
+   · 行动环：finding/run → action draft 的输入签名，复用既有 action_items/action_tasks/action_feedback 三表。
+4. 安全口径写死：LLM 只能读 clean_data 元数据/字段摘要/统计画像 + ontology 结构，不得读 draw_data 原始行级内容；health/monitor 跨域数据读取仍走 D 域 HTTP API，不直 import workspace_paths/readFileSync。
+验收：双侧 types 对齐；constants/tab 默认路由口径定稿；typecheck+build 绿；notes-viz §0 写清下一步。解锁 D-MONITOR1 / E-MONITOR2 / D-MONITOR3。
+✅ 总控自做 done（2026-06-23）：双侧 types.ts 新增 MonitorSourceRole/MonitorConfig/MonitorMetricBinding/MonitorMetricSystemDraft/MonitorComparison/MonitorFindingDiagnosis/MonitorActionSource 等经营监测契约，HealthFinding 增加可选 comparisons/diagnosis；constants.ts 将监测二级 tab 改为「初始化 / 观星台 / 行动环 / readme」，readme 保留，独立趋势 tab 移除并入观星台；HealthTabs 不再分发 HealthTrendPane；api/viz.ts 增加 monitor config / metric-system draft/adopt / action draft 签名；notes-viz §0 已覆盖更新。验证：server typecheck ✅、web typecheck ✅、web build ✅（仅既有 chunk warning）。` },
+
+  { dom: "D", status: "done", created: "2026-06-23 15:01", title: "【监测·初始化·数据入口·P0】D-MONITOR1：初始化页数据源/目标导入 + SQLite/SQL 接入 + 持续更新登记", brief:
+`前置：X-MONITOR0 契约。落点=D 数据基座 + 监测初始化前端（V-agent 停用，前端由 D 承接）。
+目标：把原「聚合数据入口」改为「初始化」，完成监测数据底座准备。
+范围：
+1. 初始化页三类数据角色：运营目标数据(goal)、经营数据源(source)、行业大盘(industry)、竞品数据(competitor)。支持对已登记 clean_data 数据集打角色标签，并保存到 monitor config。
+2. SQL/SQLite 接入：复用数据库模块已有 SqlConnection / schema / query / exportSql 能力；提供「选择数据库连接 → 选择库表/写 SQL → 导出 clean_data → addWorkspacePath 登记 → 绑定角色」闭环。SQLite 本地库表要有明确入口。
+3. 持续更新：复用 export watermark 能力，显示最近更新时间、行数、输出路径、刷新按钮；登记失败不吞异常，UI 明确报错。
+4. 不新增数据安全旁路：只登记 clean_data；不得绕过 /api/bi/aggregations；不得让 draw_data 明细进入 LLM。
+5. UI 风格沿用现有监测页面 neutral 体系，满高滚动，不恢复空白页/滚动条问题。
+验收：能从 SQLite/SQL 导出并登记 clean_data，绑定为目标/经营/行业/竞品角色；刷新后观星台可读到配置；web typecheck+build 绿；若触及数据探索子树需跑 AGENTS 红线 grep（原则上不应触及）。
+✅ 总控终审通过（2026-06-23）：D 完成 monitor_configs 新表 + GET/PUT /api/workspaces/:id/monitor/config + HealthDataPane 初始化页角色绑定/SQL&tool 登记闭环。总控审查认可 monitor_configs 表放 db/viz.ts：每 workspace 单条 UNIQUE + JSON bindings 符合当前"配置态"需求，FK CASCADE 与 health 表范式一致。终审收口 2 点：① SQL/tool 导出后自动绑定原只写本地 state，刷新会丢 → 改为导出/登记后立即 saveMonitorConfig 持久化；② PUT 增加 ontologyId 归属本 workspace 校验 + thresholds 仅保留 finite number，并且前端保存 bindings 时保留既有 ontologyId/metricSystemId/thresholds，避免后续 D-MONITOR3 配置被覆盖。验证：server typecheck ✅、web typecheck ✅、web build ✅（仅既有 chunk warning）、数据探索 LLM 隔离 grep 净（EXIT=1）。` },
+
+  { dom: "E", status: "done", created: "2026-06-23 15:02", title: "【监测·指标体系+引擎·P0】E-MONITOR2：LLM 生成指标体系草案 + 经营差距监测规则 + ontology 诊断关联", brief:
+`前置：X-MONITOR0 契约、D-MONITOR1 数据角色配置。落点=engine/server 监测逻辑。
+目标：从「确定性体检规则」升级为「经营指标监控」：目标差距、历史差距、行业差距、竞品差距、关联指标诊断。
+范围：
+1. 指标体系草案：基于 clean_data 元数据/字段摘要/统计画像 + 已启用 ontology（对象/关系/指标/逻辑/动作）调用 LLM 生成 MonitorMetricSystemDraft；输出含 metrics、bindings、dependencies、monitorRules、assumptions、missingData。只产草稿，adopt 后才落库/写配置。
+2. 监测引擎：扩展现有 health-check-engine 或新建 monitor-engine，保留零 IO 纯函数核心。支持：
+   · 与运营目标差距；
+   · 与自己历史差距（环比/同比/移动均值偏离）；
+   · 与行业大盘差距；
+   · 与竞品差距；
+   · ontology 关联指标/对象/逻辑规则诊断；
+   · 趋势生命周期并入观星台（新增/持续/加剧/恢复）。
+3. 证据可复算：每个 finding 输出当前值、对比基准、差值/差率、时间窗口、绑定数据集/字段、诊断依据，不生成无法追溯的空泛文案。
+4. 安全：LLM 不读 draw_data 原始行；不把整表行级内容塞入 prompt；跨域取数仍走 D 域 HTTP API；禁止 self-HTTP 死锁/execSync/curl 自调热路径。
+验收：server typecheck 绿；监测引擎单测覆盖四类差距 + ontology 关联 + lifecycle 趋势；draft 端点在无 ontology/无目标数据时能降级给 missingData；红线 grep 净。
+✅ 总控终审通过（2026-06-23）：E 完成 monitor-engine 纯函数、monitor-llm 草案生成、engine DB 三表与 monitor metric-system/runs/findings 端点。总控收口 5 点：① 修正 E 路由调用不存在的 /object-types、/metric-definitions 为既有 /objects、/metrics；② draft 端点校验 ontologyId 必须属于当前 workspace；③ run 端点在 insertMonitorRun 前先 fetch 本 workspace clean_data 白名单校验 metric-system 内全部 datasetPathId，非法 pathId 400 且不落空 run；④ fresh DB schema 补 workspace/run FK；⑤ 双侧 types.ts 增加 MonitorMetricSystemEntry/MonitorRun，并补齐 vizApi list/delete/run/listFindings 方法供 D-MONITOR3 使用。路由前缀核对：registerDomainRoutes 顺序为 data→engine→viz→shared，engine/viz 都是精确路径，无 /monitor/* 通配，/monitor/config 与 /monitor/metric-system|runs 不冲突。验证：server typecheck ✅、web typecheck ✅、web build ✅、monitor+health 40/40 ✅、数据探索隔离 grep 净。遗留：真实 LLM smoke 与完整 draft→adopt→run 端到端浏览器实跑留给 D-MONITOR3/X-MONITOR4。` },
+
+  { dom: "D", status: "done", created: "2026-06-23 15:03", title: "【监测·观星台+行动环前端·P0】D-MONITOR3：三页 UI 改造（初始化/观星台/行动环/readme）+ 趋势合并", brief:
+`前置：X-MONITOR0 契约；可与 D-MONITOR1/E-MONITOR2 分段集成。V-agent 已停用，本卡由 D 承接原 viz 前端交付。
+目标：完成用户可用的监测模块界面，不做炫酷仪表盘，直接呈现问题、差距、诊断和行动。
+范围：
+1. tabs：二级 tab 改为「初始化 / 观星台 / 行动环 / readme」；readme 保留；移除独立「趋势」，把趋势摘要/生命周期流放进观星台。
+2. 初始化页：接 D-MONITOR1 的数据角色与 SQL/SQLite 导入；展示指标体系初始化入口（选择 ontology → 生成草案 → 采纳/更新）。
+3. 观星台：以 finding 列表为中心，展示目标差距、历史差距、行业差距、竞品差距、严重度、生命周期、趋势摘要、关联指标/ontology 诊断、机会/建议；不做大屏图表。
+4. 行动环：参考 ActionsPane 三段式「分析与提炼 / 任务执行 / 效果反馈」，输入源从 report path 改为 monitor run/findings；可采纳为 action task，反馈指标变化。
+5. 状态安全：workspace 切换需清空旧 run/config 并加 effect cancellation guard；runId 不得复用 activeSessionId；错误不吞。
+6. UI：字体/间距/滚动与整体框架一致，满高 min-h-0，避免页面空白、双滚动条错位。
+验收：web typecheck+build 绿；浏览器实跑：初始化导入→生成指标体系草案→观星台运行监测→看到趋势/差距/ontology 诊断→行动环采纳任务→反馈闭环。
+✅ 总控终审通过（2026-06-23）：D 完成初始化指标体系入口、观星台 findings 中心视图、行动环三段式闭环，并删除独立 HealthTrendPane（趋势合并入观星台）。总控收口 3 点：① 补齐后端 POST /api/workspaces/:id/monitor/actions/draft，校验 workspace/run 归属，只基于 monitor findings 衍生产物生成 action drafts，LLM 失败走规则兜底；② 观星台读取 monitor_configs.suite/thresholds，避免默认 monthly 与配置脱节；③ 行动环不再以旧 module store runId 初始化，workspace 不匹配时清空并回写。验证：server typecheck ✅、web typecheck ✅、web build ✅、monitor+health 40/40 ✅、数据探索隔离 grep 净。遗留：完整浏览器真跑留给 X-MONITOR4。` },
+
+  { dom: "X", status: "done", created: "2026-06-23 15:04", title: "【监测·总控终审·P0】X-MONITOR4：全链路终审 + 数据安全红线 + wiki/notes 收口", brief:
+`前置：D-MONITOR1、E-MONITOR2、D-MONITOR3 回流。
+范围(总控终审)：
+1. 代码审查：types 单一真源、无本地重声明；monitor/health 路由 workspace-scoped；run/findings 归属校验；跨域数据读取走 D 域 HTTP；非本 workspace pathId 400 且不落空 run。
+2. 数据安全：LLM 只读 clean_data 元数据/摘要 + ontology 结构，不读 draw_data 原始行；不把表格明细整体发给 LLM；数据探索子树若被触及必须跑 AGENTS 红线 grep。
+3. 运行验证：server typecheck、web typecheck、web build、引擎单测；必要时跑 SQLite/SQL 导入 smoke、指标体系 draft smoke、监测 run smoke、行动环 smoke。
+4. 产品验收：tab=初始化/观星台/行动环/readme；readme 保留；趋势合并进观星台；UI 文案统一「监测」；观星台直接回答哪些指标有问题/机会及原因。
+5. 收口：更新 docs/notes-viz.md §0；通过后把 X/D/E 卡置 done，待用户 review 后提交。
+约束：不执行 git；不清理无关脏工作区。
+✅ 总控终审通过（2026-06-23）：X-MONITOR4 已完成全链路审查与 smoke。总控收口 2 个阻断：① 观星台 run 前端未传 metricSystemId，后端也未从 monitor_configs 回读，会落空 run → 修为 run 未显式传 metricSystemId 时 fetch /monitor/config 读取已采纳 metricSystemId/thresholds；无指标体系直接 400，不落空 run；② lifecycle prior 只按 workspace+suite 匹配，切换指标体系会误判 → 修为 workspace+suite+metricSystemId 三键匹配。复验：server typecheck ✅、web typecheck ✅、web build ✅、monitor+health 40/40 ✅、数据探索 LLM 隔离 grep 净；临时 API smoke ✅：config 非 ws pathId 400、run 自动读取 config.metricSystemId 并产 3 findings、跨 ws findings 404、非法 pathId run 400 且不新增 run、actions/draft 返回 8 drafts。所有 monitor 任务卡 X-MONITOR0/D-MONITOR1/E-MONITOR2/D-MONITOR3/X-MONITOR4 均 done。` },
+
   // ════ 【Harness 自进化专题·研究驱动】（总控拆卡 2026-06-22；来源=harness 论文集精读 docs/backlog/{EFC,AHE,SkillOpt,AgingBench,HarnessAudit}-*.md + 记忆 harness-papers-2026）。命题：把 harness(测评/skill/记忆/编排)当可进化的一等工程对象——Life-Harness「改接口不改模型」为整条路线背书。
   // ── 波次与依赖（必读）── P0=EFC 度量底座(其余三项皆插它)→AHE 可证伪编辑契约；P1=SkillOpt 受控回写器 / AgingBench 记忆老化巡检(可并行)；P2=HarnessAudit 轨迹审计(待多 agent 规模)。前 4 项共用同一套实验场测评台证据，串成专题逐步捞。
   // ── 落点：主域=E(codex；实验室/Eval/Harness/skill/multi-agent 全归 E)、跨域契约=X(总控；types.ts/cache 契约)、记忆 store 信号=D。冻结卡(P1/P2)待 P0 跑通『同分不同 EFC』验证后由总控解冻。════
@@ -299,10 +412,11 @@ const TASKS = [
 1. types.ts 双侧(单一真源 server+web 镜像，禁本地重声明)：
    · FeedbackEvent{ I;V;R;M ∈[0,1]; raw } + EfcScore{ efc; normalized(EFC/D_task); eta(EFC/C_raw) }   // EFC_t=κ·I·V·R·M, κ=10
    · TaskDemand{ L; H_tool; S_state; N_obs; V_oracle }   // D_task 归一化输入
-   · ChangeManifest{ editId; component:HarnessComponent; failureEvidence; rootCause; targetedFix; predictedFix:string[]; predictedRegression:string[] } + EditVerdict{ fixPrecision;fixRecall;regPrecision;regRecall }
+   · ChangeManifest{ editId; component:HarnessComponent; failureEvidence; rootCause; targetedFix; predictedFix:string[]; predictedRegression:string[]; outcome:'accept'|'revise'|'reject'|'defer' } + EditVerdict{ fixPrecision;fixRecall;regPrecision;regRecall }
    · type HarnessComponent='prompt'|'command'|'subagent'|'hook'|'skill'|'memory'|'tool'   // AHE 七类组件对位实验场
+   · 【SkillHone 增补 2606.08671】outcome 四态(accept/revise/reject/defer，原 AHE 只有 verdict 对照) + 决策史可检索口径：新失败来时检索 ℋ_{<t} 判『失败是否新 / 类似修复是否已试过 / 上个方案为何被拒』，把 manifest 从单轮对照升级为跨轮经验库(供 E-AHE1/E-SKILLOPT1 用)。
 2. cache-harness 对接点：notes-infra 缓存契约(cache.ts/prompt-blocks.ts)暴露 C_raw(token/tool 调用计数)只读 getter，供 η=EFC/C_raw。总控持有，定签名。
-3. 预研(无 git 难点)：实验场编辑无 git → AHE『组件级回滚』缺底座。本卡给出回滚方案口径(编辑快照/版本表 or 复用既有持久化)写死供 E-AHE1 施工；若需 db 新表在此审定 migration。
+3. 预研(无 git 难点)：实验场编辑无 git → AHE『组件级回滚』缺底座。本卡给出回滚方案口径(编辑快照/版本表 or 复用既有持久化)写死供 E-AHE1 施工；若需 db 新表在此审定 migration。【SkillHone 增补】采 typed scoped revision——修订带诊断上下文的结构化类型，回退时按类型定位 offending part 而非整体回滚(保留 useful edits)。
 验收：types 双侧对齐、typecheck+build 绿、C_raw getter 与回滚方案口径写死可被 E 直接施工。
 约束：仅接缝层，不实装打分逻辑(归 E)。跨域依赖：解锁 E-EFC1 / E-AHE1。` },
   { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·EFC·P0】E-EFC1：EFC 反馈效率度量实现 + 实验场测评台集成 + η 接 cache-harness", brief:
@@ -330,8 +444,9 @@ const TASKS = [
 2. 严格接受门：候选 skill 仅当 held-out 测评集分数『严格大于』当前才接受(平手也拒)；分数可用 EFC。
 3. rejected-edit buffer：被拒编辑入缓冲作负反馈喂下轮。
 4. slow-update 受保护字段：skill 文件划『跨 epoch 长程经验』块，仅 epoch 级元更新可写(消融去掉跌 22.5 分，最重要)。
-验收：先做『验证门+严格接受』堵 skill 漂移即可交付 MVP；端到端 skill 自动迭代不退化。typecheck+build+tests 绿。
-约束：不绑 paradigm A MVP。跨域依赖：打分复用 E-EFC1。` },
+5. 【SkillHone 增补 2606.08671·防作弊隔离·核心】Creator/Evaluator 权限隔离(复用 subagent-core 权限边界)：优化队(Creator)只读脱敏报告+决策史、可写 skill 库、**看不到** golden_strategy/validator/执行 trace；评估队(Evaluator)能看 oracle/validator、**不能写** skill 库、只产脱敏问题报告。评估用 golden_strategy 盲测、证据脱敏后回写 successRate/pitfalls。防『测试集过拟合/自证自演』作弊。决策史检索『类似修复是否试过』走 X-HARNESS0 增补口径。
+验收：先做『验证门+严格接受』堵 skill 漂移即可交付 MVP；端到端 skill 自动迭代不退化；Creator 实测无法访问 validator/golden。typecheck+build+tests 绿。
+约束：不绑 paradigm A MVP。跨域依赖：打分复用 E-EFC1；隔离复用 subagent-core。` },
   { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1·冻结】X-AGING0：记忆老化探针/度量契约(types.ts)（总控自做）", brief:
 `【冻结】待总控解冻。来源：docs/backlog/AgingBench-记忆老化巡检.md。本卡=接缝契约，总控自做，解锁 E-AGING1/D-AGING2。
 范围(接缝层)：types.ts 双侧：
@@ -372,6 +487,35 @@ const TASKS = [
 3. SAR 报表 + 先审信息流(V-IC/ID)；默认 hub-spoke 拓扑(三域经总控中转减少 spoke-spoke 泄露)。
 验收：对一段 D/E/V handoff 轨迹后验出 SAR + 违规清单；验证『完成≠安全』。typecheck+build+tests 绿。
 约束：后验起步不在线拦截。跨域依赖：策略来自 X-AUDIT0。` },
+  // ── 技能工程子波（Skill Engineering，2026-06-23 总控拆卡；来源=桌面文档《skill技能打磨与动态技能研究》+腾讯 SkillHone 2606.08671 + SkillsInjector 2605.29794 + 技能演化综述 2606.11435）。趋势：Prompt→Flow→Skill Engineering，技能即资产、胖 context→瘦 context 动态注入。
+  // ── 重叠处理：SkillHone 3 增量(Creator/Evaluator 防作弊隔离 / 决策史四态+检索 / typed 局部修复)已『增补进 X-HARNESS0 + E-SKILLOPT1』不单独落卡；下列 3 张为动态技能全新能力(运行时注入/子技能蒸馏/Safe Distiller 红线)。执行效用 Δ 软依赖 E-EFC1。
+  { dom: "E", status: "todo", created: "2026-06-23 10:00", title: "【Harness·技能工程·动态注入·Quick Win】E-SKILLINJECT1：运行时瘦-context 动态技能注入(Planner+执行效用排序+自适应预算+set-aware 渲染)", brief:
+`来源：docs/backlog/动态技能注入与子技能蒸馏.md(SkillsInjector 2605.29794) + 桌面文档「动态技能解锁」Phase 2。落点=MultiAgentExecutionPane(E)+skill-retrieval.ts。文档点名『核心发力点/Quick Win』。
+范围(E slot)：
+1. Planner 节点：MultiAgentExecutionPane 执行前解析需求出 Todo List；每步只『解锁』当前最需要的 2-3 个 micro-skill 注入，弃『全量规则注入』(胖 context)。
+2. 执行效用排序：选技能按 Δ(t,s)(相对无技能基线增益)而非语义相似度；先用 EFC 反馈质量信号(E-EFC1)作 Δ 代理(软依赖)，再谈学 planner。
+3. 自适应预算：per-task 归一化分+阈值 admit 可变数量(非固定 budget)。
+4. set-aware 渲染：按共注入邻居改写技能描述(加 scope 子句减重叠)，瘦 context 不扩 token。
+5. 选技能看 full body(SkillRouter 警示：只用名+描述掉 31-44%)。
+验收：从全量注入改每步 2-3 micro-skill 动态注入，跑通典型任务、context token 下降且不掉成功率；typecheck+build+engine tests 绿。
+约束：先语义检索+固定预算亦可起步验证瘦 context 收益，再上执行效用。软依赖 E-EFC1。不碰接缝层。` },
+  { dom: "E", status: "todo", created: "2026-06-23 10:00", title: "【Harness·技能工程·蒸馏】E-SUBSKILL1：子技能蒸馏(2-5 动作切片)+Trace2Skill 合并+SkillX 去重多样性+关系图", brief:
+`来源：docs/backlog/动态技能注入与子技能蒸馏.md(技能演化综述 2606.11435) + 文档「子技能抽取」。落点=skill-distillation.ts(E)。与 SkillOpt(单 skill 优化)互补：本卡做多 skill 切片/合并/去重。
+范围(E slot)：
+1. 子技能切片：从成功轨迹切 2-5 动作高频序列为 micro-skill。
+2. Trace2Skill：成功/失败各生成 targeted patch，合并冗余 fix 成单一无冲突 skill。
+3. SkillX：合并相似 skill / 拆解复杂 skill / 评估泛化性；建 skill 相似关系图判 reuse vs merge。
+4. 去重优先多样：去重后优先选多样路径，防单一路径依赖。
+验收：从一批成功轨迹产去重后的多样 micro-skill 集+关系图；不重复造现有 skill-distillation；typecheck+build+tests 绿。
+约束：蒸馏输入若涉数据探索轨迹，须走 D-SAFEDISTILL1 脱敏边界(零 draw_data)。产物供 E-SKILLINJECT1 消费。` },
+  { dom: "D", status: "todo", created: "2026-06-23 10:00", title: "【Harness·技能工程·红线】D-SAFEDISTILL1：Safe Distiller(query skeleton/API 拓扑/report，零 draw_data)+RulesPane『💡提案』人审入库", brief:
+`来源：docs/backlog/动态技能注入与子技能蒸馏.md Phase 3 + 文档「安全提炼引擎」。落点=数据域(D)：探索动作序列脱敏 + RulesPane 提案确认。**红线卡**。
+范围(D slot)：
+1. Safe Distiller 输入边界(做死)：仅吃 query skeleton(SQL 结构，剔除 WHERE 敏感值)+API 调用拓扑+最终 report/business_requirements。**绝不碰 draw_data 原始行**。
+2. 后台轻量提炼：用户多次执行某类关联查询→提取查询骨架+分析思路→生成子技能『提案』(不直接入库)。
+3. RulesPane 人审：提案以『💡 发现新提炼策略』展示，用户审核后入库(Human-in-the-loop)，杜绝数据泄漏污染。
+验收：提炼任务输入实测零 draw_data；数据探索 LLM 隔离 grep 净(DataExplorationPane.tsx + data-exploration/ 无匹配)；提案→人审→入库闭环跑通；typecheck+build 绿。
+约束：守 AGENTS.md 数据安全铁律，改完跑隔离 grep。跨域：提案产物供 E-SUBSKILL1/E-SKILLINJECT1 消费(走 HTTP)。` },
   // ════ 【体检模块·新一级模块】（总控拆卡 2026-06-22；深审回炉 v2；SPIKE 定稿 2026-06-22）。用户需求：用固定脚本（零 LLM）扫描业务数据，发现「已发生的问题」与「将发生的风险」，联动本体库(metric/link/object)与知识库(rule_memory/business_context)。频率=日/周/月/季/年「体检套餐」。三决策：①落点=新增一级『体检』模块 ②调度=MVP 先手动触发套餐 ③规则=内置代码逻辑+仅阈值可配。
   // ── 深审纠正 4 处（必读）── ① 数据面=聚合集行数据 GET /api/bi/aggregations/:pathId/data（BiAggregationData{columns,rows[]}，红线安全=已登记 clean_data，draw_data 403）。② 数据入口=体检自带「聚合数据入口」复用 D 的 SQL/extraction/bi-dataset 三通道（均 legacy index.ts，跨域走 HTTP fetch 不直接 import）。③「机会」=「风险」：问题=已越界(截面)，风险=趋势指向越界(连续单调/斜率外推/到阈距离，需时序)。④ 体检=有记忆的健康档案：finding 生命周期(new/recurring/worsening/resolved)+跨 run 比对，优先级第一。
   // ── SPIKE 结论（2026-06-22 Agent-D 实跑，详见 docs/体检-spike结论.md）── 全部可行：① 行数据通道实跑通(聚合集24，cohort_month=Excel序列号月粒度6期)，引擎需 normalizeTimeColumn(Excel序列号/ISO/时间戳三格式)。② 形态三态(timeseries/snapshot/dimension)启发式可分，频率用 stride 众数推断不硬编码白名单。③ 入口三通道可用，V-HEALTH2 跨域走 fetch。④ 本体填充偏低(零售46/会员~20 concept，全 draft，from-aggregation 产 dataset/property 但零自动 link)→ 体检第一阶段零本体依赖(只跑数据质量规则)，产 gap 清单驱动本体积累正循环。当前仅月粒度有数据；日/周/季/年零数据但引擎通用探测、体检台如实标注。

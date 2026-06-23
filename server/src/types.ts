@@ -23,6 +23,9 @@ export interface KnowledgeDoc {
   path: string | null;
   content: string | null;
   tags: string[];
+  // 'global'=通用，入全局池跨工作区可启用 | 'workspace'=项目专属，本工作区独占。
+  // X-POOL0 契约设可选不破坏现有 build；D-POOL1 落 DB 列(NOT NULL DEFAULT 'workspace')后恒有值。
+  scope?: "global" | "workspace";
   createdAt: number;
   updatedAt: number;
 }
@@ -40,6 +43,8 @@ export interface KnowledgeDocInput {
   path?: string | null;
   content: string;
   tags?: string[];
+  // 默认 'workspace'(专属)；'global' 时 D-POOL1 落库后 enableForOrigin(kind='knowledge')。
+  scope?: "global" | "workspace";
 }
 export interface KnowledgeDocPatch {
   title?: string;
@@ -1326,9 +1331,11 @@ export type MemoryItemKind =
   | "business_context" // business_contexts 业务环境
   | "case"             // analysis_cases 项目记忆
   | "metric"           // metric_definitions 指标记忆
-  | "ontology"         // onto-xanthil：启用粒度=本体整体（P3 落地）
+  | "ontology"         // onto-xanthil：启用粒度=本体整体（已落地）
   | "skill"            // skill_registry 项目级 skill（全局池 + 按工作区启用）
   | "memory_item"      // 统一记忆 memory_items（规则记忆重构 v2，全局池 + 按工作区启用）
+  | "prompt"           // prompt_templates 模板库（全局池 + 按工作区启用，X-POOL0）
+  | "knowledge"        // knowledge_docs 资料库（scope='global' 入池 + 按工作区启用，X-POOL0）
   | "failure" | "field" | "process"; // 预留占位模块（失败/字段/流程记忆）
 
 export interface WorkspaceMemoryEnablement {
@@ -2485,6 +2492,119 @@ export type HealthCategory = "数据质量" | "指标异常" | "勾稽一致" | 
 export type HealthFindingKind = "问题" | "风险";
 export type FindingLifecycle = "new" | "recurring" | "worsening" | "resolved";
 export type DatasetShape = "timeseries" | "snapshot" | "dimension";
+export type MonitorSourceRole = "goal" | "source" | "industry" | "competitor";
+export type MonitorComparisonKind = "target" | "history" | "industry" | "competitor";
+
+export interface MonitorDatasetBinding {
+  datasetPathId: string;
+  role: MonitorSourceRole;
+  label?: string;
+  updatedAt?: number;
+}
+
+export interface MonitorConfig {
+  id: string;
+  workspaceId: string;
+  suite: HealthSuite;
+  datasetBindings: MonitorDatasetBinding[];
+  ontologyId?: string;
+  metricSystemId?: string;
+  thresholds?: Record<string, number>;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MonitorMetricBinding {
+  metricId: string;
+  datasetPathId: string;
+  valueColumn: string;
+  timeColumn?: string;
+  dimensionColumns?: string[];
+  targetMetricId?: string;
+  benchmarkMetricId?: string;
+  competitorMetricId?: string;
+}
+
+export interface MonitorMetricDraft {
+  name: string;
+  description: string;
+  formula?: string;
+  unit?: string;
+  objectIds?: string[];
+  bindings: MonitorMetricBinding[];
+  confidence: number;
+}
+
+export interface MonitorMetricDependency {
+  metricId: string;
+  relatedMetricId: string;
+  relation: "driver" | "guardrail" | "derived" | "benchmark" | "competing";
+  rationale: string;
+}
+
+export interface MonitorRuleDraft {
+  title: string;
+  comparisonKinds: MonitorComparisonKind[];
+  metricIds: string[];
+  threshold?: number;
+  rationale: string;
+}
+
+export interface MonitorMetricSystemDraft {
+  metrics: MonitorMetricDraft[];
+  dependencies: MonitorMetricDependency[];
+  monitorRules: MonitorRuleDraft[];
+  assumptions: string[];
+  missingData: string[];
+}
+
+export interface MonitorMetricSystemEntry {
+  id: string;
+  workspaceId: string;
+  name: string;
+  draft: MonitorMetricSystemDraft;
+  status: "adopted" | "archived" | string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+export interface MonitorRun {
+  id: string;
+  workspaceId: string;
+  suite: HealthSuite;
+  metricSystemId: string | null;
+  startedAt: number;
+  finishedAt: number | null;
+  problemCount: number;
+  riskCount: number;
+  status: "running" | "done" | "error";
+}
+
+export interface MonitorComparison {
+  kind: MonitorComparisonKind;
+  label: string;
+  currentValue: number | null;
+  baselineValue: number | null;
+  delta: number | null;
+  deltaRate: number | null;
+  window?: string;
+  evidence?: Record<string, unknown>;
+}
+
+export interface MonitorFindingDiagnosis {
+  summary: string;
+  relatedMetricIds: string[];
+  ontologyObjectIds: string[];
+  ontologyLinkIds?: string[];
+  logicRuleIds?: string[];
+  opportunity?: string;
+}
+
+export interface MonitorActionSource {
+  workspaceId: string;
+  runId: string;
+  findingIds: string[];
+}
 
 export interface HealthRuleNeeds {
   timeSeries: boolean;
@@ -2517,6 +2637,8 @@ export interface HealthFinding {
   title: string;
   evidence: Record<string, unknown>; // 须自解释到可手工复算
   boundTo?: { datasetPathId?: string; objectId?: string; metricId?: string; column?: string };
+  comparisons?: MonitorComparison[];
+  diagnosis?: MonitorFindingDiagnosis;
   suggestion: string; // 规则模板，非 LLM
   detectedAt: number;
 }

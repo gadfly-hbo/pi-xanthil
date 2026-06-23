@@ -10,7 +10,8 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。详见 `Orchestration.md §八` 发布节点。
 
-- 最近更新：2026-06-20 · 总控（UI 新功能批次推进：汇报可视化契约/终审 + prompts管理 D面板终审；含汇报可视化契约校准收口）
+- 最近更新：2026-06-23 · 总控（全局池池化扩展 X-POOL0/D-POOL1/X-POOL2 全 done，待提交）
+- 本批（2026-06-23 · 全局池池化扩展）：prompts + 知识库从「工作区独占」升级「全局池 + 按工作区启用」。**X-POOL0 契约**：types.ts 双侧 MemoryItemKind +'prompt'|'knowledge'、KnowledgeDoc/Input 加可选 scope('global'|'workspace')、清 ontology 过时注释。**D-POOL1 落地**：listPromptTemplates 纯池(SELECT *)、knowledge_docs 加 scope 列+ALTER、createX 仅入池条目 enableForOrigin、listKnowledgeChunksForRetrieval 消费侧按 enablement 过滤、两 Pane 勾选+scope radio。**X-POOL2 收口**：db/shared.ts backfill 加 prompt(skip NULL)/knowledge(scope='global')/ontology 三源 + 全链终审 + 修 App.tsx chip 计数口径对齐注入候选(本ws私有∪已启用global)。关键设计：**prompt 的 workspace_id IS NULL 全局模板恒启用、不入 enablement 表**(消费侧 NULL∪enabled，新增 ws 零维护)；knowledge 通用入池/专属独占；GET 仅 global 跨 ws 豁免 403、PATCH 不豁免。门禁全绿(typecheck/build/相关 41 测试/隔离 grep)。**待用户提交**。
 - 本批进度（总控 infra/接缝/契约侧，2026-06-19~20）：
   - ✅ **汇报可视化契约**（types.ts 双侧单一真源）：`PresentationChartSpec{id,title,option}` / `PresentationDatasetMeta` / `PresentationGenerateInput`(datasetId **string**) / `PresentationTaskResult`(chartSpecs?/datasetMeta?)。server `presentation-charts.ts` 以 `type ChartSpec=PresentationChartSpec` 别名引用；web `api.ts`/`PresentationVersionPane.tsx` import 契约——**零本地重声明**。
     - ⚠ 教训：契约首版我误定 `datasetId:number` + `echartsOption` 命名 + 漏 `id/datasetMeta`，D 实装绕过(本地重声明 + 改 seam api.ts inline)致 **3 套并存漂移** → 用户拍板「总控校准」、改契约对齐实现收口。**契约冻结前须先核证消费端真实形态**（BI dataset id 实为 string）。

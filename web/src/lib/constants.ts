@@ -38,8 +38,8 @@ export const XAN_DB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'the-crow
 // 知识库二级 tab：资料库(上传/分类/标签) / 检索(全文+语义召回) / readme。面板与检索由 Agent-D 实装。
 export const KNOWLEDGE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'kb_docs', label: '资料库' }, { id: 'kb_search', label: '检索' }, { id: 'readme', label: 'readme' }];
 
-// 体检模块二级 tab（X-HEALTH0 接缝）：聚合数据入口 / 体检台 / 体检报告 / 趋势 / readme。
-export const HEALTH_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'health_data', label: '聚合数据入口' }, { id: 'health_dashboard', label: '体检台' }, { id: 'health_report', label: '体检报告' }, { id: 'health_trend', label: '趋势' }, { id: 'readme', label: 'readme' }];
+// 监测模块二级 tab：初始化 / 观星台 / 行动环 / readme。趋势并入观星台，不再作为独立 tab 展示。
+export const HEALTH_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'health_data', label: '初始化' }, { id: 'health_dashboard', label: '观星台' }, { id: 'health_report', label: '行动环' }, { id: 'readme', label: 'readme' }];
 
 export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'aggregate') return AGGREGATE_SUB_TABS;

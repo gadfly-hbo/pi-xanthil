@@ -262,7 +262,7 @@ export const dataApi = {
 
   createKnowledgeDoc: (
     workspaceId: string,
-    payload: { title: string; content: string; sourceType?: "upload" | "path"; path?: string | null; tags?: string[] },
+    payload: { title: string; content: string; sourceType?: "upload" | "path"; path?: string | null; tags?: string[]; scope?: "global" | "workspace" },
   ) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/knowledge`, {
       method: "POST",
@@ -298,8 +298,8 @@ export const dataApi = {
     }).then(json<{ hits: KnowledgeChunkHit[] }>),
 
   // ---- prompts 管理 prompt_templates / system-prompts（D-DATA · prompts_mgmt） ----
-  // workspaceId=null 模板对所有工作区可见；list 默认 includeGlobal=1（该 ws ∪ 全局）。
-  // 系统 prompt 聚合 GET /api/prompts/system 是只读快照（无 workspace 维度）。
+  // D-POOL1: 纯全局池——list 返回全部模板(workspaceId=null=全局恒启用; 非NULL=池条目按 enablement)。
+  // includeGlobal 参数保留兼容(已弃用,服务端忽略),系统 prompt 聚合 GET /api/prompts/system 是只读快照。
   listPromptTemplates: (
     workspaceId: string,
     options: { category?: string; tags?: string[]; includeGlobal?: boolean } = {},

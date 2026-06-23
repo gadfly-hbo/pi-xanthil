@@ -298,6 +298,52 @@ export function initEngineTables(): void {
   `);
   try { db.exec("ALTER TABLE skill_evaluations ADD COLUMN pairwise_summaries TEXT NOT NULL DEFAULT '[]'"); } catch { /* column exists or read-only */ }
   try { db.exec("ALTER TABLE skill_evaluation_results ADD COLUMN pairwise TEXT"); } catch { /* column exists or read-only */ }
+
+  // E-MONITOR2: 监测指标体系 + 监测 run/finding
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS monitor_metric_systems (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name         TEXT NOT NULL,
+      draft_json   TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'adopted',
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_monitor_metric_systems_ws ON monitor_metric_systems(workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS monitor_runs (
+      id              TEXT PRIMARY KEY,
+      workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      suite           TEXT NOT NULL,
+      metric_system_id TEXT REFERENCES monitor_metric_systems(id) ON DELETE SET NULL,
+      started_at      INTEGER NOT NULL,
+      finished_at     INTEGER,
+      problem_count   INTEGER NOT NULL DEFAULT 0,
+      risk_count      INTEGER NOT NULL DEFAULT 0,
+      status          TEXT NOT NULL DEFAULT 'running'
+    );
+    CREATE INDEX IF NOT EXISTS idx_monitor_runs_ws ON monitor_runs(workspace_id, started_at DESC);
+    CREATE TABLE IF NOT EXISTS monitor_findings (
+      id                 TEXT PRIMARY KEY,
+      run_id             TEXT NOT NULL REFERENCES monitor_runs(id) ON DELETE CASCADE,
+      rule_id            TEXT NOT NULL,
+      category           TEXT NOT NULL,
+      kind               TEXT NOT NULL,
+      severity           TEXT NOT NULL,
+      lifecycle          TEXT NOT NULL,
+      signature          TEXT NOT NULL,
+      first_seen_run_id  TEXT,
+      title              TEXT NOT NULL,
+      evidence           TEXT NOT NULL,
+      bound_to           TEXT,
+      comparisons        TEXT,
+      diagnosis          TEXT,
+      suggestion         TEXT NOT NULL DEFAULT '',
+      detected_at        INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_monitor_findings_run ON monitor_findings(run_id);
+    CREATE INDEX IF NOT EXISTS idx_monitor_findings_sig ON monitor_findings(signature);
+  `);
 }
 
 type PromptEvalSetRow = Omit<PromptEvalSet, "tasks"> & { tasks: string };
@@ -1459,4 +1505,118 @@ function parseSkillEvaluationResultRow(row: SkillEvaluationResultRow): SkillEval
     pairwise: row.pairwise ? parseJsonObject<SkillPairwiseResult | null>(row.pairwise, null) : null,
     error: parseEvaluationError(row.error),
   };
+}
+
+// ── E-MONITOR2: monitor_metric_systems CRUD ──
+
+import type { MonitorMetricSystemDraft as _MMSDraft, HealthFinding as _HF, MonitorMetricSystemEntry, MonitorRun } from "../types.ts";
+
+type MonitorMSRow = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  draft_json: string;
+  status: string;
+  created_at: number;
+  updated_at: number;
+};
+
+function parseMonitorMSRow(r: MonitorMSRow): MonitorMetricSystemEntry {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    name: r.name,
+    draft: parseJsonObject<_MMSDraft>(r.draft_json, { metrics: [], dependencies: [], monitorRules: [], assumptions: [], missingData: [] }),
+    status: r.status,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+export function createMonitorMetricSystem(workspaceId: string, name: string, draft: _MMSDraft): MonitorMetricSystemEntry {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare("INSERT INTO monitor_metric_systems (id, workspace_id, name, draft_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?)")
+    .run(id, workspaceId, name, JSON.stringify(draft), "adopted", now, now);
+  return { id, workspaceId, name, draft, status: "adopted", createdAt: now, updatedAt: now };
+}
+
+export function getMonitorMetricSystem(id: string): MonitorMetricSystemEntry | undefined {
+  const r = db.prepare("SELECT * FROM monitor_metric_systems WHERE id = ?").get(id) as MonitorMSRow | undefined;
+  return r ? parseMonitorMSRow(r) : undefined;
+}
+
+export function listMonitorMetricSystems(workspaceId: string): MonitorMetricSystemEntry[] {
+  const rows = db.prepare("SELECT * FROM monitor_metric_systems WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId) as MonitorMSRow[];
+  return rows.map(parseMonitorMSRow);
+}
+
+export function deleteMonitorMetricSystem(id: string): boolean {
+  const r = db.prepare("DELETE FROM monitor_metric_systems WHERE id = ?").run(id);
+  return r.changes > 0;
+}
+
+// ── monitor_runs / monitor_findings CRUD ──
+
+export function insertMonitorRun(workspaceId: string, suite: MonitorRun["suite"], metricSystemId: string | null): MonitorRun {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare("INSERT INTO monitor_runs (id, workspace_id, suite, metric_system_id, started_at, status) VALUES (?, ?, ?, ?, ?, 'running')")
+    .run(id, workspaceId, suite, metricSystemId, now);
+  return { id, workspaceId, suite, metricSystemId, startedAt: now, finishedAt: null, problemCount: 0, riskCount: 0, status: "running" };
+}
+
+export function finishMonitorRun(runId: string, patch: { problemCount: number; riskCount: number; status: "done" | "error" }): void {
+  db.prepare("UPDATE monitor_runs SET finished_at = ?, problem_count = ?, risk_count = ?, status = ? WHERE id = ?")
+    .run(Date.now(), patch.problemCount, patch.riskCount, patch.status, runId);
+}
+
+export function listMonitorRuns(workspaceId: string): MonitorRun[] {
+  type Row = { id: string; workspace_id: string; suite: string; metric_system_id: string | null; started_at: number; finished_at: number | null; problem_count: number; risk_count: number; status: string };
+  const rows = db.prepare("SELECT * FROM monitor_runs WHERE workspace_id = ? ORDER BY started_at DESC").all(workspaceId) as Row[];
+  return rows.map((r) => ({
+    id: r.id, workspaceId: r.workspace_id, suite: r.suite as MonitorRun["suite"], metricSystemId: r.metric_system_id,
+    startedAt: r.started_at, finishedAt: r.finished_at, problemCount: r.problem_count, riskCount: r.risk_count, status: r.status as MonitorRun["status"],
+  }));
+}
+
+export function insertMonitorFindings(findings: _HF[]): void {
+  if (findings.length === 0) return;
+  const stmt = db.prepare("INSERT INTO monitor_findings (id, run_id, rule_id, category, kind, severity, lifecycle, signature, first_seen_run_id, title, evidence, bound_to, comparisons, diagnosis, suggestion, detected_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)");
+  for (const f of findings) {
+    stmt.run(f.id, f.runId, f.ruleId, f.category, f.kind, f.severity, f.lifecycle, f.signature, f.firstSeenRunId ?? null,
+      f.title, JSON.stringify(f.evidence), f.boundTo ? JSON.stringify(f.boundTo) : null,
+      f.comparisons ? JSON.stringify(f.comparisons) : null, f.diagnosis ? JSON.stringify(f.diagnosis) : null,
+      f.suggestion, f.detectedAt);
+  }
+}
+
+export function listMonitorFindings(runId: string): _HF[] {
+  type Row = { id: string; run_id: string; rule_id: string; category: string; kind: string; severity: string; lifecycle: string; signature: string; first_seen_run_id: string | null; title: string; evidence: string; bound_to: string | null; comparisons: string | null; diagnosis: string | null; suggestion: string; detected_at: number };
+  const rows = db.prepare("SELECT * FROM monitor_findings WHERE run_id = ? ORDER BY severity DESC, detected_at DESC").all(runId) as Row[];
+  return rows.map((r) => ({
+    id: r.id, runId: r.run_id, ruleId: r.rule_id,
+    category: r.category as _HF["category"], kind: r.kind as _HF["kind"], severity: r.severity as _HF["severity"],
+    lifecycle: r.lifecycle as _HF["lifecycle"], signature: r.signature, firstSeenRunId: r.first_seen_run_id,
+    title: r.title, evidence: parseJsonObject(r.evidence, {}),
+    boundTo: r.bound_to ? parseJsonObject(r.bound_to, undefined) : undefined,
+    comparisons: r.comparisons ? (JSON.parse(r.comparisons) as _HF["comparisons"]) : undefined,
+    diagnosis: r.diagnosis ? parseJsonObject(r.diagnosis, undefined) : undefined,
+    suggestion: r.suggestion, detectedAt: r.detected_at,
+  }));
+}
+
+// 跨 run 取 prior findings：同 workspace + 同 suite + 同 metricSystem 最近一次 done 的 findings
+export function findPriorMonitorFindings(workspaceId: string, suite: string, metricSystemId: string | null, excludeRunId?: string): _HF[] {
+  type Row = { id: string };
+  const metricSql = metricSystemId ? "metric_system_id = ?" : "metric_system_id IS NULL";
+  const sql = excludeRunId
+    ? `SELECT id FROM monitor_runs WHERE workspace_id = ? AND suite = ? AND ${metricSql} AND status = 'done' AND id != ? ORDER BY started_at DESC LIMIT 1`
+    : `SELECT id FROM monitor_runs WHERE workspace_id = ? AND suite = ? AND ${metricSql} AND status = 'done' ORDER BY started_at DESC LIMIT 1`;
+  const params = metricSystemId
+    ? excludeRunId ? [workspaceId, suite, metricSystemId, excludeRunId] : [workspaceId, suite, metricSystemId]
+    : excludeRunId ? [workspaceId, suite, excludeRunId] : [workspaceId, suite];
+  const r = db.prepare(sql).get(...params) as Row | undefined;
+  if (!r) return [];
+  return listMonitorFindings(r.id);
 }

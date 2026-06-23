@@ -306,6 +306,7 @@ web/src/
 ### 命令与通用 prompt
 - **通用 prompt（任意 agent 复制即用）**：`docs/prompts/px-wrapup.prompt.md`、`docs/prompts/px-resume.prompt.md`（纯文本、无 git、无 Claude Code 特性）。三个外部 agent（opencode/codex/antigravity）直接复制正文使用。
 - **Claude Code 项目命令**：`/px-wrapup [域]`、`/px-resume [域]`（`.claude/commands/`，用 `@` 引用上面同一份 prompt → 单一来源不重复）。`px-` 前缀避免与内置 `/resume` 混淆。
+- **研究摄取通道**：`/px-paper2cards [论文链接/编号/综述信息]`（SOP=`docs/prompts/px-paper2cards.prompt.md`）——论文/综述 → 查读(证据优先禁脑补) → 对位 pi-xanthil(重叠必查提 delta) → 生成 backlog → 总控拆 wiki 卡(补充原卡或新建·X 契约先行·红线守 draw_data) → 沉淀 reference 记忆并入索引。落卡影响派发板，范围大先问用户。
 - 旧 `handoff-generate` / `handoff-load`（全局 skill，他项目仍用）→ **本项目停用**。
 
 ---

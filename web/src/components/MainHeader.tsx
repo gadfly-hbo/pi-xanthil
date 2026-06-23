@@ -6,6 +6,7 @@ export type Tab = "explore" | "zhuanti" | "multi" | "aggregate" | "rule_memory" 
 // 模块命名映射（2026-06-18 改名，权威见 Orchestration.md §〇）：explore=「日常」(曾"探索") · multi=「重复」(曾"工作流"，产物仍称 工作流/flow) · zhuanti=「专题」。
 // ⚠️ 仅 label 展示名可改；Tab id / DB kind="multi" / 路由不可改（零迁移）。
 export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
+  { id: "health", label: "监测", icon: Activity },
   { id: "explore", label: "日常", icon: Compass },
   { id: "zhuanti", label: "专题", icon: Telescope },
   { id: "multi", label: "重复", icon: Users },
@@ -14,7 +15,6 @@ export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "xan_db", label: "数据库", icon: Database },
   { id: "knowledge_base", label: "知识库", icon: Library },
   { id: "onto_xanthil", label: "本体库", icon: Network },
-  { id: "health", label: "体检", icon: Activity },
 ];
 
 interface Props {

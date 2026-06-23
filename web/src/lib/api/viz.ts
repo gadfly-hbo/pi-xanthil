@@ -25,6 +25,11 @@ import type {
   HealthFinding,
   HealthRun,
   OntologyGap,
+  MonitorConfig,
+  MonitorMetricSystemDraft,
+  MonitorMetricSystemEntry,
+  MonitorRun,
+  MonitorActionSource,
 } from "@/types";
 
 // 单一真源：Action 契约由 @/types 持有（总控），此处仅 re-export 供本域消费者引用。
@@ -196,4 +201,26 @@ export const vizApi = {
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/health/runs`).then(json<HealthRun[]>),
   listHealthFindings: (workspaceId: string, runId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/health/runs/${encodeURIComponent(runId)}/findings`).then(json<{ findings: HealthFinding[]; gaps: OntologyGap[] }>),
+
+  // ---- 监测改造（X-MONITOR0 契约签名；D/E 后续实装端点）----
+  getMonitorConfig: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/config`).then(json<MonitorConfig | null>),
+  saveMonitorConfig: (workspaceId: string, body: Omit<MonitorConfig, "id" | "workspaceId" | "createdAt" | "updatedAt">) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/config`, jsonBody("PUT", body)).then(json<MonitorConfig>),
+  draftMonitorMetricSystem: (workspaceId: string, body: { configId?: string; ontologyId?: string; model?: string }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/metric-system/draft`, jsonBody("POST", body)).then(json<{ draft: MonitorMetricSystemDraft }>),
+  adoptMonitorMetricSystem: (workspaceId: string, body: { configId?: string; draft: MonitorMetricSystemDraft; name?: string }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/metric-system/adopt`, jsonBody("POST", body)).then(json<{ metricSystemId: string; entry?: MonitorMetricSystemEntry }>),
+  listMonitorMetricSystems: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/metric-systems`).then(json<MonitorMetricSystemEntry[]>),
+  deleteMonitorMetricSystem: (workspaceId: string, metricSystemId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/metric-systems/${encodeURIComponent(metricSystemId)}`, jsonBody("DELETE")).then(json<{ ok: true }>),
+  runMonitorSuite: (workspaceId: string, body: { suite?: HealthSuite; metricSystemId?: string; thresholds?: Record<string, number> }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/runs`, jsonBody("POST", body)).then(json<{ run: MonitorRun; findings: HealthFinding[] }>),
+  listMonitorRuns: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/runs`).then(json<MonitorRun[]>),
+  listMonitorFindings: (workspaceId: string, runId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/runs/${encodeURIComponent(runId)}/findings`).then(json<HealthFinding[]>),
+  draftMonitorActions: (workspaceId: string, body: MonitorActionSource & { model?: string }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/actions/draft`, jsonBody("POST", body)).then(json<{ drafts: ActionItemDraft[] }>),
 };

@@ -1038,6 +1038,8 @@ dataRouter.post("/api/workspaces/:id/knowledge", (req, res) => {
     return res.status(413).json({ error: `content too large (max ${KNOWLEDGE_CONTENT_MAX_BYTES} bytes)` });
   }
   const sourceType = b.sourceType === "path" ? "path" : "upload";
+  // D-POOL1: scope 默认 'workspace'(项目专属)；显式 'global' 入池跨工作区可启用。
+  const scope: "global" | "workspace" = b.scope === "global" ? "global" : "workspace";
   try {
     const doc = createKnowledgeDoc({
       workspaceId: req.params.id,
@@ -1046,6 +1048,7 @@ dataRouter.post("/api/workspaces/:id/knowledge", (req, res) => {
       path: typeof b.path === "string" ? b.path : null,
       content,
       tags: asTagsArr(b.tags),
+      scope,
     });
     res.json(doc);
   } catch (err) {
@@ -1057,7 +1060,10 @@ dataRouter.get("/api/workspaces/:id/knowledge/:docId", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   const doc = getKnowledgeDoc(req.params.docId);
   if (!doc) return res.status(404).json({ error: "knowledge doc not found" });
-  if (doc.workspaceId !== req.params.id) return res.status(403).json({ error: "doc belongs to another workspace" });
+  // D-POOL1: global 文档跨工作区可读；workspace 私有仅 origin ws 可读。
+  if (doc.scope !== "global" && doc.workspaceId !== req.params.id) {
+    return res.status(403).json({ error: "doc belongs to another workspace" });
+  }
   const chunks = listKnowledgeChunks(doc.id);
   res.json({ doc, chunks });
 });
@@ -1120,7 +1126,7 @@ dataRouter.post("/api/workspaces/:id/knowledge/search", (req, res) => {
 // 列表过滤（query）：
 //   - category=<str>        精确匹配
 //   - tag=<str>             支持重复（&tag=a&tag=b 任一匹配 OR）
-//   - includeGlobal=0|1     默认 1（含 workspace_id IS NULL 的全局模板）
+//   - includeGlobal=0|1     【D-POOL1 弃用】保留兼容；现为纯全局池，参数被忽略
 // body 内 {{变量}} 占位仅存储；createPromptTemplate 在未显式传 variables 时自动抽取。
 // ============================================================================
 

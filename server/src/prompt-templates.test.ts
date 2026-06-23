@@ -17,7 +17,7 @@ test("extractPromptVariables: dedup + preserve order, ignore malformed", () => {
   assert.deepEqual(data.extractPromptVariables(body), ["user", "topic"]);
 });
 
-test("create + get + list (workspace scoped + global union)", () => {
+test("create + get + list (pure global pool, no workspace filtering)", () => {
   const local = data.createPromptTemplate({
     workspaceId: ws.id,
     title: "本地模板",
@@ -40,23 +40,17 @@ test("create + get + list (workspace scoped + global union)", () => {
   const got = data.getPromptTemplate(local.id);
   assert.equal(got?.title, "本地模板");
 
-  // 默认 includeGlobal=true：本工作区列表含全局
+  // D-POOL1 纯全局池：全部模板对所有工作区可见
   const all = data.listPromptTemplates(ws.id);
   const ids = new Set(all.map((t) => t.id));
   assert.ok(ids.has(local.id));
   assert.ok(ids.has(global.id));
 
-  // 另一工作区也能看到全局，但看不到 ws 的本地模板
+  // 另一工作区也能看到全部（含 ws 的本地模板——其他 ws 可启用）
   const otherView = data.listPromptTemplates(wsB.id);
   const otherIds = new Set(otherView.map((t) => t.id));
   assert.ok(otherIds.has(global.id));
-  assert.ok(!otherIds.has(local.id));
-
-  // includeGlobal=false 只看本 ws
-  const localOnly = data.listPromptTemplates(ws.id, { includeGlobal: false });
-  const loIds = new Set(localOnly.map((t) => t.id));
-  assert.ok(loIds.has(local.id));
-  assert.ok(!loIds.has(global.id));
+  assert.ok(otherIds.has(local.id), "池化后其他 ws 也可见 wsA 的本地模板");
 });
 
 test("filter by category + tags (OR)", () => {
@@ -64,18 +58,19 @@ test("filter by category + tags (OR)", () => {
   data.createPromptTemplate({ workspaceId: ws.id, title: "B", category: "tool", body: "y", tags: ["beta"] });
   data.createPromptTemplate({ workspaceId: ws.id, title: "C", category: "draft", body: "z", tags: ["alpha", "gamma"] });
 
-  const tool = data.listPromptTemplates(ws.id, { category: "tool", includeGlobal: false });
+  // 纯池化：includeGlobal 和 workspaceId 参数弃用，仅 category/tags 过滤
+  const tool = data.listPromptTemplates(ws.id, { category: "tool" });
   assert.equal(tool.length, 2);
   assert.ok(tool.every((t) => t.category === "tool"));
 
-  const tagAlphaOrBeta = data.listPromptTemplates(ws.id, { tags: ["alpha", "beta"], includeGlobal: false });
+  const tagAlphaOrBeta = data.listPromptTemplates(ws.id, { tags: ["alpha", "beta"] });
   const titles = new Set(tagAlphaOrBeta.map((t) => t.title));
   assert.ok(titles.has("A"));
   assert.ok(titles.has("B"));
   assert.ok(titles.has("C"), "C 含 alpha 应被命中");
 
   // tag 不存在 → 空
-  const none = data.listPromptTemplates(ws.id, { tags: ["zzz"], includeGlobal: false });
+  const none = data.listPromptTemplates(ws.id, { tags: ["zzz"] });
   assert.equal(none.length, 0);
 });
 
