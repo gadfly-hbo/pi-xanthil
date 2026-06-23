@@ -2,7 +2,22 @@ import { Router } from "express";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { extname, dirname, join, resolve } from "node:path";
 import { homedir } from "node:os";
-import { listWorkspacePaths, getWorkspacePath, getWorkspace, listMemoryInjectionRecords } from "../db.ts";
+import { DatabaseSync } from "node:sqlite";
+import { listWorkspacePaths, getWorkspacePath, getWorkspace, listMemoryInjectionRecords, addTraceEvent, addWorkspacePath } from "../db.ts";
+import {
+  getConnection as getSqlConnection,
+  getSchema as getSqlSchema,
+  inferColumnTypes,
+  sanitizeIdentifier,
+  quoteIdent,
+  importRowsToDb,
+  exportTableQuery,
+  rowsToCsv,
+  rowsToJson,
+  validateSql,
+  type ImportColumn,
+  type ImportPreviewResult,
+} from "../sql-connections.ts";
 import {
   createMemoryItem,
   getMemoryItem,
@@ -1219,4 +1234,359 @@ dataRouter.delete("/api/workspaces/:id/prompt-templates/:tid", (req, res) => {
     return res.status(403).json({ error: "template belongs to another workspace" });
   }
   res.json({ ok: deletePromptTemplate(existing.id) });
+});
+
+// ============================================================================
+// SQL 连接扩展 · 导入/导出/建表（D-SQL1）
+// ----------------------------------------------------------------------------
+// 新路由独立于 index.ts legacy SQL 路由，写库能力不走己 query 接口。
+// 数据安全：文件内容由前端解析后传 rows 给 server，不涉及 draw_data 原始路径。
+// SQLite 优先，PG/MySQL 写入暂返回 unsupported。
+// ============================================================================
+
+dataRouter.post("/api/sql-connections/:id/import/preview", (req, res) => {
+  const conn = getSqlConnection(req.params.id);
+  if (!conn) return res.status(404).json({ error: "connection not found" });
+  if (conn.type !== "sqlite") return res.status(400).json({ error: "导入暂仅支持 SQLite" });
+  try {
+    const rows = req.body?.rows;
+    if (!Array.isArray(rows)) return res.status(400).json({ error: "rows required" });
+    const fileName = typeof req.body?.fileName === "string" ? req.body.fileName : "data.csv";
+    if (rows.length === 0) return res.json({ columns: [], totalRows: 0, risks: ["空文件"], fileName });
+    const columns = inferColumnTypes(rows);
+    const risks: string[] = [];
+    // detect single-column
+    if (columns.length <= 1) risks.push("只有 1 列，确认数据正确？");
+    // detect suspicious column names
+    for (const c of columns) {
+      if (!c.name.trim()) risks.push("存在空列名，将自动生成列名");
+      if (sanitizeIdentifier(c.name, "column") !== c.name) risks.push(`列名 "${c.name}" 含有非法字符，将自动清理`);
+    }
+    res.json({ columns, totalRows: rows.length, risks, fileName } as ImportPreviewResult);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+dataRouter.post("/api/sql-connections/:id/import/commit", (req, res) => {
+  const conn = getSqlConnection(req.params.id);
+  if (!conn) return res.status(404).json({ error: "connection not found" });
+  if (conn.type !== "sqlite") return res.status(400).json({ error: "导入暂仅支持 SQLite" });
+  try {
+    const rows = req.body?.rows;
+    if (!Array.isArray(rows)) return res.status(400).json({ error: "rows required" });
+    const rawTable = typeof req.body?.tableName === "string" ? req.body.tableName.trim() : "";
+    if (!rawTable) return res.status(400).json({ error: "tableName required" });
+    const tableName = sanitizeIdentifier(rawTable, "table");
+    const mode = req.body?.mode === "append" ? "append" : "create";
+    const columnsRaw = req.body?.columns;
+    if (!Array.isArray(columnsRaw) || columnsRaw.length === 0) return res.status(400).json({ error: "columns required" });
+    const columns: { sourceName: string; name: string; type: string }[] = columnsRaw.map((c: Record<string, unknown>) => {
+      const rawName = typeof c.name === "string" ? c.name : "col";
+      // sourceName 必须用客户端传来的原始 key（rows 上的 key），未传则回退用 name 自身（向后兼容）
+      const sourceName = typeof c.sourceName === "string" && c.sourceName ? c.sourceName : rawName;
+      return {
+        sourceName,
+        name: sanitizeIdentifier(rawName, "column"),
+        type: typeof c.type === "string" && ["INTEGER", "REAL", "TEXT"].includes(c.type) ? c.type : "TEXT",
+      };
+    });
+    const result = importRowsToDb(conn, tableName, columns, rows, mode);
+    // trace
+    const wsId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined;
+    if (wsId) {
+      addTraceEvent({
+        workspaceId: wsId,
+        targetKind: "sql_connection",
+        targetId: conn.id,
+        type: "sql_import",
+        target: conn.name,
+        status: "success",
+        detail: `导入 ${result.rowCount} 行 → ${tableName} · 模式=${mode}`,
+        payload: { tableName, rowCount: result.rowCount, mode, riskLevel: "L2" },
+      });
+    }
+    res.json({ tableName, rowCount: result.rowCount, mode });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+dataRouter.post("/api/sql-connections/:id/create-table", (req, res) => {
+  const conn = getSqlConnection(req.params.id);
+  if (!conn) return res.status(404).json({ error: "connection not found" });
+  if (conn.type !== "sqlite") return res.status(400).json({ error: "建表暂仅支持 SQLite" });
+  try {
+    const rawTable = typeof req.body?.tableName === "string" ? req.body.tableName.trim() : "";
+    if (!rawTable) return res.status(400).json({ error: "tableName required" });
+    const tableName = sanitizeIdentifier(rawTable, "table");
+    const columnsRaw = req.body?.columns;
+    if (!Array.isArray(columnsRaw) || columnsRaw.length === 0) return res.status(400).json({ error: "columns required" });
+    const columns = columnsRaw.map((c: Record<string, unknown>) => ({
+      name: sanitizeIdentifier(typeof c.name === "string" ? c.name : "col", "column"),
+      type: typeof c.type === "string" && ["INTEGER", "REAL", "TEXT"].includes(c.type) ? c.type : "TEXT",
+    }));
+    importRowsToDb(conn, tableName, columns, [], "create");
+    const wsId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined;
+    if (wsId) {
+      addTraceEvent({
+        workspaceId: wsId,
+        targetKind: "sql_connection",
+        targetId: conn.id,
+        type: "sql_create_table",
+        target: conn.name,
+        status: "success",
+        detail: `建表 ${tableName} · ${columns.length} 列`,
+        payload: { tableName, columns: columns.map((c) => c.name), riskLevel: "L2" },
+      });
+    }
+    res.json({ tableName, columns });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+dataRouter.post("/api/sql-connections/:id/export/table", async (req, res) => {
+  const conn = getSqlConnection(req.params.id);
+  if (!conn) return res.status(404).json({ error: "connection not found" });
+  try {
+    const rawTable = typeof req.body?.tableName === "string" ? req.body.tableName.trim() : "";
+    if (!rawTable) return res.status(400).json({ error: "tableName required" });
+    const format = req.body?.format === "csv" ? "csv" : "json";
+    const { columns, rows } = await exportTableQuery(conn, rawTable);
+    const wsId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined;
+    if (wsId) {
+      addTraceEvent({
+        workspaceId: wsId,
+        targetKind: "sql_connection",
+        targetId: conn.id,
+        type: "sql_export",
+        target: conn.name,
+        status: "success",
+        detail: `导出表 ${rawTable} → ${format} · ${rows.length} 行`,
+        payload: { tableName: rawTable, format, rowCount: rows.length, riskLevel: "L1" },
+      });
+    }
+    if (format === "csv") {
+      res.setHeader("content-type", "text/csv; charset=utf-8");
+      res.send(rowsToCsv(columns, rows));
+    } else {
+      res.json({ columns, rows, rowCount: rows.length, format });
+    }
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+dataRouter.post("/api/sql-connections/:id/export/query", async (req, res) => {
+  const conn = getSqlConnection(req.params.id);
+  if (!conn) return res.status(404).json({ error: "connection not found" });
+  try {
+    const sql = typeof req.body?.sql === "string" ? req.body.sql.trim() : "";
+    if (!sql) return res.status(400).json({ error: "sql required" });
+    const validation = validateSql(sql);
+    if (!validation.safe) return res.status(400).json({ error: "SQL 包含危险操作", validation });
+    const format = req.body?.format === "csv" ? "csv" : "json";
+    const params = typeof req.body?.params === "object" && req.body.params !== null
+      ? req.body.params as Record<string, unknown>
+      : undefined;
+    const { columns, rows } = await exportTableQuery(conn, sql, params);
+    const wsId = typeof req.body?.workspaceId === "string" ? req.body.workspaceId : undefined;
+    if (wsId) {
+      addTraceEvent({
+        workspaceId: wsId,
+        targetKind: "sql_connection",
+        targetId: conn.id,
+        type: "sql_export",
+        target: conn.name,
+        status: "success",
+        detail: `导出查询 → ${format} · ${rows.length} 行`,
+        payload: { sql: sql.slice(0, 200), format, rowCount: rows.length, riskLevel: "L1" },
+      });
+    }
+    if (format === "csv") {
+      res.setHeader("content-type", "text/csv; charset=utf-8");
+      res.send(rowsToCsv(columns, rows));
+    } else {
+      res.json({ columns, rows, rowCount: rows.length, format });
+    }
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// SQLite 新建 .db 文件：通过 connection 配置文件路径完成创建（仅创建空文件，等用户后续 upsert 连接）
+dataRouter.post("/api/sql-connections/sqlite/create-db", (req, res) => {
+  try {
+    const filePath = typeof req.body?.filePath === "string" ? req.body.filePath.trim() : "";
+    if (!filePath) return res.status(400).json({ error: "filePath required" });
+    if (!filePath.endsWith(".db") && !filePath.endsWith(".sqlite") && !filePath.endsWith(".sqlite3")) {
+      return res.status(400).json({ error: "filePath should end with .db / .sqlite / .sqlite3" });
+    }
+    if (existsSync(filePath)) {
+      return res.status(409).json({ error: "目标文件已存在", path: filePath });
+    }
+    mkdirSync(dirname(filePath), { recursive: true });
+    const db = new DatabaseSync(filePath);
+    db.close();
+    res.json({ path: filePath, created: true });
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// ============================================================================
+// 监测初始化导入（D-MONITOR6 · X-MONITOR5 口径）
+// ----------------------------------------------------------------------------
+// 单入口：POST /api/workspaces/:id/monitor/import-sql
+//   - 把数据库连接（SQLite/PG/MySQL）的 table 或 SELECT SQL 导出为监测专用
+//     clean_data 文件，登记 workspace_paths(folder=clean_data) 并返回 pathId。
+//   - 物理路径固定在工作区 ${rootPath}/clean_data/monitor/ 下，文件名按 datasetName
+//     sanitize 后落盘；同名自动生成版本文件；前端不传绝对 outputPath。
+//   - SQL 走 validateSql 拒绝任何非 SELECT；tableName 模式自动构造安全 SELECT
+//     `SELECT * FROM "<sanitized>"`（双引号 ident，禁止字符串拼接注入）。
+//   - 不读 draw_data；不把 rows 发 LLM；只读端点（仅写本地 clean_data + 登记）。
+//
+// 配套：GET /api/workspaces/:id/monitor/imports
+//   - 仅返回 clean_data/monitor/ 子树下的聚合集（path 前缀过滤），供初始化页只读列表使用，
+//     不暴露工作区其他 clean_data。
+// ============================================================================
+
+const MONITOR_DIR = "clean_data/monitor";
+const MONITOR_TABULAR_EXT = new Set([".csv", ".tsv", ".xlsx", ".xls", ".json"]);
+
+function sanitizeMonitorFileName(raw: string, ext: ".csv" | ".json"): string {
+  const base = raw.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]+/g, "_").replace(/^_+|_+$/g, "");
+  const truncated = base.slice(0, 80) || "import";
+  return `${truncated}${ext}`;
+}
+
+function resolveMonitorPath(workspaceRoot: string, fileName: string): string {
+  const monitorBase = resolve(workspaceRoot, MONITOR_DIR);
+  const target = resolve(monitorBase, fileName);
+  if (target === monitorBase || !target.startsWith(monitorBase + "/")) {
+    throw new Error(`unsafe path: ${fileName}`);
+  }
+  return target;
+}
+
+function uniqueMonitorFileName(workspaceRoot: string, fileName: string, ext: ".csv" | ".json"): string {
+  if (!existsSync(resolveMonitorPath(workspaceRoot, fileName))) return fileName;
+  const stem = fileName.slice(0, -ext.length);
+  for (let i = 2; i < 10_000; i += 1) {
+    const candidate = `${stem}_${i}${ext}`;
+    if (!existsSync(resolveMonitorPath(workspaceRoot, candidate))) return candidate;
+  }
+  throw new Error(`too many versions for monitor import: ${fileName}`);
+}
+
+dataRouter.post("/api/workspaces/:id/monitor/import-sql", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const connectionId = typeof req.body?.connectionId === "string" ? req.body.connectionId.trim() : "";
+    if (!connectionId) return res.status(400).json({ error: "connectionId required" });
+    const conn = getSqlConnection(connectionId);
+    if (!conn) return res.status(404).json({ error: "sql connection not found" });
+
+    const rawSql = typeof req.body?.sql === "string" ? req.body.sql.trim() : "";
+    const rawTable = typeof req.body?.tableName === "string" ? req.body.tableName.trim() : "";
+    if (!rawSql && !rawTable) return res.status(400).json({ error: "sql or tableName required" });
+
+    const rawDatasetName = typeof req.body?.datasetName === "string" ? req.body.datasetName.trim() : "";
+    if (!rawDatasetName) return res.status(400).json({ error: "datasetName required" });
+
+    const formatRaw = typeof req.body?.format === "string" ? req.body.format : "csv";
+    const format: "csv" | "json" = formatRaw === "json" ? "json" : "csv";
+
+    let finalSql: string;
+    if (rawSql) {
+      const validation = validateSql(rawSql);
+      if (!validation.safe) return res.status(400).json({ error: "SQL 包含危险操作（仅允许只读 SELECT）", validation });
+      const upper = rawSql.toUpperCase();
+      if (!upper.startsWith("SELECT") && !upper.startsWith("WITH")) {
+        return res.status(400).json({ error: "仅允许只读 SELECT 查询" });
+      }
+      finalSql = rawSql;
+    } else {
+      const sanitizedTable = sanitizeIdentifier(rawTable, "table");
+      if (conn.type === "sqlite") {
+        const schema = await getSqlSchema(conn);
+        if (!schema.some((t) => t.name === rawTable || t.name === sanitizedTable)) {
+          return res.status(404).json({ error: `table not found: ${rawTable}` });
+        }
+        finalSql = `SELECT * FROM ${quoteIdent(rawTable)}`;
+      } else {
+        finalSql = `SELECT * FROM ${quoteIdent(rawTable)}`;
+      }
+    }
+
+    const { columns, rows } = await exportTableQuery(conn, finalSql);
+
+    const ext = format === "json" ? ".json" : ".csv";
+    const fileName = uniqueMonitorFileName(workspace.rootPath, sanitizeMonitorFileName(rawDatasetName, ext), ext);
+    const targetAbs = resolveMonitorPath(workspace.rootPath, fileName);
+    mkdirSync(dirname(targetAbs), { recursive: true });
+    const content = format === "json" ? rowsToJson(columns, rows) : rowsToCsv(columns, rows);
+    writeFileSync(targetAbs, content, "utf8");
+
+    const entry = addWorkspacePath(workspace.id, "clean_data", targetAbs, "file");
+
+    addTraceEvent({
+      workspaceId: workspace.id,
+      targetKind: "sql_connection",
+      targetId: conn.id,
+      type: "sql_export",
+      target: conn.name,
+      status: "success",
+      detail: `监测导入 ${rawDatasetName} · ${rows.length} 行 → ${MONITOR_DIR}/${fileName}`,
+      payload: { mode: rawTable ? "table" : "sql", rowCount: rows.length, format, fileName, riskLevel: "L1" },
+    });
+
+    res.json({
+      pathId: String(entry.id),
+      name: fileName,
+      path: targetAbs,
+      columns,
+      rowCount: rows.length,
+      format,
+    });
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/monitor/imports", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const monitorBase = resolve(workspace.rootPath, MONITOR_DIR);
+    const paths = listWorkspacePaths(workspace.id, "clean_data").filter((p) => {
+      if (p.kind !== "file") return false;
+      if (!MONITOR_TABULAR_EXT.has(extname(p.path).toLowerCase())) return false;
+      const abs = resolve(p.path);
+      return abs === monitorBase || abs.startsWith(monitorBase + "/");
+    });
+
+    const datasets: BiAggregationDataset[] = [];
+    for (const entry of paths) {
+      try {
+        if (!existsSync(entry.path)) continue;
+        const buf = readFileSync(entry.path);
+        const { columns, rows } = parseAggregationBuffer(buf, entry.path);
+        if (columns.length === 0) continue;
+        datasets.push({
+          pathId: String(entry.id),
+          name: entry.path.split("/").pop() ?? entry.path,
+          columns,
+          rowCount: rows.length,
+        });
+      } catch {
+        // skip unparseable files
+      }
+    }
+    res.json(datasets);
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
 });

@@ -9,8 +9,17 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-23 · **E-MONITOR2 完成并通过总控终审**：经营差距监测引擎 + LLM 指标体系草案 + ontology 诊断关联落地（E 域 slot）。
+- 最近更新：2026-06-23 · **E-MONITOR8 安全回归审查通过**（D-MONITOR6 单入口落地后回归）：监测/agent/工作流安全边界完整，**未改任何代码**，仅静态审查 + 红线 grep + 测试回归。前一卡 E-MONITOR2（监测引擎 + LLM 草案 + ontology 诊断）已通过总控终审。
 - 进度：
+  - **E-MONITOR8 安全回归（本次，2026-06-23）**：
+    - ① Agent 链路无写库/导入通道：`multi-agent-runner.ts` / `autonomous-runner.ts` / `subagent-core.ts` / `skill-*.ts` / `memory-injection.ts` / `pi-adapter.ts` 红线 grep 均未引用 `monitor/import-sql`、`monitor/imports`、`/sql-connections/.../import/commit`、`/.../create-table`、`addWorkspacePath`、`exportTableQuery`。
+    - ② 工作流 SQL 仍只读：`multi-agent-runner.ts:741` 走 `validateSql` → `executeQuery`，DDL/DML 在 `sql-connections.test.ts` 单测坐实。
+    - ③ monitor-llm prompt 安全：`buildDraftPrompt`（`monitor-llm.ts:29-120`）只拼 `aggregations.name/rowCount/columns` + ontology 对象名/指标口径/逻辑规则名；零 rows、零 cells、零 draw_data；无聚合集时降级 `missingData` 不调 LLM。
+    - ④ pathId 白名单硬卡：`routes/engine.ts:3372-3380` 在 `insertMonitorRun` 前差集校验 metric-system bindings 全部 datasetPathId 属当前 workspace `/api/bi/aggregations` 返回集，非法即 400 且不落空 run；ontologyId 同口径校验（`engine.ts:3337`）。
+    - ⑤ run 数据流不进 LLM：`/runs` fetch `/api/bi/aggregations/:pathId/data` 拉 rows → 直接喂 `runMonitorChecks`（纯函数零 LLM）→ 写 findings；rows 永不进入 LLM。
+    - ⑥ actions/draft 仅基于 findings：`engine.ts:3457-3511` prompt 输入只含 `kind/severity/lifecycle/category/title/suggestion/comparisons/diagnosis`，不读 rows、不读导入数据；prompt 内显式声明"输入是衍生产物，不包含原始行级数据"。
+    - ⑦ subagent.writeFileSync 边界确认：`subagent-core.ts` 仅有的 `writeFileSync` 用于模板配置（`SUBAGENTS_CONFIG_PATH`）+ 沙箱 `.mcp.json`，与监测导入/数据写库无关。
+  - **E-MONITOR2（前序，2026-06-23 已终审通过）**：
   - 新建 `server/src/monitor-engine.ts`（17.5KB 纯函数零 LLM 零 IO）：4 类差距规则 R-GAP-TARGET / R-GAP-HISTORY（含 MoM+YoY+移动均值偏离）/ R-GAP-INDUSTRY / R-GAP-COMPETITOR + `buildDiagnosis()` 关联依赖/对象/逻辑规则 + lifecycle 四态（new/recurring/worsening/resolved）复用 health-check-engine 范式。
   - 新建 `server/src/monitor-engine.test.ts`：13 case 全过（4 类差距各覆盖正常+降级 + ontology 诊断 + lifecycle 四态 + 降级安全）。
   - 新建 `server/src/monitor-llm.ts`：`draftMetricSystem()` 调 `runPiPrompt` 生成 `MonitorMetricSystemDraft` 草案；LLM prompt 只送字段名/行数/已注册 ontology 元数据，**绝不送原始行/draw_data 内容/行级明细**；无聚合数据时降级返回 missingData 不调 LLM；JSON 解析参 `onto-extract.ts` 范式（fence + brace-scan + try-catch 降级）。
@@ -19,16 +28,14 @@
   - 边界确认（与总控倾向方案一致）：监测引擎落 E slot（独立于 V 域 health-check-engine），新增 `monitor_*` 三表与 7 端点，**不动 V 域既有 health/findings 链路**；E 与 V 在前端可分别展示，UI 双套但后端清晰。
   - **总控终审收口（2026-06-23）**：① 修正 E 路由中不存在的 `/object-types`、`/metric-definitions` 为既有 `/objects`、`/metrics`；② draft 端点校验 ontologyId 必须属于当前 workspace；③ run 端点在 `insertMonitorRun` 前先 fetch 本 workspace clean_data 白名单校验 metric-system 内全部 datasetPathId，非法 pathId 400 且不落空 run；④ fresh DB schema 补 workspace/run FK；⑤ 双侧 `types.ts` 新增 `MonitorMetricSystemEntry/MonitorRun`，`api/viz.ts` 补齐 list/delete/run/listFindings 方法给 D-MONITOR3 使用。
 - 校验：
-  - `npm run typecheck` ✅（server + web 全绿）。
-  - `npm run build` ✅（仅既有 chunk-size warning）。
-  - `node --test src/monitor-engine.test.ts`：13/13 ✅。
-  - `node --test src/health-check-engine.test.ts src/monitor-engine.test.ts`：40/40 ✅（既有体检引擎无回归）。
-  - 红线 grep：`monitor-engine.ts` 无 `runPiPrompt|spawn|fetch|readFileSync|writeFileSync|execSync` 真实调用（仅文档注释）；`monitor-llm.ts` 无 `execSync|curl localhost|fetch localhost` 死锁危险源；数据探索 LLM 隔离净。
+  - **本次 E-MONITOR8**：`npm run typecheck` ✅（server 全绿）；`node --test monitor-engine.test.ts monitor-import.test.ts`：21/21 ✅；`node --test multi-agent-runner.test.ts`：32/32 ✅；5 类红线 grep 全部干净（仅 `monitor-llm.ts:9` 出现 `draw_data` 字样为安全声明注释本身，已核对）。
+  - **前序 E-MONITOR2**：`npm run typecheck` ✅；`npm run build` ✅；`node --test src/health-check-engine.test.ts src/monitor-engine.test.ts`：40/40 ✅。
 - 下一步：
-  - **未做浏览器真跑**：本卡未在 UI 端集成（题面范围=engine/server 监测逻辑）；真实 draft → adopt → runs → findings 全链路浏览器实跑留给 D-MONITOR3 / X-MONITOR4。
-  - LLM draft 真实模型 smoke：需要真实 ontology 工作区跑一次端到端（含 metric-system/draft → adopt → runs → findings 全链路）；目前只有单元测试覆盖引擎部分。
-  - 监测 lifecycle 在跨 run 测试中只验证了同 workspace + 同 suite 取 prior 的逻辑；尚未在多 workspace 隔离场景验证（一个 workspace 的 prior 不应漏到另一个）。findPriorMonitorFindings 已加 workspace_id 过滤，单元测试可补。
-  - E-PROMPT2 真实模型 smoke 仍欠（与 E-MONITOR2 并行的旧 backlog）。
+  - 监测初始化数据库单入口专题（D-MONITOR6/E-MONITOR8 已审）已由 X-MONITOR9 收口，等待用户 review 后手动提交。
+  - **未做浏览器真跑**：监测引擎本身未在 UI 端集成（题面范围=engine/server 监测逻辑）；真实 draft → adopt → runs → findings 全链路浏览器实跑留给 D-MONITOR3 / X-MONITOR4 / D-MONITOR7。
+  - LLM draft 真实模型 smoke：需要真实 ontology 工作区跑一次端到端；目前只有单元测试覆盖引擎部分。
+  - 监测 lifecycle 多 workspace 隔离单测：`findPriorMonitorFindings` 已加 workspace_id 过滤，但单测仅验证同 workspace + 同 suite 取 prior 的逻辑；多 workspace 隔离场景待补。
+  - E-PROMPT2 真实模型 smoke 仍欠（旧 backlog）。
 - 阻塞：无。
 - 开放问题（需总控）：
   1. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空（旧问题，未答）。
@@ -112,6 +119,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **command 后端实现边界（2026-06-16，E 卡）**：`command-expand.ts` 是展开唯一纯函数；普通 chat 与 flow chat 都必须在拼接 context 后的用户原文位置替换为 `expandedText`，但 transcript/trace 继续保存原始 `/cmd`，保持 UI 行为可追溯。`skillSlugs` 不是 pi 参数，必须先解析为 workspace project skill 路径 `<workspace>/.pi/skills/<slug>/SKILL.md`，再和显式 `skillPaths` 合并走 `validateSkillPaths`；禁止把 slug 直接传给 pi。`/api/commands` 写入端只收 `source:"custom"` 和白名单字段，`template` 只作为 prompt 文本存储，不执行 shell；`PUT` 限 localhost 来源。
 - **command 向导前端边界（2026-06-16，E 卡）**：ChatPane `/` 补全只能消费 `GET /api/commands` 的 enabled commands，不在前端构造/展开 prompt。无 `params` 命令只插入 `/${name} `；有 `params` 命令弹 React 表单并在提交时编码为现有 text：`/name --key=value`。`type:"file" + source:"clean_data"` 只拉登记路径列表并提交 `WorkspacePath.path`，不读取文件内容、不发送数据样本/列名/剖析结果给任何 LLM。表单 required 校验是用户体验层，权威展开仍是 server `command-expand.ts`。
 - **跨域数据查询隔离规范（2026-06-19）**：为了避免子系统之间相互引用 DB 文件导致的循环依赖与类型接缝污染，D 域等其他域查询 E 域的记忆特征（如 `knowledge-graph` 的打分与 Prompt）时，**禁止跨域 import** `server/src/knowledge-graph.ts` 的底层读写函数。统一规范通过暴露内网 GET API 接口（如 `/api/workspaces/:id/kg/relevance`）并通过 `fetch` 进行跨域通信，这确保了各域可独立测试，且边界坚固。
+- **监测/agent 安全回归口径（E-MONITOR8，2026-06-23）**：D-MONITOR6 在 D 域 slot 新增监测专用 SQL 导入单入口（`POST /api/workspaces/:id/monitor/import-sql` + `GET /monitor/imports`）后，E 域负责回归验证 LLM/agent/workflow 不获得写库或原始行级数据通道。审查口径（无新代码、仅静态 + 单测 + grep）：① **agent runner 文件**（`multi-agent-runner.ts` / `autonomous-runner.ts` / `subagent-core.ts` / `skill-*.ts` / `memory-injection.ts` / `pi-adapter.ts`）grep 必须无 `monitor/import-sql`、`monitor/imports`、`import/commit`、`create-table`、`addWorkspacePath`、`exportTableQuery` 任意一个。② 工作流 SQL 工具节点（`multi-agent-runner.ts:741`）必须经 `validateSql` → `executeQuery`，**只读 SELECT**。③ **monitor-llm prompt 安全红线**：`buildDraftPrompt`/`actions/draft` prompt 只能拼 `BiAggregationDataset.columns/rowCount/name` + ontology 元数据 + findings 衍生字段（`kind/severity/lifecycle/category/title/suggestion/comparisons/diagnosis`），**绝禁** rows/cells/draw_data。④ monitor `/runs` 端点必须在 `insertMonitorRun` 前差集校验 metric-system bindings 的全部 datasetPathId 属当前 workspace `/api/bi/aggregations` 返回集，非法即 400 且**不落空 run**；ontologyId 同口径。⑤ run 数据流：`fetch /api/bi/aggregations/:pathId/data` → `runMonitorChecks`（纯函数零 LLM）→ findings 落库，rows 永不进入 LLM。⑥ `subagent-core.ts` 的 `writeFileSync` 仅限模板配置 + 沙箱 `.mcp.json`，不得扩散为数据写入通道。后续监测相关改动如新增 LLM 调用或新接缝端点，必须按本口径重做回归。
 
 ---
 

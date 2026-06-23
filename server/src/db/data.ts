@@ -112,7 +112,6 @@ export function initDataTables(): void {
       updated_at   INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_knowledge_docs_ws ON knowledge_docs(workspace_id, updated_at DESC);
-    CREATE INDEX IF NOT EXISTS idx_knowledge_docs_scope ON knowledge_docs(scope);
     CREATE TABLE IF NOT EXISTS knowledge_chunks (
       id       TEXT PRIMARY KEY,
       doc_id   TEXT NOT NULL REFERENCES knowledge_docs(id),
@@ -128,9 +127,11 @@ export function initDataTables(): void {
     const cols = db.prepare("PRAGMA table_info(knowledge_docs)").all() as Array<{ name: string }>;
     if (!cols.some((c) => c.name === "scope")) {
       db.exec("ALTER TABLE knowledge_docs ADD COLUMN scope TEXT NOT NULL DEFAULT 'workspace'");
-      db.exec("CREATE INDEX IF NOT EXISTS idx_knowledge_docs_scope ON knowledge_docs(scope)");
     }
   }
+  // scope 索引在 ALTER 之后无条件建（IF NOT EXISTS 幂等）：旧库此时已补列、新库列已在 CREATE TABLE。
+  // 不可放进上方 CREATE TABLE 的 db.exec 块——那会早于 ALTER 执行，对旧库报 no such column: scope。
+  db.exec("CREATE INDEX IF NOT EXISTS idx_knowledge_docs_scope ON knowledge_docs(scope)");
 
   // prompts 模板库 prompt_templates（prompts_mgmt 模块 · 总控 X 接缝审定 · CRUD 由 Agent-D 实装）。
   // workspace_id 可空 = 全局模板（跨工作区可见）；body 内 {{变量}} 占位仅存储，渲染由调用方做。

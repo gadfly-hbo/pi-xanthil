@@ -10,41 +10,48 @@
 
 > **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
 
-- 最近更新：2026-06-23 · **D-POOL1 完成**（prompts/knowledge 池化扩展 + scope 列 + 启用勾选 UI）
+- 最近更新：2026-06-23 · **D-MONITOR6 + D-MONITOR7 已完成并通过 X-MONITOR9 总控终审**，监测初始化入口收敛为数据库连接单入口；E-MONITOR8 安全回归通过。
 - 进度：
-  - **本期 D-POOL1 卡完成**（前置 X-POOL0：MemoryItemKind 已加 `prompt`/`knowledge`、KnowledgeDocInput.scope 双侧契约就位）：把 prompts 模板库 + 知识库资料库从「工作区独占」升级为「全局池 + 按工作区启用」，knowledge 带 scope(global/workspace)。
-    - **① `db/data.ts` knowledge_docs DDL**：新表加 `scope TEXT NOT NULL DEFAULT 'workspace'`；旧库 idempotent ALTER（同文件 PRAGMA table_info 范式，未碰 db.ts MIGRATIONS 接缝）；rowToKnowledgeDoc 解析 scope；createKnowledgeDoc 收 scope（默认 workspace）；`scope==='global'` 时 `enableForOrigin(wsId, "knowledge", id)`，私有不入 enablement。
-    - **② `listKnowledgeDocs(ws)` 改池**：`scope='global' OR (scope='workspace' AND workspace_id=?)` 拼联合查询；`listKnowledgeChunksForRetrieval` 同口径——召回基集 = 本 ws 私有 ∪ 本 ws 已启用的 global 文档（join `listEnabledItemIds(ws,'knowledge')`），保证 BM25 检索按启用过滤。
-    - **③ `listPromptTemplates` 纯全局池**：弃用 `workspaceId` 过滤（保留参数兼容老调用，作 `_workspaceId`）+ 弃用 `includeGlobal`（保留参数无效化）。category/tags 过滤保留。`createPromptTemplate` 非 NULL ws 落库后 `enableForOrigin(wsId, "prompt", id)`；NULL=全局恒启用不入表（消费侧自合并）。
-    - **④ `backfillMemoryEnablements` 追加两源**：prompt_templates(非 NULL workspace_id 按 origin 写) + knowledge_docs(scope='global' 按 origin 写)。INSERT OR IGNORE 幂等。NULL prompt 与 workspace knowledge 不入表（设计如此）。
-    - **⑤ `routes/data.ts`**：knowledge POST 收 `scope` 字段；knowledge GET `/:docId` 豁免 global 文档的跨 ws 403（共享单实例可读，PATCH/DELETE 守 origin 不变）；prompt route 注释更新 `includeGlobal` 已弃用。
-    - **⑥ web 前端**：types/api 注释更新（PromptTemplate 池化语义说明、`createKnowledgeDoc` payload 加 `scope`）。
-    - **⑦ `PromptsManagementPane.tsx`**：reload 并行拉 `listPromptTemplates` + `listMemoryEnablements(ws,'prompt')`；移除「含全局/仅本ws」切换按钮；模板列表每行加 checkbox（OntologyPane 范式），NULL 全局模板恒启用且 checkbox 禁用、本工作区有 origin 入表的可勾选切换；`toggleEnablement` 走 `sharedApi.setMemoryEnablement`。
-    - **⑧ `KnowledgeBasePane.tsx` DocsView**：reload 并行拉 docs + enablement；草稿表单加 `scope` radio（默认"项目专属"，可选"通用"）；列表行 global 文档显示「通用」徽标 + 启用 checkbox，workspace 私有不显示 checkbox（本就独占）；`toggleEnablement` 同范式。
+  - **D-MONITOR6（后端·完成）**：
+    - `POST /api/workspaces/:id/monitor/import-sql`：单入口，输入 `connectionId + (sql | tableName) + datasetName`，后端按 `clean_data/monitor/` 算路径、sanitize 文件名、写 CSV/JSON、`addWorkspacePath(folder="clean_data")` 登记，返回 `{ pathId, name, path, columns, rowCount, format }`。
+      - SQL 模式：`validateSql` 拒 DDL/DML；额外 starts-with `SELECT/WITH` 校验拒 `EXPLAIN/PRAGMA` 等。
+      - tableName 模式：SQLite 走 `getSqlSchema` 真实校验存在性；PG/MySQL 走 `quoteIdent` 构造 `SELECT *`（题面允许的渐进式覆盖）。
+      - 文件名 sanitize：保留中英文/数字/下划线/连字符；其余替换 `_`；80 字符截断；`resolveMonitorPath` 二次校验路径必须在 `monitor/` 沙箱内（`../escape/evil` 兜底防御）；总控初审补丁改为同名自动生成版本文件（如 `_2`），避免覆盖旧导入且新增 pathId 指向同一物理文件。
+    - `GET /api/workspaces/:id/monitor/imports`：path 前缀 + 扩展名白名单过滤，仅返回 `clean_data/monitor/` 下的聚合集；解析失败/缺文件静默跳过。
+    - trace 沿用 `sql_export` 事件类型（mode=table|sql，含 fileName + 行数）。
+    - 落点：`server/src/routes/data.ts` 新增 ~150 行；`server/src/sql-connections.ts` 零改；额外 import `quoteIdent / addWorkspacePath`。
+    - 接缝纪律：未碰 `index.ts` legacy / 他域 router / db.ts 注册表。
+  - **D-MONITOR7（前端·完成）**：`web/src/components/HealthDataPane.tsx` clean rewrite 为单入口工作流。
+    - 删除：「已登记聚合数据全量列表」+「SQL 导出折叠面板」+「数据提取折叠面板」+「保存监测配置」按钮（角色改动即时 persistBindings 持久化）。
+    - 新增「数据库连接导入」区块：选连接 → 自动拉 `api.getSqlSchema(connId)` → 选表（自动生成 `SELECT * FROM "<table>"` + 默认 datasetName=表名）→ 可编辑 SQL → 选导入后自动绑定角色 → 一键导入。
+    - 导入成功后调 `dataApi.importMonitorSql` 拿 pathId → 自动写入 `monitor_configs.datasetBindings`（保留 `ontologyId/metricSystemId/thresholds`，沿用 D-MONITOR1 范式不覆盖）。
+    - 数据集列表来源切换为 `dataApi.listMonitorImports`；文案统一「监测聚合数据」（清除所有「体检」字眼）。
+    - 指标体系初始化区块保留；新增缺角色 hint：未绑定 `source/goal` 时给 amber 提示但不硬阻塞 `generateDraft`。
+    - 总控初审补丁：workspace 切换与数据库连接切换的异步请求均加 `cancelled` guard，避免旧请求晚返回覆盖新 workspace/schema 状态。
+  - **web api**：`web/src/lib/api/data.ts` 新增 `dataApi.importMonitorSql` + `dataApi.listMonitorImports`。
 - 关键设计决策：
-  - **prompt NULL 恒启用、不写 enablement 表**：用户口径——NULL 模板就是无条件全局，写表反而需要每个新 ws backfill 维护成本。消费侧合并语义 = `enabled=1 ∪ workspace_id IS NULL`，前端 `isEnabled(tpl) = workspaceId === null || enabledSet.has(id)`。同时拿下"按 origin backfill 省 + 不破坏旧行为稳 + 新增 ws 零维护 + NULL 恒启用语义干净"。
-  - **knowledge workspace 私有不入 enablement**：scope='workspace' 本就独占于 origin ws，写 enablement 反而扰动消费侧合并查询。消费层（`listKnowledgeChunksForRetrieval`）直接 union 本 ws 私有 + 本 ws 已启用 global，零冗余、零歧义。
-  - **scope DDL 走域内 PRAGMA+ALTER，不动 db.ts MIGRATIONS**：与同文件 memory_items/reviews 加 tags 列范式一致，避免触碰接缝层；后续如域内表 schema 演进多了再抽 ensureColumn 公共工具（YAGNI）。
-  - **knowledge GET 跨 ws 403 豁免仅限 global**：global 文档"共享单实例·跨 ws 可读"是池化语义的核心，403 守卫从 `workspaceId !== id` 改为 `scope !== 'global' && workspaceId !== id`；PATCH/DELETE 仍守 origin（"共享单实例 = 编辑全局生效，但仅 origin ws 能改"），与本体范式一致。
-  - **listChunksForRetrieval enabled 集为空时 fallback IN('')**：保留 SQL 静态形态、避免动态条件分支；id IN ('') 恒 false，仅返回本 ws 私有，行为正确。
-  - **PromptsPane checkbox 行解构**：原列表行是单 button 整行点击；加 checkbox 后改为 div 容器 + 内部 button 占据除 checkbox 外的可点击区域，checkbox onClick stopPropagation 防误触详情。沿用 RulesPane 范式。
+  - **路径计算后端独占**：前端只传 `datasetName`，绝对路径由 server `resolveMonitorPath(workspace.rootPath)` 生成；防 sandbox 逃逸。
+  - **`monitor/` 复用 folder=clean_data**：零新增 folder 枚举；path 前缀过滤区分专用 vs 其他 clean_data。`/api/bi/aggregations` 列表自然包含 monitor 文件 → viz 的 monitor_configs PUT 校验直接通过，**无需改 viz 路由**。
+  - **导入即落盘，不留独立 dry-run**：「预览字段/行数」与「导入」合并为单次调用 + 结果反馈条；SQLite 一次 SELECT 即拿全部行，单独预览端点等于复制粘贴成本。后续若需强制 dry-run 再补 `?dryRun=1`。
+  - **危险 SQL 双重拦截**：先过 `validateSql`（黑名单 DROP/INSERT/UPDATE/ALTER 等），再 starts-with 校验 SELECT/WITH 拒 `EXPLAIN/PRAGMA/CALL`。
+  - **tableName 在 SQLite 强制 schema 校验**：防御写错表名 + 多一道注入防御 + 明确 404 反馈。
+- 总控终审补充（X-MONITOR9）：
+  - E-MONITOR8 已核验：agent/workflow/subagent 未引用 monitor 导入写端点或 addWorkspacePath/exportTableQuery；工作流 SQL 仍只读；monitor-llm 不读 rows/draw_data；monitor run rows 只进纯函数；actions/draft 只基于 findings 衍生产物。
 - 校验：
   - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
-  - `npm -w web run build`：✅ 仅 chunk size warning（与本卡无关）
-  - `node --experimental-strip-types --test server/src/prompt-templates.test.ts knowledge-retrieval.test.ts`：✅ 19/19（prompt 7 + knowledge 12）
-  - `node --experimental-strip-types --test server/src/memory-injection.test.ts memory-consolidation.test.ts memory-governance.test.ts memory-ingest-gate.test.ts`：✅ 35/35（确认 backfill 新增两源不破坏既有记忆链路）
-  - 数据探索 LLM 隔离 grep：✅ EXIT=1 无匹配（本卡未碰探索子树）
+  - `npm -w web run build`：✅ 仅既有 chunk size warning
+  - `node --experimental-strip-types --test server/src/{sql-connections,multi-agent-runner,monitor-import}.test.ts`：✅ **51/51**（sql 9 + multi-agent 32 + monitor-import 8 + 2 backward compat）
+  - X-MONITOR9 复验：`node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/monitor-import.test.ts server/src/multi-agent-runner.test.ts server/src/health-check-engine.test.ts`：✅ **80/80**
+  - 数据探索 LLM 隔离 grep：✅ EXIT=1 无匹配（未碰探索子树）
 - 下一步（接续优先级）：
-  - ① **总控终审 D-POOL1**：检查 backfill 幂等性 + 池化语义闭环 + 浏览器实跑（两 ws 切换看通用文档/模板可见性与启用切换）。
-  - ② **消费侧 chip 计数升级（可选）**：`App.tsx` 顶栏 `knowledgePromptCount` 当前等于 `listKnowledgeDocs(ws).length`，已含 global ∪ workspace，但**未按 enablement 过滤**——理论上应只数"本 ws 已启用的 global ∪ 本 ws 私有"才与检索时实际可见集一致。本次未改是因 chip 计数的 informational 性质（让用户知道有多少可检索），但严格按 brief 第 5 条应改。决策：留给 X 总控确认是否需要严格对齐 retrieval 集合。
-  - ③ 长尾（YAGNI）：knowledge scope 修改（workspace ↔ global 互转 UI）、prompt 全局模板从 UI 改 ws_id=null（当前只能 origin ws 编辑，不能转池）。
+  - ① 用户 review 后手动提交。
+  - ② 可选人工浏览器点检：SQLite 连接 → 选表 → 导入 → 角色绑定 → 观星台 run。
+  - ③ SQL 长尾：PG/MySQL `monitor/import-sql` tableName 模式 schema 预校验；Excel 导出。
 - 阻塞 / 待总控：
-  - **PromptsManagementPane 启用 checkbox 行为约束**：NULL 全局模板 checkbox 显示已勾选 + disabled（恒启用，不可关）。但当前 enabledSet 不含 NULL 模板 id，仅靠 `isEnabled()` helper 派生显示态——若未来要在某 ws 关闭某 NULL 全局模板，需要扩张"NULL 也入表 + 默认 enabled=1"语义，目前不做（用户口径明确）。
-  - **chip 计数语义对齐**：见上方下一步 ②。
+  - 无；D-MONITOR6 / D-MONITOR7 / E-MONITOR8 / X-MONITOR9 均 done。
 - 开放问题：
-  - **scope 修改 UI 暂缺**：现有 KnowledgeBasePane 仅支持新建时设 scope；已存在文档要"转通用/转专属"需走 PATCH，但当前 patch 不接收 scope（仅 title/path/content/tags）。后续如需开放，扩 KnowledgeDocPatch + route 校验。
-  - **`PromptTemplatePatch` 不含 workspaceId 转换**：目前不支持"个人模板转全局"或反向。若需要，要决定 origin ws 关系如何处理。
+  - PG/MySQL tableName 模式跳过 schema 预校验，依靠 `quoteIdent`；非注入但拼错表名走错路径会到查询层才报错。后续如需严格校验，PG 走 `information_schema.tables`、MySQL 走 `SHOW TABLES LIKE`。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -112,7 +119,21 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **监测配置 monitor_configs（2026-06-23，D-MONITOR1）**：每 workspace 单条 upsert（UNIQUE workspace_id），`dataset_bindings` 整列 JSON 替换（不拆 binding 级 CRUD，YAGNI）。**pathId 归属校验范式**：PUT 路由 fetch self `${SELF_BASE}/api/bi/aggregations?workspaceId=...` 拿 clean_data 白名单，非白名单 pathId → 400 不落库——这是 D/viz 跨域读取数据集时的标准防越权范式，沿用 health/runs 模式，不直 import D 域函数（守 §五.3 接缝纪律），不 readFileSync workspace_paths（守数据安全）。后续 monitor metric-system / runs 等若涉及 pathId 引用都按此校验。
 - **viz slot 归 D 承接（2026-06-19 起）**：Orchestration §一明确 V-agent 停用后 viz/前端归 D；本期 D-MONITOR1 改 `db/viz.ts` / `routes/viz.ts` / `HealthDataPane.tsx` 即此条款下的合规操作。后续监测改造（D-MONITOR3）同理。修改前看 wiki 卡 brief 是否点明「落点=…+ monitor 前端」即可。
 - **复用 actions 三表承接监测行动（2026-06-23，D-MONITOR3）**：监测的「finding → 行动项 → 任务 → 反馈」闭环**不另起表**——`HealthReportPane` 用 `ActionItem.sourceKind="session"` + `scopeId=workspaceId` + `reportPath="monitor:${runId}"` 复用 actions 三表与端点。识别 monitor 行动项靠 `reportPath` 前缀 `monitor:`；当前 `sourceKind` 枚举未扩 `"monitor"`，是有意取舍——若后续要按 sourceKind 过滤/统计需总控扩 types。同理 viz slot 内任何"业务实体 → 行动闭环"接入都该走此 reportPath 前缀范式，避免重复造闭环。
-- **大文件前端 Pane 重写的写入技巧（工具限制，2026-06-23）**：当前 edit/write/bash 工具的 JSON 参数对超长 TSX 内容（含反引号 + 模板字符串 + 大量 className）会触发 `JSON Parse error: Unterminated string`。规避路径：① 用 `write` 写 ≤200 行的分片到 `/var/folders/.../opencode/` 临时目录 → `cat part1 part2 ... > target.tsx` 拼装；② 不要把整段 JSX 用反引号传给单个 `bash`/`edit` 调用（即使内容看起来无引号嵌套问题）。本期 HealthReportPane 477 行就是分 5 片 write + 一次 cat 拼装完成。后续大 Pane 重写沿用此范式。
+- **workspace 文件路径沙箱二次校验范式（2026-06-23，D-MONITOR6）**：任何由前端可控字符串（如 `datasetName`、文件名）参与的 server 端落盘路径，必须**两步防御**：① 先用 `sanitize` 把非法字符（`/`、`..`、控制符）替换为 `_`；② 再用 `resolve(base, name)` + `target.startsWith(base + "/")` 二次校验路径必须严格在 base 沙箱内。两步是叠加而非可选——sanitize 是字符过滤、resolve 校验是路径语义校验，单独任一项都有漏过的可能（例如 sanitize 漏判某 unicode 字符，或路径含 symlink 时 startsWith 误判）。`resolveMonitorPath()` 是此范式的样板，后续任何「前端传名 → server 落盘」场景都按此结构防穿越。
+
+**SQL 连接扩展（D-SQL1/D-SQL2, 2026-06-23）**
+- **写库 API 与 legacy 只读路由物理隔离**：写 API 全部放 `routes/data.ts`（dataRouter），legacy 只读 query/export 仍在 `index.ts`。路径前缀都用 `/api/sql-connections/...` 但**段不同**（`/import/*`、`/export/table`、`/export/query` 在 dataRouter；legacy 的 `/query`、`/export`、`/test`、`/:id` 在 index.ts）—— Express 路由按注册顺序匹配，无冲突。**这是 E-SQL3 安全边界的物理实现**：multi-agent-runner.ts 只能 import 现有的 executeQuery/getConnection/validateSql，新写库函数不导出到任何 LLM/agent 链路。
+- **导入两阶段：前端解析 + 后端事务化**：前端用 `xlsx`(已装) 解析 CSV/Excel/JSON 为 `Record<string, unknown>[]`，POST 给 `/import/preview` 推断列类型，再 `/import/commit` 事务化写入。**不用 multipart upload**：避免引依赖、文件 I/O 安全、复用前端 xlsx。preview 是只读不写库，commit 才有副作用（BEGIN/COMMIT/ROLLBACK）。
+- **SQL 注入防护三层**：① `sanitizeIdentifier(name, "table"|"column")` 去非法字符（保 CJK）+ 表名前导数字加 `t_` 前缀；② `quoteIdent()` 用 `"..."` 包裹标识符并 escape inner quote；③ DDL/DML 类型白名单（INTEGER/REAL/TEXT），不接受任意 type 字符串。
+- **`inferColumnTypes` 用计分法决策**：前 200 行扫描，每列统计 int/real/text 三路计数：纯整数→int+1；浮点或 `^\.\d+` 形式→real+1；bool 字面量→int+1（SQLite 0/1 存）；其他→text+1。最终 `text > 50%` 判 TEXT，否则 `real > 0` 判 REAL，否则 INTEGER。**关键**：sample 字段截到前 5 个唯一值供 UI 展示，不带原始全表数据。
+- **`toSqliteValue` helper 解决 SQLInputValue 类型契约**：`node:sqlite` `SQLInputValue = string | number | bigint | null | Uint8Array`，不接受 `unknown`。统一函数把 bool→0/1、其他→String(v) 兜底。这避免 `db.prepare().run(...unknown[])` 的 TS 错。
+- **`exportTableQuery` 接收 table name 或 SELECT 二合一**：`tableOrSql.startsWith("SELECT")` 时直接当 SQL 跑，否则 `SELECT * FROM <quotedTable>`。共用 SQLite 路径，PG/MySQL 直接抛 unsupported（第一版边界）。导出走 export/table 还是 export/query 由前端选——前者只列表查，后者支持 validateSql + 任意 SELECT。
+- **导出 trace L1，导入 trace L2**：trace 字段 `payload.riskLevel` 区分级别：export 是只读 L1，import/create_table 写入 L2，与 X-SQL0 风险分级口径一致。
+- **`addTraceEvent` 直接 import 自 `db.ts`**：不通过 index.ts 绕路。`routes/data.ts` 已 import 其他 db 函数，自然扩展。
+- **前端 D-SQL2 拆 2 个组件文件**：`SqlImportPanel.tsx` 与 `SqlTableExportPanel.tsx` 在 `web/src/components/sql/` 子目录，避免主 Pane 文件膨胀。三段式 tab 切换在主 Pane 顶栏，子组件 props-driven 无内部 fetch 状态泄露。
+- **opencode write 工具大小限制（第六次触发）**：SqlImportPanel(~210 行 TSX) 的 className 多+中文文本+模板字符串组合再次触发 JSON Parse error: Unterminated string。规避：用 `python3 << 'PYEOF'` 直接写入文件（Python heredoc 不被 tool 的 JSON 层解析），替代 cat heredoc。比 cat 更稳——后续大 TSX 文件写入沿用此范式。
+
+- **大文件前端 Pane 重写的写入技巧（工具限制，2026-06-23）**：当前 edit/write/bash 工具的 JSON 参数对超长 TSX 内容（含反引号 + 模板字符串 + 大量 className）会触发 `JSON Parse error: Unterminated string`。规避路径：① 用 `python3 << 'PYEOF'` 写文件（Python heredoc 不经 tool JSON 层解析，2026-06-23 D-SQL2 验证为最稳方案）；② 小文件（≤200行）可 `write` 到 `/var/folders/.../opencode/` 临时目录 → `cat` 拼装。**首选 python3 方案**。
 - **观星台运行后不跳 tab（2026-06-23，D-MONITOR3）**：原 HealthDashboardPane 运行 health 后 `setActiveSubTab("health_report")` 自动跳到行动环——D-MONITOR3 改为留本页 + `resultRef.scrollIntoView` 滚到结果区；只在 findings 存在时展示「去行动环采纳 →」入口让用户主动进入。原因：用户决策避免观察被打断；通用范式=「跑完动作的结果先在原页可见，跨 tab 跳转必须用户主动触发」。
 - **ToolUsePane 定位修正（2026-06-12）**：推翻旧"试跑"设计（选 clean_data 跑工具产出结果），重做为**管理控制台**（列表/详情/验证/跳 ToolLab）。工具新增/修改的代码仍由开发者放 `server/tools/`，UI 不写代码、不在此跑用户数据。理由：tool-use 的工具是给 pi-agent 经 MCP 用的，前端不该像数据提取那样"在 UI 拿工具跑用户数据"。
 - **analysis 工具筛选原则（2026-06-13）**：MCP 暴露给 pi-agent 的 analysis 工具应满足 ① 强领域特色（行业 know-how，不可被通用 SQL/duckdb 替代）② 算法复杂度足（如 STL/Holt-Winters，不是单条 `df.describe()`）③ 单输入聚合 CSV 即可产出结构化结论。**反例**：`csv-summary-stats`（dtype/缺失率/min/max/mean）这种描述统计被判定"太简单不该建"——它属于**探索模块**本职范畴（前端 duckdb-wasm `computeProfile()` 已覆盖），让 LLM 通过 MCP 重做一遍纯属浪费 token。**正例**：apparel-structure（服饰六大行业指标）/ seasonal-forecast（STL+Holt-Winters）。

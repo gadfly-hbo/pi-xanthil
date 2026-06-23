@@ -2,6 +2,8 @@ import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, DatabaseZap, FolderOpen, Loader2, Play, Plus, RefreshCw, Save, ShieldCheck, ShieldAlert, Trash2, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
+import { SqlImportPanel } from "./sql/SqlImportPanel";
+import { SqlTableExportPanel } from "./sql/SqlTableExportPanel";
 import type { DbType, SavedQuery, SchemaTable, SqlConnection, SqlQueryResult, SqlValidateResult, ToolParameter } from "@/types";
 
 // ---- Connection Form ----
@@ -71,8 +73,24 @@ function ConnForm({ initial, onSave, onCancel }: ConnFormProps) {
         <label className="block"><span className="font-medium">SQLite 文件路径</span>
           <div className="mt-1 flex gap-2">
             <input value={form.filePath} onChange={(e) => set("filePath", e.target.value)} className="min-w-0 flex-1 h-8 rounded border border-neutral-200 bg-transparent px-2 font-mono text-[11px] outline-none focus:border-neutral-400 dark:border-neutral-700" placeholder="/path/to/db.sqlite" />
-            <button onClick={() => api.pickLocalPath("file").then(({ path }) => set("filePath", path)).catch(() => undefined)} className="rounded border border-neutral-200 px-2.5 dark:border-neutral-700"><FolderOpen className="h-3.5 w-3.5" /></button>
+            <button onClick={() => api.pickLocalPath("file").then(({ path }) => set("filePath", path)).catch(() => undefined)} className="rounded border border-neutral-200 px-2.5 dark:border-neutral-700" title="选择已有文件"><FolderOpen className="h-3.5 w-3.5" /></button>
+            <button
+              type="button"
+              onClick={async () => {
+                const path = form.filePath.trim();
+                if (!path) { setError("请先填写新文件路径（如 /tmp/mydb.db）"); return; }
+                try {
+                  await api.createSqliteDb(path);
+                  setError("");
+                } catch (err) {
+                  setError(String(err));
+                }
+              }}
+              className="rounded border border-emerald-200 px-2 text-[11px] text-emerald-600 dark:border-emerald-900 dark:text-emerald-400"
+              title="按当前路径新建空 .db 文件"
+            >新建库</button>
           </div>
+          <p className="mt-1 text-[10px] text-neutral-500">选已有 .db 直接连；填入新路径再点「新建库」即创建空库后保存连接。</p>
         </label>
       ) : (
         <>
@@ -374,6 +392,8 @@ export function SqlConnectPane({ workspaceId }: Props) {
   const [showExport, setShowExport] = useState(false);
   const [validation, setValidation] = useState<SqlValidateResult | null>(null);
 
+  const [mainTab, setMainTab] = useState<"query" | "export" | "import">("query");
+
   const [queriesOpen, setQueriesOpen] = useState(false);
   const [activeQuery, setActiveQuery] = useState<SavedQuery | null>(null);
   const [showSaveModal, setShowSaveModal] = useState(false);
@@ -403,6 +423,7 @@ export function SqlConnectPane({ workspaceId }: Props) {
     setSql("");
     setSqlParams({});
     setValidation(null);
+    setMainTab("query");
   };
 
   const loadSavedQuery = (q: SavedQuery) => {
@@ -509,6 +530,15 @@ export function SqlConnectPane({ workspaceId }: Props) {
       setSchema(tables);
     } catch (err) { setSchemaError(String(err)); } finally { setSchemaLoading(false); }
   };
+
+  const refreshSchema = useCallback(async () => {
+    if (!selected) return;
+    setSchemaLoading(true); setSchemaError("");
+    try {
+      const { tables } = await api.getSqlSchema(selected.id);
+      setSchema(tables);
+    } catch (err) { setSchemaError(String(err)); } finally { setSchemaLoading(false); }
+  }, [selected]);
 
   const runQuery = async () => {
     if (!selected || !sql.trim()) return;
@@ -645,6 +675,28 @@ export function SqlConnectPane({ workspaceId }: Props) {
               </div>
             </div>
 
+            {/* Main tab bar: 查询 / 导出 / 导入建表 (D-SQL2) */}
+            <div className="flex items-center gap-1 border-b border-neutral-200 dark:border-neutral-800">
+              {([
+                { key: "query", label: "查询" },
+                { key: "export", label: "导出" },
+                { key: "import", label: "导入建表" },
+              ] as const).map((t) => (
+                <button
+                  key={t.key}
+                  onClick={() => setMainTab(t.key)}
+                  className={cn(
+                    "h-9 border-b-2 px-3 text-[12px] font-medium transition-colors",
+                    mainTab === t.key
+                      ? "border-neutral-900 text-neutral-900 dark:border-neutral-100 dark:text-neutral-100"
+                      : "border-transparent text-neutral-500 hover:text-neutral-800 dark:hover:text-neutral-200",
+                  )}
+                >
+                  {t.label}
+                </button>
+              ))}
+            </div>
+
             {/* Schema panel */}
             <div className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
               <button onClick={() => void loadSchema()} className="flex w-full items-center gap-2 px-4 py-3 text-[12px] font-semibold hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
@@ -663,6 +715,8 @@ export function SqlConnectPane({ workspaceId }: Props) {
             </div>
 
             {/* Saved queries panel */}
+            {mainTab === "query" && (
+            <>
             <div className="rounded-lg border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
               <button onClick={() => setQueriesOpen(!queriesOpen)} className="flex w-full items-center gap-2 px-4 py-3 text-[12px] font-semibold hover:bg-neutral-50 dark:hover:bg-neutral-800/50">
                 {queriesOpen ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
@@ -867,6 +921,35 @@ export function SqlConnectPane({ workspaceId }: Props) {
             {/* Export panel */}
             {showExport && queryResult && (
               <ExportPanel connId={selected.id} sql={sql.trim()} params={sqlParams} workspaceId={workspaceId} />
+            )}
+            </>
+            )}
+
+            {/* 导出 tab：查询导出 + 表导出 */}
+            {mainTab === "export" && (
+              <div className="space-y-4">
+                <SqlTableExportPanel connId={selected.id} tables={schema} workspaceId={workspaceId} />
+                <div className="rounded-lg border border-neutral-200 bg-white p-4 text-[12px] dark:border-neutral-800 dark:bg-neutral-900">
+                  <h3 className="text-[13px] font-semibold">查询导出（CSV 到本地路径）</h3>
+                  <p className="mt-1 text-[11px] text-neutral-500">如需基于 SQL 查询导出（含 watermark 增量、写入工作区路径），请先到「查询」执行 SELECT，再点击「导出配置」。</p>
+                  <button
+                    onClick={() => setMainTab("query")}
+                    className="mt-2 inline-flex h-7 items-center gap-1 rounded border border-neutral-200 px-2 text-[11px] dark:border-neutral-700"
+                  >
+                    去查询
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {/* 导入建表 tab */}
+            {mainTab === "import" && (
+              <SqlImportPanel
+                connId={selected.id}
+                connType={selected.type}
+                workspaceId={workspaceId}
+                onAfterCommit={() => { void refreshSchema(); }}
+              />
             )}
           </div>
         )}

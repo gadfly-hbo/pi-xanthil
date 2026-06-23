@@ -338,4 +338,37 @@ export const dataApi = {
 
   listSystemPromptOverviews: () =>
     fetch("/api/prompts/system").then(json<SystemPromptOverview[]>),
+
+  // ---- 监测初始化导入（D-MONITOR6 · X-MONITOR5 口径） ----
+  // 单入口：数据库连接 → clean_data/monitor/，返回 pathId 可直接绑定到 monitor_configs.datasetBindings。
+  // 列表：仅监测专用 clean_data，不暴露工作区其他 clean_data。
+  importMonitorSql: (
+    workspaceId: string,
+    payload: {
+      connectionId: string;
+      datasetName: string;
+      sql?: string;
+      tableName?: string;
+      format?: "csv" | "json";
+    },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/import-sql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(
+      json<{
+        pathId: string;
+        name: string;
+        path: string;
+        columns: string[];
+        rowCount: number;
+        format: "csv" | "json";
+      }>,
+    ),
+
+  listMonitorImports: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/imports`).then(
+      json<BiAggregationDataset[]>,
+    ),
 };

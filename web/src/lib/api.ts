@@ -1,4 +1,4 @@
-import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, PresentationGenerateInput, PresentationTaskResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlQueryResult, SqlValidateResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, ToolRunRecord, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
+import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, PresentationGenerateInput, PresentationTaskResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlImportPreview, SqlImportCommitResult, SqlQueryResult, SqlValidateResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, ToolRunRecord, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
 
 export interface TocGraphItem {
   id: string;
@@ -468,6 +468,54 @@ const legacyApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ path, lastWatermark }),
     }).then(json<{ exists: boolean; lastWatermark?: unknown }>),
+
+  // ---- SQL import/export (D-SQL1, write-capable; agent/workflow MUST NOT call these) ----
+  createSqliteDb: (filePath: string) =>
+    fetch(`/api/sql-connections/sqlite/create-db`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ filePath }),
+    }).then(json<{ path: string; created: boolean }>),
+  previewSqlImport: (id: string, rows: Record<string, unknown>[], fileName: string) =>
+    fetch(`/api/sql-connections/${id}/import/preview`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ rows, fileName }),
+    }).then(json<SqlImportPreview>),
+  commitSqlImport: (id: string, payload: {
+    tableName: string;
+    columns: { sourceName: string; name: string; type: string }[];
+    rows: Record<string, unknown>[];
+    mode: "create" | "append";
+    workspaceId?: string;
+  }) =>
+    fetch(`/api/sql-connections/${id}/import/commit`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<SqlImportCommitResult>),
+  createSqlTable: (id: string, payload: {
+    tableName: string;
+    columns: { name: string; type: string }[];
+    workspaceId?: string;
+  }) =>
+    fetch(`/api/sql-connections/${id}/create-table`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ tableName: string; columns: { name: string; type: string }[] }>),
+  exportSqlTable: (id: string, tableName: string, format: "csv" | "json", workspaceId?: string): Promise<string | { columns: string[]; rows: Record<string, unknown>[]; rowCount: number; format: string }> =>
+    fetch(`/api/sql-connections/${id}/export/table`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ tableName, format, workspaceId }),
+    }).then((r) => format === "csv" ? r.text() : r.json()),
+  exportSqlQuery: (id: string, sql: string, format: "csv" | "json", params?: Record<string, unknown>, workspaceId?: string): Promise<string | { columns: string[]; rows: Record<string, unknown>[]; rowCount: number; format: string }> =>
+    fetch(`/api/sql-connections/${id}/export/query`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sql, format, params, workspaceId }),
+    }).then((r) => format === "csv" ? r.text() : r.json()),
 
   // ---- direct LLM prompt (tool-free channel) ----
   directLlmPrompt: (payload: { text: string; model?: string; systemPrompt?: string }) =>

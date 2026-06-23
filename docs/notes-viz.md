@@ -9,33 +9,30 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-23 · **监测模块经营指标监控改造全链路终审通过**；X-MONITOR0 / D-MONITOR1 / E-MONITOR2 / D-MONITOR3 / X-MONITOR4 全部 done。
+- 最近更新：2026-06-23 · **监测初始化数据库单入口全链路终审完成**：D-MONITOR6 / D-MONITOR7 / E-MONITOR8 / X-MONITOR9 全部 done；等待用户 review 后手动提交。
 - 进度：
-  - **V-HEALTH-SPIKE**（done 2026-06-22）：纯调研，产出 `docs/体检-spike结论.md`。结论：行数据通道✅、三态分类✅、聚合数据入口✅、本体填充度⚠️（偏概念无 link）。当前仅月粒度有数据。
-  - **X-HEALTH0 代笔**（done 2026-06-22，总控卡委派 §六，**四轮终审通过**）：types.ts 双侧 9 类型 + constants.ts HEALTH_SUB_TABS + getSubTabsForTab health 分支 + MainHeader Activity icon + HealthTabs.tsx 骨架。
-  - **V-HEALTH1 引擎**（done 2026-06-22）：`server/src/health-check-engine.ts`（596 行）— 数据画像(normalizeTimeValue/normalizeTimeColumn/classifyAggregation/inferFrequency) + 5 种子规则(R-DQ-01/R-DQ-02/R-AN-01/R-TR-01/R-CR-01) + runHealthSuite + classifyLifecycle + detectOntologyGaps + listHealthRules。零 LLM/零 IO。27 单测全绿。
-  - **V-HEALTH2 db+路由**（done 2026-06-22，四轮终审修复）：`db/viz.ts` 三表(health_runs[workspace_id FK CASCADE]/health_findings/ontology_gaps) + 8 CRUD。`routes/viz.ts` 5 路由(均 workspace-scoped)：GET rules / POST runs(校验 pathId 归属→非 ws pathId 400 不落空 run) / GET runs / GET runs/:runId/findings(校验 runId 归属) / POST export-html(复用 renderMarkdownReportToHtml)。run 编排 fetch D 域 API(不直 import D 域函数)。priorFindings 按 suite+datasetPathIds 组合匹配。
-  - **V-HEALTH3 前端**（done 2026-06-22，四轮终审修复）：`api/viz.ts` 4 health 方法(workspace-scoped)。`health-ui-state.ts` module store。4 pane：HealthDataPane(SQL 导出+数据提取真实接入面板，run 后读 results[].outputs 过滤表格文件逐个 addWorkspacePath 登记到 clean_data)/HealthDashboardPane(套餐+选集+**阈值表单**+触发→run 后跳报告+接入更多跳转)/HealthReportPane(**run 选择器**+effect cancellation guard+findings 分组+lifecycle 标注+gap 清单+**MD/HTML 导出**)/HealthTrendPane(生命周期流)。
-  - **X-MONITOR0**（done 2026-06-23，总控自做）：经营指标监测契约与接缝定稿。UI 二级 tab 改为「初始化 / 观星台 / 行动环 / readme」；`readme` 保留；独立「趋势」移出 tab，趋势生命周期流后续并入观星台。双侧 `types.ts` 新增 `MonitorSourceRole/MonitorConfig/MonitorMetricBinding/MonitorMetricSystemDraft/MonitorComparison/MonitorFindingDiagnosis/MonitorActionSource` 等契约；`HealthFinding` 增加可选 `comparisons/diagnosis`。`api/viz.ts` 增加 monitor config / metric-system draft/adopt / action draft 签名，供 D/E 后续实现。
-  - **D-MONITOR1**（done 2026-06-23，总控终审通过）：初始化页数据角色 + SQL/SQLite 接入 + monitor_configs 配置持久化完成。总控收口：导出后自动绑定改为立即持久化；monitor config PUT 增加 ontologyId workspace 归属校验与 thresholds number 过滤；前端保存 bindings 时保留已有 ontology/threshold 配置。
-  - **E-MONITOR2**（done 2026-06-23，总控终审通过）：经营差距监测引擎 + LLM 指标体系草案 + ontology 诊断关联完成。总控收口：修正 ontology/metrics HTTP 路径；draft 校验 ontologyId 归属；run 落库前校验 metric-system 里的全部 datasetPathId 属于本 workspace clean_data；fresh DB schema 补 FK；补齐 `MonitorMetricSystemEntry/MonitorRun` 与 `vizApi` monitor runs/metric-systems 方法。
-  - **D-MONITOR3**（done 2026-06-23，总控终审通过）：初始化页追加指标体系生成/采纳；观星台改为 finding 中心视图并合并趋势；行动环复用 actions 三表做「提炼→任务→反馈」。总控收口：补齐 `/monitor/actions/draft` 后端接缝；观星台读取 `monitor_configs.suite/thresholds`；行动环清理跨 workspace 旧 runId。
-  - **X-MONITOR4**（done 2026-06-23，总控终审通过）：全链路审查 + 数据安全红线 + smoke 收口完成。总控补两处阻断：① monitor run 未显式传 `metricSystemId` 时从 `/monitor/config` 回读 `metricSystemId/thresholds`，无指标体系 400 且不落 run；② `findPriorMonitorFindings` lifecycle prior 改为 workspace + suite + metricSystemId 三键匹配，避免切换指标体系误判。
+  - **X-MONITOR0**（done）：经营指标监测契约与接缝定稿；UI 二级 tab 为「初始化 / 观星台 / 行动环 / readme」，趋势合并进观星台，内部 health id 暂保留避免无谓迁移。
+  - **D-MONITOR1 / E-MONITOR2 / D-MONITOR3 / X-MONITOR4**（done）：监测配置、指标体系草案、观星台、行动环、全链路 run/findings/actions 基线已完成并通过前序总控终审。
+  - **X-MONITOR5**（done）：初始化入口新口径审定。只保留数据库连接导入；不展示工作区其他 clean_data；监测导入产物登记为 `folder=clean_data`，物理路径固定 `clean_data/monitor/`，不新增 folder 枚举。
+  - **D-MONITOR6**（done，总控初审通过）：`server/src/routes/data.ts` 新增 workspace-scoped `POST /api/workspaces/:id/monitor/import-sql` 与 `GET /api/workspaces/:id/monitor/imports`。SQL 只允许 SELECT/WITH；SQLite tableName 走 schema 校验；路径由后端固定到 `clean_data/monitor/`；同名导入自动版本化；成功后登记 pathId。
+  - **D-MONITOR7**（done，总控初审通过）：`HealthDataPane` 重写为数据库连接单入口；只展示监测专用 `clean_data/monitor/` 数据集；导入成功后可自动绑定角色并持久化到 monitor_configs；workspace/schema 异步请求已加 cancellation guard。
+  - **E-MONITOR8**（done，总控核验通过）：agent/workflow/subagent 未引用 monitor 导入写端点或 addWorkspacePath/exportTableQuery；工作流 SQL 工具仍只走 validateSql + executeQuery；monitor-llm 只读 aggregations 元数据与 ontology 结构；monitor run rows 只进纯函数；actions/draft 只基于 findings 衍生产物。
+  - **X-MONITOR9**（done，总控收口）：wiki/notes 已收口；D/E/X 卡置 done。
 - 校验：
-  - X-MONITOR4：`npm -w server run typecheck` ✅；`npm -w web run typecheck` ✅；`npm -w web run build` ✅（仅既有 chunk/dynamic import warning）；`node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/health-check-engine.test.ts` ✅ 40/40；数据探索 LLM 隔离 grep ✅ EXIT=1 无匹配。
-  - 临时 API smoke（`XANTHIL_DATA_DIR=/tmp/pi-xanthil-monitor4-smoke`）：config 非 ws pathId 400；run 未传 metricSystemId 时自动读取 config.metricSystemId 并产 3 findings；跨 ws findings 404；非法 pathId metric-system run 400 且不新增 run；`/monitor/actions/draft` 返回 8 drafts。
+  - `npm -w server run typecheck` ✅
+  - `npm -w web run typecheck` ✅
+  - `npm -w web run build` ✅（仅既有 echarts dynamic/static import 与 chunk-size warning）
+  - `node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/monitor-import.test.ts server/src/multi-agent-runner.test.ts server/src/health-check-engine.test.ts` ✅ **80/80**
+  - 数据探索 LLM 隔离 grep ✅ EXIT=1 无匹配
 - 下一步：
-  - 用户 review 后手动 git commit。
-- 阻塞 / 待总控：
-  - 无。
+  - 用户 review 后手动 `git add/commit`。
+  - 可选人工浏览器点检：SQLite 连接 → 选表 → 导入 → 自动绑定角色 → 观星台 run → 行动环 draft。
+- 阻塞 / 待总控：无。
 - 开放问题：
-  - 内部 `health_*` id 和既有 health 表暂保留，避免无谓迁移；UI 与新增契约统一称「监测」。
-  - LLM 指标体系生成只允许读取 clean_data 元数据/摘要与 ontology 结构，不允许读取 draw_data 原始行级内容。
-  - 行动环继续复用 `ActionItem.sourceKind="session"` + `reportPath="monitor:${runId}"` 标识 monitor 来源；暂不扩 `"monitor"` 枚举，待后续统计/过滤需求明确再扩。
+  - PG/MySQL tableName 模式目前依靠 quoteIdent，未做 schema 预校验；后续如需严格校验，再补 information_schema / SHOW TABLES。
+  - 行动环继续复用 `ActionItem.sourceKind="session" + reportPath="monitor:${runId}"` 标识 monitor 来源；暂不扩 `"monitor"` 枚举，待统计/过滤需求明确再扩。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
-
----
 
 ## 一、域范围与文件地图
 

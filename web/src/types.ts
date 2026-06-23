@@ -55,6 +55,27 @@ export interface QuerySummary {
   dateRange?: { min: string; max: string };
 }
 
+// ---- SQL import/export (D-SQL1) ----
+export interface SqlImportColumn {
+  sourceName: string; // original key from source rows (preserved through rename)
+  name: string;       // target column name (user may edit)
+  type: string; // INTEGER | REAL | TEXT
+  sample: string[];
+}
+
+export interface SqlImportPreview {
+  columns: SqlImportColumn[];
+  totalRows: number;
+  risks: string[];
+  fileName: string;
+}
+
+export interface SqlImportCommitResult {
+  tableName: string;
+  rowCount: number;
+  mode: "create" | "append";
+}
+
 export type WorkspaceFolderName = "draw_data" | "clean_data" | "report" | "knowledge";
 export type WorkspacePathKind = "file" | "dir";
 

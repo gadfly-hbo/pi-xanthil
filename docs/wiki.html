@@ -290,6 +290,59 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【SQL连接扩展·导出/建库建表/导入】（总控拆卡 2026-06-23；来源=用户确认方案）。现状核查：SqlConnectPane + sql-connections.ts 已支持 SQLite/PostgreSQL/MySQL 连接、schema、只读查询、query→CSV 导出与 watermark；query/export 均经 validateSql 拦截 CREATE/INSERT/UPDATE/DELETE/DROP/ALTER 等危险 SQL。目标：新增单独「表管理 / 导入建表 / 导出」能力，普通查询框继续只读，LLM/workflow 自动链路不触达写接口。详见 docs/SQL连接扩展-任务派发.md。════
+  { dom: "X", status: "done", created: "2026-06-23 17:20", title: "【SQL连接扩展·契约+红线·P0】X-SQL0：写库能力 API 契约 + 风险分级 + LLM 只读边界审定", brief:
+`来源：用户确认 SQL连接扩展方案（2026-06-23）。本卡=总控契约与红线，解锁 D-SQL1/D-SQL2/E-SQL3。
+现状证据：server/src/sql-connections.ts 已有 list/test/schema/query/exportQueryToCsv；server/src/index.ts /api/sql-connections/:id/query 与 /export 均调用 validateSql，CREATE/INSERT/UPDATE/DELETE/DROP/ALTER 等会 400。
+范围：
+1. 审定新增 API：导入 preview、导入 commit、SQLite 新建 db、创建表、表导出；普通 query/export 接口保持只读，不加白名单绕过。
+2. 审定风险等级：SELECT=L1；query/table 导出=L2；CREATE TABLE/IMPORT APPEND=L2；DROP/TRUNCATE/覆盖导入=L3 且必须二次确认。第一版可不做 DROP/TRUNCATE。
+3. 审定导入协议：preview 只读解析文件与字段类型；commit 才写库；SQLite 写入事务化，失败回滚；表名/列名必须 quote/校验，禁止字符串拼接注入。
+4. 审定自动链路边界：workflow/multi-agent/subagent/LLM 只能继续用只读 querySql/executeQuery；不得暴露导入、建表、写入 API 给 agent 工具链。
+5. 输出 docs/SQL连接扩展-任务派发.md 与 wiki 卡同步，明确第一版 SQLite 优先、PostgreSQL/MySQL 写入可 follow-up。
+验收：契约清楚可施工；不改业务代码或仅补类型签名；server+web typecheck 绿（若改 types）。
+✅ 总控自做 done（2026-06-23）：已产出 docs/SQL连接扩展-任务派发.md，并在 wiki 派发板新增 X-SQL0 / D-SQL1 / D-SQL2 / E-SQL3 四卡；明确普通 query/export 继续只读、新增写库能力走独立 API/UI、第一版 SQLite 优先、LLM/workflow/subagent 自动链路不得触达写接口。校验：wiki main script 语法 ok。D-SQL1 与 E-SQL3 可开工，D-SQL2 等 D-SQL1 API 定型后接。` },
+
+  { dom: "D", status: "done", created: "2026-06-23 17:21", title: "【SQL连接扩展·后端·P0】D-SQL1：SQLite 建库建表 + 文件导入 + 表/查询导出 API", brief:
+`前置：X-SQL0 契约。落点=D 数据基座：server/src/sql-connections.ts + SQL routes + web/src/lib/api/types 必要封装。
+目标：补齐 SQL连接的后端数据管理能力，仍保持 query 接口只读。
+范围：
+1. SQLite 第一版优先：新建 .db 文件；CREATE TABLE；CSV/Excel/JSON 导入为新表；追加导入；写入事务化，失败 rollback。
+2. 导入两阶段：preview 推断列名/类型/样本行/行数/风险；commit 执行建表或追加。表名、列名做合法化与 quoteIdent，避免 SQL 注入。
+3. 导出增强：保留现有 query→CSV；新增 table/query 导出 CSV/JSON。Excel 若可复用既有 xlsx 依赖且不引新依赖可纳入，否则留 follow-up。
+4. PostgreSQL/MySQL：第一版至少支持 table/query 导出；写入导入如实现成本可控则做 CREATE TABLE + batch insert，否则明确返回 unsupported，避免半成品。
+5. schema 刷新：写操作后 getSchema 可看到新表；trace 记录 sql_import/sql_create_table/sql_export。
+6. 单测：SQLite 临时库 smoke 覆盖 preview→commit→schema→query→export；危险 SQL 仍在 query 接口被拒。
+约束：不碰数据探索子树；不让 draw_data 原始行进入 LLM；不安装新依赖；不改 workflow 自动链路。
+验收：server typecheck 绿；相关 node test 绿；SQLite 本地 smoke 跑通。
+✅ 总控终审通过（2026-06-23）：后端新增 import preview/commit、create-table、export table/query、sqlite create-db 路由，均与 legacy query/export 只读路径隔离；SQLite 导入事务化写入，PG/MySQL 支持只读 table/query 导出；普通 query 仍由 validateSql 拦截 DDL/DML。终审回打的列名重命名→NULL bug 已修：ImportColumn.sourceName 贯穿 preview→commit，写库列名可改但读 row 仍用原始 sourceName，且保留 sourceName 缺省 fallback。验证：sql-connections.test.ts + multi-agent-runner.test.ts 43/43 ✅，server typecheck ✅，web typecheck ✅，web build ✅，数据探索隔离 grep EXIT=1 ✅。` },
+
+  { dom: "D", status: "done", created: "2026-06-23 17:22", title: "【SQL连接扩展·前端·P0】D-SQL2：SqlConnectPane 三段式 UI（查询 / 导出 / 导入建表）", brief:
+`前置：D-SQL1 API。落点=web/src/components/SqlConnectPane.tsx + web/src/lib/api.ts/types。
+目标：把现有 SQL连接页从单查询台升级为可用的数据管理页。
+范围：
+1. 页面结构：保留左侧连接列表和 schema；主区拆「查询」「导出」「导入建表」三段或 tabs。查询区保持现状，只允许安全 SELECT。
+2. 导出区：支持当前 SQL 导出、选表导出；格式 CSV/JSON；保留 watermark 增量能力；导出后可继续注册到 draw_data/clean_data（沿用现有 addWorkspacePath 流程）。
+3. 导入建表区：选择文件→preview→字段类型/列名确认→目标表名→导入模式（新建/追加）→commit；SQLite 新建 db 入口放在连接表单或导入区。
+4. 风险确认：覆盖/清空/删除类动作第一版不做或二次确认；CREATE/IMPORT 明确提示会写入目标数据库。
+5. 错误体验：文件解析失败、字段冲突、目标表存在、导入失败要显示可操作错误，不吞异常。
+6. UI 不做大重构：保持 neutral 风格、现有按钮/表格密度；避免把 SqlConnectPane 拆成过多文件，除非文件已明显不可维护。
+约束：不放开查询框 DDL/DML；不新增 LLM 能力；不碰数据探索子树。
+验收：web typecheck+build 绿；浏览器 smoke：SQLite 新库→导入 CSV 新表→查询→导出 JSON/CSV→追加导入→schema 刷新。
+✅ 总控终审通过（2026-06-23）：SqlConnectPane 增加「查询 / 导出 / 导入建表」三段式 tab，查询区保持原只读 SELECT 工作流；新增 SqlImportPanel（文件选择→前端 xlsx 解析→server preview→字段编辑→commit，含 sourceName 防重命名丢值）与 SqlTableExportPanel（选表 CSV/JSON 下载）；SQLite 连接表单新增「新建库」按钮，导入成功后 refreshSchema。验证同 D-SQL1：server/web typecheck ✅，web build ✅，43/43 tests ✅，数据探索隔离 grep 净。` },
+
+  { dom: "E", status: "done", created: "2026-06-23 17:23", title: "【SQL连接扩展·安全回归·P0】E-SQL3：workflow/agent SQL 链路保持只读 + 危险 SQL 回归测试", brief:
+`前置：X-SQL0 契约；可与 D-SQL1 并行做审查/测试。落点=智能引擎 E 域测试与自动链路边界。
+目标：新增写库能力后，确保 LLM / workflow / subagent 自动执行链路仍只能做只读 SQL。
+范围：
+1. 审查 multi-agent / workflow / subagent 里所有 SQL 调用点，确认仍调用 executeQuery/querySql 且 validateSql 拦截危险 SQL；不得接入 import/create/write API。
+2. 增加测试或 grep 门禁：LLM 相关链路不得引用新增写接口名（如 importSqlTable/createSqlTable/createSqliteDatabase 等，最终按 X-SQL0 命名）。
+3. 给 SQL loop / workflow 场景补危险 SQL 用例：agent 生成 CREATE/INSERT/UPDATE/DROP 时必须被拒，不能因为新增 API 而成功执行。
+4. 如果 D-SQL1 新增类型/API 名称，E 只读白名单同步更新到测试说明，不改 D 业务实现。
+约束：不碰 D 的导入 UI/后端实现；不把写能力暴露给 pi agent/MCP；不降低 validateSql 风险等级。
+验收：engine/server 相关测试绿；自动链路危险 SQL 仍拒绝；wiki 回填终审结论。
+✅ E-SQL3 回流完成（2026-06-23）：在 server/src/multi-agent-runner.test.ts 新增危险 SQL 回归与静态黑名单检查：workflow SQL runner 只允许 executeQuery/getConnection/validateSql，禁止 create/import/write/drop/truncate 等写接口名；模拟 LLM 输出 DROP TABLE 时，run_sql 在连接解析前经 validateSql 拒绝并返回 L3。验证：multi-agent-runner.test.ts 32/32 绿，npm run typecheck 绿，npm run build 绿（仅既有 chunk warning）。` },
+
   // ════ 【全局池池化扩展·prompts + 知识库】（总控拆卡 2026-06-23；来源=本会话「数据架构盘点」）。命题：把「工作区独占」里可跨工作区复用的资产(prompts 模板、知识库资料)纳入既有「全局池 + 按工作区启用」机制(workspace_memory_enablements)，知识库带 scope(通用/项目专属)。判据=「资产 vs 痕迹」：可复用资产入池、运行痕迹(trace/评测结果/分析产物)保持独占。用户决策(2026-06-23)：知识库加 scope 列(文档级 通用/专属)；本体并入 D 卡收尾(已完成池化，仅缺 backfill)。════
   // ── 现状核查(证据，避免重复造) ── ① ontology 已完成池化：db/viz.ts:387 listOntologies 返回全局池 + OntologyPane 启用 checkbox(kind='ontology')，本批不重做，仅补 backfill 存量+清过时注释。② prompt_templates 现有「workspace_id 可空=全局可见」朴素共享，但无按工作区独立启用 → 本批叠加 enablement(kind='prompt')。③ prompt_templates / knowledge_docs 均无 enabled 列 → backfill 不能套用现有 SELECT 模式(见 X-POOL2)。── 落点：契约/接缝(types.ts/db.ts/db/shared.ts)=X 总控；db/data.ts CRUD + 控制/知识库前端=D(V 停用归 D)。
   { dom: "X", status: "done", created: "2026-06-23 16:30", title: "【池化扩展·契约+接缝·P0】X-POOL0：MemoryItemKind 加 prompt/knowledge + knowledge_docs.scope 列 DDL + 池化语义审定（总控自做）", brief:
@@ -402,6 +455,64 @@ B. 前端：
 5. 收口：更新 docs/notes-viz.md §0；通过后把 X/D/E 卡置 done，待用户 review 后提交。
 约束：不执行 git；不清理无关脏工作区。
 ✅ 总控终审通过（2026-06-23）：X-MONITOR4 已完成全链路审查与 smoke。总控收口 2 个阻断：① 观星台 run 前端未传 metricSystemId，后端也未从 monitor_configs 回读，会落空 run → 修为 run 未显式传 metricSystemId 时 fetch /monitor/config 读取已采纳 metricSystemId/thresholds；无指标体系直接 400，不落空 run；② lifecycle prior 只按 workspace+suite 匹配，切换指标体系会误判 → 修为 workspace+suite+metricSystemId 三键匹配。复验：server typecheck ✅、web typecheck ✅、web build ✅、monitor+health 40/40 ✅、数据探索 LLM 隔离 grep 净；临时 API smoke ✅：config 非 ws pathId 400、run 自动读取 config.metricSystemId 并产 3 findings、跨 ws findings 404、非法 pathId run 400 且不新增 run、actions/draft 返回 8 drafts。所有 monitor 任务卡 X-MONITOR0/D-MONITOR1/E-MONITOR2/D-MONITOR3/X-MONITOR4 均 done。` },
+
+  // ════ 【监测初始化入口收敛】（总控拆卡 2026-06-23）。用户确认：监测-初始化只保留一种数据导入方式——数据库连接；本地 SQLite 直接读取库表；不展示工作区其他 clean_data；监测导入产物仍登记为 clean_data，但物理路径固定进工作区 clean_data/monitor 专用目录，避免新增 folder 枚举破坏现有引擎。════
+  { dom: "X", status: "done", created: "2026-06-23 18:00", title: "【监测初始化·契约·P0】X-MONITOR5：数据库单入口 + clean_data/monitor 专用目录口径审定（总控自做）", brief:
+`目标：把监测-初始化的数据入口从「已登记聚合数据手动绑定 + SQL导出 + 数据提取」三入口收敛为「数据库连接导入」单入口。
+总控口径：
+1. 不新增 workspace folder 枚举，不建 monitor_clean_data。监测导入产物仍登记到 folder=clean_data，物理路径固定在当前工作区 clean_data/monitor/ 下。
+2. 初始化页不展示工作区其他已登记 clean_data，只展示监测专用目录下或 monitor_configs.datasetBindings 中的已导入监测数据集。
+3. 数据库连接是唯一入口：选择连接 → 选表或写 SELECT → 预览字段/行数 → 选择角色(goal/source/industry/competitor) → 导入到监测聚合数据 → 自动登记 workspace path → 自动保存 monitor config。
+4. SQLite 特化体验：连接类型为 sqlite 时必须能列出库内 tables/views，点表自动生成 SELECT * FROM table。远程库可复用 schema 列表与 SELECT。
+5. LLM 红线不变：指标体系 draft 只读 clean_data 元数据/摘要 + ontology 结构，不读 draw_data，不把整表行级内容送 LLM。
+6. 旧入口处理：隐藏手动全量 clean_data 角色列表、隐藏数据提取入口；SQL/SQLite 能力通过单一数据库导入面板承接。
+验收：本卡为接缝/产品口径，不改业务代码；已写入 wiki 解锁 D-MONITOR6 / D-MONITOR7 / E-MONITOR8。` },
+
+  { dom: "D", status: "done", created: "2026-06-23 18:01", title: "【监测初始化·后端·P0】D-MONITOR6：数据库导入到 clean_data/monitor 的专用端点 + SQLite 表读取", brief:
+`前置：X-MONITOR5。落点=D 数据基座 server routes/data.ts + sql-connections 复用；必要时 web api 增加方法。
+目标：为监测初始化提供一个后端单入口，把数据库连接中的表或 SELECT 查询导入为监测专用 clean_data 文件，并返回可绑定的 pathId。
+范围：
+1. 新增 workspace-scoped 端点，建议路径：POST /api/workspaces/:id/monitor/import-sql。输入 connectionId、sql 或 tableName、datasetName、role、overwrite/version 策略可先只做生成新版本。
+2. 端点必须校验 workspace 存在、SQL 只读 SELECT、连接存在；危险 SQL 仍走 validateSql 拒绝。
+3. 输出路径由后端计算，固定在当前 workspace 根目录 clean_data/monitor/ 下，文件名做 sanitize，默认 CSV；不得要求前端传绝对 outputPath。
+4. 导入后调用 addWorkspacePath(workspaceId, "clean_data", path, "file") 登记，返回 pathId/name/path/columns/rowCount。
+5. SQLite 表读取：复用 getSqlSchema，tableName 模式自动构造安全 SELECT；表名必须 quote/sanitize，禁止字符串拼接注入。PG/MySQL 可以先只支持用户 SELECT 或同样走 schema table 导出，按现有能力评估。
+6. 可选新增 GET /api/workspaces/:id/monitor/imports：只返回 clean_data/monitor 下的聚合数据，供初始化页只读列表使用；不得返回全工作区 clean_data。
+安全：不读 draw_data；不触碰数据探索子树；不把导入 rows 发 LLM；不暴露写库能力给 agent/workflow。
+验收：server typecheck 绿；新增或复用 SQL 相关单测覆盖 SQLite table 导入、SELECT 导入、危险 SQL 拒绝、输出路径在 clean_data/monitor、登记 pathId。` },
+
+  { dom: "D", status: "done", created: "2026-06-23 18:02", title: "【监测初始化·前端·P0】D-MONITOR7：HealthDataPane 改为数据库连接单入口 + 监测专用已导入列表", brief:
+`前置：X-MONITOR5、D-MONITOR6。落点=web/src/components/HealthDataPane.tsx + web/src/lib/api。
+目标：把初始化页改成数据库连接导入工作流，不再展示工作区其他 clean_data。
+范围：
+1. 删除或隐藏当前「已登记聚合数据」全量列表的手动角色绑定入口；页面只展示「监测已导入数据集」，来源为 D-MONITOR6 的 monitor imports 或 monitor_configs.datasetBindings。
+2. 删除或隐藏当前 SQL/SQLite 导出折叠面板、数据提取折叠面板，统一替换为「数据库连接导入」区块。
+3. 导入区块流程：选择数据库连接 → 拉 schema → SQLite/数据库表选择器 → 自动生成 SELECT → 可编辑 SQL → 预览字段/行数 → 选择数据角色 → 导入到监测聚合数据。
+4. 导入成功后自动调用后端专用导入端点，拿 pathId 后写入 monitor_configs.datasetBindings，并保持 ontologyId/metricSystemId/thresholds 不丢。
+5. UI 文案统一「监测聚合数据」，不要出现「体检」；说明该目录是监测专用 clean_data/monitor，不展示其他 clean_data。
+6. 指标体系初始化区块保留，仍在数据导入之后；生成 draft 前如没有 source/goal 等必要角色，应给出明确提示但不硬阻塞。
+验收：web typecheck/build 绿；浏览器 smoke：选 SQLite 库表 → 导入 → 自动绑定角色 → 刷新后仍只显示监测导入数据 → 观星台可 run。` },
+
+  { dom: "E", status: "done", created: "2026-06-23 18:03", title: "【监测初始化·安全回归·P0】E-MONITOR8：数据库单入口后监测/agent 安全边界回归", brief:
+`前置：D-MONITOR6 可并行审查，D-MONITOR7 后补前端 smoke。落点=E 域测试/安全审查，不改 D 业务实现。
+目标：监测初始化改为数据库导入后，确认 LLM/agent/workflow 不获得写库或原始行级数据通道。
+范围：
+1. 静态审查：multi-agent/workflow/subagent 仍只允许 SQL 只读查询链路，不得引用 D-MONITOR6 的监测导入端点或写文件登记能力。
+2. 回归测试或 grep：agent 自动链路不得出现 monitor/import-sql、import/commit、create-table 等写入接口调用。
+3. 数据安全审查：monitor-llm prompt 仍只吃 aggregations 元数据、ontology 对象/指标/逻辑；不得因 clean_data/monitor 新目录而读取 rows 或 draw_data。
+4. 监测 run 安全：metric-system 中 pathId 仍必须先经 workspace clean_data 白名单校验；非本 workspace pathId 400 且不落 run。
+5. 行动环 actions/draft 仍只基于 findings 衍生产物，不读导入数据 rows。
+验收：server typecheck 绿；相关 engine/multi-agent 测试绿；红线 grep 给出结果；发现问题回流总控。` },
+
+  { dom: "X", status: "done", created: "2026-06-23 18:04", title: "【监测初始化·终审·P0】X-MONITOR9：数据库单入口全链路终审 + wiki/notes 收口", brief:
+`前置：D-MONITOR6、D-MONITOR7、E-MONITOR8 回流。
+范围：
+1. 代码审查：不新增 folder 枚举；所有监测导入产物登记为 clean_data 且物理路径限定 clean_data/monitor；初始化页不展示其他 clean_data。
+2. 安全审查：SQL 只读校验、路径 sanitize、workspace 归属、非 ws pathId 400 不落 run、LLM 不读 rows/draw_data。
+3. 产品验收：初始化页只有数据库连接导入；SQLite 可列库表并一键导入；导入后自动绑定角色并保存配置；指标体系初始化、观星台、行动环不回归。
+4. 验证：server typecheck、web typecheck、web build、SQL/monitor 单测、数据探索 LLM 隔离 grep；必要时临时 SQLite smoke。
+5. 收口：更新 docs/notes-viz.md 与 docs/notes-data.md §0；通过后把 D/E/X 卡置 done，待用户 review 后提交。
+约束：不执行 git；不清理无关脏工作区。` },
 
   // ════ 【Harness 自进化专题·研究驱动】（总控拆卡 2026-06-22；来源=harness 论文集精读 docs/backlog/{EFC,AHE,SkillOpt,AgingBench,HarnessAudit}-*.md + 记忆 harness-papers-2026）。命题：把 harness(测评/skill/记忆/编排)当可进化的一等工程对象——Life-Harness「改接口不改模型」为整条路线背书。
   // ── 波次与依赖（必读）── P0=EFC 度量底座(其余三项皆插它)→AHE 可证伪编辑契约；P1=SkillOpt 受控回写器 / AgingBench 记忆老化巡检(可并行)；P2=HarnessAudit 轨迹审计(待多 agent 规模)。前 4 项共用同一套实验场测评台证据，串成专题逐步捞。

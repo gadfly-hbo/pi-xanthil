@@ -804,6 +804,71 @@ test("runMultiAgent routes SQL tool failures through sql_gate and retries with s
   assert.match(runSqlOutput.error ?? "", /missing input\.sql_connection_id/);
 });
 
+test("runMultiAgent rejects dangerous SQL before resolving connections", async () => {
+  const runDir = makeRunDir();
+  const started: string[] = [];
+  const adapter = makeFakePiAdapter(
+    {
+      sql: { text: ["```sql", "DROP TABLE agg_sales", "```"].join("\n") },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    nodes: [
+      { id: "sql", label: "SQL", prompt: "Generate SQL" },
+      {
+        id: "run_sql",
+        label: "Run SQL",
+        prompt: "Run SQL",
+        kind: "tool",
+        toolId: RUN_SQL_QUERY_TOOL_ID,
+        inputPath: "{{sql}}",
+        inputs: ["sql"],
+      },
+    ],
+    edges: [{ id: "sql-run", source: "sql", target: "run_sql" }],
+  };
+
+  const result = await runMultiAgent(workflow, {
+    ...makeBaseOptions(runDir, adapter.runTurn),
+    inputs: { sql_connection_id: "never-resolved-for-dangerous-sql" },
+    onStepStart: (nodeId) => started.push(nodeId),
+  });
+
+  assert.equal(result.code, 0);
+  assert.deepEqual(started, ["sql", "run_sql"]);
+  const runSqlOutput = JSON.parse(result.blackboard.run_sql ?? "{}") as {
+    kind?: string;
+    success?: boolean;
+    code?: number;
+    error?: string;
+    validation?: { safe?: boolean; riskLevel?: string; risks?: string[] };
+  };
+  assert.equal(runSqlOutput.kind, "sql_tool");
+  assert.equal(runSqlOutput.success, false);
+  assert.equal(runSqlOutput.code, 1);
+  assert.equal(runSqlOutput.validation?.safe, false);
+  assert.equal(runSqlOutput.validation?.riskLevel, "L3");
+  assert.match(runSqlOutput.error ?? "", /检测到危险操作: DROP/);
+  assert.ok(runSqlOutput.validation?.risks?.some((risk) => risk.includes("DROP")));
+});
+
+test("LLM workflow SQL runner only imports read-only SQL connection primitives", () => {
+  const source = readFileSync(join(process.cwd(), "server/src/multi-agent-runner.ts"), "utf8");
+  const sqlImport = source.match(/import\s+\{([^}]+)\}\s+from\s+"\.\/sql-connections\.ts";/);
+  assert.ok(sqlImport, "multi-agent-runner.ts must import sql-connections.ts explicitly");
+
+  const importedNames = sqlImport[1]!
+    .split(",")
+    .map((name) => name.trim())
+    .filter(Boolean)
+    .sort();
+  assert.deepEqual(importedNames, ["executeQuery", "getConnection", "validateSql"]);
+
+  const forbiddenWriteApiPattern = /\b(?:createSqliteDatabase|createSqlTable|importSqlTable|commitSqlImport|previewSqlImport|insertSqlRows|replaceSqlTable|truncateSqlTable|dropSqlTable|executeWriteSql)\b/;
+  assert.equal(forbiddenWriteApiPattern.test(source), false);
+});
+
 test("T-E5 MVP SQL loop converges with real SQLite data and the real run-sql-query tool", () => {
   const dataRoot = makeRunDir();
   const script = String.raw`

@@ -443,6 +443,169 @@ export interface WatermarkConfig {
   initialValue?: unknown;
 }
 
+// ponytail: simple type inference from first N rows; no pandas-style heuristics
+export interface ImportColumn {
+  sourceName: string; // original key from source rows (before user rename)
+  name: string;       // target column name (user may edit)
+  type: string; // INTEGER | REAL | TEXT
+  sample: string[];
+}
+
+export interface ImportPreviewResult {
+  columns: ImportColumn[];
+  totalRows: number;
+  risks: string[];
+  fileName: string;
+}
+
+export function quoteIdent(name: string): string {
+  return `"${name.replace(/"/g, '""')}"`;
+}
+
+export function sanitizeIdentifier(name: string, kind: "table" | "column"): string {
+  let s = name.replace(/[^a-zA-Z0-9_\u4e00-\u9fff]/g, "_");
+  if (kind === "table" && /^[0-9_]/.test(s)) s = `t_${s}`;
+  return s || (kind === "table" ? "imported_table" : "col");
+}
+
+export function inferColumnTypes(rows: Record<string, unknown>[]): ImportColumn[] {
+  if (rows.length === 0) return [];
+  const headers = Object.keys(rows[0]!);
+  const sampleSize = Math.min(rows.length, 5);
+  const typeScores = headers.map(() => ({ real: 0, int: 0, text: 0 }));
+  const sampleCols = headers.map(() => new Set<string>());
+
+  for (const name of headers) {
+    const idx = headers.indexOf(name);
+    for (const row of rows.slice(0, Math.min(rows.length, 200))) {
+      const v = row[name];
+      if (v === null || v === undefined) continue;
+      const s = String(v).trim();
+      if (s === "") continue;
+      sampleCols[idx]!.add(s.length > 50 ? s.slice(0, 50) + "…" : s);
+      if (/^-?\d+$/.test(s)) {
+        typeScores[idx]!.int++;
+      } else if (/^-?\d+\.?\d*$/.test(s) || /^-?\.\d+$/.test(s)) {
+        typeScores[idx]!.real++;
+      } else if (/^true$/i.test(s) || /^false$/i.test(s)) {
+        typeScores[idx]!.int++;
+      } else {
+        typeScores[idx]!.text++;
+      }
+    }
+  }
+
+  return headers.map((name, i) => {
+    const { int: ic, real: rc, text: tc } = typeScores[i]!;
+    const total = ic + rc + tc;
+    // if total=0 or text dominates => TEXT
+    const type = total === 0 || tc > total * 0.5 ? "TEXT"
+      : rc > 0 ? "REAL"
+      : "INTEGER";
+    return {
+      sourceName: name,
+      name,
+      type,
+      sample: Array.from(sampleCols[i]!).slice(0, 5),
+    };
+  });
+}
+
+export function buildCreateTableSql(tableName: string, columns: { name: string; type: string }[]): string {
+  const cols = columns.map((c) => `${quoteIdent(c.name)} ${c.type}`);
+  return `CREATE TABLE ${quoteIdent(tableName)} (${cols.join(", ")})`;
+}
+
+function toSqliteValue(v: unknown): string | number | bigint | null | Uint8Array {
+  if (v === null || v === undefined) return null;
+  if (typeof v === "string" || typeof v === "number" || typeof v === "bigint") return v;
+  if (typeof v === "boolean") return v ? 1 : 0;
+  if (v instanceof Uint8Array) return v;
+  return String(v);
+}
+
+export function importRowsToDb(
+  conn: SqlConnection,
+  tableName: string,
+  columns: { sourceName?: string; name: string; type: string }[],
+  rows: Record<string, unknown>[],
+  mode: "create" | "append",
+): { rowCount: number } {
+  if (conn.type === "sqlite") {
+    return withSqlite(conn, (db) => {
+      if (mode === "create") {
+        db.exec(buildCreateTableSql(tableName, columns));
+      }
+      if (rows.length === 0) return { rowCount: 0 };
+      // sourceName = key on rows (original file header); name = target column name (may be renamed by user)
+      const sourceKeys = columns.map((c) => c.sourceName ?? c.name);
+      const targetNames = columns.map((c) => c.name);
+      const placeholders = targetNames.map(() => "?").join(", ");
+      const insertSql = `INSERT INTO ${quoteIdent(tableName)} (${targetNames.map(quoteIdent).join(", ")}) VALUES (${placeholders})`;
+      db.exec("BEGIN");
+      try {
+        const stmt = db.prepare(insertSql);
+        for (const row of rows) {
+          stmt.run(...sourceKeys.map((k) => toSqliteValue(row[k])));
+        }
+        db.exec("COMMIT");
+        return { rowCount: rows.length };
+      } catch (err) {
+        db.exec("ROLLBACK");
+        throw err;
+      }
+    });
+  }
+  // PostgreSQL/MySQL import: explicitly unsupported (follow-up)
+  throw new Error(`写入导入暂不支持 ${conn.type}，请使用 SQLite`);
+}
+
+export async function exportTableQuery(
+  conn: SqlConnection,
+  tableOrSql: string,
+  params?: Record<string, unknown>,
+): Promise<{ columns: string[]; rows: Record<string, unknown>[] }> {
+  const lower = tableOrSql.trim().toUpperCase();
+  const sql = lower.startsWith("SELECT") ? tableOrSql : `SELECT * FROM ${quoteIdent(tableOrSql)}`;
+  if (conn.type === "sqlite") {
+    return withSqlite(conn, (db) => {
+      const stmt = db.prepare(sql);
+      const values = params ? Object.values(params).map(toSqliteValue) : [];
+      const rows = stmt.all(...values) as Record<string, unknown>[];
+      const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
+      return { columns, rows };
+    });
+  }
+  if (conn.type === "postgresql") {
+    return withPg(conn, async (client) => {
+      const res = await client.query(sql, params ? Object.values(params) : []);
+      const rows = (res.rows ?? []).map((r) => serializeRow(r));
+      const columns = rows.length > 0 ? Object.keys(rows[0]!) : [];
+      return { columns, rows };
+    });
+  }
+  // mysql
+  return withMysql(conn, async (c) => {
+    const [rawRows, fields] = await c.execute(sql, (params ? Object.values(params) : []) as any[]);
+    const columns = (fields as mysql.FieldPacket[]).map((f: mysql.FieldPacket) => f.name ?? "");
+    const rows = (rawRows as mysql.RowDataPacket[]).map((r) => serializeRow(r as Record<string, unknown>));
+    return { columns, rows };
+  });
+}
+
+export function rowsToCsv(columns: string[], rows: Record<string, unknown>[]): string {
+  const esc = (v: unknown): string => {
+    if (v === null || v === undefined) return "";
+    const s = String(v);
+    return s.includes(",") || s.includes('"') || s.includes("\n") ? `"${s.replace(/"/g, '""')}"` : s;
+  };
+  return [columns.map(esc).join(","), ...rows.map((r) => columns.map((c) => esc(r[c])).join(","))].join("\n");
+}
+
+export function rowsToJson(columns: string[], rows: Record<string, unknown>[]): string {
+  return JSON.stringify(rows, null, 2);
+}
+
 export async function exportQueryToCsv(
   conn: SqlConnection,
   sql: string,
