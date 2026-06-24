@@ -101,6 +101,19 @@ gate blocked:
 
 ---
 
+### 3.5 决策策略增强（补 §2 缺口 #3）—— Affordance Harness（arxiv 2605.00663）
+
+> 2026-06-23 增补。来源：Affordance Agent Harness「verification-gated skill orchestration」。其领域（视觉 affordance grounding）超 pi-xanthil 范围，但**决策策略机制可迁移**，正补 §2 缺口 #3「没有任何东西决定 continue/retry/switch/escalate」。
+
+现草案（§3.2）的回边是「blocked → 固定回跳 `retryFromNodeId`」。Affordance Harness 给出更聪明的两点：
+
+1. **诊断式定向纠正**：verifier 不只给 pass/blocked，而是**诊断主导缺陷类型**再选对应纠正动作（`Γ(ℓ)`：一致性失败→ROI 精修；稳定性失败→zoom-in；充分性失败→补充互补 skill）。
+   → pi-xanthil：`sql_gate` 等确定性校验器除 verdict 外**输出缺陷类别**（如 `执行失败|结果空|字段缺失|口径偏差`），`onBlock` 按类别路由到**不同** `retryFromNodeId`（而非单一固定回跳），prompt 注入定向纠正指令。
+2. **benefit/cost 预算路由**：动作选择按收益成本比 `argmax Δv̂(u)/ĉ(u)`，在剩余预算下挑最划算的纠正动作。
+   → pi-xanthil：§3.3 预算已有 token/cost 累计；在多个候选纠正路径间用「预期收益/成本」择优，而非盲目重跑同一节点。
+
+落点：`GateOnBlock` 从单 `retryFromNodeId` 扩为 `Map<缺陷类别, 纠正路由>`（可选，向后兼容——不配则退回固定回跳）；收益估计可复用 [[反馈效率度量 (EFC)]] 的反馈质量信号。**仍守红线**：缺陷诊断不得放宽 `deterministicRedLineCheck`，红线命中照旧硬中断。
+
 ## 4. MVP 切片（捞出后第一刀）
 
 **SQL 修复 loop**（白皮书 5.1 / 15.3 模板 1，最易体现价值）：

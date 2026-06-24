@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeftRight, ArrowUp, Loader2, Plus, RefreshCw, Square } from "lucide-react";
+import { ArrowLeftRight, ArrowUp, Check, Loader2, Pencil, Plus, RefreshCw, Square } from "lucide-react";
 import { MessageRow, type UiMessage } from "@/components/MessageRow";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
@@ -45,6 +45,8 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
   const [error, setError] = useState("");
   const [backflowOpen, setBackflowOpen] = useState(false);
   const [backflowText, setBackflowText] = useState("");
+  const [renaming, setRenaming] = useState(false);
+  const [renameValue, setRenameValue] = useState("");
   const [reportPaths, setReportPaths] = useState<string[]>([]);
   const [selectedReportPath, setSelectedReportPath] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -73,6 +75,7 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
 
   useEffect(() => {
     let cancelled = false;
+    setRenaming(false);
     if (!activeBranchId) {
       setMessages([]);
       setRunning(false);
@@ -174,6 +177,33 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
     setInput("");
   }
 
+  function stopBranchRun() {
+    if (!activeBranchId || !running) return;
+    gateway.send({ type: "abort", sessionId: activeBranchId });
+  }
+
+  function startRename() {
+    if (!activeBranch) return;
+    setRenameValue(activeBranch.title);
+    setRenaming(true);
+  }
+
+  async function submitRename() {
+    const title = renameValue.trim();
+    if (!activeBranchId || !title || title === activeBranch?.title) {
+      setRenaming(false);
+      return;
+    }
+    try {
+      const updated = await api.renameForkBranch(activeBranchId, title);
+      setBranches((current) => current.map((item) => (item.id === updated.id ? updated : item)));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setRenaming(false);
+    }
+  }
+
   function openBackflow() {
     const summary = lastAssistantText(messages);
     const reportLine = selectedReportPath ? `\n\n报告：${selectedReportPath}` : "";
@@ -233,9 +263,46 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
       {activeBranch ? (
         <div className="mt-3 flex min-h-0 flex-1 flex-col rounded-md border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">
           <div className="flex shrink-0 items-center justify-between border-b border-neutral-200 px-3 py-2 dark:border-neutral-800">
-            <div className="min-w-0 text-[12px] text-neutral-500 dark:text-neutral-400">
-              <span className="font-medium text-neutral-700 dark:text-neutral-200">{activeBranch.title}</span>
-              <span className="ml-2">隔离分支</span>
+            <div className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
+              {renaming ? (
+                <>
+                  <input
+                    autoFocus
+                    value={renameValue}
+                    onChange={(event) => setRenameValue(event.target.value)}
+                    onKeyDown={(event) => {
+                      if (event.key === "Enter" && !event.nativeEvent.isComposing) {
+                        event.preventDefault();
+                        void submitRename();
+                      } else if (event.key === "Escape") {
+                        setRenaming(false);
+                      }
+                    }}
+                    onBlur={() => void submitRename()}
+                    className="min-w-0 flex-1 rounded border border-neutral-300 bg-transparent px-1.5 py-0.5 text-[12px] font-medium text-neutral-700 outline-none dark:border-neutral-600 dark:text-neutral-200"
+                  />
+                  <button
+                    onMouseDown={(event) => event.preventDefault()}
+                    onClick={() => void submitRename()}
+                    title="保存名称"
+                    className="inline-flex h-6 w-6 shrink-0 items-center justify-center rounded text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  >
+                    <Check className="h-3.5 w-3.5" />
+                  </button>
+                </>
+              ) : (
+                <>
+                  <button
+                    onClick={startRename}
+                    title="点击重命名分支"
+                    className="group flex min-w-0 items-center gap-1 rounded px-1 py-0.5 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  >
+                    <span className="truncate font-medium text-neutral-700 dark:text-neutral-200">{activeBranch.title}</span>
+                    <Pencil className="h-3 w-3 shrink-0 text-neutral-400 opacity-60 group-hover:opacity-100" />
+                  </button>
+                  <span className="ml-1 shrink-0">隔离分支</span>
+                </>
+              )}
             </div>
             <button
               onClick={openBackflow}
@@ -277,7 +344,8 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
                 className="min-h-[48px] flex-1 resize-none rounded-md border border-neutral-200 bg-transparent px-3 py-2 text-[13px] outline-none disabled:opacity-50 dark:border-neutral-700"
               />
               <button
-                onClick={running ? undefined : sendBranchMessage}
+                onClick={running ? stopBranchRun : sendBranchMessage}
+                title={running ? "停止分支运行" : "发送（Shift+Enter）"}
                 disabled={!running && !input.trim()}
                 className={cn(
                   "inline-flex h-8 w-8 shrink-0 items-center justify-center rounded-full",

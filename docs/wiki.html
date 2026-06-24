@@ -388,6 +388,33 @@ B. 前端：
 约束：不执行 git；不清无关脏工作区。
 ✅ 总控自做+终审 done（2026-06-23）：① backfill 核准——D 代笔的 db/shared.ts 追加 prompt(WHERE workspace_id IS NOT NULL，skip NULL 全局模板)+ knowledge(WHERE scope='global')两源；两表无 enabled 列故用常量 1 变体(SELECT ...,id,1,?)，INSERT OR IGNORE + 双 try/catch 幂等，与上轮敲定「NULL 恒启用/skip NULL」口径一致。② 接缝终审：types.ts 双侧 kind/scope 对齐、无本地重声明；diff 中 ontologyId/ontologyObjectIds 属监测专题(X-MONITOR0)既有契约，非本批越界。③ chip 计数偏差修正(总控自做 App.tsx 接缝)：refreshKnowledgePromptInfo 原取 listKnowledgeDocs 全池长度→改为与 listKnowledgeChunksForRetrieval 注入口径一致(本 ws 私有 ∪ 已启用 global)，typecheck+build 复绿。整专题(X-POOL0/D-POOL1/X-POOL2)全 done，待用户提交。` },
 
+  // ── 【产品 Agent 自进化专题（生产失败驱动）】（总控拆卡 2026-06-23；来源=OpenAI《Building self-improving tax agents with Codex》博客 + Runloop codex-tax-man + 用户综述；backlog=docs/backlog/生产失败驱动的产品Agent自进化闭环.md）。把「真实失败→约束修改」纪律从实验场 harness(Harness 自进化专题)迁到**产品 task agent(监测/AnaX/工作流)**。
+  // ── 重叠处理：bounded-change 复用 AHE manifest 不重造；eval 复用现有 evaluation 框架；纠正捕获复用**监测行动环(actions 三表)**。delta=①生产失败轨迹→eval 自动沉淀 ②专家注释→eval 入口。**冻结待解冻=AHE manifest(E-AHE1)P0 跑通 + 总控解冻**(监测模块已 done、finding 生命周期+行动环就绪，是利好非前置)。
+  { dom: "X", status: "todo", created: "2026-06-23 19:00", title: "【产品Agent自进化·契约·冻结待 AHE P0】X-EVOLVE0：生产轨迹 schema + EvalRecord(failing trace→eval) + 注释状态契约（总控自做）", brief:
+`【冻结】待 AHE manifest(E-AHE1)P0 跑通 + 总控解冻。来源：docs/backlog/生产失败驱动的产品Agent自进化闭环.md(OpenAI 税务 Agent 博客)。本卡=接缝契约，总控自做，解锁 E-EVOLVE1/D-EVOLVE2。
+范围(接缝层 types.ts 双侧)：
+ · AgentTrajectory{ runId; module:'monitor'|'anax'|'flow'|'chat'; steps:Array<{stage;input;output;citation?}>; outcome:'pass'|'fail' }   // 失败轨迹，脱敏后存
+ · EvalRecord{ id; sourceFindingId?; failingTrace; expectedOutput; passCondition; annotationStatus:'candidate'|'confirmed'|'rejected' }   // failing trace→eval target
+ · 复用 AHE ChangeManifest 作 bounded-change package 规格(不新造)。
+注：监测 findings/生命周期/行动环(actions 三表)已就绪，本契约只补「轨迹+eval 记录+注释态」薄层。
+验收：types 双侧对齐、typecheck+build 绿。约束：仅契约；脱敏边界沿用 E-MONITOR8 口径。跨域依赖：解锁 E-EVOLVE1/D-EVOLVE2。` },
+  { dom: "E", status: "todo", created: "2026-06-23 19:00", title: "【产品Agent自进化·引擎·冻结待 AHE P0】E-EVOLVE1：失败轨迹持久化 + eval 自动沉淀(复发 finding 触发) + 复用 AHE bounded change", brief:
+`【冻结】待 X-EVOLVE0 契约 + E-AHE1 manifest(P0) + 总控解冻。来源：docs/backlog/生产失败驱动的产品Agent自进化闭环.md。落点=监测引擎/eval(E：monitor-engine.ts 旁 + *-evaluation-*.ts)。**监测侧已就绪**(finding 生命周期 recurring/worsening、行动环复用 actions)。
+范围(E slot)：
+1. 失败轨迹持久化：监测 run findings 已落库；补 AnaX/工作流失败轨迹(脱敏)入 AgentTrajectory。
+2. eval 自动沉淀：监测 finding 生命周期 recurring/worsening + 行动环采纳反馈 阈值触发 → targeted EvalRecord(对接 *-evaluation-*.ts)。
+3. bounded change：复用 AHE manifest 组 package(failing trace+eval set+codebase+skills+脱敏 prod 样本+expected+eval-runner cmd)→只自动应用 bounded，风险路由总控终审(human gate)。
+验收：监测复发 finding→eval→约束修改一次闭环跑通；eval 库零真实行级数据；typecheck+build+tests 绿。
+约束：eval/轨迹脱敏沿用 E-MONITOR8 口径(monitor-llm 不碰 rows/draw_data)。前置 E-AHE1。` },
+  { dom: "D", status: "todo", created: "2026-06-23 19:00", title: "【产品Agent自进化·专家注释·红线·冻结】D-EVOLVE2：监测行动环/report-review 加「采纳/标注失败环节→eval 候选」入口", brief:
+`【冻结】待 X-EVOLVE0 契约 + 总控解冻。来源：docs/backlog/生产失败驱动的产品Agent自进化闭环.md。落点=数据域(D)：监测行动环 HealthReportPane(已复用 actions 三表)+ report-review/golden_strategy。**红线卡**。
+范围(D slot)：
+1. HealthReportPane 行动环(finding→行动项→采纳→反馈)加「此 finding 提为 eval 候选/标注失败环节」入口，写 EvalRecord(annotationStatus=candidate)。
+2. report-review/golden_strategy 同加「纠正→eval 候选」入口。
+3. 脱敏：eval 候选只存 finding 衍生字段(kind/severity/comparisons/suggestion)+期望输出，**绝不存 draw_data 原值**。
+验收：采纳/标注→eval 候选闭环；数据探索 LLM 隔离 grep 净；monitor-llm 红线 grep 净；typecheck+build 绿。
+约束：守 AGENTS.md + E-MONITOR8 口径，改完跑隔离 grep。跨域：eval 候选供 E-EVOLVE1 消费(走 HTTP)。` },
+
   // ════ 【监测模块·经营指标监控改造】（总控拆卡 2026-06-23）。用户确认方案：一级「监测」作为所有分析起点；二级 tab 调整为「初始化 / 观星台 / 行动环 / readme」。readme 保留；原「趋势」合并进「观星台」，趋势本身属于监测指标逻辑范围。原 health 内部命名可保留，UI 统一称「监测」。V-agent 已停用，viz/前端交付由 D 承接，回流总控终审。════
   { dom: "X", status: "done", created: "2026-06-23 15:00", title: "【监测·契约+接缝·P0】X-MONITOR0：经营指标监测契约 + tab 接缝 + API 签名审定（总控自做）", brief:
 `目标：把现有「体检/health」模块升级为「经营指标监测」工作台，先定契约与接缝，解锁 D/E 实装。
@@ -526,6 +553,7 @@ B. 前端：
    · ChangeManifest{ editId; component:HarnessComponent; failureEvidence; rootCause; targetedFix; predictedFix:string[]; predictedRegression:string[]; outcome:'accept'|'revise'|'reject'|'defer' } + EditVerdict{ fixPrecision;fixRecall;regPrecision;regRecall }
    · type HarnessComponent='prompt'|'command'|'subagent'|'hook'|'skill'|'memory'|'tool'   // AHE 七类组件对位实验场
    · 【SkillHone 增补 2606.08671】outcome 四态(accept/revise/reject/defer，原 AHE 只有 verdict 对照) + 决策史可检索口径：新失败来时检索 ℋ_{<t} 判『失败是否新 / 类似修复是否已试过 / 上个方案为何被拒』，把 manifest 从单轮对照升级为跨轮经验库(供 E-AHE1/E-SKILLOPT1 用)。
+   · 【HarnessX 增补 2606.14249】HarnessVariant{ variantId; baseEditId; perTaskRouting } —— 支持「冲突编辑 fork 成变体」；接受准则补**确定性 seesaw 无回归门**(候选不得回归任何已解任务，比纯回滚严)。变体隔离运行逻辑见 E-AHE1。
 2. cache-harness 对接点：notes-infra 缓存契约(cache.ts/prompt-blocks.ts)暴露 C_raw(token/tool 调用计数)只读 getter，供 η=EFC/C_raw。总控持有，定签名。
 3. 预研(无 git 难点)：实验场编辑无 git → AHE『组件级回滚』缺底座。本卡给出回滚方案口径(编辑快照/版本表 or 复用既有持久化)写死供 E-AHE1 施工；若需 db 新表在此审定 migration。【SkillHone 增补】采 typed scoped revision——修订带诊断上下文的结构化类型，回退时按类型定位 offending part 而非整体回滚(保留 useful edits)。
 验收：types 双侧对齐、typecheck+build 绿、C_raw getter 与回滚方案口径写死可被 E 直接施工。
@@ -546,8 +574,9 @@ B. 前端：
 2. attribute 对照器：下一轮测评后，predictedFix/predictedRegression 与实测任务级 delta 取交集，产 EditVerdict(fix/reg 精确率召回)；delta 质量分用 E-EFC1 的 EFC 而非纯 pass@1。
 3. 组件级回滚：按 X-HARNESS0 写死的回滚方案，无效编辑可回退。
 4. 实验场 UI：编辑流程加 manifest 录入 + verdict 回显(hook-eval-core/subagent-core 之上)。
-验收：一次完整循环(编辑→填 manifest→下轮测评→自动出 verdict)跑通；typecheck+build+tests 绿。
-约束：半自动起步(人改)，不全自动改 harness(MOSS 观望)。跨域依赖：用 E-EFC1 分。` },
+5. 【HarnessX 增补 2606.14249】① **seesaw 无回归门**：接受候选前确定性校验「不回归任何已解任务」(比 attribute+回滚更严)。② **变体隔离/ensemble routing**：改好 A 却回归 B 的冲突编辑**不拒绝，fork 成新 HarnessVariant**(契约见 X-HARNESS0)，每任务路由到估计成功率最高的变体(消融 +13.6% 非降级)，解「顾此失彼」。③ processor-on-hooks 可组合基座=中长期架构，留 backlog(docs/backlog/HarnessX-变体隔离与可组合harness.md)，本卡不做。co-evolution(模型 RL)超范围不做。
+验收：一次完整循环(编辑→填 manifest→下轮测评→自动出 verdict)跑通；seesaw 门拦住回归编辑；冲突编辑能 fork 变体并按任务路由；typecheck+build+tests 绿。
+约束：半自动起步(人改)，不全自动改 harness(MOSS 观望)；不做模型训练(守改接口不改模型)。跨域依赖：用 E-EFC1 分。` },
   { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·SkillOpt·P1·冻结待 P0 通】E-SKILLOPT1：skill 受控回写器(验证门+严格接受+rejected buffer+slow-update 受保护字段+有界 L_t)", brief:
 `【冻结】待 P0(EFC)跑通『同分不同 EFC』+总控解冻后开工。来源：docs/backlog/SkillOpt-skill受控回写器.md。落点=skill 闭环(E：skill-{curator,distillation,retrieval,activation}.ts / skills.ts)。
 范围(E slot)：

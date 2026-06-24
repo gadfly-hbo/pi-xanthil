@@ -17,6 +17,14 @@ const STOPWORDS = new Set([
   "by", "the", "a", "an", "in", "of", "to", "for", "is", "are", "was", "be",
   "this", "that", "it", "at", "as", "with", "on", "from", "or", "and", "not",
 ]);
+const HEADING_BOOST_STOPWORDS = new Set([
+  "三大", "大人", "人群", "算法", "渠道", "森马", "平台", "关于", "里面",
+  "简要", "复述", "回顾", "知识", "识库", "记忆",
+]);
+const HEADING_BOOST_ALLOWLIST = new Set([
+  "天猫", "京东", "抖音", "线下", "唯品", "视频", "拼多",
+  "六大", "八大", "十大", "权重", "映射", "标签",
+]);
 
 const CJK_RE = /[\u4e00-\u9fff]/;
 
@@ -47,6 +55,30 @@ function tokenizeArray(text: string): string[] {
     }
   }
   return out;
+}
+
+function queryBigrams(queryTokens: string[]): Set<string> {
+  const out = new Set<string>();
+  for (const token of queryTokens) {
+    if (
+      CJK_RE.test(token)
+      && token.length === 2
+      && !HEADING_BOOST_STOPWORDS.has(token)
+      && HEADING_BOOST_ALLOWLIST.has(token)
+    ) out.add(token);
+  }
+  return out;
+}
+
+function headingMatchBoost(text: string, queryTerms: Set<string>): number {
+  if (queryTerms.size === 0) return 0;
+  const headings = text.split(/\r?\n/).filter((line) => /^#{1,6}\s+/.test(line));
+  for (const heading of headings) {
+    for (const term of queryTerms) {
+      if (heading.includes(term)) return 40;
+    }
+  }
+  return 0;
 }
 
 // BM25 参数（业内常用默认）
@@ -83,6 +115,7 @@ export function searchKnowledgeChunks(
   const queryTokens = tokenizeArray(query);
   if (queryTokens.length === 0) return [];
   const queryTermSet = new Set(queryTokens);
+  const headingTerms = queryBigrams(queryTokens);
 
   const rows = listKnowledgeChunksForRetrieval(workspaceId, options.docIds);
   if (rows.length === 0) return [];
@@ -90,7 +123,7 @@ export function searchKnowledgeChunks(
   // ponytail: tokenize-on-every-query, O(N * chunkLen). 当工作区 chunk 数 ≳ 5k 或 P95 query
   // 延迟 > 50ms 时，加 (workspaceId, max(updated_at)) → tokens 的进程内缓存即可消除热路径。
   // Build tokens & doc-frequency over the workspace corpus (cheap; small corpora).
-  const tokenized = rows.map((r) => tokenizeArray(`${r.docTitle}\n${r.chunk.text}`));
+  const tokenized = rows.map((r) => tokenizeArray(`${r.docTitle}\n${r.docTags.join(" ")}\n${r.chunk.text}`));
   const N = rows.length;
   const df = new Map<string, number>();
   for (const tokens of tokenized) {
@@ -121,7 +154,9 @@ export function searchKnowledgeChunks(
       idfSum += idf;
       hitCount++;
     }
-    if (hitCount === 0) continue;
+    const headingBoost = headingMatchBoost(rows[i]!.chunk.text, headingTerms);
+    if (hitCount === 0 && headingBoost === 0) continue;
+    bm25 += headingBoost;
     if (bm25 > maxRaw) maxRaw = bm25;
     scored.push({
       chunk: rows[i]!.chunk,

@@ -22,6 +22,11 @@ import { gateway } from "@/lib/ws";
 import { asBlocks, textOf, type ContentBlock, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
 
 type ZhuantiTask = { flow: Flow; session: Session };
+type MemoryPromptInfo = {
+  count: number;
+  updatedAt: number | null;
+  details: string[];
+};
 
 let uid = 0;
 const nextId = () => `m${++uid}`;
@@ -150,7 +155,7 @@ export default function App() {
   const [exploreSeed, setExploreSeed] = useState<ExploreSeed | null>(null);
   const [hasReportPath, setHasReportPath] = useState(false);
   const [rulesPromptEnabled, setRulesPromptEnabled] = useState(false);
-  const [rulesPromptInfo, setRulesPromptInfo] = useState<{ count: number; updatedAt: number | null }>({ count: 0, updatedAt: null });
+  const [rulesPromptInfo, setRulesPromptInfo] = useState<MemoryPromptInfo>({ count: 0, updatedAt: null, details: [] });
   const [knowledgePromptEnabled, setKnowledgePromptEnabled] = useState(false);
   const [knowledgePromptInfo, setKnowledgePromptInfo] = useState<{ count: number; updatedAt: number | null }>({ count: 0, updatedAt: null });
 
@@ -168,26 +173,36 @@ export default function App() {
 
   const refreshRulesPromptInfo = useCallback(async () => {
     if (!activeWorkspaceId) {
-      setRulesPromptInfo({ count: 0, updatedAt: null });
+      setRulesPromptInfo({ count: 0, updatedAt: null, details: [] });
       setRulesPromptEnabled(false);
       return;
     }
     try {
-      // The injectRulesPrompt toggle controls combined memory: rules + 指标体系 + 业务环境 + 案例库 + 知识图谱.
-      // Sum all five so the toggle isn't gated to zero when only one source has content.
-      const [rules, standards, businessContext, cases, kg] = await Promise.all([
+      // The injectRulesPrompt protocol field now controls combined memory injection:
+      // unified memory_items + legacy rules + business context + standards + cases + knowledge graph.
+      const [memoryPreview, rules, standards, businessContext, cases, kg] = await Promise.all([
+        api.previewMemoryPrompt(activeWorkspaceId, { targetScope: "chat" }),
         api.getRulesPrompt(activeWorkspaceId),
         api.getStandardsPrompt(activeWorkspaceId),
         api.getBusinessContextPrompt(activeWorkspaceId),
         api.getCasesPrompt(activeWorkspaceId),
         api.getKgPrompt(activeWorkspaceId),
       ]);
-      const count = rules.count + standards.count + businessContext.count + cases.count + kg.count;
+      const details = [
+        memoryPreview.itemCount > 0 ? `统一记忆 ${memoryPreview.itemCount}` : "",
+        memoryPreview.factCount > 0 ? `fact ${memoryPreview.factCount}` : "",
+        rules.count > 0 ? `旧规则 ${rules.count}` : "",
+        businessContext.count > 0 ? `业务环境 ${businessContext.count}` : "",
+        standards.count > 0 ? `指标体系 ${standards.count}` : "",
+        cases.count > 0 ? `案例 ${cases.count}` : "",
+        kg.count > 0 ? `知识图谱报告 ${kg.reportCount}${kg.edgeCount ? ` / 关联 ${kg.edgeCount}` : ""}` : "",
+      ].filter(Boolean);
+      const count = memoryPreview.itemCount + memoryPreview.factCount + rules.count + standards.count + businessContext.count + cases.count + kg.count;
       const updatedAt = Math.max(rules.updatedAt ?? 0, standards.updatedAt ?? 0, businessContext.updatedAt ?? 0, cases.updatedAt ?? 0, kg.updatedAt ?? 0) || null;
-      setRulesPromptInfo({ count, updatedAt });
+      setRulesPromptInfo({ count, updatedAt, details });
       if (count === 0) setRulesPromptEnabled(false);
     } catch {
-      setRulesPromptInfo({ count: 0, updatedAt: null });
+      setRulesPromptInfo({ count: 0, updatedAt: null, details: [] });
       setRulesPromptEnabled(false);
     }
   }, [activeWorkspaceId]);
@@ -877,6 +892,7 @@ export default function App() {
           rulesPromptEnabled={rulesPromptEnabled}
           rulesPromptCount={rulesPromptInfo.count}
           rulesPromptUpdatedAt={rulesPromptInfo.updatedAt}
+          rulesPromptDetails={rulesPromptInfo.details}
           onToggleRulesPrompt={() => setRulesPromptEnabled((current) => !current)}
           knowledgePromptEnabled={knowledgePromptEnabled}
           knowledgePromptCount={knowledgePromptInfo.count}

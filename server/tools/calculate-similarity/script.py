@@ -75,11 +75,7 @@ def main(product_input, account_file, output_csv):
     for p_file in product_files:
         # 提取文件名称的数字部分作为商品款号
         basename = os.path.basename(p_file)
-        match = re.search(r'\d+', basename)
-        if match:
-            product_id = match.group()
-        else:
-            product_id = basename.replace('.csv', '') # 如果没有数字则默认用文件名
+        product_id = basename.replace('画像数据.csv', '').replace('.csv', '')
             
         print(f"正在计算商品 [{product_id}] 与账号的匹配度 ...")
         score = process_single_match(p_file, account_file)

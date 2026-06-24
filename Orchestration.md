@@ -271,6 +271,8 @@ web/src/
 | `docs/notes-viz.md` | V | Dashboard · 探索(报告/汇报/审核/黄金策) · 规则记忆(trace/token/KG) |
 | `docs/notes-infra.md` | 总控 | 缓存命中(缓存 harness) + 接缝层指针 |
 
+**治理活文档（总控维护）**：`docs/harness-etclovg-coverage.md` —— 把 pi-xanthil 当 agent harness 做 ETCLOVG 七层覆盖度自检（含缺口/三张力/T1-T4 自检）。**每次发版 + 每次 harness 相关交付/backlog 变动时顺手更新**（最薄层=O/G→对应 EFC/HarnessAudit）。框架来源见记忆 `harness-taxonomy-2026`。
+
 **交接机制改革**：停用按-tab 单链巨型 handoff；跨 session 连续性靠 **各域 notes §0 状态快照 + 本章程总览 + 用户手动提交的 commit 历史**。不再产生 changelog 堆叠。
 
 ---

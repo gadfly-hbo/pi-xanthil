@@ -256,6 +256,12 @@ export const engineApi = {
     }).then(json<ForkBranch>),
   listForkBranches: (sessionId: string) =>
     fetch(`/api/sessions/${sessionId}/fork-branches`).then(json<ForkBranch[]>),
+  renameForkBranch: (branchSessionId: string, title: string) =>
+    fetch(`/api/fork-branches/${branchSessionId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title }),
+    }).then(json<ForkBranch>),
   delegateSubAgent: (sessionId: string, input: SubAgentTaskInput) =>
     fetch(`/api/sessions/${sessionId}/delegate`, {
       method: "POST",

@@ -136,6 +136,39 @@ test("knowledge search: topK caps result size", () => {
   assert.equal(hits.length, 2);
 });
 
+test("knowledge search: channel heading match surfaces the exact mapping section", () => {
+  const ws = db.createWorkspace("knowledge channel heading");
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "森马三大人群算法_标准执行Prompt_v2.0.1.md",
+    content: "森马三大人群算法用于多渠道分析。渠道字段包括天猫、京东、抖音，但这里不含权重表。",
+    tags: ["森马三大人群"],
+  });
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "三大人群×全渠道标签映射表_v2.0.2.md",
+    content: [
+      "# 三大人群 × 全渠道标签映射表 v2.0.2",
+      "品牌：森马。",
+      "### 4.2 天猫 / 线下：六大行业特色人群 → A/B/C",
+      "| 六大标签 | A权重 | B权重 | C权重 |",
+      "|---|---:|---:|---:|",
+      "| 潮流人群 | 1.00 | 0.00 | 0.00 |",
+      "| 高阶时尚 | 0.40 | 0.60 | 0.00 |",
+      "| 品质生活 | 0.00 | 1.00 | 0.00 |",
+      "| 大众实用 | 0.00 | 0.25 | 0.75 |",
+      "| 低价实惠 | 0.00 | 0.00 | 1.00 |",
+      "| 低价有颜 | 0.00 | 0.00 | 1.00 |",
+    ].join("\n"),
+    tags: ["森马三大人群"],
+  });
+
+  const prompt = injection.buildKnowledgePrompt(ws.id, "森马三大人群算法 天猫渠道");
+  assert.match(prompt, /4\.2 天猫 \/ 线下/);
+  assert.match(prompt, /潮流人群 \| 1\.00 \| 0\.00 \| 0\.00/);
+  assert.match(prompt, /低价有颜 \| 0\.00 \| 0\.00 \| 1\.00/);
+});
+
 test("knowledge injection: disabled or unmatched query preserves the existing prompt", () => {
   const ws = db.createWorkspace("knowledge injection disabled");
   data.createKnowledgeDoc({ workspaceId: ws.id, title: "复购口径", content: "复购率按自然月统计。" });

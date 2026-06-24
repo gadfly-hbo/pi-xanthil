@@ -31,6 +31,7 @@ interface Props {
   rulesPromptEnabled: boolean;
   rulesPromptCount: number;
   rulesPromptUpdatedAt: number | null;
+  rulesPromptDetails: string[];
   onToggleRulesPrompt: () => void;
   knowledgePromptEnabled: boolean;
   knowledgePromptCount: number;
@@ -42,11 +43,12 @@ interface Props {
 export function MainHeader(p: Props) {
   const tabLabel = TABS.find((t) => t.id === p.activeTab)?.label ?? "";
   const visibleTabs = TABS.filter((t) => !p.hiddenTabs.includes(t.id));
+  const memoryDetails = p.rulesPromptDetails.length > 0 ? `\n${p.rulesPromptDetails.join("；")}` : "";
   const rulesPromptTitle = p.rulesPromptCount === 0
-    ? "无启用规则，开启后也不会注入内容"
+    ? "无可注入记忆，开启后也不会注入内容"
     : p.rulesPromptEnabled
-      ? `规则记忆注入已开启，将注入 ${p.rulesPromptCount} 条启用规则${p.rulesPromptUpdatedAt ? `\n更新于 ${new Date(p.rulesPromptUpdatedAt).toLocaleString()}` : ""}`
-      : `规则记忆注入已关闭，有 ${p.rulesPromptCount} 条启用规则可注入${p.rulesPromptUpdatedAt ? `\n更新于 ${new Date(p.rulesPromptUpdatedAt).toLocaleString()}` : ""}`;
+      ? `统一记忆注入已开启。包含：统一记忆、旧规则、业务环境、指标体系、案例与知识图谱。${memoryDetails}${p.rulesPromptUpdatedAt ? `\n更新于 ${new Date(p.rulesPromptUpdatedAt).toLocaleString()}` : ""}`
+      : `统一记忆注入已关闭。可注入：统一记忆、旧规则、业务环境、指标体系、案例与知识图谱。${memoryDetails}${p.rulesPromptUpdatedAt ? `\n更新于 ${new Date(p.rulesPromptUpdatedAt).toLocaleString()}` : ""}`;
   const knowledgePromptTitle = p.knowledgePromptCount === 0
     ? "知识库暂无文档"
     : p.knowledgePromptEnabled
@@ -112,7 +114,7 @@ export function MainHeader(p: Props) {
               : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200",
           )}
         >
-          知识库 {p.knowledgePromptCount === 0 ? "none" : p.knowledgePromptEnabled ? `on · ${p.knowledgePromptCount}` : `off · ${p.knowledgePromptCount}`}
+          知识库 {p.knowledgePromptCount === 0 ? "none" : p.knowledgePromptEnabled ? "on" : "off"}
         </button>
         <button
           onClick={p.onToggleRulesPrompt}
@@ -125,7 +127,7 @@ export function MainHeader(p: Props) {
               : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200",
           )}
         >
-          rules {p.rulesPromptCount === 0 ? "none" : p.rulesPromptEnabled ? `on · ${p.rulesPromptCount}` : `off · ${p.rulesPromptCount}`}
+          记忆 {p.rulesPromptCount === 0 ? "none" : p.rulesPromptEnabled ? "on" : "off"}
         </button>
         <span
           title={`今日 Provider 缓存命中率：${(p.cacheHitRate * 100).toFixed(1)}%\n命中 token 占比 = cacheRead / (input + cacheRead + cacheWrite)`}

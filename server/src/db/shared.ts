@@ -166,6 +166,11 @@ export function setForkBranchStatus(branchSessionId: string, status: ForkBranch[
   db.prepare("UPDATE fork_branches SET status = ? WHERE branch_session_id = ?").run(status, branchSessionId);
 }
 
+export function renameForkBranch(branchSessionId: string, title: string): ForkBranch | undefined {
+  db.prepare("UPDATE fork_branches SET title = ? WHERE branch_session_id = ?").run(title, branchSessionId);
+  return getForkBranchByBranchSession(branchSessionId);
+}
+
 // ---- 委派子 agent CRUD ----
 
 interface SubAgentTaskRow {

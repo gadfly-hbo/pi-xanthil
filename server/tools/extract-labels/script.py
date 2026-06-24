@@ -41,8 +41,7 @@ def process_single_file(data_csv):
     
     # 提取商品款号
     basename = os.path.basename(data_csv)
-    match = re.search(r'\d+', basename)
-    product_id = match.group() if match else basename.replace('.csv', '')
+    product_id = basename.replace('画像数据.csv', '').replace('.csv', '')
     
     file_results = []
     label_types = df_data['标签类型'].dropna().unique()

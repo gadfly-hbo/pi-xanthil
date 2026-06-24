@@ -12,6 +12,7 @@ import {
   getForkBranchByBranchSession,
   markForkBranchSeeded,
   setForkBranchStatus,
+  renameForkBranch,
   createSubAgentTask,
   listSubAgentTasks,
   listAllSubAgentTasks,
@@ -1631,6 +1632,15 @@ app.post("/api/sessions/:id/fork", (req, res) => {
 
 app.get("/api/sessions/:id/fork-branches", (req, res) => {
   res.json(listForkBranches(req.params.id));
+});
+
+// 改名分支：以分支自身 session id 定位（:id = branchSessionId）。
+app.patch("/api/fork-branches/:id", (req, res) => {
+  const title = String(req.body?.title ?? "").trim();
+  if (!title) return res.status(400).json({ error: "title required" });
+  const branch = renameForkBranch(req.params.id, title);
+  if (!branch) return res.status(404).json({ error: "fork branch not found" });
+  res.json(branch);
 });
 
 app.get("/api/sessions/:id/subagent-tasks", (req, res) => {
