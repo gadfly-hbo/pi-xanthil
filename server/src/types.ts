@@ -54,9 +54,18 @@ export interface KnowledgeDocPatch {
 }
 export interface KnowledgeChunkHit {
   chunk: KnowledgeChunk;
-  doc: { id: string; title: string; path: string | null; tags: string[]; updatedAt: number };
+  doc: { id: string; title: string; path: string | null; tags: string[]; updatedAt: number; createdAt: number; sourceType: "upload" | "path" };
   score: number;
   signals: { relevance: number; recency: number; idfBoost: number };
+}
+// X-KB0 doc 级搜索结果（D-KB1 searchKnowledgeDocs 返回；E-KB3 搜索面板消费）。
+// snippet = 最高分 chunk 的 text 前 200 字，供搜索结果卡片预览。
+export interface KnowledgeDocSearchResult {
+  doc: KnowledgeDoc;
+  score: number;
+  snippet: string;
+  matchedChunkCount: number;
+  signals: { relevance: number; recency: number };
 }
 
 // prompts 管理（prompts_mgmt 模块 · 总控 X 接缝审定）。CRUD/聚合由 Agent-D 实装。

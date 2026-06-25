@@ -9,37 +9,37 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-23 · **E-MONITOR8 安全回归审查通过**（D-MONITOR6 单入口落地后回归）：监测/agent/工作流安全边界完整，**未改任何代码**，仅静态审查 + 红线 grep + 测试回归。前一卡 E-MONITOR2（监测引擎 + LLM 草案 + ontology 诊断）已通过总控终审。
+- 最近更新：2026-06-25 · **E-METRIC2 Prompt 组装层数字锁约束** 完成。目标是让启用 analysis ExtractionTool 的 pi turn 在 system prompt 层显式约束 MetricSnapshot「代码计算值」不可被模型重推/改算，同时硬化 MCP tool description。
 - 进度：
-  - **E-MONITOR8 安全回归（本次，2026-06-23）**：
-    - ① Agent 链路无写库/导入通道：`multi-agent-runner.ts` / `autonomous-runner.ts` / `subagent-core.ts` / `skill-*.ts` / `memory-injection.ts` / `pi-adapter.ts` 红线 grep 均未引用 `monitor/import-sql`、`monitor/imports`、`/sql-connections/.../import/commit`、`/.../create-table`、`addWorkspacePath`、`exportTableQuery`。
-    - ② 工作流 SQL 仍只读：`multi-agent-runner.ts:741` 走 `validateSql` → `executeQuery`，DDL/DML 在 `sql-connections.test.ts` 单测坐实。
-    - ③ monitor-llm prompt 安全：`buildDraftPrompt`（`monitor-llm.ts:29-120`）只拼 `aggregations.name/rowCount/columns` + ontology 对象名/指标口径/逻辑规则名；零 rows、零 cells、零 draw_data；无聚合集时降级 `missingData` 不调 LLM。
-    - ④ pathId 白名单硬卡：`routes/engine.ts:3372-3380` 在 `insertMonitorRun` 前差集校验 metric-system bindings 全部 datasetPathId 属当前 workspace `/api/bi/aggregations` 返回集，非法即 400 且不落空 run；ontologyId 同口径校验（`engine.ts:3337`）。
-    - ⑤ run 数据流不进 LLM：`/runs` fetch `/api/bi/aggregations/:pathId/data` 拉 rows → 直接喂 `runMonitorChecks`（纯函数零 LLM）→ 写 findings；rows 永不进入 LLM。
-    - ⑥ actions/draft 仅基于 findings：`engine.ts:3457-3511` prompt 输入只含 `kind/severity/lifecycle/category/title/suggestion/comparisons/diagnosis`，不读 rows、不读导入数据；prompt 内显式声明"输入是衍生产物，不包含原始行级数据"。
-    - ⑦ subagent.writeFileSync 边界确认：`subagent-core.ts` 仅有的 `writeFileSync` 用于模板配置（`SUBAGENTS_CONFIG_PATH`）+ 沙箱 `.mcp.json`，与监测导入/数据写库无关。
-  - **E-MONITOR2（前序，2026-06-23 已终审通过）**：
-  - 新建 `server/src/monitor-engine.ts`（17.5KB 纯函数零 LLM 零 IO）：4 类差距规则 R-GAP-TARGET / R-GAP-HISTORY（含 MoM+YoY+移动均值偏离）/ R-GAP-INDUSTRY / R-GAP-COMPETITOR + `buildDiagnosis()` 关联依赖/对象/逻辑规则 + lifecycle 四态（new/recurring/worsening/resolved）复用 health-check-engine 范式。
-  - 新建 `server/src/monitor-engine.test.ts`：13 case 全过（4 类差距各覆盖正常+降级 + ontology 诊断 + lifecycle 四态 + 降级安全）。
-  - 新建 `server/src/monitor-llm.ts`：`draftMetricSystem()` 调 `runPiPrompt` 生成 `MonitorMetricSystemDraft` 草案；LLM prompt 只送字段名/行数/已注册 ontology 元数据，**绝不送原始行/draw_data 内容/行级明细**；无聚合数据时降级返回 missingData 不调 LLM；JSON 解析参 `onto-extract.ts` 范式（fence + brace-scan + try-catch 降级）。
-  - `db/engine.ts` 新增 3 表（`monitor_metric_systems` / `monitor_runs` / `monitor_findings`）+ CRUD：`createMonitorMetricSystem` / `listMonitorMetricSystems` / `deleteMonitorMetricSystem` / `insertMonitorRun` / `finishMonitorRun` / `insertMonitorFindings` / `listMonitorFindings` / `findPriorMonitorFindings`（跨 run 同 suite 同 workspace 取上次 done 的 findings 喂 lifecycle）。
-  - `routes/engine.ts` 新增 7 端点：`GET/DELETE /monitor/metric-systems[/msId]`、`POST /monitor/metric-system/draft|adopt`、`POST/GET /monitor/runs`、`GET /monitor/runs/:runId/findings`。跨域读 clean_data 走 `fetch /api/bi/aggregations`（D 域 HTTP），读 ontology 走 `fetch /api/ontologies/...`（V 域 HTTP），不直接 import 他域 db 函数。
-  - 边界确认（与总控倾向方案一致）：监测引擎落 E slot（独立于 V 域 health-check-engine），新增 `monitor_*` 三表与 7 端点，**不动 V 域既有 health/findings 链路**；E 与 V 在前端可分别展示，UI 双套但后端清晰。
-  - **总控终审收口（2026-06-23）**：① 修正 E 路由中不存在的 `/object-types`、`/metric-definitions` 为既有 `/objects`、`/metrics`；② draft 端点校验 ontologyId 必须属于当前 workspace；③ run 端点在 `insertMonitorRun` 前先 fetch 本 workspace clean_data 白名单校验 metric-system 内全部 datasetPathId，非法 pathId 400 且不落空 run；④ fresh DB schema 补 workspace/run FK；⑤ 双侧 `types.ts` 新增 `MonitorMetricSystemEntry/MonitorRun`，`api/viz.ts` 补齐 list/delete/run/listFindings 方法给 D-MONITOR3 使用。
+  - **Prompt 前缀数字锁（落点 `server/src/prompt-blocks.ts` + `server/src/pi-adapter.ts`）**：
+    - 新增 `BLOCK_METRIC_LOCK`，内容为 `[数据指标约束]`，明确 MetricSnapshot 中标注「代码计算值」的数字禁止重新推导或自行算术运算，只可引用展示、解读业务现象、推断根因、提供策略建议。
+    - `assembleSystemPrompt(additionalPrompt, { injectExtractionToolSystem })` 支持可选注入；默认不传 flag 时行为零变化。因稳定 prompt block 内容变化，`PROMPT_SCHEMA_VERSION` 从 `v2` 升到 `v3`。
+    - `runPiTurn` / `runPiPrompt` 增加可选 `injectExtractionToolSystem?: boolean`，仅透传给 `assembleSystemPrompt`，不新增 `ClientMessage` 字段。
+  - **Chat 入口自判 flag**：
+    - 普通 chat 入口在 legacy `server/src/index.ts`，flow chat 在 `server/src/routes/engine.ts`；两处按 `listExtractionTools().some(tool => tool.category === "analysis")` 自判后传 `injectExtractionToolSystem`。
+    - 本卡未改 hooks / commands / skill / knowledge 注入链路；未接 multi-agent execute 的 `systemPromptPrefix` 路径，避免扩大题面范围。
+  - **MCP tool description 数字锁硬化（落点 `server/src/mcp/extraction-tools-mcp.ts`）**：
+    - `toMcpTool()` 返回的 tool description 追加「工具返回的 MetricSnapshot 数值为代码确定性计算结果，模型禁止修改或重新计算；只可解读、推因、建议」。
+    - `cleanDataPath` 参数 description 同步追加同一约束，确保工具选择/参数层也能看到数字锁。
+  - **类型收敛**：
+    - `server/src/extraction-tool-metric.ts` 的 `inferPeriodFromPath()` 对正则 capture 加非空断言，修复 strict TS 下 `string | undefined` 报错；运行语义不变。
 - 校验：
-  - **本次 E-MONITOR8**：`npm run typecheck` ✅（server 全绿）；`node --test monitor-engine.test.ts monitor-import.test.ts`：21/21 ✅；`node --test multi-agent-runner.test.ts`：32/32 ✅；5 类红线 grep 全部干净（仅 `monitor-llm.ts:9` 出现 `draw_data` 字样为安全声明注释本身，已核对）。
-  - **前序 E-MONITOR2**：`npm run typecheck` ✅；`npm run build` ✅；`node --test src/health-check-engine.test.ts src/monitor-engine.test.ts`：40/40 ✅。
+  - **本次收尾**：`npm run typecheck` ✅（server + web）、`npm run build` ✅（warning 仅既有 Vite chunk / dynamic import）、`node --experimental-strip-types --test server/src/pi-adapter-skillpaths.test.ts` ✅、`node --experimental-strip-types --test server/src/extraction-tool-metric.test.ts` ✅。
+  - 验收覆盖：新增 `runPiTurn conditionally injects metric lock prompt for extraction tools` 测试，断言 `--system-prompt` 含 `[数据指标约束]`、`MetricSnapshot`、`禁止重新推导或自行算术运算`。
 - 下一步：
-  - 监测初始化数据库单入口专题（D-MONITOR6/E-MONITOR8 已审）已由 X-MONITOR9 收口，等待用户 review 后手动提交。
-  - **未做浏览器真跑**：监测引擎本身未在 UI 端集成（题面范围=engine/server 监测逻辑）；真实 draft → adopt → runs → findings 全链路浏览器实跑留给 D-MONITOR3 / X-MONITOR4 / D-MONITOR7。
-  - LLM draft 真实模型 smoke：需要真实 ontology 工作区跑一次端到端；目前只有单元测试覆盖引擎部分。
-  - 监测 lifecycle 多 workspace 隔离单测：`findPriorMonitorFindings` 已加 workspace_id 过滤，但单测仅验证同 workspace + 同 suite 取 prior 的逻辑；多 workspace 隔离场景待补。
+  - **E-METRIC2 联调 smoke**：在带 analysis 工具的真实工作区跑一次 chat/flow chat pi turn，检查 `process_start.args` 的 `--system-prompt` 确含数字锁段；再通过 MCP `tools/list` 或真实工具调用确认 tool description 暴露禁止重计约束。
+  - **multi-agent 是否也需要数字锁**：当前按题面只覆盖 chat/flow chat；如果后续要求 multi-agent 节点也可调用 analysis MCP 工具，需要给 `runMultiAgent` / step `runPiTurn` 路径增加同类 flag，由总控确认范围。
+  - **Chat 侧「引用全文」UI 开关**：当前 `fullDocMode` 仅 server 端实装，前端 Chat composer 未加触发 UI。需把 `injectKnowledgePrompt` 单一开关扩为「关闭 / chunk 注入 / 全文注入」三态，通过 `ClientMessage` 透传至 server `buildKnowledgePrompt`。**该改动会触及 `types.ts` 接缝（`ClientMessage.injectKnowledgePrompt` 字段语义扩展）+ `App.tsx` 状态扩展**，需总控审接缝。
+  - **fullDocMode 与 `withKnowledgePrompt` 衔接**：当前 `withKnowledgePrompt(workspaceId, requested, query, systemPrompt)` 第二参数仍是 `boolean | undefined`，未透传 `fullDocMode`；如果 UI 开关落地，需要把签名扩为 `boolean | { mode: "chunk" | "full" }` 或拆成两个 helper，由总控拍板接缝。
+  - 监测引擎遗留 smoke（LLM draft 真实模型 + 多 workspace 隔离单测）仍未做。
   - E-PROMPT2 真实模型 smoke 仍欠（旧 backlog）。
 - 阻塞：无。
 - 开放问题（需总控）：
-  1. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空（旧问题，未答）。
-  2. 记忆→skill 默认阈值仍待确认（旧问题，未答）。
+  1. **E-METRIC2 覆盖范围**：multi-agent execute / evaluation runner / autonomous runner 是否也需要数字锁前缀？当前仅按题面覆盖普通 chat 与 flow chat。
+  2. **E-KB4 触发口径**：「引用全文」UI 是单独开关还是替换现有「知识库注入」chip？是否做成三态（关 / chunk / 全文）？涉及 `ClientMessage.injectKnowledgePrompt` 接缝字段升级，E 不擅改。
+  3. **E-KB4 阈值参数化**：题面写死 `0.75` 与 `2.0`；是否要在 `KnowledgeInjectionOptions` 暴露 `fullDocThreshold/fullDocDominanceRatio` 供 ChatPane 或评测覆盖？当前实装是硬编码常量。
+  4. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空（旧问题，未答）。
+  5. 记忆→skill 默认阈值仍待确认（旧问题，未答）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -102,6 +102,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **委派模版前端契约（2026-06-22）**：`DelegateSubAgentCard` 只读既有 `api.listSubAgents()` 并仅展示 enabled 项；默认项用空字符串表示，提交时转 `undefined`，保持引擎内置 persona 的旧行为。指定项只透传既有 `SubAgentTaskInput.templateId`，不得从 `SubAgentTemplate` 臆造 model 字段。模版负责 persona + extraction tool allowlist，卡内 model + skillPaths + dataFiles 与其正交、允许叠加；session 切换必须重置选择，避免把上一任务模版误带入新 session。`templateId` 已由 task 持久化并供 resume/retry 恢复，前端不得在续跑时用当前下拉值覆盖原任务模版。
 - **ChatPane ExtractionTool 展示边界**：前端只展示 X 透传的 tool event / pi content block，不直接触发工具执行；`tool_call` 映射为 running `tool_use`，`tool_result` 回填同 id 卡片，最终 `message_end` 再带同一 tool block 时按 `id/tool_use_id` 去重。真实红线仍在后端 `source=ai` 守卫，前端不得把 `draw_data` 内容或样本送入 LLM。
 - **ExtractionTool skill 桥落盘策略**：生成到 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md`，带 `xanthil-generated-extraction-tool-skill` 标记；只更新带生成标记的文件，遇到用户手写同路径 skill 不覆盖。skill 只描述 MCP 工具契约与 clean_data 限制，不承担安全校验。
+- **MetricSnapshot 数字锁（2026-06-25 E-METRIC2）**：凡 pi turn 可能启用 analysis ExtractionTool，必须在 system prompt 层通过 `assembleSystemPrompt(..., { injectExtractionToolSystem:true })` 注入 `[数据指标约束]`，明确 MetricSnapshot「代码计算值」禁止模型重新推导、修改或自行算术，只可引用展示、解读业务现象、推断根因、提供策略建议。普通 chat 在 `index.ts`、flow chat 在 `routes/engine.ts` 由 server 端 `listExtractionTools().some(category==="analysis")` 自判，不新增 `ClientMessage` 字段；默认不传 flag 行为零变化。MCP `toMcpTool()` description 和 `cleanDataPath` 参数说明也必须保留同口径。当前未覆盖 multi-agent execute，若节点级 MCP 工具调用也要数字锁，需总控扩范围。
 - **工作流活跃前端路径唯一化**：legacy `ExecutionPane` / `AgentFlowPane` / `FlowChatPane` / `FlowWorkflowPane` / `FlowEditorPane` 已删除；新功能只接入 `MultiAgentExecutionPane` 真路径。`execute_flow` WebSocket client message 已从 web types 移除，不得为兼容旧组件重新引入。
 - **WorkflowNode.onBlock 权威契约**：唯一口径见 `docs/工作流-onblock契约.md`。仅 `kind:"gate"` 生效；blocked 时红线硬停优先于预算、预算优先于重试；可重试时回跳 `[retryFromNodeId, gate]` 闭区间，feedback 写入独立 blackboard key 并跨轮保留，loop 体节点 blackboard 需清理。
 - **onBlock trace 兼容原则**：不配 `onBlock` 的 workflow 行为零变化，普通 gate 仍只写 `gates/<id>.json`。只有配置 `onBlock` 的 loop 体节点写 `runDir/<nodeId>/iter-<n>/`，gate 额外写 `gates/<id>-iter<n>.json`；`gates/<id>.json` 始终是最终轮。
@@ -278,6 +279,15 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **门禁阈值复用 skill-regression 口径并推广**：`DEFAULT_REGRESSION_GATE_THRESHOLDS` 沿用 skill 的 scoreDrop 0.1 / activationRateDrop 0.2，新增 passRateDrop/winRateDrop 0.1。判据同样是 `delta <= -drop`（与 `compareSkillRegression` 一致），保证跨 lab 与既有 candidate→active 升级口径一致。门禁是**只读判定**，不写库、不触发评测、不重算回归历史——CI gate 消费聚合真源即可。
 - **接缝边界**：`lab_regression` 子 tab 需改接缝 `constants.ts`（E 不碰），故用 `String(activeSubTab)==="lab_regression"` 逃生口渲染 + 总览按钮进入，功能可达；左栏一级 tab 待总控合入。此模式与 P5-1 `lab_overview` 合入前完全一致。
 
+**知识库搜索 UI 与全文注入（E-KB3 / E-KB4，2026-06-24）**
+- 2026-06-24 E-KB3 端点选择：搜索 UI 走 D-KB1 `GET /knowledge/search`（doc 级聚合）而不是 chunk 级 `POST /knowledge/search`。理由：用户视角是「找文档」不是「找片段」，doc 级聚合已在 D 域做了 max(chunk.score)*0.6 + avg(top3)*0.4 + tag boost，UI 层不应自造聚合。chunk 级 API 仍保留供未来「片段检索 / 评测」复用。
+- 2026-06-24 E-KB3 防抖范式：受控 input + 300ms 防抖 + 自增 `requestTokenRef` 防 race（复用 `SkillManagementPane.tsx` P1-B `adoptRequestTokenRef` 范式），不用 `AbortController`。原因：防抖期间用户连续输入会触发多个 setTimeout，token 比较比 abort 简单；fetch 失败 catch 路径不需要额外区分 AbortError。
+- 2026-06-24 E-KB3 抽屉范式：复用 `ReportPreviewDrawer` 同款全屏遮罩 + 右侧 `max-w-3xl` aside + Esc 关闭 + 遮罩点击关闭。否决「单独再做 modal 库 / portal 组件」。两者的视觉/交互应当统一，只是数据源不同；Markdown 渲染统一走 `@/components/Markdown`。
+- 2026-06-24 E-KB3 搜索/注入解耦：「知识库搜索」=主动消费（用户点查 → 看 → 复制引用），「知识库注入」=被动 RAG（chat 时自动塞 system prompt）。两者必须独立勾选/操作。资料库 tab 的 enablement checkbox 控制注入；搜索 tab 没有 checkbox。
+- 2026-06-24 E-KB4 fullDocMode 触发口径（按题面 X-KB0 契约）：`hits[0].score > 0.75 && (hits.length === 1 || hits[0].score > hits[1].score * 2.0)`。**这是字面契约且偏严**：单文档被切成多 chunk 时 top1 与 top2 通常不会差 2×，多数情况会回退 chunk 注入；只有「短文档单 chunk 命中」或「query 精确命中标题/heading 触发 +40 boost」时才走全文。这是有意保守——只有把握很大时才送 40000 字全文，避免无脑放大 prompt 长度。后续若产品要求更激进，需要总控放宽阈值或参数化。
+- 2026-06-24 E-KB4 接缝不污染：`buildFullDocPrompt` 是 `knowledge-injection.ts` 内部 helper，未导出；`buildKnowledgePrompt` 签名/调用方零变化（仅 `KnowledgeInjectionOptions.fullDocMode?` 新增可选字段，X-KB0 已预留）。`routes/engine.ts` / `index.ts` 现有调用方完全不传 `fullDocMode` → 默认 `false` → 行为零变化。这种「新字段可选 + 默认关 + 调用方零修改」是接缝增量的最佳形态，应作为后续注入器扩展的范式。
+- 2026-06-24 E-KB4 测试断言要点：「fullDocMode > chunk 长度」必须用长文档（≥ 8k 字、多 chunk）+ heading 命中 query 词，让 top1 chunk 通过 +40 heading boost 远超 top2；同时让 chunk 注入因 `DEFAULT_MAX_CHARS=6000` 截断。单 chunk 的短文档虽然能满足 `hits.length===1` 阈值，但 chunk 注入也能完整放下整个 chunk，全文 prompt 反而可能更短（只多了 header）。这是写 KB 注入测试时容易踩的尺寸陷阱。
+
 ---
 
 ## 四、踩坑 / 陷阱
@@ -321,6 +331,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **窗口内 fetch 回调的 setError 写到主面板会被遮住**（2026-06-14 P1-B 已修）：弹窗渲染于 `fixed inset-0` 全屏遮罩之上，主面板的 error banner 被遮罩盖住，用户根本看不到。所有 modal 内异步操作都应有**弹窗内独立 errorState**（如 `adoptError`），不要复用主面板 `error`；同时 `try/catch/finally` 中复位 `submitting=false` 必须用 `finally`，否则成功路径与失败路径状态机容易漂移。
 - **同名不同义陷阱：前端 SubTab vs 后端 MemorySourceKind（2026-06-19 记忆重构收尾）**：前端 SubTab `'cases'` 与后端 `MemorySourceKind "cases"` 是同名字符串但语义不同——前端是已下线的空占位 tab，后端是 memory injection 的「分析案例库」记忆源 kind（`memory-injection.ts:378` 仍在装配）。清理前端展示列表时保留 union 中的死 id，避免强删引发不必要的服务端类型联动审查。**任何涉及 SubTab 或 MemorySourceKind 的清理必须先核两侧语义是否耦合。**
 - **workflow 读取失败必须区分「文件损坏」与「运行配置过期」，禁止统一回退默认 workflow**（2026-06-19 临时快修 · 总控终审落地）：`GET /api/flows/:id/workflow`（`engine.ts:266`）原把「读文件 + `JSON.parse` + `normalizeWorkflowModels/Skills`」全包在一个 `try`，任一抛错都回退 `inferWorkflow()`。坑：**模型/skill 运行配置过期会让 normalize 抛错，进而静默丢弃用户有效的 `workflow.json`**，用户看到的是被推断出来的默认结构、以为自己的编辑没保存。现拆三态：① 文件不存在（content=null）→ inferred；② `JSON.parse` 失败（文件真损坏）→ inferred + warning；③ 文件有效但 normalize 抛错（仅运行配置过期）→ **返回原始 parse 出的 workflow + warning，不回退**（有效文件即真源）。通用原则：凡「读取 → 规范化 → 失败回退」链路，必须区分「源不可用」与「源可用但规范化失败」，后者不可静默丢源。
+- **fullDocMode 测试尺寸陷阱（2026-06-24 E-KB4）**：断言「fullDocMode 注入长度 > chunk 注入长度」时，**短文档（< chunk budget 1200，单 chunk）反而会让 fullDocMode 输出更短**——chunk 注入能完整放下整个 chunk 文本，而 fullDocMode 只多出 header 几行；真正能拉开差距的场景是「长文档（≥ 8k 字 → 多 chunk）+ heading 命中 query 词触发 +40 heading boost 让 top1 远超 top2 + chunk 注入因 `DEFAULT_MAX_CHARS=6000` 被截断」。后续给 KB 注入器加新模式时，测试构造必须先想清楚「在什么尺寸场景下新模式能拉开差距」，不能复制短文档样例。
+- **超长 TSX 工具入参截断陷阱（2026-06-24 E-KB3，再次踩到）**：单次 `edit`/`write`/`bash` 工具入参里嵌入大段 TSX（含中文 + JSX + 多层嵌套），传输层 JSON 在约 10KB 处会被截断成 `Unterminated string`。本次写 `KnowledgeBasePane.tsx` 新 `SearchView + SearchResultCard + DocFullTextDrawer`（~280 行）时再次触发，最终方案：① 用 sed 删除旧 SearchView 段；② 把新代码切成 3 个 < 200 行的 part 文件，每个走独立 `write`；③ 用 `head + cat + tail` 合并到主文件。**重申既有约定：>200 行新 TSX 一律分块写，不要一次性 write/edit 整段。** 详见既有 E-LAB2 同款决策。
 
 ---
 

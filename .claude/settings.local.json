@@ -236,7 +236,10 @@
       "Bash(awk 'NR>=293 && NR<=400' docs/wiki.html)",
       "Bash(grep -c '`')",
       "WebFetch(domain:arxiv.org)",
-      "Bash(awk '/TASKS *=/{f=1} f&&/\\\\{/{c++} f{print NR\": \"$0} f&&/\\\\},?$/{if\\(c>=1\\){n++}; if\\(n>=2\\)exit}' docs/wiki.html)"
+      "Bash(awk '/TASKS *=/{f=1} f&&/\\\\{/{c++} f{print NR\": \"$0} f&&/\\\\},?$/{if\\(c>=1\\){n++}; if\\(n>=2\\)exit}' docs/wiki.html)",
+      "Bash(launchctl unload *)",
+      "Bash(crontab -l)",
+      "Bash(launchctl list *)"
     ]
   }
 }

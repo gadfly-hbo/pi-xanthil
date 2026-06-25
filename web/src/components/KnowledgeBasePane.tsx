@@ -4,10 +4,11 @@
 // 上传走 file.text() 纯文本读取（.md/.txt/.csv），二进制文件用户应先转 markdown 再上传。
 
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { FileText, Globe, Library, Plus, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
+import { Check, Copy, FileText, Globe, Library, Plus, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { sharedApi } from "@/lib/api/shared";
-import type { KnowledgeChunk, KnowledgeChunkHit, KnowledgeDoc } from "@/types";
+import { Markdown } from "@/components/Markdown";
+import type { KnowledgeChunk, KnowledgeDoc, KnowledgeDocSearchResult } from "@/types";
 
 const TEXT_EXT = new Set([".md", ".markdown", ".txt", ".csv", ".tsv", ".json", ".log"]);
 const MAX_CONTENT_BYTES = 5 * 1024 * 1024;
@@ -553,126 +554,81 @@ function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsC
 }
 
 // ============================================================================
-// 检索视图（kb_search）
+// 检索视图（kb_search · E-KB3：doc 级搜索 + 全文抽屉）
+// 调用 D-KB1 GET /knowledge/search（doc 级聚合）；抽屉用 GET /knowledge/:docId 取全文。
+// 零新后端路由；零 LLM 调用；与「知识库注入」(被动 RAG) 独立。
 // ============================================================================
+
+const SEARCH_DEBOUNCE_MS = 300;
+const SNIPPET_PREVIEW_LIMIT = 200;
 
 function SearchView({ workspaceId }: { workspaceId: string }) {
   const [query, setQuery] = useState("");
-  const [topK, setTopK] = useState(10);
-  const [hits, setHits] = useState<KnowledgeChunkHit[]>([]);
-  const [docs, setDocs] = useState<KnowledgeDoc[]>([]);
-  const [docFilter, setDocFilter] = useState<Set<string>>(new Set());
+  const [results, setResults] = useState<KnowledgeDocSearchResult[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [searched, setSearched] = useState(false);
+  const [openDocId, setOpenDocId] = useState<string | null>(null);
+  const requestTokenRef = useRef(0);
+
+  const trimmed = query.trim();
 
   useEffect(() => {
-    if (!workspaceId) return;
-    let cancelled = false;
-    api
-      .listKnowledgeDocs(workspaceId)
-      .then((list) => {
-        if (!cancelled) setDocs(list);
-      })
-      .catch(() => {
-        // 静默失败：检索不强依赖 docs 列表（只用于 docIds 过滤 UI）
-      });
-    return () => {
-      cancelled = true;
-    };
-  }, [workspaceId]);
-
-  const onSearch = async (e?: React.FormEvent) => {
-    e?.preventDefault();
-    if (!query.trim()) return;
+    if (!trimmed) {
+      setResults([]);
+      setError(null);
+      setLoading(false);
+      return;
+    }
+    const token = ++requestTokenRef.current;
     setLoading(true);
     setError(null);
-    setSearched(true);
-    try {
-      const docIds = docFilter.size > 0 ? Array.from(docFilter) : undefined;
-      const res = await api.searchKnowledge(workspaceId, query.trim(), { topK, docIds });
-      setHits(res.hits);
-    } catch (err) {
-      setError(`检索失败：${err instanceof Error ? err.message : String(err)}`);
-      setHits([]);
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const toggleDoc = (id: string) => {
-    setDocFilter((prev) => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id);
-      else next.add(id);
-      return next;
-    });
-  };
+    const timer = window.setTimeout(() => {
+      api
+        .searchKnowledgeDocs(workspaceId, trimmed, 20)
+        .then((res) => {
+          if (token !== requestTokenRef.current) return;
+          setResults(res.results);
+        })
+        .catch((err) => {
+          if (token !== requestTokenRef.current) return;
+          setError(`检索失败：${err instanceof Error ? err.message : String(err)}`);
+          setResults([]);
+        })
+        .finally(() => {
+          if (token !== requestTokenRef.current) return;
+          setLoading(false);
+        });
+    }, SEARCH_DEBOUNCE_MS);
+    return () => {
+      window.clearTimeout(timer);
+    };
+  }, [trimmed, workspaceId]);
 
   return (
     <div className="flex min-h-0 flex-1 flex-col bg-neutral-50/60 dark:bg-neutral-950">
-      <form
-        onSubmit={onSearch}
-        className="flex items-center gap-2 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900"
-      >
+      <div className="flex items-center gap-2 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
         <Search className="h-4 w-4 text-neutral-500" />
         <input
           type="text"
           value={query}
           onChange={(e) => setQuery(e.target.value)}
-          placeholder="输入查询关键词（中英混合 / 多词空格分隔，BM25 召回）"
+          placeholder="搜索文档（标题 / 标签 / 正文，输入后自动检索）"
           className="h-8 flex-1 rounded border border-neutral-300 bg-white px-2 text-sm dark:border-neutral-700 dark:bg-neutral-800"
         />
-        <label className="flex items-center gap-1 text-xs text-neutral-600 dark:text-neutral-400">
-          topK
-          <input
-            type="number"
-            min={1}
-            max={50}
-            value={topK}
-            onChange={(e) => setTopK(Math.max(1, Math.min(50, Number(e.target.value) || 10)))}
-            className="h-7 w-14 rounded border border-neutral-300 bg-white px-2 text-xs dark:border-neutral-700 dark:bg-neutral-800"
-          />
-        </label>
-        <button
-          type="submit"
-          disabled={loading || !query.trim()}
-          className="inline-flex items-center gap-1 rounded border border-blue-500 bg-blue-500 px-3 py-1 text-xs text-white hover:bg-blue-600 disabled:opacity-50"
-        >
-          {loading ? <RefreshCw className="h-3 w-3 animate-spin" /> : <Search className="h-3 w-3" />}
-          检索
-        </button>
-      </form>
-
-      {docs.length > 0 && (
-        <div className="flex flex-wrap items-center gap-1 border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
-          <span className="text-[11px] text-neutral-500">
-            限定文档（{docFilter.size === 0 ? "全部" : `${docFilter.size}/${docs.length}`}）：
-          </span>
-          {docFilter.size > 0 && (
-            <button
-              onClick={() => setDocFilter(new Set())}
-              className="rounded bg-neutral-100 px-2 py-0.5 text-[11px] text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-200"
-            >
-              清空
-            </button>
-          )}
-          {docs.map((d) => (
-            <button
-              key={d.id}
-              onClick={() => toggleDoc(d.id)}
-              title={d.title}
-              className={`max-w-[200px] truncate rounded px-2 py-0.5 text-[11px] ${
-                docFilter.has(d.id)
-                  ? "bg-blue-500 text-white"
-                  : "bg-neutral-100 text-neutral-700 hover:bg-neutral-200 dark:bg-neutral-800 dark:text-neutral-200"
-              }`}
-            >
-              {d.title}
-            </button>
-          ))}
-        </div>
-      )}
+        {loading && <RefreshCw className="h-3 w-3 animate-spin text-neutral-400" />}
+        {query && (
+          <button
+            onClick={() => setQuery("")}
+            className="rounded p-1 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+            title="清空"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        )}
+        <span className="text-[11px] text-neutral-500">
+          {trimmed ? `${results.length} 条结果` : "主动检索"}
+        </span>
+      </div>
 
       {error && (
         <div className="border-b border-red-200 bg-red-50 px-4 py-2 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
@@ -681,40 +637,173 @@ function SearchView({ workspaceId }: { workspaceId: string }) {
       )}
 
       <div className="flex-1 overflow-auto p-4">
-        {!searched ? (
+        {!trimmed ? (
           <div className="flex h-full items-center justify-center text-xs text-neutral-500">
-            输入查询并点击「检索」开始
+            输入关键词搜索知识库
           </div>
-        ) : hits.length === 0 ? (
+        ) : results.length === 0 && !loading ? (
           <div className="flex h-full items-center justify-center text-xs text-neutral-500">
-            无召回结果（试着换个关键词或扩大 topK）
+            未找到匹配文档，尝试换词或添加标签
           </div>
         ) : (
-          <ul className="space-y-3">
-            {hits.map((hit, i) => (
-              <li
-                key={hit.chunk.id}
-                className="rounded border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900"
+          <ul className="space-y-2">
+            {results.map((r, i) => (
+              <SearchResultCard
+                key={r.doc.id}
+                rank={i + 1}
+                result={r}
+                query={trimmed}
+                onOpen={() => setOpenDocId(r.doc.id)}
+              />
+            ))}
+          </ul>
+        )}
+      </div>
+
+      {openDocId && (
+        <DocFullTextDrawer
+          workspaceId={workspaceId}
+          docId={openDocId}
+          onClose={() => setOpenDocId(null)}
+        />
+      )}
+    </div>
+  );
+}
+
+function SearchResultCard({
+  rank,
+  result,
+  query,
+  onOpen,
+}: {
+  rank: number;
+  result: KnowledgeDocSearchResult;
+  query: string;
+  onOpen: () => void;
+}) {
+  const relevance = Math.min(100, Math.max(0, Math.round(result.score * 100)));
+  const snippet = result.snippet.length > SNIPPET_PREVIEW_LIMIT
+    ? `${result.snippet.slice(0, SNIPPET_PREVIEW_LIMIT)}…`
+    : result.snippet;
+  return (
+    <li>
+      <button
+        onClick={onOpen}
+        className="w-full rounded border border-neutral-200 bg-white p-3 text-left transition-colors hover:border-blue-300 hover:bg-blue-50/30 dark:border-neutral-800 dark:bg-neutral-900 dark:hover:border-blue-700 dark:hover:bg-blue-950/20"
+      >
+        <div className="mb-1.5 flex items-center gap-2 text-[11px] text-neutral-500">
+          <span className="rounded bg-blue-50 px-1.5 py-0.5 font-mono text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
+            #{rank}
+          </span>
+          <FileText className="h-3 w-3 shrink-0" />
+          <span className="truncate text-sm font-medium text-neutral-800 dark:text-neutral-100">
+            {result.doc.title}
+          </span>
+          <span className="ml-auto flex shrink-0 items-center gap-2 font-mono">
+            <span title="综合相关度（0-100）">{relevance}</span>
+            <span className="text-neutral-400" title="命中 chunk 数">· {result.matchedChunkCount}片</span>
+          </span>
+        </div>
+        {result.doc.tags.length > 0 && (
+          <div className="mb-1.5 flex flex-wrap gap-1">
+            {result.doc.tags.map((t) => (
+              <span
+                key={t}
+                className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
               >
-                <div className="mb-2 flex items-center gap-2 text-[11px] text-neutral-500">
-                  <span className="rounded bg-blue-50 px-1.5 py-0.5 font-mono text-blue-700 dark:bg-blue-950/30 dark:text-blue-300">
-                    #{i + 1}
-                  </span>
-                  <FileText className="h-3 w-3" />
-                  <span className="truncate font-medium text-neutral-700 dark:text-neutral-200">
-                    {hit.doc.title}
-                  </span>
-                  <span>· chunk #{hit.chunk.idx}</span>
-                  <span className="ml-auto flex items-center gap-2 font-mono">
-                    <span title="综合分">score={hit.score.toFixed(3)}</span>
-                    <span title="BM25 相关性（已归一）">rel={hit.signals.relevance.toFixed(3)}</span>
-                    <span title="文档新鲜度（半衰期 60d）">rec={hit.signals.recency.toFixed(3)}</span>
-                    <span title="稀有词命中加成">idf={hit.signals.idfBoost.toFixed(3)}</span>
-                  </span>
-                </div>
-                {hit.doc.tags.length > 0 && (
-                  <div className="mb-2 flex flex-wrap gap-1">
-                    {hit.doc.tags.map((t) => (
+                {t}
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="whitespace-pre-wrap break-words text-xs leading-relaxed text-neutral-600 dark:text-neutral-300">
+          {highlightChunk(snippet, query)}
+        </div>
+      </button>
+    </li>
+  );
+}
+
+function DocFullTextDrawer({
+  workspaceId,
+  docId,
+  onClose,
+}: {
+  workspaceId: string;
+  docId: string;
+  onClose: () => void;
+}) {
+  const [detail, setDetail] = useState<{ doc: KnowledgeDoc; chunks: KnowledgeChunk[] } | null>(null);
+  const [error, setError] = useState<string | null>(null);
+  const [loading, setLoading] = useState(true);
+  const [copiedKind, setCopiedKind] = useState<"content" | "ref" | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    setLoading(true);
+    setError(null);
+    api
+      .getKnowledgeDoc(workspaceId, docId)
+      .then((d) => {
+        if (!cancelled) setDetail(d);
+      })
+      .catch((err) => {
+        if (!cancelled) setError(`加载失败：${err instanceof Error ? err.message : String(err)}`);
+      })
+      .finally(() => {
+        if (!cancelled) setLoading(false);
+      });
+    return () => {
+      cancelled = true;
+    };
+  }, [workspaceId, docId]);
+
+  useEffect(() => {
+    const onKey = (e: KeyboardEvent) => {
+      if (e.key === "Escape") onClose();
+    };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [onClose]);
+
+  const refText = useMemo(() => {
+    if (!detail) return "";
+    const parts = [detail.doc.title];
+    if (detail.doc.path) parts.push(detail.doc.path);
+    return parts.join("\n");
+  }, [detail]);
+
+  const copyText = (text: string, kind: "content" | "ref") => {
+    if (!text) return;
+    void navigator.clipboard.writeText(text).then(() => {
+      setCopiedKind(kind);
+      window.setTimeout(() => setCopiedKind(null), 1500);
+    });
+  };
+
+  const content = detail?.doc.content ?? "";
+
+  return (
+    <div className="fixed inset-0 z-50 flex" onClick={onClose}>
+      <div className="flex-1 bg-black/30 backdrop-blur-[2px]" />
+      <aside
+        className="flex w-full max-w-3xl flex-col border-l border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950"
+        onClick={(e) => e.stopPropagation()}
+      >
+        <div className="flex items-start gap-3 border-b border-neutral-200 px-5 py-4 dark:border-neutral-800">
+          <div className="min-w-0 flex-1">
+            {detail ? (
+              <>
+                <h2
+                  className="truncate text-[15px] font-semibold text-neutral-900 dark:text-neutral-100"
+                  title={detail.doc.title}
+                >
+                  {detail.doc.title}
+                </h2>
+                {detail.doc.tags.length > 0 && (
+                  <div className="mt-1.5 flex flex-wrap gap-1">
+                    {detail.doc.tags.map((t) => (
                       <span
                         key={t}
                         className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
@@ -724,17 +813,72 @@ function SearchView({ workspaceId }: { workspaceId: string }) {
                     ))}
                   </div>
                 )}
-                <div className="whitespace-pre-wrap break-words text-xs text-neutral-700 dark:text-neutral-200">
-                  {highlightChunk(hit.chunk.text, query)}
+                <div className="mt-1.5 flex flex-wrap items-center gap-x-3 gap-y-1 text-[11.5px] text-neutral-500 dark:text-neutral-400">
+                  <span>上传 {fmtTs(detail.doc.createdAt)}</span>
+                  <span>更新 {fmtTs(detail.doc.updatedAt)}</span>
+                  <span>{detail.chunks.length} chunks</span>
+                  {detail.doc.path && (
+                    <span className="truncate" title={detail.doc.path}>
+                      来源 <code className="font-mono">{detail.doc.path}</code>
+                    </span>
+                  )}
                 </div>
-              </li>
-            ))}
-          </ul>
-        )}
-      </div>
+              </>
+            ) : (
+              <div className="text-sm text-neutral-500">{loading ? "加载中…" : "—"}</div>
+            )}
+          </div>
+          <button
+            onClick={onClose}
+            className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+            aria-label="关闭"
+          >
+            <X className="h-4 w-4" strokeWidth={1.75} />
+          </button>
+        </div>
+
+        <div className="min-h-0 flex-1 overflow-y-auto px-6 py-5">
+          {loading && (
+            <div className="flex h-full items-center justify-center text-xs text-neutral-400">
+              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
+              加载中…
+            </div>
+          )}
+          {error && !loading && (
+            <div className="rounded-lg border border-red-200 bg-red-50 p-4 text-xs text-red-700 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              {error}
+            </div>
+          )}
+          {!loading && !error && detail && (
+            content ? <Markdown>{content}</Markdown> : (
+              <div className="text-xs text-neutral-500">（文档无正文）</div>
+            )
+          )}
+        </div>
+
+        <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-5 py-3 dark:border-neutral-800">
+          <button
+            onClick={() => copyText(content, "content")}
+            disabled={!detail || !content}
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            {copiedKind === "content" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copiedKind === "content" ? "已复制" : "复制全文"}
+          </button>
+          <button
+            onClick={() => copyText(refText, "ref")}
+            disabled={!detail}
+            className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-1.5 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            {copiedKind === "ref" ? <Check className="h-3.5 w-3.5" /> : <Copy className="h-3.5 w-3.5" />}
+            {copiedKind === "ref" ? "已复制" : "复制引用"}
+          </button>
+        </div>
+      </aside>
     </div>
   );
 }
+
 
 // ============================================================================
 // 主入口（按 view 派发）

@@ -33,6 +33,7 @@ import type {
   KnowledgeChunk,
   KnowledgeDocPatch,
   KnowledgeChunkHit,
+  KnowledgeDocSearchResult,
   PromptTemplate,
   PromptTemplateInput,
   PromptTemplatePatch,
@@ -296,6 +297,13 @@ export const dataApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ query, ...options }),
     }).then(json<{ hits: KnowledgeChunkHit[] }>),
+
+  // D-KB1 doc 级聚合检索（E-KB3 搜索面板消费）。topK 默认 10，最大 50。
+  searchKnowledgeDocs: (workspaceId: string, query: string, topK = 10) => {
+    const q = new URLSearchParams({ q: query, topK: String(topK) });
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/knowledge/search?${q.toString()}`)
+      .then(json<{ results: KnowledgeDocSearchResult[] }>);
+  },
 
   // ---- prompts 管理 prompt_templates / system-prompts（D-DATA · prompts_mgmt） ----
   // D-POOL1: 纯全局池——list 返回全部模板(workspaceId=null=全局恒启用; 非NULL=池条目按 enablement)。

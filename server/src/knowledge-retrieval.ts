@@ -1,5 +1,5 @@
 import { listKnowledgeChunksForRetrieval } from "./db/data.ts";
-import type { KnowledgeChunkHit } from "./types.ts";
+import type { KnowledgeChunkHit, KnowledgeDocSearchResult } from "./types.ts";
 
 /**
  * 知识库 chunk BM25 检索（D-RETRIEVAL · 知识库分支）
@@ -105,6 +105,8 @@ export interface KnowledgeSearchOptions {
   docIds?: string[];
   /** 0~1 minimum normalized score for inclusion. */
   minScore?: number;
+  /** D-KB2: "uniform" = 所有字段等权（默认）；"weighted" = title 3x / tags 2x / summary 2x / body 1x。 */
+  tokenizationMode?: "uniform" | "weighted";
 }
 
 export function searchKnowledgeChunks(
@@ -122,8 +124,23 @@ export function searchKnowledgeChunks(
 
   // ponytail: tokenize-on-every-query, O(N * chunkLen). 当工作区 chunk 数 ≳ 5k 或 P95 query
   // 延迟 > 50ms 时，加 (workspaceId, max(updated_at)) → tokens 的进程内缓存即可消除热路径。
-  // Build tokens & doc-frequency over the workspace corpus (cheap; small corpora).
-  const tokenized = rows.map((r) => tokenizeArray(`${r.docTitle}\n${r.docTags.join(" ")}\n${r.chunk.text}`));
+  const weighted = options.tokenizationMode === "weighted";
+  const tokenized = rows.map((r) => {
+    if (weighted) {
+      const titleToks = tokenizeArray(r.docTitle);
+      const tagToks = tokenizeArray(r.docTags.join(" "));
+      const summaryToks = r.docSummary ? tokenizeArray(r.docSummary) : [];
+      const bodyToks = tokenizeArray(r.chunk.text);
+      // title 3x, tags 2x, summary 2x (Math.round(1.5)), body 1x
+      return [
+        ...titleToks, ...titleToks, ...titleToks,
+        ...tagToks, ...tagToks,
+        ...summaryToks, ...summaryToks,
+        ...bodyToks,
+      ];
+    }
+    return tokenizeArray(`${r.docTitle}\n${r.docTags.join(" ")}\n${r.chunk.text}`);
+  });
   const N = rows.length;
   const df = new Map<string, number>();
   for (const tokens of tokenized) {
@@ -160,7 +177,7 @@ export function searchKnowledgeChunks(
     if (bm25 > maxRaw) maxRaw = bm25;
     scored.push({
       chunk: rows[i]!.chunk,
-      doc: { id: rows[i]!.chunk.docId, title: rows[i]!.docTitle, path: rows[i]!.docPath, tags: rows[i]!.docTags, updatedAt: rows[i]!.docUpdatedAt },
+      doc: { id: rows[i]!.chunk.docId, title: rows[i]!.docTitle, path: rows[i]!.docPath, tags: rows[i]!.docTags, updatedAt: rows[i]!.docUpdatedAt, createdAt: rows[i]!.docCreatedAt, sourceType: rows[i]!.docSourceType },
       score: 0, // filled below
       signals: { relevance: bm25, recency: recencyScore(rows[i]!.docUpdatedAt, now), idfBoost: idfSum / Math.max(1, queryTokens.length) },
     });
@@ -182,4 +199,88 @@ export function searchKnowledgeChunks(
   const filtered = scored.filter((h) => h.score >= minScore);
   const topK = Math.max(1, options.topK ?? 10);
   return filtered.slice(0, topK);
+}
+
+// D-KB2: 提取 query 中适合做 tag 精确匹配的候选词（ASCII + CJK 均支持）。
+// ASCII 词按非字母数字切分；CJK 词按空白/全角标点切分，保留 2 字以上。
+function extractQueryTagCandidates(query: string): string[] {
+  const ascii = query.toLowerCase().split(/[^a-z0-9]+/).filter((t) => t.length >= 2);
+  const cjk = query.split(/[\s，。；：！？,.;:!?()\-_\n\r\t/「」【】（）]+/)
+    .filter((t) => CJK_RE.test(t) && t.length >= 2);
+  return [...ascii, ...cjk];
+}
+
+/**
+ * D-KB1: doc 级聚合检索。
+ *
+ * 在 searchKnowledgeChunks 基础上按 docId 分组，计算 doc_score =
+ * max(chunk.score) * 0.6 + avg(top3 chunk scores) * 0.4。
+ * snippet = 最高分 chunk 的 text 前 200 字。
+ *
+ * D-KB2 增强：tokenizationMode="weighted" 时 title/tags/summary 加权；
+ * 标签精确命中额外 +0.15（clamp 到 1）。
+ */
+export function searchKnowledgeDocs(
+  workspaceId: string,
+  query: string,
+  options: KnowledgeSearchOptions = {},
+): KnowledgeDocSearchResult[] {
+  const chunkHits = searchKnowledgeChunks(workspaceId, query, {
+    ...options,
+    topK: 10000, // 取全量 chunk，由 doc 级聚合后截断
+  });
+  if (chunkHits.length === 0) return [];
+
+  // Group by docId
+  const byDoc = new Map<string, KnowledgeChunkHit[]>();
+  for (const hit of chunkHits) {
+    const list = byDoc.get(hit.doc.id);
+    if (list) list.push(hit);
+    else byDoc.set(hit.doc.id, [hit]);
+  }
+
+  const weighted = options.tokenizationMode === "weighted";
+  const queryTagCandidates = weighted ? extractQueryTagCandidates(query) : [];
+
+  const results: KnowledgeDocSearchResult[] = [];
+  for (const [, hits] of byDoc) {
+    const sorted = hits.sort((a, b) => b.score - a.score);
+    const maxScore = sorted[0]!.score;
+    const top3 = sorted.slice(0, 3);
+    const avgTop3 = top3.reduce((s, h) => s + h.score, 0) / top3.length;
+    let docScore = maxScore * 0.6 + avgTop3 * 0.4;
+
+    // D-KB2: tag exact-match boost（ASCII + CJK 均支持）
+    if (weighted && queryTagCandidates.length > 0) {
+      const docTagsLower = sorted[0]!.doc.tags.map((t) => t.toLowerCase());
+      const hasMatch = queryTagCandidates.some((qt) => docTagsLower.some((t) => t === qt.toLowerCase()));
+      if (hasMatch) docScore = Math.min(1, docScore + 0.15);
+    }
+
+    const bestHit = sorted[0]!;
+    results.push({
+      doc: {
+        id: bestHit.doc.id,
+        workspaceId,
+        title: bestHit.doc.title,
+        sourceType: bestHit.doc.sourceType,
+        path: bestHit.doc.path,
+        content: null,
+        tags: bestHit.doc.tags,
+        createdAt: bestHit.doc.createdAt,
+        updatedAt: bestHit.doc.updatedAt,
+      },
+      score: docScore,
+      snippet: bestHit.chunk.text.slice(0, 200).trimEnd(),
+      matchedChunkCount: hits.length,
+      signals: {
+        relevance: bestHit.signals.relevance,
+        recency: bestHit.signals.recency,
+      },
+    });
+  }
+
+  results.sort((a, b) => b.score - a.score);
+  const topK = Math.max(1, options.topK ?? 10);
+  return results.slice(0, topK);
 }

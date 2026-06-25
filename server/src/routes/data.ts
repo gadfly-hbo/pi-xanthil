@@ -40,6 +40,7 @@ import {
   listKnowledgeDocs,
   updateKnowledgeDoc,
   deleteKnowledgeDoc,
+  setKnowledgeDocSummary,
   listKnowledgeChunks,
   createPromptTemplate,
   getPromptTemplate,
@@ -50,7 +51,7 @@ import {
   type MemoryIngestInput,
   type MemoryReview,
 } from "../db/data.ts";
-import { searchKnowledgeChunks } from "../knowledge-retrieval.ts";
+import { searchKnowledgeChunks, searchKnowledgeDocs } from "../knowledge-retrieval.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { buildMemoryPrompt } from "../memory-injection.ts";
@@ -1065,9 +1066,43 @@ dataRouter.post("/api/workspaces/:id/knowledge", (req, res) => {
       tags: asTagsArr(b.tags),
       scope,
     });
+    // D-KB2: 异步生成摘要，不阻塞上传响应
+    const ws = getWorkspace(req.params.id);
+    if (ws) {
+      const summaryContent = content;
+      const summaryDocId = doc.id;
+      setImmediate(async () => {
+        try {
+          const summary = await runPiPrompt({
+            workspaceRoot: ws.rootPath,
+            text: `请用 200 字以内概括这篇文档的核心方法/决议/要点，保留关键术语。\n\n文档标题：${title}\n\n文档内容：\n${summaryContent.slice(0, 8000)}`,
+            timeoutMs: 30_000,
+          });
+          const trimmed = summary.trim().slice(0, 200);
+          if (trimmed) setKnowledgeDocSummary(summaryDocId, trimmed);
+        } catch {
+          // 摘要生成失败不影响主流程
+        }
+      });
+    }
     res.json(doc);
   } catch (err) {
     res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+// D-KB1: doc 级聚合检索（GET，纯 UI 入口，不注册 agent tool）
+// 必须注册在 /knowledge/:docId 之前，否则 Express 按注册顺序会把 "search" 当 docId 处理。
+dataRouter.get("/api/workspaces/:id/knowledge/search", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const query = typeof req.query.q === "string" ? req.query.q : "";
+  if (!query.trim()) return res.status(400).json({ error: "query required" });
+  const topK = typeof req.query.topK === "string" ? Math.min(50, Math.max(1, parseInt(req.query.topK, 10) || 10)) : 10;
+  try {
+    const results = searchKnowledgeDocs(req.params.id, query, { topK, tokenizationMode: "weighted" });
+    res.json({ results });
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }
 });
 

@@ -133,6 +133,14 @@ export function initDataTables(): void {
   // 不可放进上方 CREATE TABLE 的 db.exec 块——那会早于 ALTER 执行，对旧库报 no such column: scope。
   db.exec("CREATE INDEX IF NOT EXISTS idx_knowledge_docs_scope ON knowledge_docs(scope)");
 
+  // D-KB2: summary 列（LLM 异步生成摘要，nullable）。同 scope 列范式，PRAGMA+ALTER 幂等。
+  {
+    const cols = db.prepare("PRAGMA table_info(knowledge_docs)").all() as Array<{ name: string }>;
+    if (!cols.some((c) => c.name === "summary")) {
+      db.exec("ALTER TABLE knowledge_docs ADD COLUMN summary TEXT");
+    }
+  }
+
   // prompts 模板库 prompt_templates（prompts_mgmt 模块 · 总控 X 接缝审定 · CRUD 由 Agent-D 实装）。
   // workspace_id 可空 = 全局模板（跨工作区可见）；body 内 {{变量}} 占位仅存储，渲染由调用方做。
   // category 用于面板分组（如 "system" / "tool" / "user" / "draft"），自由文本不做枚举强约束。
@@ -926,6 +934,7 @@ interface KnowledgeDocRow {
   content: string | null;
   tags: string;
   scope: string;
+  summary: string | null;
   created_at: number;
   updated_at: number;
 }
@@ -1091,6 +1100,10 @@ export function deleteKnowledgeDoc(id: string): boolean {
   return true;
 }
 
+export function setKnowledgeDocSummary(id: string, summary: string): void {
+  db.prepare("UPDATE knowledge_docs SET summary = ? WHERE id = ?").run(summary, id);
+}
+
 export function listKnowledgeChunks(docId: string): KnowledgeChunk[] {
   return db.prepare(
     "SELECT id, doc_id AS docId, idx, text, tokens FROM knowledge_chunks WHERE doc_id = ? ORDER BY idx ASC",
@@ -1109,7 +1122,10 @@ export function listKnowledgeChunksForRetrieval(workspaceId: string, docIds?: st
   docTitle: string;
   docPath: string | null;
   docTags: string[];
+  docSummary: string | null;
   docUpdatedAt: number;
+  docCreatedAt: number;
+  docSourceType: "upload" | "path";
 }> {
   const enabledGlobalIds = new Set(listEnabledItemIds(workspaceId, "knowledge"));
   const params: string[] = [workspaceId];
@@ -1127,19 +1143,24 @@ export function listKnowledgeChunksForRetrieval(workspaceId: string, docIds?: st
   }
   const rows = db.prepare(`
     SELECT c.id AS id, c.doc_id AS docId, c.idx AS idx, c.text AS text, c.tokens AS tokens,
-           d.title AS docTitle, d.path AS docPath, d.tags AS docTags, d.updated_at AS docUpdatedAt
+           d.title AS docTitle, d.path AS docPath, d.tags AS docTags, d.summary AS docSummary,
+           d.updated_at AS docUpdatedAt, d.created_at AS docCreatedAt, d.source_type AS docSourceType
     FROM knowledge_chunks c JOIN knowledge_docs d ON d.id = c.doc_id
     WHERE ${where}
   `).all(...params) as unknown as Array<{
     id: string; docId: string; idx: number; text: string; tokens: number | null;
-    docTitle: string; docPath: string | null; docTags: string; docUpdatedAt: number;
+    docTitle: string; docPath: string | null; docTags: string; docSummary: string | null;
+    docUpdatedAt: number; docCreatedAt: number; docSourceType: string;
   }>;
   return rows.map((r) => ({
     chunk: { id: r.id, docId: r.docId, idx: r.idx, text: r.text, tokens: r.tokens },
     docTitle: r.docTitle,
     docPath: r.docPath,
     docTags: parseStringArray(r.docTags),
+    docSummary: r.docSummary,
     docUpdatedAt: r.docUpdatedAt,
+    docCreatedAt: r.docCreatedAt,
+    docSourceType: (r.docSourceType === "path" ? "path" : "upload") as "upload" | "path",
   }));
 }
 

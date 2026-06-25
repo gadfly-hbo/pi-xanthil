@@ -202,3 +202,169 @@ test("knowledge injection: formats visible citations and keeps workspace isolati
   assert.ok(assembled.indexOf(promptBlocks.BLOCK_SAFETY) < assembled.indexOf("[知识库检索上下文"));
   assert.ok(assembled.indexOf(promptBlocks.BLOCK_BASE_BEHAVIOR) < assembled.indexOf("[知识库检索上下文"));
 });
+
+// E-KB4: fullDocMode 高置信单篇场景全文注入
+test("E-KB4: fullDocMode injects full content when single high-confidence doc dominates", () => {
+  const ws = db.createWorkspace("kb4 full doc mode");
+  // 长文档（~8k 字 → 多 chunk）；query 主要命中标题与首段（headingBoost +40）
+  // 后续段不重复 query 词，使 top1 chunk 远超 top2，满足 score*2 阈值。
+  const head = [
+    "# 天猫六大行业特色人群 SOP",
+    "## 天猫六大行业特色人群",
+    "本文档定义天猫六大行业特色人群算法的完整执行 SOP。",
+    "标签包括潮流、品质、大众、低价等六大类。",
+  ].join("\n");
+  // 后续段全部用无关词（避免 query term 出现）
+  const filler = "标签权重分布按行业差异化映射。".repeat(300);
+  const ending = "适用范围覆盖电商主流类目。".repeat(200);
+  const longBody = `${head}\n\n${filler}\n\n${ending}`;
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "天猫六大行业特色人群 SOP",
+    content: longBody,
+    tags: ["天猫"],
+  });
+  // 干扰文档：与 query 完全无关
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "客单价口径",
+    content: "客单价 = 销售额 / 订单数；按月口径统计。",
+    tags: ["客单价"],
+  });
+
+  const query = "天猫六大行业特色人群";
+  const chunkPrompt = injection.buildKnowledgePrompt(ws.id, query);
+  const fullPrompt = injection.buildKnowledgePrompt(ws.id, query, { fullDocMode: true });
+
+  // 现有行为：chunk 注入受 maxChars=6000 截断
+  assert.match(chunkPrompt, /\[知识库检索上下文/);
+  // 新行为：fullDocMode 命中高置信单篇 → 走全文分支（40000 上限）
+  assert.match(fullPrompt, /\[知识库·全文引用｜高置信匹配\]/);
+  // 全文注入应包含整篇所有章节（含末尾段，chunk 注入会因 maxChars 截断）
+  assert.match(fullPrompt, /适用范围覆盖电商主流类目/);
+  // 全文 > chunk 注入长度
+  assert.ok(
+    fullPrompt.length > chunkPrompt.length,
+    `fullDocMode prompt (${fullPrompt.length}) should be longer than chunk prompt (${chunkPrompt.length})`,
+  );
+});
+
+// E-KB4: 默认 fullDocMode=false 保持原有行为不变
+test("E-KB4: fullDocMode defaults to false; existing chunk behavior unchanged", () => {
+  const ws = db.createWorkspace("kb4 default behavior");
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "复购率 SOP",
+    content: "复购率按自然月统计，排除退款。",
+  });
+  const a = injection.buildKnowledgePrompt(ws.id, "复购率");
+  const b = injection.buildKnowledgePrompt(ws.id, "复购率", {});
+  assert.equal(a, b);
+  assert.doesNotMatch(a, /\[知识库·全文引用/);
+});
+
+// E-KB4: 多文档分数接近时 fullDocMode 不应触发全文（落回 chunk 注入）
+test("E-KB4: fullDocMode falls back to chunks when top1 does not dominate top2", () => {
+  const ws = db.createWorkspace("kb4 close scores");
+  // 两篇都强匹配「会员复购」的文档：top1 不会显著领先 top2
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "会员复购口径 A",
+    content: "会员复购统计按自然月。会员复购统计按自然月。会员复购统计按自然月。",
+  });
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "会员复购口径 B",
+    content: "会员复购统计按月度。会员复购统计按月度。会员复购统计按月度。",
+  });
+  const prompt = injection.buildKnowledgePrompt(ws.id, "会员复购", { fullDocMode: true });
+  // 应回退到 chunk 注入（chunk header），不是全文 header
+  assert.match(prompt, /\[知识库检索上下文/);
+  assert.doesNotMatch(prompt, /\[知识库·全文引用/);
+});
+
+// D-KB1: searchKnowledgeDocs doc-level aggregation
+test("D-KB1: searchKnowledgeDocs groups chunks by doc and returns doc-level results", () => {
+  const ws = db.createWorkspace("kb1 docs");
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "复购率分析口径",
+    content: "复购率定义为同一会员在同一自然月内发生两次及以上购买行为。\n\n指标计算窗口固定为 30 天。",
+    tags: ["指标", "复购"],
+  });
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "天气模块说明",
+    content: "天气数据来自第三方 API，每小时刷新一次，与业务数据无关。",
+  });
+  const results = retrieval.searchKnowledgeDocs(ws.id, "复购率 自然月");
+  assert.ok(results.length >= 1);
+  assert.equal(results[0]!.doc.title, "复购率分析口径");
+  assert.ok(results[0]!.score > 0);
+  assert.ok(results[0]!.snippet.length > 0);
+  assert.ok(results[0]!.snippet.length <= 200);
+  assert.ok(results[0]!.matchedChunkCount >= 1);
+  assert.ok(results[0]!.signals.relevance >= 0);
+  assert.ok(results[0]!.signals.recency >= 0);
+});
+
+test("D-KB1: searchKnowledgeDocs topK caps result count", () => {
+  const ws = db.createWorkspace("kb1 topk");
+  for (let i = 0; i < 5; i++) {
+    data.createKnowledgeDoc({ workspaceId: ws.id, title: `doc ${i}`, content: `复购率口径 sample ${i}` });
+  }
+  const results = retrieval.searchKnowledgeDocs(ws.id, "复购率", { topK: 2 });
+  assert.equal(results.length, 2);
+});
+
+test("D-KB1: searchKnowledgeDocs empty query returns no results", () => {
+  const ws = db.createWorkspace("kb1 empty");
+  data.createKnowledgeDoc({ workspaceId: ws.id, title: "随便", content: "无关内容。" });
+  assert.equal(retrieval.searchKnowledgeDocs(ws.id, "   ").length, 0);
+});
+
+// D-KB2: weighted tokenization — title match should rank above body-only match
+test("D-KB2: weighted tokenization ranks title match above body-only match", () => {
+  const ws = db.createWorkspace("kb2 weighted");
+  // Doc A: query term only in body
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "无关标题",
+    content: "本文讨论了复购率分析的一些方法。",
+  });
+  // Doc B: query term in title
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "复购率分析口径",
+    content: "一些背景说明文字。",
+  });
+  const results = retrieval.searchKnowledgeDocs(ws.id, "复购率", { tokenizationMode: "weighted" });
+  assert.ok(results.length >= 2);
+  // Doc B (title match) should rank above Doc A (body-only match)
+  const idxA = results.findIndex((r) => r.doc.title === "无关标题");
+  const idxB = results.findIndex((r) => r.doc.title === "复购率分析口径");
+  assert.ok(idxB < idxA, `title match (idx=${idxB}) should rank above body-only (idx=${idxA})`);
+});
+
+// D-KB2: tag exact-match boost
+test("D-KB2: tag exact match boosts doc score", () => {
+  const ws = db.createWorkspace("kb2 tag boost");
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "复购率文档",
+    content: "复购率定义。",
+    tags: ["复购率"],
+  });
+  data.createKnowledgeDoc({
+    workspaceId: ws.id,
+    title: "另一个复购率文档",
+    content: "复购率定义。",
+    tags: ["其他"],
+  });
+  const results = retrieval.searchKnowledgeDocs(ws.id, "复购率", { tokenizationMode: "weighted" });
+  assert.ok(results.length >= 2);
+  // Tagged doc should rank higher
+  const idxTagged = results.findIndex((r) => r.doc.title === "复购率文档");
+  const idxOther = results.findIndex((r) => r.doc.title === "另一个复购率文档");
+  assert.ok(idxTagged < idxOther, `tagged doc (idx=${idxTagged}) should rank above untagged (idx=${idxOther})`);
+});

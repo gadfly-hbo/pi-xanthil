@@ -10,48 +10,49 @@
 
 > **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
 
-- 最近更新：2026-06-23 · **D-MONITOR6 + D-MONITOR7 已完成并通过 X-MONITOR9 总控终审**，监测初始化入口收敛为数据库连接单入口；E-MONITOR8 安全回归通过。
+- 最近更新：2026-06-25 · **D-METRIC1 + D-METRIC3 已完成**
 - 进度：
-  - **D-MONITOR6（后端·完成）**：
-    - `POST /api/workspaces/:id/monitor/import-sql`：单入口，输入 `connectionId + (sql | tableName) + datasetName`，后端按 `clean_data/monitor/` 算路径、sanitize 文件名、写 CSV/JSON、`addWorkspacePath(folder="clean_data")` 登记，返回 `{ pathId, name, path, columns, rowCount, format }`。
-      - SQL 模式：`validateSql` 拒 DDL/DML；额外 starts-with `SELECT/WITH` 校验拒 `EXPLAIN/PRAGMA` 等。
-      - tableName 模式：SQLite 走 `getSqlSchema` 真实校验存在性；PG/MySQL 走 `quoteIdent` 构造 `SELECT *`（题面允许的渐进式覆盖）。
-      - 文件名 sanitize：保留中英文/数字/下划线/连字符；其余替换 `_`；80 字符截断；`resolveMonitorPath` 二次校验路径必须在 `monitor/` 沙箱内（`../escape/evil` 兜底防御）；总控初审补丁改为同名自动生成版本文件（如 `_2`），避免覆盖旧导入且新增 pathId 指向同一物理文件。
-    - `GET /api/workspaces/:id/monitor/imports`：path 前缀 + 扩展名白名单过滤，仅返回 `clean_data/monitor/` 下的聚合集；解析失败/缺文件静默跳过。
-    - trace 沿用 `sql_export` 事件类型（mode=table|sql，含 fileName + 行数）。
-    - 落点：`server/src/routes/data.ts` 新增 ~150 行；`server/src/sql-connections.ts` 零改；额外 import `quoteIdent / addWorkspacePath`。
-    - 接缝纪律：未碰 `index.ts` legacy / 他域 router / db.ts 注册表。
-  - **D-MONITOR7（前端·完成）**：`web/src/components/HealthDataPane.tsx` clean rewrite 为单入口工作流。
-    - 删除：「已登记聚合数据全量列表」+「SQL 导出折叠面板」+「数据提取折叠面板」+「保存监测配置」按钮（角色改动即时 persistBindings 持久化）。
-    - 新增「数据库连接导入」区块：选连接 → 自动拉 `api.getSqlSchema(connId)` → 选表（自动生成 `SELECT * FROM "<table>"` + 默认 datasetName=表名）→ 可编辑 SQL → 选导入后自动绑定角色 → 一键导入。
-    - 导入成功后调 `dataApi.importMonitorSql` 拿 pathId → 自动写入 `monitor_configs.datasetBindings`（保留 `ontologyId/metricSystemId/thresholds`，沿用 D-MONITOR1 范式不覆盖）。
-    - 数据集列表来源切换为 `dataApi.listMonitorImports`；文案统一「监测聚合数据」（清除所有「体检」字眼）。
-    - 指标体系初始化区块保留；新增缺角色 hint：未绑定 `source/goal` 时给 amber 提示但不硬阻塞 `generateDraft`。
-    - 总控初审补丁：workspace 切换与数据库连接切换的异步请求均加 `cancelled` guard，避免旧请求晚返回覆盖新 workspace/schema 状态。
-  - **web api**：`web/src/lib/api/data.ts` 新增 `dataApi.importMonitorSql` + `dataApi.listMonitorImports`。
-- 关键设计决策：
-  - **路径计算后端独占**：前端只传 `datasetName`，绝对路径由 server `resolveMonitorPath(workspace.rootPath)` 生成；防 sandbox 逃逸。
-  - **`monitor/` 复用 folder=clean_data**：零新增 folder 枚举；path 前缀过滤区分专用 vs 其他 clean_data。`/api/bi/aggregations` 列表自然包含 monitor 文件 → viz 的 monitor_configs PUT 校验直接通过，**无需改 viz 路由**。
-  - **导入即落盘，不留独立 dry-run**：「预览字段/行数」与「导入」合并为单次调用 + 结果反馈条；SQLite 一次 SELECT 即拿全部行，单独预览端点等于复制粘贴成本。后续若需强制 dry-run 再补 `?dryRun=1`。
-  - **危险 SQL 双重拦截**：先过 `validateSql`（黑名单 DROP/INSERT/UPDATE/ALTER 等），再 starts-with 校验 SELECT/WITH 拒 `EXPLAIN/PRAGMA/CALL`。
-  - **tableName 在 SQLite 强制 schema 校验**：防御写错表名 + 多一道注入防御 + 明确 404 反馈。
-- 总控终审补充（X-MONITOR9）：
-  - E-MONITOR8 已核验：agent/workflow/subagent 未引用 monitor 导入写端点或 addWorkspacePath/exportTableQuery；工作流 SQL 仍只读；monitor-llm 不读 rows/draw_data；monitor run rows 只进纯函数；actions/draft 只基于 findings 衍生产物。
+  - **D-METRIC1（ExtractionTool summary → MetricSnapshot 适配，完成）**：
+    - 新建 `server/src/extraction-tool-metric.ts`(~150 行)：`buildMetricSnapshotsFromHints` / `coerceMetricHints` / `lookupSummaryValue` / `inferPeriodFromPath`。
+      - 点路径 `a.b.0.value` 解析，数字段自动当数组下标。
+      - 阈值打标：alert ≥ warning 走高值告警；alert < warning 走低值告警（倒序）。
+      - period 优先级：`params.period` → 文件名 YYYY-MM/YYYY-MM-DD/YYYYMM/YYYYMMDD → hint.periodFallback → ""。
+      - row guard 触发或无 hints → 不附加 snapshots（向后兼容）。
+    - `server/tools/registry.ts` 加 `metricHints?: MetricHint[]` 到 manifest 类型；`normalizeManifest` 经 `coerceMetricHints` 加载期校验。
+    - `server/src/index.ts` `/api/extraction-tools/:id/run` 在 row guard 通过且工具有 hints 时附加 `metricSnapshots`（数组非空时 spread）。
+    - `server/src/mcp/extraction-tools-mcp.ts` callTool 在 body 含 `metricSnapshots` 时以「数字锁前缀 + JSON」格式返回，否则降级原 body。
+  - **D-METRIC3（监测链路 → MetricSnapshot 对齐，完成）**：
+    - 新建 `server/src/monitor-metric-snapshot.ts`(~130 行)：`biAggregationToMetricSnapshots(findings)` / `renderMetricSnapshotsBlock(snapshots)`。
+      - severity 映射：critical→alert / warn→warning / info→normal。
+      - MonitorComparison.kind 映射：target/industry→benchmark/competitor 直传；history 按 `window`+`label` 关键字（环比/上一期/mom → mom；同比/去年/yoy → yoy；移动均值/ma → ma；其余 → other）。
+      - value 优先取 `evidence.current`，兜底取首个 `comparisons[i].currentValue`；二者皆无 → 跳过该 finding（避免造数）。
+      - period 推断：取首个非空 `comparisons[i].window`，否则空串。
+      - thresholdNote：从 `evidence.thresholds` 对象或 `thresholdWarn/thresholdCritical` 标量汇总为人类可读字符串。
+      - source 固定 `"bi_aggregation"`。
+    - `server/src/monitor-llm.ts buildDraftPrompt` 加可选 `findings?: HealthFinding[]` 入参：
+      - 非空 → 在 prompt 顶部注入「数字锁前缀 + MetricSnapshot JSON」块，与 D-METRIC1 / E-METRIC2 同口径。
+      - 缺省/空 → 行为零变化（保留原 columns/rowCount 描述作 fallback）。
+    - `DraftInput` 接口扩 `findings` 字段，`draftMetricSystem` 链路调用方按需透传；当前 routes/engine.ts 的 `/monitor/metric-system/draft` 初次草案场景不传（无 findings 可用）；后续如做"基于既有 run findings 重做指标体系"可在调用处加 findings。
+    - 安全红线（E-MONITOR8 口径）：本模块只读 `HealthFinding` 衍生字段（comparisons/boundTo/severity/evidence.thresholds），**不读 dataset.rows / cells / 原始 draw_data**。安全 grep `dataset\.rows|BiCell|draw_data` 仅命中文件头注释，无功能代码访问。
+  - 接缝纪律：未碰 `types.ts`（X-METRIC0 已定义 MetricSnapshot/MetricComparison）、未碰 `db.ts`、未碰他域路由、不改 summary.json / finding 结构。
 - 校验：
   - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
   - `npm -w web run build`：✅ 仅既有 chunk size warning
-  - `node --experimental-strip-types --test server/src/{sql-connections,multi-agent-runner,monitor-import}.test.ts`：✅ **51/51**（sql 9 + multi-agent 32 + monitor-import 8 + 2 backward compat）
-  - X-MONITOR9 复验：`node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/monitor-import.test.ts server/src/multi-agent-runner.test.ts server/src/health-check-engine.test.ts`：✅ **80/80**
-  - 数据探索 LLM 隔离 grep：✅ EXIT=1 无匹配（未碰探索子树）
+  - `node --test server/src/extraction-tool-metric.test.ts`：✅ **8/8**
+  - `node --test server/src/monitor-metric-snapshot.test.ts`：✅ **10/10**（severity 映射 / history kind 细分 / value 兜底 / threshold 汇总 / 数字锁渲染 / buildDraftPrompt 注入与回退）
+  - `node --test server/src/monitor-engine.test.ts server/src/health-check-engine.test.ts`：✅ **40/40**（既有 monitor 测试零回归）
+  - 数据探索 LLM 隔离 grep：✅ EXIT=1 无匹配
 - 下一步（接续优先级）：
   - ① 用户 review 后手动提交。
-  - ② 可选人工浏览器点检：SQLite 连接 → 选表 → 导入 → 角色绑定 → 观星台 run。
-  - ③ SQL 长尾：PG/MySQL `monitor/import-sql` tableName 模式 schema 预校验；Excel 导出。
+  - ② 可选：在某个 analysis 工具补 `metricHints` 配置 + 在 `/monitor/runs` 跑后用 findings 触发一次「重新草拟指标体系」UI/链路（routes/engine.ts 调用 `draftMetricSystem({...,findings})`），端到端验证两侧 snapshot 注入。
+  - ③ E-METRIC2（数字锁 system prompt 前缀）由 E 域承接（已在派发板）。
 - 阻塞 / 待总控：
-  - 无；D-MONITOR6 / D-MONITOR7 / E-MONITOR8 / X-MONITOR9 均 done。
+  - 无。
 - 开放问题：
-  - PG/MySQL tableName 模式跳过 schema 预校验，依靠 `quoteIdent`；非注入但拼错表名走错路径会到查询层才报错。后续如需严格校验，PG 走 `information_schema.tables`、MySQL 走 `SHOW TABLES LIKE`。
+  - period 文件名推断只识别 4 位年份+2 位月份/日；YYYY-Q1 / 财年等需 `params.period` 显式传入。
+  - statusThresholds 当前只支持二级阈值（warning + alert），无法表达"区间正常 + 双侧告警"。后续如有需要可扩 `{ lowAlert?, lowWarning?, highWarning?, highAlert? }`。
+  - history → mom/yoy/ma 推断靠中英文关键字（环比/上一期/mom/同比/去年/yoy/移动均值/ma）。现有 monitor-engine 输出已覆盖（"上一期（环比）"/"去年同期（同比）"/"3期移动均值"）；若日后改 label 文案需同步更新关键字或加 evidence 标签。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -275,6 +276,14 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **命中高亮用 manual exec loop**：`highlightChunk` 不依赖 `text.split(re)`（capturing group 会导致 alternation 歧义），改用 `while (re.exec(text))` 手动推进 + string/object 判别联合数组。空 token 时返回 `[<span>text</span>]` 统一类型。
 - **删除二次确认**：`window.confirm` 明确"级联删除所有 chunks + 不可撤销"语义，与 SkillManagementPane 归档确认范式一致。
 - **`group` class 陷阱**：删除按钮用 `group-hover:opacity-100` 但父 `<li>` 缺 `group` class → 按钮永久 `opacity-0` 不可见。review 抓到，已修。**通用教训**：任何 Tailwind `group-*` 修饰符必须确认父元素有 `group` class；`group-hover` 与 `hover` 同时存在时，`hover` 在父元素上也需 `group` 才能级联。
+
+**知识库 doc 级检索（D-KB1/D-KB2, 2026-06-24）**
+- **doc 级聚合公式**：`doc_score = max(chunk.score) * 0.6 + avg(top3 chunk scores) * 0.4`。max 为主信号（最相关片段），avg(top3) 为稳定性修正（避免单一片段偶然命中拉高）。snippet=最高分 chunk 前 200 字。
+- **加权 tokenize 用 token 重复而非独立权重**：title 3x / tags 2x / summary 2x (`Math.round(1.5)`) / body 1x——直接把 tokens 数组重复对应次数，BM25 tf 自然上升。不引入独立权重参数，保持 BM25 公式纯净。
+- **tag boost 加在归一化后的 [0,1] 区间**：`doc_score += 0.15` 然后 `Math.min(1, ...)`。不混入 BM25 内部（BM25 是词法信号，tag 是结构化元数据，语义不同层）。
+- **摘要异步生成用 `setImmediate`**：POST 路由先 `res.json(doc)` 再 `setImmediate(async () => { ... runPiPrompt ... setKnowledgeDocSummary })`。不阻塞上传响应，失败静默退化（摘要为空不影响检索，仅加权 tokenize 少一个信号源）。
+- **摘要 prompt 截断 8000 字**：`content.slice(0, 8000)` 防止超长文档撑爆 pi token 窗口。200 字摘要对 8000 字原文足够提炼核心。
+- **`tokenizationMode` 默认 `"uniform"` 保持向后兼容**：`searchKnowledgeChunks` 不改默认行为（chunk 注入链路继续可用）；`searchKnowledgeDocs` 调用时显式传 `"weighted"`。
 - **`new Blob()` 每击键分配**：新建模态用 `new Blob([draftContent]).size` 显示实时字节数，每次击键分配 5MB 上限的 Blob。review 建议改为 `new TextEncoder().encode(draftContent).length`——零分配、同结果。已修。
 - **SearchView docs fetch 补 cancelled flag**：DocsView 的 detail fetch 有 cancelled，SearchView 的 doc list fetch 缺——review 抓到，已补 cleanup。
 - **文档列表无分页**：当前全量加载，<100 docs 够用。超 500 时加分页（或至少加个 note）。暂不做。
@@ -293,6 +302,20 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **X 接缝缺漏的工程教训**：本卡触发时发现 wiki §X 标 done 但仓库实际只落地 web 端（constants），types 双侧 + db schema 均缺。**通用做法**：D 卡执行前先 grep 验证 X 卡声明的资产是否真落地（`grep -rn "PromptTemplate\|prompt_templates" server/ web/src/types.ts`），漏盘的就在本卡内一并补救（顺手做不绕路），开放问题里上报让总控决议。**反对**：等 X 卡修好再做 D（任务卡明确写【依赖】X，但 wiki 标 done 是可信凭证缺失，等待会导致整个 prompts 模块阻塞）。沉淀这条是因为同样的"声明 done 但未落地"模式可能在其他模块（hooks/skills/subagents）的 X 接缝里复现。
 - **prompt NULL 恒启用范式（2026-06-23，D-POOL1）**：`prompt_templates.workspace_id IS NULL` 的全局模板不入 `workspace_memory_enablements`，消费侧恒启用。原因是这类模板的设计语义就是"无条件全局"；写入 enablement 表会有（a）新 ws 必须 backfill 维护（b）NULL 无 origin 无法确定自动启用。消费侧合并公式 = `enabled=1 ∪ workspace_id IS NULL`。对应 create 分支：非 NULL 走 `enableForOrigin`，NULL 不调。此范式适用于任何"表中 workspace_id 可空 = 全局"的设计。
 - **knowledge scope 列 + 入池出池范式（2026-06-23，D-POOL1）**：`knowledge_docs.scope ∈ {'global','workspace'}`，默认 workspace（专属）。global 文档入池，create 后 `enableForOrigin(wsId,"knowledge",id)`；workspace 私有不入 enablement（本就独占，写 enablement 反而有歧义）。消费侧 `listKnowledgeChunksForRetrieval` 直接 union（本 ws 私有 ∪ 本 ws 已启用 global），SQL 通过 `d.scope='workspace' AND d.workspace_id=? OR (d.scope='global' AND d.id IN (enabled_set))` 实现。enabled 集为空时 fallback `IN('')` (恒 false) 保持 SQL 静态。GET 路由 403 豁免 global = `scope !== 'global' && workspaceId !== id`，PATCH/DELETE 守 origin。`parseStringArray` + `rowTo*` 皮层级均补 scope 解析。
+
+---
+
+**指标标准层 MetricSnapshot 适配（D-METRIC1/D-METRIC3, 2026-06-25）**
+- **数字锁三方同口径**：MCP 注入文本 / system prompt 前缀 / 监测 draft 注入块——三处的数字锁措辞**必须保持一致**："代码确定性计算值 · 禁止重新推导 / 模型只可解读业务现象、推断根因、提供策略建议，不得修改或自行算术"。三方任一改文案都要同步另两处，否则 LLM 收到歧义信号。当前同口径源：D-METRIC1 `mcp/extraction-tools-mcp.ts callTool` + D-METRIC3 `monitor-metric-snapshot.ts renderMetricSnapshotsBlock` + 等待 E-METRIC2 `pi-adapter.ts assembleSystemPrompt`。
+- **可选 hints / 可选 findings 双重向后兼容范式**：D-METRIC1 manifest 无 `metricHints` → /run 不附加 metricSnapshots，MCP 降级原 body；D-METRIC3 `DraftInput.findings` 缺省/空 → buildDraftPrompt 走原 columns/rowCount 描述。两条链路 opt-in，**新链路 0 激活 = 零行为变化**，老调用方零迁移成本。**关键设计**：契约/接缝先就位再灰度激活，比"全量翻新+回滚分支"省事得多。
+- **`coerceMetricHints` 在加载期校验丢非法项 + 运行时不重过滤**：`registry.ts normalizeManifest` 阶段就把不合法 hint 丢掉，运行时 `buildMetricSnapshotsFromHints` 假定 hints 已规范。**反对**："运行时再 coerce 一次保险"——加载期已经过校验，运行时重做是 YAGNI 浪费；非法 hint 一经丢弃就不存在，运行时无残留风险。
+- **点路径解析数字段当数组下标**：`lookupSummaryValue("a.b.0.value", summary)` 中 `"0"` 自动判为数组索引。这是 summary.json 同时含 `kpis: [...]` 数组与对象嵌套的现实场景，比"独立数组路径语法"省字符。**踩坑**：必须 `Number.isInteger(idx) && idx >= 0 && idx < arr.length` 三段校验，缺一会 silent return undefined 误判 hint 失败。
+- **period 推断三级降级**：`params.period` 显式 > 文件名正则 > `hint.periodFallback` > 空串。**正则只覆盖 YYYY-MM / YYYY-MM-DD / YYYYMM / YYYYMMDD**——YYYY-Q1 / 财年 / "本月" 这类需 `params.period` 显式传。文件名模式刻意保守，宁可空也不误识别。
+- **statusThresholds 双向阈值**：alert ≥ warning → 高值告警（默认，如流失率、错误率）；alert < warning → 低值告警（倒序，如评分、留存率）。代码用 `if (alert >= warning) {...} else {...}` 两分支判断。**未来扩展点**：若要"区间正常 + 双侧告警"（如温度 18-26），需扩 `{ lowAlert?, lowWarning?, highWarning?, highAlert? }` 四阈值——本期 YAGNI 不做。
+- **MonitorComparison → MetricComparison 字段刻意对齐**：X-METRIC0 契约审定时把 `MetricComparison` 字段对齐既有 `MonitorComparison`（currentValue/baselineValue/delta/deltaRate/window），D-METRIC3 适配近乎零成本——只差 `kind` 字符串映射。**通用范式**：跨域共享类型设计时让新类型字段是老类型超集或同集，可省下一整套 transformer。
+- **history kind 按 window/label 关键字细分**：MonitorComparison.kind 只有 `target/history/industry/competitor` 四值，MetricComparisonKind 有 `mom/yoy/ma/target/benchmark/competitor/other` 七值。history 一对多映射靠中英文关键字（环比/上一期/mom → mom；同比/去年/yoy → yoy；移动均值/ma → ma；都不命中 → other）。**风险**：现有 monitor-engine label 文案改了关键字就会漏判。**缓解**：未来若改 label 风格，在 MonitorComparison 上加 `evidence.subKind?: "mom"|"yoy"|"ma"` 显式标注 > 改进关键字正则。
+- **value 来源优先级（finding 衍生）**：`evidence.current`（rules 写入时基本都带）> 首个 `comparisons[i].currentValue` 兜底 > 跳过该 finding。**绝不造数**——无可靠 value 就放弃这条 snapshot，让 LLM 在 fallback 段（columns/rowCount）自然降级，比注一个错值毒害下游强。
+- **安全红线（E-MONITOR8 口径在 D-METRIC3 复用）**：`biAggregationToMetricSnapshots` 只读 `HealthFinding` 衍生字段（comparisons/boundTo/severity/evidence.thresholds），**不读 dataset.rows / cells / 原始 draw_data**。安全 grep `dataset\.rows|BiCell|draw_data` 在本文件应只命中红线注释，不命中功能代码。本范式适用任何"finding/aggregated 产物 → LLM 注入"链路：消费衍生字段、grep 守底线。
 
 ---
 
