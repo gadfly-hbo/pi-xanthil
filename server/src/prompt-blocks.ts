@@ -7,7 +7,7 @@
 // BUMP PROMPT_SCHEMA_VERSION whenever any block content changes — consumers
 // can record this alongside token stats to correlate prompt edits with shifts
 // in cache hit rates.
-export const PROMPT_SCHEMA_VERSION = "v2" as const;
+export const PROMPT_SCHEMA_VERSION = "v3" as const;
 
 // Block 01 — data safety (non-negotiable, must stay first)
 export const BLOCK_SAFETY = [
@@ -61,6 +61,18 @@ export const BLOCK_FILE_ANALYSIS = [
   "- 未读取任何数据文件时，不输出此块。",
 ].join("\n");
 
+// Optional metric lock block — enabled only for turns with analysis ExtractionTools.
+export const BLOCK_METRIC_LOCK = [
+  "[数据指标约束]",
+  "本次会话可能注入工具计算结果（MetricSnapshot）。凡标注「代码计算值」的数字：",
+  "- 禁止重新推导或自行算术运算",
+  "- 可引用展示，只解读业务现象、推断根因、提供策略建议",
+].join("\n");
+
+export interface AssembleSystemPromptOptions {
+  injectExtractionToolSystem?: boolean;
+}
+
 /**
  * Assemble the full system prompt passed to pi via --system-prompt.
  *
@@ -79,8 +91,9 @@ export function buildDataContextBlock(paths: string[]): string {
   return `[已登记的聚合数据路径 — 本次任务可读取，符合全局数据安全约束]\n${lines}`;
 }
 
-export function assembleSystemPrompt(additionalPrompt?: string): string {
+export function assembleSystemPrompt(additionalPrompt?: string, options: AssembleSystemPromptOptions = {}): string {
   const blocks: string[] = [BLOCK_SAFETY, BLOCK_BASE_BEHAVIOR, BLOCK_FILE_ANALYSIS];
+  if (options.injectExtractionToolSystem) blocks.push(BLOCK_METRIC_LOCK);
   const extra = additionalPrompt?.trim();
   if (extra) blocks.push(extra);
   return blocks.join("\n\n");

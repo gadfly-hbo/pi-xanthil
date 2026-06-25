@@ -2250,6 +2250,40 @@ export interface BiAggregationData {
   rows: Array<Record<string, BiCell>>;
 }
 
+// ── 指标标准层（X-METRIC0 契约，2026-06-25）── 双侧镜像 server/src/types.ts
+// MetricSnapshot = ExtractionTool（tool-use MCP）与监测引擎（BiAggregation draft）两条链路的统一指标中间层。
+// 铁律：value / delta / deltaRate / status 均为代码确定性计算结果；注入 LLM 时只读，禁止模型重新推导。
+// 字段刻意对齐既有 MonitorComparison，使 D-METRIC3 的 BiAggregation 适配近乎零成本。
+export type MetricComparisonKind =
+  | "mom"        // 环比（上期）
+  | "yoy"        // 同比（去年同期）
+  | "ma"         // 移动均值偏离
+  | "target"     // 对目标值
+  | "benchmark"  // 对行业基准
+  | "competitor" // 对竞品
+  | "other";     // 兜底（无法归类的对比）
+
+export interface MetricComparison {
+  kind: MetricComparisonKind;
+  label: string;              // 展示用，代码生成（如 "环比上月"）
+  currentValue: number | null;
+  baselineValue: number | null;
+  delta: number | null;       // 绝对差，代码计算
+  deltaRate: number | null;   // 相对变化率，代码计算
+  window?: string;            // 对比窗口口径（如 "3期移动均值"）
+}
+
+export interface MetricSnapshot {
+  name: string;               // 指标名，代码定义
+  value: number;              // 当期值，代码计算
+  unit?: string;
+  period: string;             // 统计周期，代码确定（如 "2026-06"）
+  comparisons?: MetricComparison[];
+  status: "normal" | "warning" | "alert";  // 阈值判定，代码打标
+  thresholdNote?: string;
+  source: "extraction_tool" | "bi_aggregation";  // 产出链路
+}
+
 export interface ModelLabStatsTopModel {
   modelId: string;
   model: string;

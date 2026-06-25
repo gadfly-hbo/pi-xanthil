@@ -11,7 +11,8 @@
  */
 
 import { runPiPrompt } from "./pi-adapter.ts";
-import type { MonitorMetricDraft, MonitorMetricSystemDraft, MonitorMetricBinding, MonitorMetricDependency, MonitorRuleDraft, ObjectType, MetricDefinition, LinkType, LogicRule, BiAggregationDataset } from "./types.ts";
+import { biAggregationToMetricSnapshots, renderMetricSnapshotsBlock } from "./monitor-metric-snapshot.ts";
+import type { MonitorMetricDraft, MonitorMetricSystemDraft, MonitorMetricBinding, MonitorMetricDependency, MonitorRuleDraft, ObjectType, MetricDefinition, LinkType, LogicRule, BiAggregationDataset, HealthFinding } from "./types.ts";
 
 export interface DraftInput {
   aggregations: BiAggregationDataset[];
@@ -19,6 +20,10 @@ export interface DraftInput {
   metrics: MetricDefinition[];
   links: LinkType[];
   logicRules: LogicRule[];
+  /** D-METRIC3：可选监测 finding 列表（衍生字段），用于在 prompt 头部注入 MetricSnapshot 数字锁块。
+   *  传入即启用 snapshot 注入，否则降级到原 columns/rowCount 模式（向后兼容）。
+   *  调用方负责保证 findings 不携带原始行级数据（finding 本身即为衍生产物）。 */
+  findings?: HealthFinding[];
 }
 
 export interface DraftResult {
@@ -27,7 +32,13 @@ export interface DraftResult {
 }
 
 export function buildDraftPrompt(input: DraftInput): string {
-  const { aggregations, objects, metrics, links, logicRules } = input;
+  const { aggregations, objects, metrics, links: _links, logicRules, findings } = input;
+
+  // D-METRIC3：findings 非空 → 头部注入 MetricSnapshot[] 数字锁块；空/未传 → 走 fallback。
+  // 注意：这里的 findings 是监测引擎纯函数产物（衍生字段），不含原始行级数据。
+  const snapshotBlock = findings && findings.length > 0
+    ? renderMetricSnapshotsBlock(biAggregationToMetricSnapshots(findings))
+    : "";
 
   let aggText = "";
   if (aggregations.length > 0) {
@@ -54,7 +65,7 @@ export function buildDraftPrompt(input: DraftInput): string {
   }
 
   return `你是一位经营分析专家。请基于以下工作区的数据资产，设计一套观测指标体系。
-
+${snapshotBlock ? `\n${snapshotBlock}\n` : ""}
 ## 可用的聚合数据集
 ${aggText}
 

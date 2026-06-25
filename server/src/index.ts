@@ -181,6 +181,7 @@ import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, Predictio
 import type { EvaluationFlowConfig } from "./types.ts";
 import type { WorkflowAgentEntry, WorkflowRunView } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
+import { buildMetricSnapshotsFromHints } from "./extraction-tool-metric.ts";
 import { buildExtractionToolsMcpServer, ensureWorkspaceMcpConfig, registerAllWorkspaceMcp } from "./mcp/register.ts";
 import { registerChildProcess } from "./child-processes.ts";
 import { buildSanitizedEnv } from "./process-env.ts";
@@ -188,6 +189,10 @@ import { aiToolRowGuardMessage, guardToolRunSummaryForSource, parseAiToolMaxRows
 
 ensureDirs();
 XLSX.set_fs({ readFileSync });
+
+function hasAnalysisExtractionTools(): boolean {
+  return listExtractionTools().some((tool) => tool.category === "analysis");
+}
 
 // System prompts injected via --system-prompt on the first (and every) pi turn for workflow sessions.
 const WORKFLOW_SYSTEM_PROMPTS: Record<string, string> = {
@@ -4700,6 +4705,16 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
         const rowGuard = guardToolRunSummaryForSource(source, summary, AI_TOOL_MAX_RESULT_ROWS);
         const guardedSummary = rowGuard.summary as typeof summary;
         const rowGuardError = rowGuard.blocked ? aiToolRowGuardMessage(AI_TOOL_MAX_RESULT_ROWS) : undefined;
+        // D-METRIC1: 在 row guard 通过且工具声明了 metricHints 时附加 MetricSnapshot[]，
+        // 供 MCP 层贴数字锁前缀注入 LLM。row guard 触发或无 hints → 不附加，行为零变化。
+        const metricSnapshots = !rowGuardError && tool.metricHints
+          ? buildMetricSnapshotsFromHints({
+              summary: guardedSummary,
+              hints: tool.metricHints,
+              inputPath,
+              params: paramsObj,
+            })
+          : [];
         const durationMs = Date.now() - startMs;
         if (workspaceId) {
           addTraceEvent({
@@ -4729,6 +4744,7 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
           stdout,
           stderr,
           ...guardedSummary,
+          ...(metricSnapshots.length > 0 ? { metricSnapshots } : {}),
           ...(rowGuardError ? { error: rowGuardError, rowLimit: AI_TOOL_MAX_RESULT_ROWS, maxRowsSeen: rowGuard.maxRowsSeen } : {}),
         });
       } catch (summaryError) {
@@ -5031,6 +5047,7 @@ async function handleSend(
     text: textForPi,
     model: msg.model,
     systemPrompt,
+    injectExtractionToolSystem: hasAnalysisExtractionTools(),
     skillPaths,
     forkFrom,
     onEvent: (event: PiEvent) => {

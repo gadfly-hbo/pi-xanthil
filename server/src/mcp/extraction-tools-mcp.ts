@@ -64,7 +64,7 @@ function toMcpTool(t: RemoteTool) {
   const properties: Record<string, unknown> = {
     cleanDataPath: {
       type: "string",
-      description: "要处理的数据文件绝对路径。可为本工作区已登记且该工具接受的数据路径；工具产物不得包含原始行级明细。",
+      description: "要处理的数据文件绝对路径。可为本工作区已登记且该工具接受的数据路径；工具产物不得包含原始行级明细。工具返回的 MetricSnapshot 数值为代码确定性计算结果，模型禁止修改或重新计算；只可解读、推因、建议。",
     },
   };
   const required = ["cleanDataPath"];
@@ -74,7 +74,7 @@ function toMcpTool(t: RemoteTool) {
   }
   return {
     name: t.id,
-    description: `${t.name}${t.description ? ` — ${t.description}` : ""}（数据分析工具，可处理本工作区已登记且该工具接受的数据路径；产物不得包含原始行级明细）`,
+    description: `${t.name}${t.description ? ` — ${t.description}` : ""}（数据分析工具，可处理本工作区已登记且该工具接受的数据路径；产物不得包含原始行级明细。工具返回的 MetricSnapshot 数值为代码确定性计算结果，模型禁止修改或重新计算；只可解读、推因、建议。）`,
     inputSchema: { type: "object", properties, required },
   };
 }
@@ -98,6 +98,18 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<{ 
   const body = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {
     return { content: [{ type: "text", text: `工具执行被拒绝或失败（${res.status}）：${JSON.stringify(body)}` }], isError: true };
+  }
+  // D-METRIC1: 若工具产出 MetricSnapshot[]，优先以数字锁前缀 + snapshots JSON 注入 LLM；
+  // 数字锁口径与 E-METRIC2 的 system prompt 前缀一致：value/status/comparisons 均为代码确定性计算值，
+  // 模型只可解读、推因、建议，禁止重新推导或自行算术。
+  const metricSnapshots = body.metricSnapshots;
+  if (Array.isArray(metricSnapshots) && metricSnapshots.length > 0) {
+    const lockedText = [
+      "[指标快照·代码确定性计算值·禁止重新推导]",
+      "以下 MetricSnapshot 由工具确定性产物计算得出，模型只可解读业务现象、推断根因、提供策略建议；不得修改或自行算术。",
+      JSON.stringify(metricSnapshots),
+    ].join("\n");
+    return { content: [{ type: "text", text: lockedText }] };
   }
   return { content: [{ type: "text", text: JSON.stringify(body) }] };
 }

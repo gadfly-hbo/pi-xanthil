@@ -119,7 +119,7 @@ import { runHookEvaluation } from "../hook-evaluation-runner.ts";
 import { runToolEvaluation } from "../tool-evaluation-runner.ts";
 import { runSkillEvaluation } from "../skill-evaluation-runner.ts";
 import { parseToolEvaluationCases, parseToolEvaluationRunRequest } from "../tool-evaluation-api.ts";
-import { getExtractionTool } from "../../tools/registry.ts";
+import { getExtractionTool, listExtractionTools } from "../../tools/registry.ts";
 import { archiveHookEvaluation } from "../evaluation-archive.ts";
 import { type Hook } from "../types.ts";
 import { autoTriggerCuration } from "../skill-curator.ts";
@@ -151,6 +151,10 @@ import {
  * 禁止：触碰 index.ts（legacy 冻结，归总控）/ 他域 router。
  */
 export const engineRouter = Router();
+
+function hasAnalysisExtractionTools(): boolean {
+  return listExtractionTools().some((tool) => tool.category === "analysis");
+}
 
 engineRouter.get("/api/prompts/system", (_req, res) => {
   res.json(listSystemPromptOverviews());
@@ -2945,6 +2949,7 @@ export async function handleSendFlow(
     piSessionId: flow.id,
     text: `${contextPrefix}${commandExpansion.expandedText}`,
     model: msg.model,
+    injectExtractionToolSystem: hasAnalysisExtractionTools(),
     systemPrompt: withKnowledgePrompt(
       flow.workspaceId,
       msg.injectKnowledgePrompt,

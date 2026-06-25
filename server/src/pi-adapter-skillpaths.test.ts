@@ -65,3 +65,25 @@ test("runPiTurn preserves empty skillPaths as explicit skill disable", async () 
   assert.ok(start.args.includes("--no-skills"));
   assert.equal(start.args.includes("--skill"), false);
 });
+
+test("runPiTurn conditionally injects metric lock prompt for extraction tools", async () => {
+  const events: PiEvent[] = [];
+
+  const run = runPiTurn({
+    workspaceRoot: testRoot,
+    piSessionId: "metric-lock-test",
+    text: "run task",
+    injectExtractionToolSystem: true,
+    onEvent: (event) => events.push(event),
+  });
+
+  assert.equal(await run.done, 0);
+  const start = events.find(isProcessStart);
+  assert.ok(start);
+  const promptIndex = start.args.indexOf("--system-prompt");
+  assert.ok(promptIndex >= 0);
+  const systemPrompt = start.args[promptIndex + 1] ?? "";
+  assert.match(systemPrompt, /\[数据指标约束\]/);
+  assert.match(systemPrompt, /禁止重新推导或自行算术运算/);
+  assert.match(systemPrompt, /MetricSnapshot/);
+});

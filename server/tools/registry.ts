@@ -1,6 +1,7 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
+import { coerceMetricHints, type MetricHint } from "../src/extraction-tool-metric.ts";
 
 export interface ToolParameter {
   name: string;
@@ -40,6 +41,9 @@ export interface ExtractionToolManifest {
   forbiddenUse?: string;
   failureHandling?: string;
   traceFields?: string[];
+  // D-METRIC1: 可选指标提示，让 /run 响应额外附加 MetricSnapshot[]，给 MCP 数字锁注入用。
+  // 无 hints = 行为零变化（向后兼容）。
+  metricHints?: MetricHint[];
 }
 
 export interface RegisteredExtractionTool extends ExtractionToolManifest {
@@ -79,7 +83,11 @@ function normalizeCategory(value: unknown): ExtractionToolCategory {
 }
 
 function normalizeManifest(manifest: ExtractionToolManifest): ExtractionToolManifest {
-  return { ...manifest, category: normalizeCategory(manifest.category) };
+  return {
+    ...manifest,
+    category: normalizeCategory(manifest.category),
+    metricHints: coerceMetricHints(manifest.metricHints),
+  };
 }
 
 function resolveInside(rootPath: string, relativePath: string): string {

@@ -13,6 +13,7 @@ export interface RunPiOptions {
   text: string;
   model?: string;
   systemPrompt?: string;
+  injectExtractionToolSystem?: boolean;
   skillPaths?: string[];
   forkFrom?: string; // 若设，则首轮用 `--fork <id>` 把该 session 历史播种进 piSessionId（Fork 分支用）
   onEvent: (event: PiEvent) => void;
@@ -30,6 +31,7 @@ export interface RunPiPromptOptions {
   text: string;
   model?: string;
   systemPrompt?: string;
+  injectExtractionToolSystem?: boolean;
   timeoutMs?: number;
   onEvent?: (event: PiEvent) => void;
   onChildProcess?: ChildProcessListener;
@@ -170,7 +172,7 @@ export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
   // NOTE: keep extensions enabled — `--no-extensions` would also disable the model provider extension.
   const args = ["-p", "--mode", "json", "--no-skills", "--no-tools", "--no-context-files", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
   if (opts.model) args.push("--model", opts.model);
-  args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt));
+  args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt, { injectExtractionToolSystem: opts.injectExtractionToolSystem }));
   args.push(opts.text);
 
   return new Promise<string>((resolve, reject) => {
@@ -270,7 +272,7 @@ export function runPiTurn(opts: RunPiOptions): PiRun {
   // Fork 分支首轮：从父 session 历史播种进新分支 session。
   if (opts.forkFrom) args.push("--fork", opts.forkFrom);
   if (opts.model) args.push("--model", opts.model);
-  args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt));
+  args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt, { injectExtractionToolSystem: opts.injectExtractionToolSystem }));
   if (opts.skillPaths) {
     args.push("--no-skills");
     for (const path of opts.skillPaths) args.push("--skill", path);
