@@ -74,6 +74,53 @@ export interface SkillImportResult {
   writtenFiles: string[];
 }
 
+// 记忆 v2.0 缺口3 · Dream Worker 维护结果（响应结构对齐 server/src/memory-maintenance.ts:44）。
+// 不放入 @/types 是为了把 server 域内部契约局部化，避免 types.ts 接缝层污染。
+export type MemoryMaintenanceAction = "promote" | "demote" | "retire";
+export interface MemoryMaintenanceChange {
+  id: string;
+  action: MemoryMaintenanceAction;
+  reason: string;
+  before: { confidence: number; validUntil: number | null };
+  after: { confidence: number; validUntil: number | null };
+}
+export interface MemoryMaintenanceResult {
+  workspaceId: string;
+  dryRun: boolean;
+  scanned: number;
+  changes: MemoryMaintenanceChange[];
+  applied: number;
+}
+
+// 记忆 v2.0 缺口4 · 从记忆升级 Skill 候选（响应结构对齐 server/src/memory-to-skill.ts:32）。
+export interface MemorySkillThresholds {
+  highConfidence: number;
+  minHighConfidenceItems: number;
+  minUsedCount: number;
+  minPositiveSignals: number;
+}
+export interface MemorySkillClusterView {
+  tag: string;
+  items: MemoryItem[];
+  highConfidenceCount: number;
+  totalUsedCount: number;
+  totalPositiveSignals: number;
+  eligible: boolean;
+  reasons: string[];
+}
+export interface MemorySkillPromotionOutcome {
+  clusterTag: string;
+  result: unknown;
+}
+export interface MemoryToSkillResult {
+  workspaceId: string;
+  dryRun: boolean;
+  scanned: number;
+  clusters: MemorySkillClusterView[];
+  eligibleClusters: number;
+  promotions: MemorySkillPromotionOutcome[];
+}
+
 export interface SessionConsolidationResult {
   count: number;
   candidates: number;
@@ -472,4 +519,36 @@ export const engineApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body),
     }).then(json<RegressionGateVerdict>),
+
+  // 记忆 v2.0 缺口3 · Dream Worker 手动触发：纯算术维护（升/降 confidence、老化退役），零 LLM。
+  // dryRun=true 仅返回拟调整明细不落库；dryRun=false 真实写库。
+  maintainMemory: (workspaceId: string, body?: { dryRun?: boolean }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/memory/maintain`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    }).then(json<MemoryMaintenanceResult>),
+
+  // 记忆 v2.0 缺口4 · 把高频 experience 簇升级为 Skill 候选（status=candidate，不自动启用）。
+  // dryRun=true 仅列 eligible 簇 + 升级依据；dryRun=false 真实蒸馏候选入 registry。
+  // 注意：thresholds 字段需平铺到 body 根（与 server parseMemorySkillPromotionBody 对齐）。
+  promoteMemorySkills: (
+    workspaceId: string,
+    body?: {
+      dryRun?: boolean;
+      maxPromotions?: number;
+      model?: string;
+      timeoutMs?: number;
+      duplicateThreshold?: number;
+      highConfidence?: number;
+      minHighConfidenceItems?: number;
+      minUsedCount?: number;
+      minPositiveSignals?: number;
+    },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/memory/promote-skills`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    }).then(json<MemoryToSkillResult>),
 };

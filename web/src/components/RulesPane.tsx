@@ -7,6 +7,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertTriangle,
+  ArrowUpCircle,
   Brain,
   Eye,
   Inbox,
@@ -14,13 +15,16 @@ import {
   Plus,
   RefreshCw,
   Save,
+  Sparkles,
   Tag,
   ThumbsDown,
   ThumbsUp,
   Trash2,
+  Wrench,
   X,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import type { MemoryMaintenanceResult, MemoryToSkillResult } from "@/lib/api/engine";
 import type {
   MemoryItem,
   MemoryItemType,
@@ -124,6 +128,15 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
   const [showPreview, setShowPreview] = useState(false);
   const [busyId, setBusyId] = useState<string | null>(null);
   const [tagFilter, setTagFilter] = useState<Set<string>>(new Set());
+
+  // 缺口3：立即维护（Dream Worker 纯算术，零 LLM）。先 dryRun 预览升/降/退役明细，确认后写库。
+  const [maintainPreview, setMaintainPreview] = useState<MemoryMaintenanceResult | null>(null);
+  const [maintainBusy, setMaintainBusy] = useState(false);
+  const [maintainNote, setMaintainNote] = useState("");
+  // 缺口4：升级 Skill。dryRun 列 eligible 簇 + 理由，确认后执行（产 candidate 不自动启用）。
+  const [promotePreview, setPromotePreview] = useState<MemoryToSkillResult | null>(null);
+  const [promoteBusy, setPromoteBusy] = useState(false);
+  const [promoteNote, setPromoteNote] = useState("");
 
   const refreshData = useCallback(async () => {
     if (!workspaceId) return;
@@ -352,6 +365,83 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
     }
   };
 
+  // 缺口3：dryRun 拉拟调整明细（升/降/退役 + before/after + reason），不落库。
+  const runMaintainDryRun = async () => {
+    if (!workspaceId || maintainBusy) return;
+    setMaintainBusy(true);
+    setMaintainNote("");
+    setError("");
+    try {
+      const out = await api.maintainMemory(workspaceId, { dryRun: true });
+      setMaintainPreview(out);
+      if (out.changes.length === 0) {
+        setMaintainNote(`扫描 ${out.scanned} 条，暂无可调整记忆。`);
+      }
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setMaintainBusy(false);
+    }
+  };
+
+  // 缺口3：确认执行写库，刷新列表反映新的 confidence/validUntil。
+  const applyMaintain = async () => {
+    if (!workspaceId || maintainBusy) return;
+    if (!maintainPreview || maintainPreview.changes.length === 0) return;
+    if (!window.confirm(`即将对 ${maintainPreview.changes.length} 条记忆应用维护（升/降 confidence、老化退役），是否继续？`)) return;
+    setMaintainBusy(true);
+    setError("");
+    try {
+      const out = await api.maintainMemory(workspaceId, { dryRun: false });
+      setMaintainNote(`已应用 ${out.applied} / ${out.changes.length} 条调整。`);
+      setMaintainPreview(null);
+      await refreshData();
+      await refreshPreview();
+      onRulesChanged?.();
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setMaintainBusy(false);
+    }
+  };
+
+  // 缺口4：dryRun 列 eligible 簇（tag/reasons/highConfidenceCount/totalUsedCount/items.length），不写 registry。
+  const runPromoteDryRun = async () => {
+    if (!workspaceId || promoteBusy) return;
+    setPromoteBusy(true);
+    setPromoteNote("");
+    setError("");
+    try {
+      const out = await api.promoteMemorySkills(workspaceId, { dryRun: true });
+      setPromotePreview(out);
+      if (out.eligibleClusters === 0) {
+        setPromoteNote(`扫描 experience ${out.scanned} 条 / 共 ${out.clusters.length} 簇，暂无达阈值簇可升级。可在 RulesPane 给经验打 method: / task: 标签积累。`);
+      }
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPromoteBusy(false);
+    }
+  };
+
+  // 缺口4：确认执行，调 LLM 蒸馏 → 入 skill registry status=candidate（不自动启用）。
+  const applyPromote = async () => {
+    if (!workspaceId || promoteBusy) return;
+    if (!promotePreview || promotePreview.eligibleClusters === 0) return;
+    if (!window.confirm(`即将把 ${promotePreview.eligibleClusters} 个 eligible 簇蒸馏为 Skill 候选（status=candidate，不会自动启用）。\n会调用 LLM，是否继续？`)) return;
+    setPromoteBusy(true);
+    setError("");
+    try {
+      const out = await api.promoteMemorySkills(workspaceId, { dryRun: false });
+      setPromoteNote(`已产出 ${out.promotions.length} 个 Skill 候选（status=candidate），请去实验场评测后再启用。`);
+      setPromotePreview(null);
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setPromoteBusy(false);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 overflow-auto bg-neutral-50/60 p-5 dark:bg-neutral-950">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
@@ -360,7 +450,9 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
             <h1 className="flex items-center gap-2 text-base font-semibold text-neutral-900 dark:text-neutral-100"><Brain className="h-4 w-4" /> 统一记忆面板</h1>
             <p className="mt-1 text-[12.5px] text-neutral-500">memory_items（constraint/experience/episode）+ fact 投影 + D-INGEST 候选复核</p>
           </div>
-          <div className="flex gap-2">
+          <div className="flex flex-wrap gap-2">
+            <button onClick={() => void runMaintainDryRun()} disabled={!workspaceId || maintainBusy} title="Dream Worker 纯算术维护：升/降 confidence + 老化退役（先预览再应用）" className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] disabled:opacity-50 dark:border-neutral-700"><Wrench className={`h-3.5 w-3.5 ${maintainBusy ? "animate-spin" : ""}`} /> 立即维护</button>
+            <button onClick={() => void runPromoteDryRun()} disabled={!workspaceId || promoteBusy} title="把高频 experience 簇升级为 Skill 候选（status=candidate，不自动启用）" className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] disabled:opacity-50 dark:border-neutral-700"><ArrowUpCircle className={`h-3.5 w-3.5 ${promoteBusy ? "animate-spin" : ""}`} /> 升级 Skill</button>
             <button onClick={() => setShowPreview((v) => !v)} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] dark:border-neutral-700"><Eye className="h-3.5 w-3.5" /> {showPreview ? "隐藏" : "预览"}注入</button>
             <button onClick={() => setCreating((v) => !v)} disabled={!workspaceId} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-[12px] text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"><Plus className="h-3.5 w-3.5" /> 新建</button>
             <button onClick={() => void refreshData()} disabled={!workspaceId || loading} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] disabled:opacity-50 dark:border-neutral-700"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新</button>
@@ -368,6 +460,85 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
         </div>
 
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30">{error}</div>}
+
+        {(maintainPreview || maintainNote) && (
+          <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><Wrench className="h-3.5 w-3.5" /> 维护预览（Dream Worker · 纯算术 / 零 LLM）</h2>
+              <div className="flex gap-2">
+                {maintainPreview && maintainPreview.changes.length > 0 && (
+                  <button onClick={() => void applyMaintain()} disabled={maintainBusy} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"><Save className="h-3.5 w-3.5" /> 应用 {maintainPreview.changes.length} 条</button>
+                )}
+                <button onClick={() => { setMaintainPreview(null); setMaintainNote(""); }} className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1.5 text-[12px] dark:border-neutral-700"><X className="h-3.5 w-3.5" /> 关闭</button>
+              </div>
+            </div>
+            {maintainPreview && (
+              <p className="mt-1 text-[11.5px] text-neutral-500">扫描 {maintainPreview.scanned} 条 · 拟调整 {maintainPreview.changes.length} 条 · dryRun={String(maintainPreview.dryRun)}</p>
+            )}
+            {maintainNote && <p className="mt-2 text-[12px] text-neutral-600 dark:text-neutral-300">{maintainNote}</p>}
+            {maintainPreview && maintainPreview.changes.length > 0 && (
+              <div className="mt-3 max-h-72 space-y-1.5 overflow-auto">
+                {maintainPreview.changes.map((c) => {
+                  const tone = c.action === "promote"
+                    ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
+                    : c.action === "demote"
+                      ? "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300"
+                      : "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300";
+                  return (
+                    <div key={c.id} className="rounded-md border border-neutral-200 bg-neutral-50/60 px-3 py-2 text-[12px] dark:border-neutral-800 dark:bg-neutral-950/40">
+                      <div className="flex flex-wrap items-center gap-2">
+                        <span className={`rounded border px-1.5 py-0.5 text-[10.5px] uppercase ${tone}`}>{c.action}</span>
+                        <code className="font-mono text-[11px] text-neutral-500">{c.id}</code>
+                        <span className="text-[11px] text-neutral-500">
+                          conf {c.before.confidence.toFixed(2)} → {c.after.confidence.toFixed(2)}
+                          {c.before.validUntil !== c.after.validUntil && (
+                            <> · validUntil {c.before.validUntil ? fmtTs(c.before.validUntil) : "—"} → {c.after.validUntil ? fmtTs(c.after.validUntil) : "—"}</>
+                          )}
+                        </span>
+                      </div>
+                      <p className="mt-1 text-[11.5px] text-neutral-500">{c.reason}</p>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        )}
+
+        {(promotePreview || promoteNote) && (
+          <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><Sparkles className="h-3.5 w-3.5" /> 升级 Skill 预览（experience 簇 → registry candidate）</h2>
+              <div className="flex gap-2">
+                {promotePreview && promotePreview.eligibleClusters > 0 && (
+                  <button onClick={() => void applyPromote()} disabled={promoteBusy} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"><Save className="h-3.5 w-3.5" /> 执行 {promotePreview.eligibleClusters} 簇</button>
+                )}
+                <button onClick={() => { setPromotePreview(null); setPromoteNote(""); }} className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1.5 text-[12px] dark:border-neutral-700"><X className="h-3.5 w-3.5" /> 关闭</button>
+              </div>
+            </div>
+            {promotePreview && (
+              <p className="mt-1 text-[11.5px] text-neutral-500">扫描 experience {promotePreview.scanned} 条 · 共 {promotePreview.clusters.length} 簇 · eligible {promotePreview.eligibleClusters} · dryRun={String(promotePreview.dryRun)}</p>
+            )}
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">执行后只入 skill registry candidate 状态，不会自动启用。请去实验场评测后再决定是否激活。</p>
+            {promoteNote && <p className="mt-2 text-[12px] text-neutral-600 dark:text-neutral-300">{promoteNote}</p>}
+            {promotePreview && promotePreview.clusters.length > 0 && (
+              <div className="mt-3 max-h-80 space-y-2 overflow-auto">
+                {promotePreview.clusters.map((c) => (
+                  <div key={c.tag} className={`rounded-md border px-3 py-2 text-[12px] ${c.eligible ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-neutral-200 bg-neutral-50/60 dark:border-neutral-800 dark:bg-neutral-950/40"}`}>
+                    <div className="flex flex-wrap items-center gap-2">
+                      <span className={`rounded border px-1.5 py-0.5 text-[10.5px] ${c.eligible ? "border-emerald-300 bg-white text-emerald-700 dark:border-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" : "border-neutral-300 bg-white text-neutral-500 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-400"}`}>{c.eligible ? "eligible" : "未达阈值"}</span>
+                      <TagChip tag={c.tag} />
+                      <span className="text-[11px] text-neutral-500">{c.items.length} 条 · 高置信 {c.highConfidenceCount} · used {c.totalUsedCount} · +{c.totalPositiveSignals}</span>
+                    </div>
+                    <ul className="mt-1.5 list-disc pl-5 text-[11.5px] text-neutral-500">
+                      {c.reasons.map((r, i) => (<li key={i}>{r}</li>))}
+                    </ul>
+                  </div>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
 
         {showPreview && (
           <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
