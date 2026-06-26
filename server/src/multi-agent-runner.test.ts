@@ -221,6 +221,73 @@ test("runMultiAgent lets node skills override or disable workflow defaults", asy
   ]);
 });
 
+test("runMultiAgent disables default pi skills when workflow has no explicit skill fallback", async () => {
+  const adapter = makeFakePiAdapter({ only: { text: "only output" } }, "test-run");
+  const workflow: WorkflowDef = {
+    nodes: [{ id: "only", label: "Only", prompt: "Run only" }],
+    edges: [],
+  };
+
+  await runMultiAgent(workflow, makeBaseOptions(makeRunDir(), adapter.runTurn));
+
+  assert.deepEqual(adapter.calls.map((call) => call.skillPaths), [[]]);
+});
+
+test("runMultiAgent forwards workflow allowWeb only when explicitly enabled", async () => {
+  const denied = makeFakePiAdapter({ only: { text: "only output" } }, "test-run");
+  await runMultiAgent({
+    nodes: [{ id: "only", label: "Only", prompt: "Run only" }],
+    edges: [],
+  }, makeBaseOptions(makeRunDir(), denied.runTurn));
+  assert.deepEqual(denied.calls.map((call) => call.allowWeb), [false]);
+
+  const allowed = makeFakePiAdapter({ first: { text: "first output" }, second: { text: "second output" } }, "test-run");
+  await runMultiAgent({
+    allowWeb: true,
+    nodes: [
+      { id: "first", label: "First", prompt: "Run first" },
+      { id: "second", label: "Second", prompt: "Run second" },
+    ],
+    edges: [{ id: "first-second", source: "first", target: "second" }],
+  }, makeBaseOptions(makeRunDir(), allowed.runTurn));
+  assert.deepEqual(allowed.calls.map((call) => call.allowWeb), [true, true]);
+});
+
+test("runMultiAgent fanOut children inherit workflow allowWeb", async () => {
+  const hyps = [
+    { id: "H1", hypothesis: "a" },
+    { id: "H2", hypothesis: "b" },
+  ];
+  const adapter = makeFakePiAdapter(
+    {
+      plan: { text: planText(hyps) },
+      "insight-1": { text: "I1 done" },
+      "insight-2": { text: "I2 done" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    allowWeb: true,
+    nodes: [
+      { id: "plan", label: "Plan", prompt: "Make plan" },
+      {
+        id: "insight",
+        label: "Insight",
+        prompt: "Verify {{item.hypothesis}}",
+        fanOut: { source: "plan", marker: "anax-hypotheses-plan", concurrency: 2 },
+      },
+    ],
+    edges: [{ id: "p-i", source: "plan", target: "insight" }],
+  };
+
+  await runMultiAgent(workflow, makeBaseOptions(makeRunDir(), adapter.runTurn));
+
+  assert.equal(adapter.calls.length, 3); // 1 plan + 2 fanOut children
+  const fanOutCalls = adapter.calls.filter((c) => c.piSessionId.startsWith("test-run-insight-"));
+  assert.equal(fanOutCalls.length, 2);
+  assert.deepEqual(fanOutCalls.map((c) => c.allowWeb), [true, true], "fanOut children must inherit allowWeb from workflow");
+});
+
 test("runMultiAgent executes a tool node and exposes its output to downstream agents", async () => {
   const runDir = makeRunDir();
   const inputPath = join(runDir, "input.txt");

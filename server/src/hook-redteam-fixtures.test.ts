@@ -5,7 +5,12 @@ import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { runHookEvaluation } from "./hook-evaluation-runner.ts";
 import { buildHookRedTeamCases, REDTEAM_GUARDRAIL_HOOK } from "./hook-redteam-fixtures.ts";
-import type { Hook } from "../../pi-extensions/px-hook-runner/hook-eval-core.ts";
+import {
+  BUILTIN_WEB_SEARCH_GUARD_ID,
+  WEB_SEARCH_BLOCK_REASON,
+  evaluateHookFixture,
+  type Hook,
+} from "../../pi-extensions/px-hook-runner/hook-eval-core.ts";
 import type { HookEvalCase } from "./types.ts";
 
 function run(hooks: Hook[], cases: HookEvalCase[], repeat = 1) {
@@ -73,4 +78,78 @@ test("red-team: a content-keyed block still fires when toolName is renamed to ev
     expected: { kind: "must-block", reasonPattern: "red-team guardrail" },
   };
   assert.equal(run([REDTEAM_GUARDRAIL_HOOK], [strong]).status, "success", "content guardrail still blocks renamed tool");
+});
+
+test("web guard: web_search is blocked unless PX_ALLOW_WEB is explicitly set", () => {
+  const previous = process.env.PX_ALLOW_WEB;
+  delete process.env.PX_ALLOW_WEB;
+  try {
+    const blocked = evaluateHookFixture([], "tool_call", { toolName: "web_search", input: { query: "商圈研究" } });
+    assert.equal(blocked.blocked, true);
+    assert.equal(blocked.blockReason, WEB_SEARCH_BLOCK_REASON);
+    assert.deepEqual(blocked.matchedHookIds, [BUILTIN_WEB_SEARCH_GUARD_ID]);
+
+    process.env.PX_ALLOW_WEB = "1";
+    const allowed = evaluateHookFixture([], "tool_call", { toolName: "web_search", input: { query: "商圈研究" } });
+    assert.equal(allowed.blocked, false);
+    assert.deepEqual(allowed.matchedHookIds, []);
+  } finally {
+    if (previous === undefined) delete process.env.PX_ALLOW_WEB;
+    else process.env.PX_ALLOW_WEB = previous;
+  }
+});
+
+test("web guard: blocks web_search with case and separator variants", () => {
+  const previous = process.env.PX_ALLOW_WEB;
+  delete process.env.PX_ALLOW_WEB;
+  try {
+    const variants = [
+      { toolName: "Web_Search", input: { query: "test" } },
+      { toolName: "WEB_SEARCH", input: { query: "test" } },
+      { toolName: "web-search", input: { query: "test" } },
+      { toolName: "WebSearch", input: { query: "test" } },
+    ];
+    for (const payload of variants) {
+      const verdict = evaluateHookFixture([], "tool_call", payload);
+      assert.equal(verdict.blocked, true, `variant ${JSON.stringify(payload.toolName)} must be blocked`);
+      assert.equal(verdict.blockReason, WEB_SEARCH_BLOCK_REASON);
+      assert.deepEqual(verdict.matchedHookIds, [BUILTIN_WEB_SEARCH_GUARD_ID]);
+    }
+  } finally {
+    if (previous === undefined) delete process.env.PX_ALLOW_WEB;
+    else process.env.PX_ALLOW_WEB = previous;
+  }
+});
+
+test("web guard: blocks web_search when toolName is missing but input/args contain the signal", () => {
+  const previous = process.env.PX_ALLOW_WEB;
+  delete process.env.PX_ALLOW_WEB;
+  try {
+    const viaInputName = evaluateHookFixture([], "tool_call", { toolName: "custom_tool", input: { name: "web_search", query: "test" } });
+    assert.equal(viaInputName.blocked, true, "web_search in input.name must be blocked");
+
+    const viaArgsTool = evaluateHookFixture([], "tool_call", { toolName: "custom_tool", args: { tool: "web_search", query: "test" } });
+    assert.equal(viaArgsTool.blocked, true, "web_search in args.tool must be blocked");
+
+    const viaInputCommand = evaluateHookFixture([], "tool_call", { toolName: "custom_tool", input: { command: "web_search --query=test" } });
+    assert.equal(viaInputCommand.blocked, true, "web_search in input.command must be blocked");
+  } finally {
+    if (previous === undefined) delete process.env.PX_ALLOW_WEB;
+    else process.env.PX_ALLOW_WEB = previous;
+  }
+});
+
+test("web guard: allows benign tools even when description mentions web_search", () => {
+  const previous = process.env.PX_ALLOW_WEB;
+  delete process.env.PX_ALLOW_WEB;
+  try {
+    const masqueradeDesc = evaluateHookFixture([], "tool_call", { toolName: "text_completion", input: { description: "uses web_search internally", text: "hello" } });
+    assert.equal(masqueradeDesc.blocked, false, "web_search in description field must not trigger block");
+
+    const masqueradeTextField = evaluateHookFixture([], "tool_call", { toolName: "text_completion", input: { text: "please use web_search to find info" } });
+    assert.equal(masqueradeTextField.blocked, false, "web_search in text field must not trigger block");
+  } finally {
+    if (previous === undefined) delete process.env.PX_ALLOW_WEB;
+    else process.env.PX_ALLOW_WEB = previous;
+  }
 });

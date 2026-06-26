@@ -10,8 +10,14 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。详见 `Orchestration.md §八` 发布节点。
 
-- 最近更新：2026-06-25 · 总控（数字锁产出侧 P1：X-MLOCK0/X-MLOCK1 done，待用户提交）
-- 本批（2026-06-25 · 数字锁产出侧校验）：
+- 最近更新：2026-06-26 · 总控（零幻觉·数据可信地基 v2.3 终审归档）
+- 本批（2026-06-26 · 零幻觉·数据可信地基）：
+  - ✅ **产品边界声明**：本系统验证 LLM 输出是否忠实于已登记数据、来源与计算结果；不保证原始数据、业务口径或因果解释天然正确，重要结论仍需人工复核。
+  - ✅ **四模块红线矩阵**：监测/日常/专题 web_search 硬禁；重复仅 workflow.allowWeb=true 显式授权放行。主对话/专题/flow chat 默认 `skillPaths=[]` 禁自主 skill；显式白名单仍可审计。collect 是独立联网窗口，不混入四模块口径。
+  - ✅ **证据与核验闭环**：EvidenceLevel/MetricSourceRef/renderSourceLabel + fabricated/label_mismatch + causal layering + coverage check + C-mini + reconciliation 已完成并经 X-ZH9 终审。
+  - ✅ **验证**：关键回归 110/110；`npm run typecheck`；`npm run build`；数据探索 LLM 隔离 grep 全绿。
+  - ⚠️ **边界外风险**：GIGO（源数据/ETL 错）、选择性叙事、实质因果谬误、common-mode failure（两条路径共享同一错误逻辑）仍需人工审查或外部真源。
+- 历史批次（2026-06-25 · 数字锁产出侧校验）：
   - ✅ **X-MLOCK0 契约 + 校验核心**：双侧 `types.ts` 新增 `MetricVerification` / `MetricVerificationHit`；新增 `server/src/metric-verification.ts:verifyMetricUsage()` 纯函数，支持千分位、小数、`万`/`亿`、百分比归一；容差常量 `ε_ok=0.5%`、`ε_suspect=20%`；`matched/suspect/unreferenced` 明细 + `verdict` 聚合。新增 `metric-verification.test.ts` 覆盖 matched/suspect/unreferenced/万亿/百分比/verdict。
   - ✅ **X-MLOCK1 tool-use 链路接入 + ChatPane 告警**：新增 `server/src/metric-verification-events.ts` 从 `tool_result` / `turn_end.toolResults` / MCP 文本块中 best-effort 提取本轮 `MetricSnapshot[]`，在 `handleSend`(`index.ts`) 与 `handleSendFlow`(`routes/engine.ts`) 的 assistant `message_end` 后跑 `verifyMetricUsage()`；仅 `verdict="mismatch"` 时追加 `{type:"metric_verification"}` content block。前端 `ContentBlock` 增加该 block，`MessageRow` 默认可见地渲染琥珀色告警条（列 suspect 的 name/expected/foundInText）。无 snapshot 或正常引用零变化；不自动重试、不阻断、不改写。
   - ✅ **验证**：`node --experimental-strip-types --test server/src/metric-verification.test.ts server/src/metric-verification-events.test.ts` 8/8 通过；`npm run typecheck` 绿；`npm run build` 绿（仅既有 Vite chunk/dynamic import 警告）；红线 grep 无 `draw_data` / `dataset.rows` / raw path / 文件读取命中。未跑真实 LLM tool-use 端到端（需可用 analysis 工具 + 模型实跑环境）。

@@ -2989,7 +2989,7 @@ export async function handleSendFlow(
   ];
   let skillPaths: string[] | undefined;
   try {
-    skillPaths = validateSkillPaths(flow.folderPath, requestedSkillPaths.length > 0 ? requestedSkillPaths : undefined);
+    skillPaths = validateSkillPaths(flow.folderPath, requestedSkillPaths.length > 0 ? requestedSkillPaths : []);
   } catch (err) {
     return send(ws, { type: "error", flowId: flow.id, message: String(err) });
   }
@@ -3028,6 +3028,7 @@ export async function handleSendFlow(
       msg.injectRulesPrompt ? withRulesPrompt(flow.workspaceId, "workflow", msg.systemPrompt, memoryRetrievalContext) : msg.systemPrompt,
     ),
     skillPaths,
+    allowWeb: false,
     onEvent: (event: PiEvent) => {
       metricSnapshotsThisTurn.push(...collectMetricSnapshotsFromEvent(event));
       const eventForClient: PiEvent = event.type === "message_end"
@@ -3284,6 +3285,8 @@ export async function handleAnaxPrecheck(
       piSessionId: `precheck-${precheckId}`,
       text: `${contextPrefix}${prompt}`,
       model: model || undefined,
+      skillPaths: [],
+      allowWeb: false,
       onEvent: (event: PiEvent) => {
         send(ws, { type: "anax_precheck_event", precheckId, event });
         if (event.type === "message_end") {

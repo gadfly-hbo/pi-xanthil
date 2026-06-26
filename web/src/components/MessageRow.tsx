@@ -28,7 +28,7 @@ export function hasToolBlocks(m: UiMessage): boolean {
 }
 
 function MetricVerificationAlert({ verification }: { verification: MetricVerification }) {
-  const suspects = verification.hits.filter((hit) => hit.status === "suspect");
+  const suspects = verification.hits.filter((hit) => hit.status === "suspect" || hit.status === "fabricated" || hit.status === "label_mismatch");
   if (suspects.length === 0) return null;
   return (
     <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
@@ -39,7 +39,9 @@ function MetricVerificationAlert({ verification }: { verification: MetricVerific
       <div className="mt-1 space-y-0.5">
         {suspects.map((hit) => (
           <div key={`${hit.name}:${hit.expected}:${hit.foundInText ?? "null"}`} className="font-mono text-[11px]">
-            {hit.name}: expected {hit.expected}, found {hit.foundInText ?? "未引用"}
+            {hit.status === "fabricated" && `疑似捏造数字: ${hit.foundInText}`}
+            {hit.status === "label_mismatch" && `${hit.name}: expected ${hit.expected}, found ${hit.foundInText} 但上下文指标为「${hit.contextLabel ?? "未知"}」`}
+            {hit.status === "suspect" && `${hit.name}: expected ${hit.expected}, found ${hit.foundInText ?? "未引用"}`}
           </div>
         ))}
       </div>

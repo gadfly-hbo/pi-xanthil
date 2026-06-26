@@ -9,15 +9,15 @@ import { notifyChildProcess, registerChildProcess, type ChildProcessListener } f
 
 export interface RunPiOptions {
   workspaceRoot: string;
-  piSessionId: string; // we reuse our session id as pi's --session-id
+  piSessionId: string;
   text: string;
   model?: string;
   systemPrompt?: string;
   injectExtractionToolSystem?: boolean;
+  injectCausalLayering?: boolean;
   skillPaths?: string[];
-  forkFrom?: string; // 若设，则首轮用 `--fork <id>` 把该 session 历史播种进 piSessionId（Fork 分支用）
-  // 若设，则用此目录作 spawn cwd 与 .pi-sessions 基准（替代 workspaceRoot）。
-  // 收集 session（X-COLLECT0）用 .collect-cwd 注入 minimax web_search MCP；不传则行为零变化。
+  allowWeb?: boolean;
+  forkFrom?: string;
   cwdOverride?: string;
   onEvent: (event: PiEvent) => void;
   onChildProcess?: ChildProcessListener;
@@ -35,6 +35,7 @@ export interface RunPiPromptOptions {
   model?: string;
   systemPrompt?: string;
   injectExtractionToolSystem?: boolean;
+  injectCausalLayering?: boolean;
   timeoutMs?: number;
   onEvent?: (event: PiEvent) => void;
   onChildProcess?: ChildProcessListener;
@@ -175,7 +176,7 @@ export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
   // NOTE: keep extensions enabled — `--no-extensions` would also disable the model provider extension.
   const args = ["-p", "--mode", "json", "--no-skills", "--no-tools", "--no-context-files", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
   if (opts.model) args.push("--model", opts.model);
-  args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt, { injectExtractionToolSystem: opts.injectExtractionToolSystem }));
+  args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt, { injectExtractionToolSystem: opts.injectExtractionToolSystem, injectCausalLayering: opts.injectCausalLayering }));
   args.push(opts.text);
 
   return new Promise<string>((resolve, reject) => {
@@ -276,7 +277,7 @@ export function runPiTurn(opts: RunPiOptions): PiRun {
   // Fork 分支首轮：从父 session 历史播种进新分支 session。
   if (opts.forkFrom) args.push("--fork", opts.forkFrom);
   if (opts.model) args.push("--model", opts.model);
-  args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt, { injectExtractionToolSystem: opts.injectExtractionToolSystem }));
+  args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt, { injectExtractionToolSystem: opts.injectExtractionToolSystem, injectCausalLayering: opts.injectCausalLayering }));
   if (opts.skillPaths) {
     args.push("--no-skills");
     for (const path of opts.skillPaths) args.push("--skill", path);
@@ -288,6 +289,7 @@ export function runPiTurn(opts: RunPiOptions): PiRun {
     args.push("-e", HOOK_RUNNER_EXTENSION);
     hookEnv.PX_HOOKS_CONFIG = HOOKS_CONFIG_PATH;
     hookEnv.PX_HOOKS_LOG = HOOKS_LOG_PATH;
+    if (opts.allowWeb) hookEnv.PX_ALLOW_WEB = "1";
   }
   args.push(opts.text);
 

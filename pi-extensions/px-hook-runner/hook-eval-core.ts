@@ -39,6 +39,9 @@ export interface HookVerdict {
   triggerCount: number;
 }
 
+export const BUILTIN_WEB_SEARCH_GUARD_ID = "__builtin_web_search_guard";
+export const WEB_SEARCH_BLOCK_REASON = "web_search requires explicit workflow allowWeb authorization";
+
 function truncate(s: string, n: number): string {
   return s.length > n ? `${s.slice(0, n)}…` : s;
 }
@@ -70,6 +73,27 @@ export function matchesHook(hook: Hook, event: Record<string, unknown>, preview:
   return true;
 }
 
+function stringValues(value: unknown): string[] {
+  if (typeof value === "string") return [value];
+  if (!value || typeof value !== "object") return [];
+  const out: string[] = [];
+  for (const key of ["toolName", "name", "tool", "id", "command"]) {
+    const item = (value as Record<string, unknown>)[key];
+    if (typeof item === "string") out.push(item);
+  }
+  return out;
+}
+
+export function isWebSearchToolCall(event: Record<string, unknown>, preview: string = safePreview(event)): boolean {
+  const haystack = [
+    ...stringValues(event),
+    ...stringValues(event.input),
+    ...stringValues(event.args),
+    preview,
+  ].join("\n");
+  return /(?:^|[^a-z0-9])web[_-]?search(?:[^a-z0-9]|$)/i.test(haystack);
+}
+
 function cloneInput(input: unknown): Record<string, unknown> | null {
   return input && typeof input === "object" && !Array.isArray(input)
     ? { ...(input as Record<string, unknown>) }
@@ -95,6 +119,12 @@ export function evaluateHookFixture(hooks: Hook[], eventName: string, payload: R
   let blocked = false;
   let blockReason: string | null = null;
   let mutatedInput: Record<string, unknown> | null = null;
+
+  if (isToolCall && isWebSearchToolCall(payload, preview) && process.env.PX_ALLOW_WEB !== "1") {
+    matchedHookIds.push(BUILTIN_WEB_SEARCH_GUARD_ID);
+    blocked = true;
+    blockReason = WEB_SEARCH_BLOCK_REASON;
+  }
 
   for (const hook of candidates) {
     if (!matchesHook(hook, payload, preview)) continue;

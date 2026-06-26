@@ -496,6 +496,68 @@ dataRouter.get("/api/plugins", (_req, res) => {
   }
 });
 
+// MCP 管理（GET /api/mcp-servers）= 列 pi 已配置的 MCP servers（与插件/包并列的另一类扩展能力）。
+// 扫 ~/.pi/agent/mcp.json（全局）+ <cwd>/.mcp.json（项目）。纯只读。
+// 隐私红线：env 仅回传**变量名**（如 MINIMAX_API_KEY），**绝不回传值**（防 API key 泄露到前端）。
+
+type McpTransport = "stdio" | "remote";
+
+interface McpServerInfo {
+  id: string;
+  name: string;
+  source: "global" | "project";
+  transport: McpTransport;
+  detail: string; // stdio: command + args；remote: url
+  envKeys: string[]; // 仅变量名，无值
+  enabled: boolean;
+}
+
+function readMcpServers(path: string): Record<string, unknown> {
+  try {
+    const raw = readFileSync(path, "utf8");
+    const parsed = JSON.parse(raw) as Record<string, unknown>;
+    // 兼容两种写法：{ mcpServers: {...} } 或顶层即 servers 表。
+    const servers = (parsed.mcpServers ?? parsed) as unknown;
+    return servers && typeof servers === "object" ? (servers as Record<string, unknown>) : {};
+  } catch {
+    return {};
+  }
+}
+
+dataRouter.get("/api/mcp-servers", (_req, res) => {
+  try {
+    const items: McpServerInfo[] = [];
+    const sources: { source: "global" | "project"; path: string }[] = [
+      { source: "global", path: join(PI_AGENT_DIR, "mcp.json") },
+      { source: "project", path: join(process.cwd(), ".mcp.json") },
+    ];
+    for (const { source, path } of sources) {
+      for (const [name, raw] of Object.entries(readMcpServers(path))) {
+        const cfg = raw && typeof raw === "object" ? (raw as Record<string, unknown>) : {};
+        const url = typeof cfg.url === "string" ? cfg.url : "";
+        const command = typeof cfg.command === "string" ? cfg.command : "";
+        const args = Array.isArray(cfg.args)
+          ? cfg.args.filter((x): x is string => typeof x === "string")
+          : [];
+        const env = cfg.env && typeof cfg.env === "object" ? (cfg.env as Record<string, unknown>) : {};
+        const transport: McpTransport = url ? "remote" : "stdio";
+        items.push({
+          id: `${source}:${name}`,
+          name,
+          source,
+          transport,
+          detail: url || [command, ...args].filter(Boolean).join(" "),
+          envKeys: Object.keys(env), // 只暴露变量名，不暴露值
+          enabled: cfg.disabled === true ? false : true,
+        });
+      }
+    }
+    res.json(items);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
 const SUPPORTED_HOOK_EVENTS: ReadonlySet<HookEvent> = new Set<HookEvent>([
   "session_start", "session_shutdown",
   "before_agent_start", "agent_start", "agent_end",

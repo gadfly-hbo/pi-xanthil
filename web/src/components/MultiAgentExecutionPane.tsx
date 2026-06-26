@@ -751,15 +751,32 @@ export function MultiAgentExecutionPane(p: Props) {
                 {centerTab === "flow" && (
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
                     {workflow && (
-                      <WorkflowSkillSelect
-                        label="workflow defaultSkillPaths"
-                        mode="workflow"
-                        value={workflow.defaultSkillPaths ?? []}
-                        options={skillOptions}
-                        loading={loadingFlowSkills}
-                        disabled={running}
-                        onChange={(value) => updateWorkflowRoot({ defaultSkillPaths: value ?? [] })}
-                      />
+                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_280px]">
+                        <WorkflowSkillSelect
+                          label="workflow defaultSkillPaths"
+                          mode="workflow"
+                          value={workflow.defaultSkillPaths ?? []}
+                          options={skillOptions}
+                          loading={loadingFlowSkills}
+                          disabled={running}
+                          onChange={(value) => updateWorkflowRoot({ defaultSkillPaths: value ?? [] })}
+                        />
+                        <label className="flex min-h-[68px] items-start gap-2 rounded-md border border-amber-200 bg-amber-50/50 p-3 text-[11.5px] leading-5 text-amber-800 dark:border-amber-900/60 dark:bg-amber-950/20 dark:text-amber-200">
+                          <input
+                            type="checkbox"
+                            checked={workflow.allowWeb === true}
+                            disabled={running}
+                            onChange={(e) => updateWorkflowRoot({ allowWeb: e.target.checked })}
+                            className="mt-1 h-3.5 w-3.5 shrink-0"
+                          />
+                          <span>
+                            <span className="block text-[12px] font-semibold">允许联网</span>
+                            <span className="block text-amber-700 dark:text-amber-300">
+                              开启后本 workflow 可调用 web_search。查询内容会发送到联网 MCP 服务，请勿包含隐私数据。
+                            </span>
+                          </span>
+                        </label>
+                      </div>
                     )}
                     {orderedNodes.length === 0 ? (
                       <div className="flex flex-1 items-center justify-center text-[12px] text-neutral-400">

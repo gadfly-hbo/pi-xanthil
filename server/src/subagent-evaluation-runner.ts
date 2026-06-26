@@ -133,6 +133,7 @@ async function runCase(options: SubAgentEvaluationRunnerOptions, runRoot: string
       text: testCase.brief,
       systemPrompt,
       model: options.model,
+      skillPaths: [],
       onEvent: (event) => collectTrajectory(event, metrics, toolTrajectory, () => { stepCount += 1; }, options, id, testCase.name),
     });
     const code = await waitForRun(run, testCase.timeoutMs);

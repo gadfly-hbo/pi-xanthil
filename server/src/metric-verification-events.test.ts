@@ -10,6 +10,7 @@ const snapshots: MetricSnapshot[] = [
     period: "2026-06",
     status: "normal",
     source: "extraction_tool",
+    evidenceLevel: "A",
   },
 ];
 

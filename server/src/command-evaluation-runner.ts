@@ -176,6 +176,7 @@ async function runExpandedTurn(
     piSessionId: `${options.evaluationId}-${caseId}`,
     text: `${contextPrefix}${expandedText}`,
     model: options.model || undefined,
+    allowWeb: false,
     onEvent: (event) => {
       collectEvent(metrics, event, {
         workspaceId: options.workspaceId,

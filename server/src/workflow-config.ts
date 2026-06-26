@@ -13,6 +13,7 @@ import { validateSkillPaths } from "./skills.ts";
 
 export type WorkflowLike = {
   defaultModel?: unknown;
+  allowWeb?: unknown;
   defaultSkillPaths?: unknown;
   nodes?: Array<{ id?: unknown; model?: unknown; skillPaths?: unknown }>;
 };
@@ -62,6 +63,9 @@ export function normalizeWorkflowModels<T extends WorkflowLike>(workflow: T): T 
 }
 
 export function normalizeWorkflowSkills<T extends WorkflowLike>(flowRoot: string, workflow: T): T {
+  if (workflow.allowWeb !== undefined && typeof workflow.allowWeb !== "boolean") {
+    throw new Error("allowWeb must be a boolean when provided");
+  }
   if (workflow.defaultSkillPaths !== undefined) {
     workflow.defaultSkillPaths = validateWorkflowSkillList(flowRoot, workflow.defaultSkillPaths, "defaultSkillPaths");
   }

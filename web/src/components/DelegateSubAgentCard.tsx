@@ -154,7 +154,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   const [templates, setTemplates] = useState<SubAgentTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
   const [loadingTemplates, setLoadingTemplates] = useState(false);
-  const [skillMode, setSkillMode] = useState<"inherit" | "disabled" | "specified">("inherit");
+  const [skillMode, setSkillMode] = useState<"default" | "specified">("default");
   const [specifiedSkillPaths, setSpecifiedSkillPaths] = useState<string[]>([]);
   const [cleanFiles, setCleanFiles] = useState<WorkspacePath[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
@@ -208,7 +208,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   useEffect(() => {
     setBrief("");
     setSelectedTemplateId("");
-    setSkillMode("inherit");
+    setSkillMode("default");
     setSpecifiedSkillPaths([]);
     setSelectedFiles([]);
     setTasks([]);
@@ -297,7 +297,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
         dataFiles: selectedFiles,
         model: selectedModel || undefined,
         templateId: selectedTemplateId || undefined,
-        skillPaths: skillMode === "inherit" ? undefined : skillMode === "disabled" ? [] : specifiedSkillPaths,
+        skillPaths: skillMode === "default" ? undefined : specifiedSkillPaths,
       });
       setTasks((current) => [task, ...current.filter((item) => item.id !== task.id)]);
       setBrief("");
@@ -468,32 +468,19 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
                 />
               )}
             </div>
-            <div className="grid grid-cols-3 gap-1">
+            <div className="grid grid-cols-2 gap-1">
               <button
                 type="button"
-                onClick={() => setSkillMode("inherit")}
+                onClick={() => setSkillMode("default")}
                 className={cn(
                   "h-7 rounded border px-2 text-[10.5px]",
-                  skillMode === "inherit"
+                  skillMode === "default"
                     ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
                     : "border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800",
                 )}
-                title="不传 skillPaths，继承 pi 默认 skill 策略"
+                title="不传 skillPaths，后端默认按空白名单执行"
               >
-                继承
-              </button>
-              <button
-                type="button"
-                onClick={() => setSkillMode("disabled")}
-                className={cn(
-                  "h-7 rounded border px-2 text-[10.5px]",
-                  skillMode === "disabled"
-                    ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
-                    : "border-neutral-200 text-neutral-500 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-800",
-                )}
-                title="传空 skillPaths，明确禁用 skill"
-              >
-                禁用
+                默认
               </button>
               <button
                 type="button"
@@ -521,13 +508,11 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
               </div>
             )}
             <p className="mt-1 text-[10.5px] leading-4 text-neutral-400">
-              {skillMode === "inherit"
-                ? "子 agent 使用默认 skill 策略。"
-                : skillMode === "disabled"
-                  ? "子 agent 本轮不加载任何 skill。"
-                  : specifiedSkillPaths.length > 0
-                    ? "子 agent 本轮仅加载已勾选 skill。"
-                    : "请至少选择 1 个 skill。"}
+              {skillMode === "default"
+                ? "子 agent 默认不加载任何 skill。"
+                : specifiedSkillPaths.length > 0
+                  ? "子 agent 本轮仅加载已勾选 skill。"
+                  : "请至少选择 1 个 skill。"}
             </p>
           </div>
           <div className="rounded-md border border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900">

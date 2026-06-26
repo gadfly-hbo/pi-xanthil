@@ -107,6 +107,8 @@ export interface WorkflowEdge {
 export interface WorkflowDef {
   version?: number;
   defaultModel?: string;
+  /** Workflow-level authorization for external web_search. Defaults to false. */
+  allowWeb?: boolean;
   /** Workflow-level skill fallback for nodes without their own skillPaths. */
   defaultSkillPaths?: string[];
   nodes: WorkflowNode[];
@@ -183,6 +185,9 @@ export function validateWorkflow(value: unknown): asserts value is WorkflowDef {
   }
   if (workflow.defaultModel !== undefined && typeof workflow.defaultModel !== "string") {
     throw new Error("workflow.defaultModel must be a string when provided");
+  }
+  if (workflow.allowWeb !== undefined && typeof workflow.allowWeb !== "boolean") {
+    throw new Error("workflow.allowWeb must be a boolean when provided");
   }
   if (workflow.defaultSkillPaths !== undefined && !isStringArray(workflow.defaultSkillPaths)) {
     throw new Error("workflow.defaultSkillPaths must be a string array when provided");
@@ -432,10 +437,10 @@ export async function runMultiAgent(
     mkdirSync(nodeDir, { recursive: true });
 
     const model = node.model || fallbackModel || undefined;
-    const skillPaths = node.skillPaths ?? fallbackSkillPaths;
+    const skillPaths = node.skillPaths ?? fallbackSkillPaths ?? [];
     const nodeSystemPrompt = buildSystemPrompt(node);
     const systemPrompt = [opts.systemPromptPrefix, nodeSystemPrompt].filter(Boolean).join("\n\n") || undefined;
-    const turnBase = { model, skillPaths, systemPrompt };
+    const turnBase = { model, skillPaths, systemPrompt, allowWeb: workflow.allowWeb === true };
 
     // Fan-out only when the node opts in AND the upstream output actually
     // carries a parseable item array; otherwise fall back to a single turn.
@@ -805,6 +810,7 @@ interface TurnArgs {
   model?: string;
   skillPaths?: string[];
   systemPrompt?: string;
+  allowWeb?: boolean;
 }
 
 /** Run a single pi turn for a node, wiring events/run callbacks and capturing the assistant text. */
@@ -822,6 +828,7 @@ async function executeTurn(
     model: args.model,
     systemPrompt: args.systemPrompt,
     skillPaths: args.skillPaths,
+    allowWeb: args.allowWeb,
     onChildProcess: opts.onChildProcess,
     onEvent: (event: PiEvent) => {
       opts.onStepEvent(node.id, event);
@@ -854,7 +861,7 @@ async function runFanOut(
   blackboard: Record<string, string>,
   inputs: Record<string, string>,
   nodeDir: string,
-  turnBase: { model?: string; skillPaths?: string[]; systemPrompt?: string },
+  turnBase: { model?: string; skillPaths?: string[]; systemPrompt?: string; allowWeb?: boolean },
   opts: MultiAgentRunOptions,
 ): Promise<{ code: number | null; text: string }> {
   const limited = items.slice(0, spec.maxItems ?? DEFAULT_FANOUT_MAX_ITEMS);

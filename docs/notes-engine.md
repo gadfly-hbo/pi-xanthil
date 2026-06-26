@@ -9,36 +9,36 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-25 · **E-COLLECT2 收集前端面板** 完成。目标是在知识库「收集」tab 复用 ChatPane 的联网 collect session，并允许把 assistant 回复保存为知识库资料。
+- 最近更新：2026-06-26 · **零幻觉·数据可信地基 v2.3 终审完成**（联网/skill 红线、数字锁补洞、因果分层接线）
 - 进度：
-  - **CollectPane 新增（落点 `web/src/components/CollectPane.tsx`）**：
-    - 复用 `<ChatPane>`，props 全部取自 `TabContext` 的 `collect*` 字段：`collectMessages` / `collectRunning` / `collectSessionId` / `onCollectSend` / `onCollectStop` / runtime / compact handlers。
-    - 顶部固定提示「联网收集 · 仅本窗口可联网，回复请核对来源链接」；发送仍走 X-COLLECT0 已接好的 `collectWeb:true`，本卡不改 App 接缝。
-    - assistant 消息操作区显示「存为资料」；点击后弹小框确认/编辑标题，内容取该条 assistant 文本，提交 `api.createKnowledgeDoc(workspaceId, { title, content, tags:["收集"], scope:"workspace" })`。
-    - 保存成功后显示「已存入知识库」，本地把该消息标为「已保存」，并调用 `ctx.refreshKnowledgePromptInfo()` 更新顶部知识库计数/状态。
-  - **ChatPane 可选消息 action 插槽（落点 `ChatPane.tsx` + `MessageRow.tsx`）**：
-    - `ChatPane` 新增可选 `renderMessageAction?: (message: UiMessage) => ReactNode`，默认不传时普通 chat 行为零变化。
-    - `MessageRow` 在 assistant hover 操作区渲染 action，与原 `CopyButton` 同层；不改消息结构、不新增 `UiMessage` 字段。
-  - **知识库 tab 挂载（落点 `web/src/tabs/DataTabs.tsx`）**：
-    - `activeTab==="knowledge_base" && activeSubTab==="kb_collect"` 渲染 `<CollectPane ctx={ctx} />`。
-    - 未改 `App.tsx` / `constants.ts` / `types.ts` / 后端；未新增 D 后端，存资料只调既有 `POST /api/workspaces/:id/knowledge`。
+  - **E-ZH1 四模块联网/skill 红线回归套件**（同 session 前段，已完成）。
+  - **E-ZH4 MetricVerification 捏造数字 + 数字-标签错配告警**（同 session 前段，已完成）。
+  - **E-ZH5 正式报告因果分层**：
+    - `prompt-blocks.ts`：新增 `BLOCK_CAUSAL_LAYERING`（三段式：观察/推断/建议，含禁因果词、三要素、建议挂靠约束），`PROMPT_SCHEMA_VERSION v3→v5`，`assembleSystemPrompt` 新增 `injectCausalLayering` 选项；v5 明确 JSON/fixed schema 场景不得改变 schema，只在字段内遵守分层纪律。
+    - `pi-adapter.ts`：`RunPiOptions` / `RunPiPromptOptions` 新增 `injectCausalLayering?: boolean`，透传至 `assembleSystemPrompt`。
+    - `causal-layering-check.ts`（新建）：纯正则/结构核验——观察段因果词/推断词检测、推断缺支撑/证伪条件、建议无推断挂靠（孤儿）。零 LLM 调用。
+    - `causal-layering-check.test.ts`（新建）：11 测——合规报告 0 findings、观察段越界（因果词/推断词）、推断缺证伪/缺支撑/支撑不引用 #N、建议孤儿（含 bullet/编号）、无分层文本优雅降级、混合合规。
+  - **报告入口开启状态**：
+    - ✅ 基础设施就绪：`injectCausalLayering: true` 可被任意 `runPiTurn`/`runPiPrompt` 调用方传入，`BLOCK_CAUSAL_LAYERING` 注入 system prompt。
+    - ✅ 专题（zhuanti/anax_chat）已接线：`index.ts handleSend` 检测绑定 flow `sourceName === "AnaX 专题"` 时传 `injectCausalLayering: true`；日常 session 不受影响。
+    - ✅ 监测（monitor-llm）已接线：`draftMetricSystem` 的 `runPiPrompt` 传 `injectCausalLayering: true`。
+    - ❌ 经营报告未接线：当前无独立经营报告入口。
+  - **X-ZH9 四模块红线矩阵**：
+    - 日常：默认 `skillPaths=[]` → `--no-skills`，`allowWeb=false`；web_search 被 hook guard 拦截。
+    - 专题：同日常默认禁 skill/禁 web；AnaX 专题 session 额外启用 causal layering。
+    - 监测：`monitor-llm` 启用 causal layering；不授权 web_search。
+    - 重复：workflow `allowWeb` 默认 false；仅 UI 显式勾选后 workflow 节点传 `PX_ALLOW_WEB=1` 放行 web_search，fanOut 子任务继承。
 - 校验：
-  - **本次收尾**：`npm run typecheck` ✅（server + web）、`npm run build` ✅（warning 仅既有 Vite chunk / dynamic import / chunk size）。
-  - 本地服务点检：前端 Vite 曾以 `http://127.0.0.1:5174/` 启动；现有后端 `http://127.0.0.1:8787/api/health` 在提权 curl 下返回 `{"ok":true}`。未做浏览器手工点击验收。
+  - `node --test`：X-ZH9 关键回归 110/110 ✅（hook red-team、pi-adapter、multi-agent、causal、coverage、reconciliation、metric verification、monitor snapshot）。
+  - `npm run typecheck` ✅（server + web）
+  - `npm run build` ✅（仅既有 echarts/chunk size warnings）
+  - 数据探索 LLM 隔离 grep ✅ 无匹配
 - 下一步：
-  - **E-COLLECT2 浏览器验收**：进入「知识库 → 收集」，发起一次联网 collect chat，确认回复产生后 hover assistant 消息可见「存为资料」，保存后在「资料库/检索」能看到该文档与 tag「收集」。
-  - **保存后资料库刷新联动**：当前只刷新知识库 prompt info；如果用户在另一个 tab 已打开资料库，需要切回资料库时由 `KnowledgeBasePane` 自身 reload。若产品要求保存后立即跳转/强刷资料库，需要新增 UI 行为确认。
-  - **E-METRIC2 联调 smoke**：在带 analysis 工具的真实工作区跑一次 chat/flow chat pi turn，检查 `process_start.args` 的 `--system-prompt` 确含数字锁段；再通过 MCP `tools/list` 或真实工具调用确认 tool description 暴露禁止重计约束。
-  - **Chat 侧「引用全文」UI 开关**：当前 `fullDocMode` 仅 server 端实装，前端 Chat composer 未加触发 UI。需把 `injectKnowledgePrompt` 单一开关扩为「关闭 / chunk 注入 / 全文注入」三态，通过 `ClientMessage` 透传至 server `buildKnowledgePrompt`。**该改动会触及 `types.ts` 接缝（`ClientMessage.injectKnowledgePrompt` 字段语义扩展）+ `App.tsx` 状态扩展**，需总控审接缝。
-  - 监测引擎遗留 smoke（LLM draft 真实模型 + 多 workspace 隔离单测）仍未做；E-PROMPT2 真实模型 smoke 仍欠（旧 backlog）。
+  - **E-COLLECT2 浏览器验收**（上次遗留）：知识库→收集 tab 实跑。
+  - **可选真实 smoke**：带 analysis 工具真实工作区跑 chat/flow chat，确认数字锁段注入与 metric_verification 告警 UI。
+  - **Chat「引用全文」UI 开关**：需总控审接缝（`ClientMessage.injectKnowledgePrompt` 字段语义扩展）。
 - 阻塞：无。
-- 开放问题（需总控）：
-  1. **E-COLLECT2 资料刷新口径**：保存为资料后是否需要自动切到「资料库」并刷新，还是保持当前「收集」上下文只给成功提示？当前实现选择后者。
-  2. **E-METRIC2 覆盖范围**：multi-agent execute / evaluation runner / autonomous runner 是否也需要数字锁前缀？当前仅按题面覆盖普通 chat 与 flow chat。
-  3. **E-KB4 触发口径**：「引用全文」UI 是单独开关还是替换现有「知识库注入」chip？是否做成三态（关 / chunk / 全文）？涉及 `ClientMessage.injectKnowledgePrompt` 接缝字段升级，E 不擅改。
-  4. **E-KB4 阈值参数化**：题面写死 `0.75` 与 `2.0`；是否要在 `KnowledgeInjectionOptions` 暴露 `fullDocThreshold/fullDocDominanceRatio` 供 ChatPane 或评测覆盖？当前实装是硬编码常量。
-  5. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空（旧问题，未答）。
-  6. 记忆→skill 默认阈值仍待确认（旧问题，未答）。
+- 开放问题（需总控）：同上次 6 条（资料刷新口径、E-METRIC2 覆盖范围、E-KB4 触发口径/阈值参数化、E-PROMPT1 占位空值、记忆 skill 阈值）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -98,7 +98,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **CollectPane 复用 ChatPane 边界（2026-06-25 E-COLLECT2）**：知识库「收集」是专属 collect session 的 ChatPane 复用，不重写聊天 UI、不新增消息协议。联网能力由 App/X-COLLECT0 的 `onCollectSend(... collectWeb:true)` 保证，CollectPane 只消费 `TabContext.collect*`。assistant 级「存为资料」走 `ChatPane.renderMessageAction` 可选插槽 + `MessageRow.action` hover 操作区扩展，默认不传时普通 chat 行为零变化；保存资料只调 D 域既有 `api.createKnowledgeDoc` / `POST /api/workspaces/:id/knowledge`，不得新增 E 后端或绕过知识库入库校验。后续类似「专题 seed」「收集存资料」这类消息级局部动作，优先复用可选 action 插槽，不要把动作状态塞进 `UiMessage` 或扩 `ClientMessage`。
 - **Fork 分支路径作用域回退父 session（2026-06-14 快修2.3）**：fork 分支是独立 session、名下无注册路径。`handleSend` 解析输出/数据路径时必须把作用域回退到父任务 session：`pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id`，用于 `buildRegisteredPathContext` 的 `sessionId` 与 `fallbackOutputDir`。否则 `output-paths.selectOutputPath` 逐级回退（scoped report→scoped clean_data→workspace report→workspace clean_data）会坍缩到 workspace 级最近 clean_data 源目录，导致分支产物写到数据源目录而非任务 `060_reports`。数据安全不受影响：fork 继承的是父 clean_data，`draw_data` 仍被 `buildRegisteredPathContext` 排除且永不作为输出目标。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
-- **subagent ↔ skill 绑定（F 卡，2026-06-16）**：`SubAgentTaskInput.skillPaths?`（双侧 types，三态同 `node.skillPaths`：undefined 继承/[]禁用/非空子集）。delegate 端点(`index.ts /api/sessions/:id/delegate`)用 `skills.ts` 的 **`parseRequestedSkillPaths(workspaceRoot, value, {mode:"strict"})`** 解析（三态 + 数组守卫，复用 `validateSkillPaths`，与 workflow 同校验口径）→ 透传到 `runDelegatedSubAgent` → `runPiTurn({skillPaths})` 经 pi-adapter `--skill` 注入，无新注入机制。前端 `DelegateSubAgentCard` 复用 `SkillSelector` + 三态 `skillMode`。子 agent **成功完成后调 `recordSkillActivationForRun`**，激活进 A 生产遥测（与 flow/workflow/autonomous 同口径）。三态解析有 `skills.test.ts` 单测覆盖。
+- **subagent ↔ skill 绑定（F 卡，2026-06-16；X-ZH10 收口 2026-06-26）**：`SubAgentTaskInput.skillPaths?` 入口仍接受三态解析，但生产委派执行口径已改为默认禁用：请求未带 `skillPaths` 时由 `runSubAgentTurn` 兜底为 `[]`，最终进入 `runPiTurn` 生成 `--no-skills`；显式 `[]` 同样禁用；非空数组表示仅注入指定 skill 子集。delegate 端点(`index.ts /api/sessions/:id/delegate`)用 `skills.ts` 的 **`parseRequestedSkillPaths(workspaceRoot, value, {mode:"strict"})`** 解析（数组守卫 + 可用性校验，复用 `validateSkillPaths`）→ 透传到 `runDelegatedSubAgent` → `runSubAgentTurn` 默认兜底 → `runPiTurn({skillPaths})` 经 pi-adapter `--no-skills --skill` 注入，无新注入机制。前端 `DelegateSubAgentCard` 复用 `SkillSelector` + `skillMode`；只有用户显式勾选的 skill 才成为白名单。子 agent **成功完成后调 `recordSkillActivationForRun`**，激活进 A 生产遥测（与 flow/workflow/autonomous 同口径）。
 - **委派模版前端契约（2026-06-22）**：`DelegateSubAgentCard` 只读既有 `api.listSubAgents()` 并仅展示 enabled 项；默认项用空字符串表示，提交时转 `undefined`，保持引擎内置 persona 的旧行为。指定项只透传既有 `SubAgentTaskInput.templateId`，不得从 `SubAgentTemplate` 臆造 model 字段。模版负责 persona + extraction tool allowlist，卡内 model + skillPaths + dataFiles 与其正交、允许叠加；session 切换必须重置选择，避免把上一任务模版误带入新 session。`templateId` 已由 task 持久化并供 resume/retry 恢复，前端不得在续跑时用当前下拉值覆盖原任务模版。
 - **ChatPane ExtractionTool 展示边界**：前端只展示 X 透传的 tool event / pi content block，不直接触发工具执行；`tool_call` 映射为 running `tool_use`，`tool_result` 回填同 id 卡片，最终 `message_end` 再带同一 tool block 时按 `id/tool_use_id` 去重。真实红线仍在后端 `source=ai` 守卫，前端不得把 `draw_data` 内容或样本送入 LLM。
 - **ExtractionTool skill 桥落盘策略**：生成到 `<workspace>/.pi/skills/xanthil-extraction-tools/SKILL.md`，带 `xanthil-generated-extraction-tool-skill` 标记；只更新带生成标记的文件，遇到用户手写同路径 skill 不覆盖。skill 只描述 MCP 工具契约与 clean_data 限制，不承担安全校验。
@@ -264,7 +264,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - Phase 2b 数据分析工具展示采用**事件容错层而非深绑 pi-adapter 类型**：E 侧只认 `tool_call`/`tool_result` 事件和 pi `tool_use`/`tool_result` content block，不改 `pi-adapter/index.ts/types`。这样 X 可继续收敛总控契约，前端只在 `App.tsx` 映射层适配字段差异。
 - ExtractionTool 结果产物预览**复用现有工具预览端点** `/api/extraction-tools/preview`，不新增 ChatPane 专属 artifact API。结果卡从 `results[].outputs` 提取产物路径；若工具 summary 不含该字段，只展示原始 JSON。
 - **subagent 全局运行看板（2026-06-17 D·看板）**：`listAllSubAgentTasks` JOIN sessions 派生 `workspace_id`，不补 `subagent_tasks` 列、零迁移。`SubAgentTask.workspaceId` 是只读派生字段（JOIN 产出），不是持久化列——workspaceId 是 session 固有属性（单一真源），存进 task 冗余且可能与 session 不一致。看板 ws trace 复用 `subagent_event` 全局广播，按 `workspaceId` 过滤；`subagent_run_start`/`subagent_run_end` 触发全量刷新。前端筛选（工作区/状态/模板）优先走 server 端 status 参数减少传输量，模板筛选纯前端（`templateId` 不在 server 筛选参数中）。
-- **subagent skill 子集绑定（2026-06-17，skill 自进化 F；2026-06-18 收尾修订）**：委派子 agent 复用 workflow `node.skillPaths` 三态语义，双侧 `SubAgentTaskInput.skillPaths?: string[]`：`undefined` 表示继承 pi 默认 skill 策略，`[]` 表示显式禁用 skill，非空数组表示仅注入指定 skill 子集。后端 delegate 入口必须用 `validateSkillPaths(workspace.rootPath, value, { mode:"strict" })` 校验，禁止 slug 直传或路径绕过；校验后的值透传到 `runPiTurn`，由 pi-adapter 生成 `--no-skills --skill <path>` 或空数组禁用。前端 `DelegateSubAgentCard` 用三态按钮表达语义，指定模式复用 `SkillSelector`；**指定模式必须非空才能提交**，不能把“指定但未选择”发送成 `[]`，否则会与“禁用 skill”的协议语义冲突。当前 `skillPaths` 仅为运行时输入，不写 `subagent_tasks`，因此历史看板不展示、resume 不恢复；若要审计/复用需另扩 schema/provenance。
+- **subagent skill 子集绑定（2026-06-17，skill 自进化 F；2026-06-18 收尾修订；X-ZH10 收口 2026-06-26）**：委派子 agent 不再继承 pi 默认 skill 策略。双侧 `SubAgentTaskInput.skillPaths?: string[]` 在请求层仍可省略，但执行层 `runSubAgentTurn` 会把 `undefined` 兜底为 `[]`，即默认 `--no-skills`；显式 `[]` 表示禁用 skill，非空数组表示仅注入指定 skill 子集。后端 delegate 入口必须用 `validateSkillPaths(workspace.rootPath, value, { mode:"strict" })` 校验，禁止 slug 直传或路径绕过；校验后的值透传到 `runSubAgentTurn`，由 pi-adapter 生成 `--no-skills --skill <path>` 或空数组禁用。前端 `DelegateSubAgentCard` 用三态按钮表达语义，指定模式复用 `SkillSelector`；**指定模式必须非空才能提交**，不能把“指定但未选择”发送成 `[]`，否则会与“禁用 skill”的协议语义冲突。当前 `skillPaths` 仅为运行时输入，不写 `subagent_tasks`，因此历史看板不展示、resume 不恢复；若要审计/复用需另扩 schema/provenance。
 
 ### Phase5 runner 范式收敛评估（2026-06-21）
 

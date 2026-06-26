@@ -14,8 +14,10 @@ import type {
   MetricComparison,
   MetricComparisonKind,
   MetricSnapshot,
+  MetricSourceRef,
   MonitorComparison,
 } from "./types.ts";
+import { renderSourceLabel } from "./metric-source-label.ts";
 
 /** finding.severity → MetricSnapshot.status（X-METRIC0 契约细化口径）。 */
 function severityToStatus(severity: HealthFinding["severity"]): MetricSnapshot["status"] {
@@ -76,16 +78,19 @@ function summarizeThresholds(finding: HealthFinding): string | undefined {
   return parts.length > 0 ? parts.join(" / ") : undefined;
 }
 
-/** evidence.current 兜底取当期 value（rules 写入 evidence 时基本都带）。 */
-function inferCurrentValue(finding: HealthFinding): number | null {
+/** evidence.current 兜底取当期 value + 置信度等级。
+ *  - evidence.current 直接取值 → A
+ *  - 兜底从 comparisons[0].currentValue → B
+ *  - 两者皆无 → null（跳过该 finding） */
+function inferCurrentValue(finding: HealthFinding): { value: number; level: "A" | "B" } | null {
   const ev = finding.evidence;
   if (ev && typeof ev === "object") {
     const cur = (ev as Record<string, unknown>).current;
-    if (typeof cur === "number" && Number.isFinite(cur)) return cur;
+    if (typeof cur === "number" && Number.isFinite(cur)) return { value: cur, level: "A" };
   }
-  // 兜底从首个 comparison 取
   const c = finding.comparisons?.find((x) => typeof x.currentValue === "number" && Number.isFinite(x.currentValue));
-  return c && typeof c.currentValue === "number" ? c.currentValue : null;
+  if (c && typeof c.currentValue === "number") return { value: c.currentValue, level: "B" };
+  return null;
 }
 
 /**
@@ -97,16 +102,27 @@ function inferCurrentValue(finding: HealthFinding): number | null {
 export function biAggregationToMetricSnapshots(findings: HealthFinding[]): MetricSnapshot[] {
   const out: MetricSnapshot[] = [];
   for (const f of findings) {
-    const value = inferCurrentValue(f);
-    if (value === null) continue;
+    const cur = inferCurrentValue(f);
+    if (cur === null) continue;
     const metricName = f.boundTo?.metricId ?? f.boundTo?.column ?? f.category ?? f.title;
     const comparisons = (f.comparisons ?? []).map(adaptComparison);
+    const period = inferPeriod(f);
+    const sourceRef: MetricSourceRef = {
+      kind: "bi_aggregation",
+      ...(f.runId ? { runId: f.runId } : {}),
+      findingId: f.id,
+      ...(f.boundTo?.metricId ? { metricId: f.boundTo.metricId } : {}),
+      ...(period ? { window: period } : {}),
+    };
     const snapshot: MetricSnapshot = {
       name: metricName,
-      value,
-      period: inferPeriod(f),
+      value: cur.value,
+      period,
       status: severityToStatus(f.severity),
       source: "bi_aggregation",
+      evidenceLevel: cur.level,
+      sourceRef,
+      ...(f.boundTo?.metricId ? { metricId: f.boundTo.metricId } : {}),
     };
     if (comparisons.length > 0) snapshot.comparisons = comparisons;
     const tn = summarizeThresholds(f);
@@ -119,6 +135,7 @@ export function biAggregationToMetricSnapshots(findings: HealthFinding[]): Metri
 /**
  * 渲染数字锁注入块（与 D-METRIC1 MCP 注入 / E-METRIC2 system prompt 同口径）。
  * snapshots 空数组返回空串，调用方根据空串决定是否走 fallback。
+ * 每条 snapshot 前附加来源标签，让 LLM 原样引用，禁止自创来源。
  */
 export function renderMetricSnapshotsBlock(snapshots: MetricSnapshot[]): string {
   if (snapshots.length === 0) return "";
@@ -126,7 +143,11 @@ export function renderMetricSnapshotsBlock(snapshots: MetricSnapshot[]): string 
     "[指标快照·代码确定性计算值·禁止重新推导]",
     "以下 MetricSnapshot 由监测引擎纯函数计算得出（value/delta/deltaRate/status 均代码确定）；",
     "模型只可解读业务现象、推断根因、提供策略建议，不得修改或自行算术。",
+    "每条指标均带确定性 [来源:...·证据等级] 标签，引用时请保留来源标签，禁止自创来源。",
   ];
-  for (const s of snapshots) lines.push(JSON.stringify(s));
+  for (const s of snapshots) {
+    lines.push(renderSourceLabel(s));
+    lines.push(JSON.stringify(s));
+  }
   return lines.join("\n");
 }

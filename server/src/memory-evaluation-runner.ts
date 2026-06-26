@@ -105,6 +105,7 @@ async function runPi(
     text: `${contextPrefix}${prompt}`,
     model: model || undefined,
     systemPrompt,
+    allowWeb: false,
     onEvent: (event) => collectEvent(metrics, event, {
       workspaceId,
       targetId: resultId,

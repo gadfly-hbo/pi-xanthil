@@ -454,6 +454,8 @@ vizRouter.post("/api/workspaces/:id/metrics", (req, res) => {
       name: String(b.name), category: b.category ?? "", description: b.description ?? "",
       formula: b.formula ?? "", caliber: b.caliber ?? "", unit: b.unit ?? "",
       objectTypeId: b.objectTypeId, boundColumns: b.boundColumns,
+      displayName: b.displayName, aggregation: b.aggregation, periodGrain: b.periodGrain,
+      filters: b.filters, denominator: b.denominator, version: b.version,
     }));
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });

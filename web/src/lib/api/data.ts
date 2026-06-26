@@ -51,6 +51,19 @@ export interface PluginInfo {
   path?: string;
 }
 
+// MCP 管理：pi 已配置的 MCP servers 清单（与 PluginInfo 并列的另一类扩展）。
+// 来源/字段与 server routes/data.ts 的 McpServerInfo 同源。envKeys 仅变量名、无值。
+export type McpTransport = "stdio" | "remote";
+export interface McpServerInfo {
+  id: string;
+  name: string;
+  source: "global" | "project";
+  transport: McpTransport;
+  detail: string;
+  envKeys: string[];
+  enabled: boolean;
+}
+
 export const dataApi = {
   getBiAggregations: (workspaceId: string) =>
     fetch(`/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`).then(json<BiAggregationDataset[]>),
@@ -116,6 +129,9 @@ export const dataApi = {
   // 插件清单只读；hooks 整体覆盖式写入 hooks.json；触发流水读 hooks-triggers.jsonl。
   // 数据安全：UI 不提供任何外发(HTTP)动作入口；server 也会拒收。block/mutate 仅 tool_call 事件。
   listPlugins: () => fetch("/api/plugins").then(json<PluginInfo[]>),
+
+  // MCP 清单只读；envKeys 仅变量名（server 侧已剥离 env 值，防 key 外泄）。
+  listMcpServers: () => fetch("/api/mcp-servers").then(json<McpServerInfo[]>),
 
   listHooks: () => fetch("/api/hooks").then(json<Hook[]>),
 

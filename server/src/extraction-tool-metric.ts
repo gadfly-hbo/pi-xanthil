@@ -10,12 +10,14 @@
  * 故行级泄漏责任仍由 row guard + 工具自身负责，与本模块独立。
  */
 import { basename } from "node:path";
-import type { MetricSnapshot } from "./types.ts";
+import type { MetricSnapshot, MetricSourceRef } from "./types.ts";
 
 export interface MetricHint {
   summaryKey: string;
   name: string;
   unit?: string;
+  /** D-ZH7 C-mini：绑定已登记指标 id，用于对账/核验。 */
+  metricId?: string;
   /** 阈值打标：
    *  - alert ≥ warning（默认）：value ≥ alert → "alert"，value ≥ warning → "warning"，否则 "normal"
    *  - alert < warning（倒序，低值告警）：value ≤ alert → "alert"，value ≤ warning → "warning"，否则 "normal"
@@ -99,6 +101,8 @@ export interface BuildSnapshotsContext {
   hints: MetricHint[] | undefined;
   inputPath: string;
   params?: Record<string, unknown>;
+  toolId: string;
+  toolName?: string;
 }
 
 /** 主入口：按 hints 读 summary 构造 MetricSnapshot[]。无 hints 或全部命中失败 → 空数组（调用方按需丢弃）。 */
@@ -110,13 +114,25 @@ export function buildMetricSnapshotsFromHints(ctx: BuildSnapshotsContext): Metri
     const value = toFiniteNumber(raw);
     if (value === null) continue;
     const status = classifyStatus(value, hint.statusThresholds);
+    const sourceRef: MetricSourceRef = {
+      kind: "extraction_tool",
+      toolId: ctx.toolId,
+      ...(ctx.toolName ? { toolName: ctx.toolName } : {}),
+      summaryKey: hint.summaryKey,
+      ...(ctx.inputPath ? { sourceFile: basename(ctx.inputPath) } : {}),
+    };
+    const period = inferPeriod(ctx.params, ctx.inputPath, hint.periodFallback);
+    if (period) sourceRef.period = period;
     const snapshot: MetricSnapshot = {
       name: hint.name,
       value,
       ...(hint.unit ? { unit: hint.unit } : {}),
-      period: inferPeriod(ctx.params, ctx.inputPath, hint.periodFallback),
+      ...(hint.metricId ? { metricId: hint.metricId } : {}),
+      period,
       status,
       source: "extraction_tool",
+      evidenceLevel: "A",
+      sourceRef,
     };
     if (hint.statusThresholds) {
       const { warning, alert } = hint.statusThresholds;
@@ -139,6 +155,7 @@ export function coerceMetricHints(value: unknown): MetricHint[] | undefined {
     if (!summaryKey || !name) continue;
     const hint: MetricHint = { summaryKey, name };
     if (typeof obj.unit === "string" && obj.unit) hint.unit = obj.unit;
+    if (typeof obj.metricId === "string" && obj.metricId) hint.metricId = obj.metricId;
     if (typeof obj.periodFallback === "string" && obj.periodFallback) hint.periodFallback = obj.periodFallback;
     const t = obj.statusThresholds;
     if (t && typeof t === "object") {

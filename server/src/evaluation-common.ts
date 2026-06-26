@@ -76,6 +76,7 @@ ${output.slice(0, 12000)}
     piSessionId: `judge-${resultId}`,
     text: prompt,
     model: model || undefined,
+    allowWeb: false,
     onEvent: (event) => {
       collectEvent(emptyMetrics(), event, {
         workspaceId,

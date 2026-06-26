@@ -10,49 +10,46 @@
 
 > **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
 
-- 最近更新：2026-06-25 · **D-METRIC1 + D-METRIC3 已完成**
+- 最近更新：2026-06-26 · **零幻觉·数据可信地基 v2.3 终审完成**（D-ZH3/6/7/8 + 总控接缝收口）
 - 进度：
-  - **D-METRIC1（ExtractionTool summary → MetricSnapshot 适配，完成）**：
-    - 新建 `server/src/extraction-tool-metric.ts`(~150 行)：`buildMetricSnapshotsFromHints` / `coerceMetricHints` / `lookupSummaryValue` / `inferPeriodFromPath`。
-      - 点路径 `a.b.0.value` 解析，数字段自动当数组下标。
-      - 阈值打标：alert ≥ warning 走高值告警；alert < warning 走低值告警（倒序）。
-      - period 优先级：`params.period` → 文件名 YYYY-MM/YYYY-MM-DD/YYYYMM/YYYYMMDD → hint.periodFallback → ""。
-      - row guard 触发或无 hints → 不附加 snapshots（向后兼容）。
-    - `server/tools/registry.ts` 加 `metricHints?: MetricHint[]` 到 manifest 类型；`normalizeManifest` 经 `coerceMetricHints` 加载期校验。
-    - `server/src/index.ts` `/api/extraction-tools/:id/run` 在 row guard 通过且工具有 hints 时附加 `metricSnapshots`（数组非空时 spread）。
-    - `server/src/mcp/extraction-tools-mcp.ts` callTool 在 body 含 `metricSnapshots` 时以「数字锁前缀 + JSON」格式返回，否则降级原 body。
-  - **D-METRIC3（监测链路 → MetricSnapshot 对齐，完成）**：
-    - 新建 `server/src/monitor-metric-snapshot.ts`(~130 行)：`biAggregationToMetricSnapshots(findings)` / `renderMetricSnapshotsBlock(snapshots)`。
-      - severity 映射：critical→alert / warn→warning / info→normal。
-      - MonitorComparison.kind 映射：target/industry→benchmark/competitor 直传；history 按 `window`+`label` 关键字（环比/上一期/mom → mom；同比/去年/yoy → yoy；移动均值/ma → ma；其余 → other）。
-      - value 优先取 `evidence.current`，兜底取首个 `comparisons[i].currentValue`；二者皆无 → 跳过该 finding（避免造数）。
-      - period 推断：取首个非空 `comparisons[i].window`，否则空串。
-      - thresholdNote：从 `evidence.thresholds` 对象或 `thresholdWarn/thresholdCritical` 标量汇总为人类可读字符串。
-      - source 固定 `"bi_aggregation"`。
-    - `server/src/monitor-llm.ts buildDraftPrompt` 加可选 `findings?: HealthFinding[]` 入参：
-      - 非空 → 在 prompt 顶部注入「数字锁前缀 + MetricSnapshot JSON」块，与 D-METRIC1 / E-METRIC2 同口径。
-      - 缺省/空 → 行为零变化（保留原 columns/rowCount 描述作 fallback）。
-    - `DraftInput` 接口扩 `findings` 字段，`draftMetricSystem` 链路调用方按需透传；当前 routes/engine.ts 的 `/monitor/metric-system/draft` 初次草案场景不传（无 findings 可用）；后续如做"基于既有 run findings 重做指标体系"可在调用处加 findings。
-    - 安全红线（E-MONITOR8 口径）：本模块只读 `HealthFinding` 衍生字段（comparisons/boundTo/severity/evidence.thresholds），**不读 dataset.rows / cells / 原始 draw_data**。安全 grep `dataset\.rows|BiCell|draw_data` 仅命中文件头注释，无功能代码访问。
-  - 接缝纪律：未碰 `types.ts`（X-METRIC0 已定义 MetricSnapshot/MetricComparison）、未碰 `db.ts`、未碰他域路由、不改 summary.json / finding 结构。
+  - **D-METRIC1/3 + D-ZH3（基础适配 + 来源标签，2026-06-25/26 完成）**：见上轮 §0。
+  - **D-ZH6（数据充分性预检，2026-06-26 完成）**：
+    - 新建 `server/src/coverage-check.ts`(~120 行)：`checkCoverage({ aggregations, findings?, metrics? })` → `CoverageCheckResult { verdict, rowCount, periodCoverage, baselineAvailable, metricCoverage, warnings }`。
+    - 判定规则：总行数 < 10 → fail（弃答）；< 100 → warn（降置信）；finding 缺 baseline → warn；指标覆盖缺口 → warn；空字段 → fail。
+    - `renderCoverageBlock` 渲染 prompt 注入块：fail → 要求 LLM 弃答仅输出缺口；warn → 降置信并列出限制。
+    - `monitor-llm.ts buildDraftPrompt` 注入 coverage block，fail 时追加「仅输出 missingData」指令。
+    - 安全红线：只读 BiAggregationDataset 元信息 + finding 衍生字段，不读 rows/cells/draw_data。
+  - **D-ZH7（C-mini 指标语义层，2026-06-26 完成）**：
+    - `MetricDefinition` 双侧 types 扩 C-mini 字段：`displayName?` / `aggregation?` / `periodGrain?` / `filters?` / `denominator?` / `version?`。
+    - 总控终审补齐持久化接缝：`metric_definitions` 新增六列，旧库启动时 idempotent `ALTER TABLE`；`db/viz.ts` parse/create/update 与 `routes/viz.ts` POST 接通；双侧 `MetricDefinitionInput` 同步扩字段。
+    - `MetricSnapshot` 双侧 types 加 `metricId?: string` 字段。
+    - `MetricHint` 加 `metricId?`，`coerceMetricHints` 透传，`buildMetricSnapshotsFromHints` 绑定到 snapshot。
+    - `biAggregationToMetricSnapshots` 从 `f.boundTo.metricId` 绑定到 snapshot。
+    - `metric-source-label.ts` 的 `sourceName` 优先展示 metricId（如 `gmv(工具/summaryKey)`）。
+    - `metric-verification-events.ts` 的 `coerceMetricSnapshot` 补 `metricId` 解析。
+  - **D-ZH8（关键指标双路径对账，2026-06-26 完成）**：
+    - 新建 `server/src/metric-reconciliation.ts`(~140 行)：`reconcileMetricSnapshots(extSnaps, biSnaps)` 按 metricId+period 配对。
+    - 双侧 types 加 `ReconciliationVerdict` / `MetricReconciliationPair` / `MetricReconciliationResult`。
+    - 对账逻辑：仅双方都有 metricId 的 snapshot 参与；配对成功 → 比较 value（≤0.5% → matched，>0.5% → mismatch）；仅一侧 → missing_pair；无配对 → unregistered。
+    - `renderReconciliationBlock` 渲染告警块：matched → 空串；mismatch/missing_pair/unregistered → 告警文本（unregistered 明示「口径未登记/无法对账」）。
+    - 总控终审核心收口：同一侧重复 `metricId+period` 不再被 Map 静默覆盖，改为 duplicate mismatch 告警。
+    - common-mode failure 仍是边界外（双方同向偏差无法检测）。
+  - 接缝纪律：types.ts 只扩字段不删不改；未碰 db.ts、未碰他域路由。
 - 校验：
   - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
   - `npm -w web run build`：✅ 仅既有 chunk size warning
-  - `node --test server/src/extraction-tool-metric.test.ts`：✅ **8/8**
-  - `node --test server/src/monitor-metric-snapshot.test.ts`：✅ **10/10**（severity 映射 / history kind 细分 / value 兜底 / threshold 汇总 / 数字锁渲染 / buildDraftPrompt 注入与回退）
-  - `node --test server/src/monitor-engine.test.ts server/src/health-check-engine.test.ts`：✅ **40/40**（既有 monitor 测试零回归）
-  - 数据探索 LLM 隔离 grep：✅ EXIT=1 无匹配
+  - `node --test` 相关：✅ **48/48**（coverage/reconciliation/extraction/monitor/source-label/verification-events）
+  - 安全 grep：✅ 仅注释命中，无功能代码
 - 下一步（接续优先级）：
-  - ① 用户 review 后手动提交。
-  - ② 可选：在某个 analysis 工具补 `metricHints` 配置 + 在 `/monitor/runs` 跑后用 findings 触发一次「重新草拟指标体系」UI/链路（routes/engine.ts 调用 `draftMetricSystem({...,findings})`），端到端验证两侧 snapshot 注入。
-  - ③ E-METRIC2（数字锁 system prompt 前缀）由 E 域承接（已在派发板）。
+  - ① 用户 review 后手动提交（D-METRIC1/3 + D-ZH3/6/7/8 改动未 commit）。
+  - ② 可选端到端验证：给某 analysis 工具补 `metricHints` + `metricId` → 跑工具 → 跑监测 → 调 `reconcileMetricSnapshots` 验证双路径对账闭环。
 - 阻塞 / 待总控：
   - 无。
 - 开放问题：
-  - period 文件名推断只识别 4 位年份+2 位月份/日；YYYY-Q1 / 财年等需 `params.period` 显式传入。
-  - statusThresholds 当前只支持二级阈值（warning + alert），无法表达"区间正常 + 双侧告警"。后续如有需要可扩 `{ lowAlert?, lowWarning?, highWarning?, highAlert? }`。
-  - history → mom/yoy/ma 推断靠中英文关键字（环比/上一期/mom/同比/去年/yoy/移动均值/ma）。现有 monitor-engine 输出已覆盖（"上一期（环比）"/"去年同期（同比）"/"3期移动均值"）；若日后改 label 文案需同步更新关键字或加 evidence 标签。
+  - common-mode failure（双方同向偏差）无法检测——需要第三方真源（如财务系统对账）才能发现。
+  - C-mini 字段已进入 DB/API/types；IndicatorsPane 编辑入口待后续补 UI。
+  - 对账结果尚未接入任何 UI/报告入口——`renderReconciliationBlock` 已就绪，接入点待总控指定。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -391,3 +388,27 @@ python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print
 - 4 个摄取工具：phone-cleaner = pandas + openpyxl(.xlsx) + xlrd(.xls)；extract-sycm-member = beautifulsoup4（用 `html.parser`，**不需 lxml**）；extract-tmall-profile / extract-xhs-insight 仅标准库。
 
 新增依赖时同步改 `server/tools/requirements.txt` + `server/tools/README.md`。
+
+---
+
+## 八、零幻觉专项决策（D-ZH6/7/8, 2026-06-26）
+
+### D-ZH6 数据充分性预检
+- **判定阈值**：< 10 行 fail（弃答），< 100 行 warn（降置信）。阈值是经验值，后续可经 `CoveragePolicy` 注入。
+- **coverage block 注入位置**：在 snapshot block 之后、数据集描述之前，与数字锁同层。
+- **fail 时的 LLM 指令**：仅输出 missingData，不生成 metrics/bindings/rules——避免 LLM 在无数据时编造指标体系。
+- **period 覆盖判定**：从 finding.comparisons[].window 提取，而非 aggregations 文件名——因为文件名不一定含日期。
+- **baseline 判定**：finding 中任意 comparison.kind 为 history 或 target 即认为有基线。
+
+### D-ZH7 C-mini 指标语义层
+- **最小闭环原则**：只加 metricId 绑定 + C-mini 字段（aggregation/periodGrain/filters/denominator），不做完整 ontology 大工程。
+- **metricId 是唯一口径标识**：同一指标名可能在不同工具/监测中有不同口径，metricId 是唯一对账 key。
+- **renderSourceLabel 优先展示 metricId**：`gmv(工具/summaryKey)` 格式，让 LLM 明确引用的是哪个登记口径。
+- **C-mini 字段已持久化**：`metric_definitions` 已有 displayName/aggregation/periodGrain/filters/denominator/version 六列，旧库启动时自动 ALTER；IndicatorsPane 编辑入口待后续补 UI。
+- **LLM prompt 中引用指标**：必须使用 metricId 对应口径，口径缺失时标注「口径未登记」——此约束需在 E-METRIC2 system prompt 中体现。
+
+### D-ZH8 关键指标双路径对账
+- **只对已声明 metricId 的 snapshot 对账**：避免全量同名指标误报（不同工具产出同名指标口径可能不同）。
+- **EPSILON = 0.5%**：与 metric-verification 的 EPSILON_OK 一致，复用 `relativeDiff` 公式。
+- **common-mode failure 是边界外**：双方同向偏差（如都漏了退款）无法检测——需要第三方真源（如财务系统对账）。
+- **对账结果未接入 UI**：`renderReconciliationBlock` 已就绪，matched 为空；mismatch/missing_pair/unregistered 均输出告警文本，接入点（监测报告/专题生成前）待总控指定。

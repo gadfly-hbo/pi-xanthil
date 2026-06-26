@@ -85,6 +85,13 @@ export function SkillSelector({ scope, selectedPaths, onChange, align = "left", 
     () => sortedRows.filter((row) => row.isEnabled).length,
     [sortedRows],
   );
+  const selectablePaths = useMemo(
+    () => sortedRows
+      .filter((row) => row.skill.available && row.registryEntry?.status !== "archived")
+      .map((row) => row.skill.path),
+    [sortedRows],
+  );
+  const allSelected = selectablePaths.length > 0 && selectablePaths.every((path) => selectedPaths.includes(path));
 
   const selected = useMemo(
     () => skills.filter((skill) => selectedPaths.includes(skill.path)),
@@ -109,7 +116,7 @@ export function SkillSelector({ scope, selectedPaths, onChange, align = "left", 
         title="选择本轮允许 pi 使用的 skill"
       >
         <BookOpen className="h-3.5 w-3.5" strokeWidth={1.75} />
-        <span>{selected.length > 0 ? `Skill ${selected.length}` : "Skill 自动"}</span>
+        <span>{selected.length > 0 ? `Skill ${selected.length}` : "Skill"}</span>
         <ChevronDown className="h-3 w-3" strokeWidth={1.75} />
       </button>
       {open && (
@@ -118,20 +125,41 @@ export function SkillSelector({ scope, selectedPaths, onChange, align = "left", 
           direction === "up" ? "bottom-9" : "top-9",
           align === "left" ? "left-0" : "right-0",
         )}>
-          <button
-            type="button"
-            onClick={() => onChange([])}
-            className={cn(
-              "flex w-full items-start gap-2 rounded-md px-2 py-2 text-left hover:bg-neutral-100 dark:hover:bg-neutral-800",
-              selected.length === 0 && "bg-neutral-100 dark:bg-neutral-800",
-            )}
-          >
-            <Check className={cn("mt-0.5 h-3.5 w-3.5 shrink-0", selected.length === 0 ? "opacity-100" : "opacity-0")} />
-            <span>
-              <span className="block text-[12px] font-medium text-neutral-800 dark:text-neutral-100">自动选择（retrieval）</span>
-              <span className="mt-0.5 block text-[11px] leading-4 text-neutral-400">pi 自动按任务 + 工作区已启用项目池（{enabledCount} 条）召回。</span>
-            </span>
-          </button>
+          <div className="space-y-2 rounded-md bg-neutral-50 px-2 py-2 dark:bg-neutral-950/60">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-[11px] leading-4 text-neutral-400">
+                项目池已启用 {enabledCount} 个；本轮只加载已勾选 skill。
+              </span>
+              <span className="shrink-0 text-[10.5px] text-neutral-400">{selected.length}/{selectablePaths.length}</span>
+            </div>
+            <div className="grid grid-cols-2 gap-1">
+              <button
+                type="button"
+                onClick={() => onChange([])}
+                className={cn(
+                  "h-7 rounded border px-2 text-[11px]",
+                  selected.length === 0
+                    ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                    : "border-neutral-200 text-neutral-500 hover:bg-white dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-900",
+                )}
+              >
+                不使用
+              </button>
+              <button
+                type="button"
+                disabled={selectablePaths.length === 0}
+                onClick={() => onChange(selectablePaths)}
+                className={cn(
+                  "h-7 rounded border px-2 text-[11px] disabled:cursor-not-allowed disabled:opacity-50",
+                  allSelected
+                    ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
+                    : "border-neutral-200 text-neutral-500 hover:bg-white dark:border-neutral-700 dark:text-neutral-400 dark:hover:bg-neutral-900",
+                )}
+              >
+                全选可用
+              </button>
+            </div>
+          </div>
           <div className="my-1 border-t border-neutral-200 dark:border-neutral-800" />
           <div className="max-h-64 overflow-y-auto">
             {loading && <p className="px-2 py-2 text-[11px] text-neutral-400">正在读取 skill...</p>}
@@ -168,11 +196,9 @@ export function SkillSelector({ scope, selectedPaths, onChange, align = "left", 
               );
             })}
           </div>
-          {selected.length > 0 && (
-            <p className="mt-1 border-t border-neutral-200 px-2 pt-2 text-[10.5px] leading-4 text-amber-600 dark:border-neutral-800 dark:text-amber-400">
-              指定模式：本轮仅加载已勾选 skill。
-            </p>
-          )}
+          <p className="mt-1 border-t border-neutral-200 px-2 pt-2 text-[10.5px] leading-4 text-amber-600 dark:border-neutral-800 dark:text-amber-400">
+            {selected.length > 0 ? "白名单模式：本轮仅加载已勾选 skill。" : "未选择 skill：本轮不加载任何 skill。"}
+          </p>
         </div>
       )}
       {selected.length > 0 && (

@@ -35,9 +35,9 @@ function mkFinding(opts: Partial<HealthFinding> & { id: string }): HealthFinding
 
 test("biAggregationToMetricSnapshots: severity → status mapping", () => {
   const findings: HealthFinding[] = [
-    mkFinding({ id: "f1", severity: "critical", evidence: { current: 100 }, boundTo: { metricId: "revenue" } }),
-    mkFinding({ id: "f2", severity: "warn", evidence: { current: 80 }, boundTo: { metricId: "users" } }),
-    mkFinding({ id: "f3", severity: "info", evidence: { current: 50 }, boundTo: { metricId: "orders" } }),
+    mkFinding({ id: "f1", severity: "critical", evidence: { current: 100 }, boundTo: { metricId: "revenue" }, runId: "r1" }),
+    mkFinding({ id: "f2", severity: "warn", evidence: { current: 80 }, boundTo: { metricId: "users" }, runId: "r1" }),
+    mkFinding({ id: "f3", severity: "info", evidence: { current: 50 }, boundTo: { metricId: "orders" }, runId: "r1" }),
   ];
   const snaps = biAggregationToMetricSnapshots(findings);
   assert.equal(snaps.length, 3);
@@ -46,6 +46,11 @@ test("biAggregationToMetricSnapshots: severity → status mapping", () => {
   assert.equal(snaps[2]?.status, "normal");
   assert.equal(snaps[0]?.source, "bi_aggregation");
   assert.equal(snaps[0]?.name, "revenue");
+  assert.equal(snaps[0]?.evidenceLevel, "A");
+  assert.equal(snaps[0]?.sourceRef?.kind, "bi_aggregation");
+  assert.equal(snaps[0]?.sourceRef?.runId, "r1");
+  assert.equal(snaps[0]?.sourceRef?.findingId, "f1");
+  assert.equal(snaps[0]?.sourceRef?.metricId, "revenue");
 });
 
 test("biAggregationToMetricSnapshots: history comparison kind subtyping", () => {
@@ -84,9 +89,10 @@ test("biAggregationToMetricSnapshots: skips findings without value", () => {
   const snaps = biAggregationToMetricSnapshots(findings);
   assert.equal(snaps.length, 1);
   assert.equal(snaps[0]?.value, 42);
+  assert.equal(snaps[0]?.evidenceLevel, "A");
 });
 
-test("biAggregationToMetricSnapshots: fallback value from comparison", () => {
+test("biAggregationToMetricSnapshots: fallback value from comparison → evidenceLevel B", () => {
   const f = mkFinding({
     id: "f1",
     severity: "warn",
@@ -96,6 +102,9 @@ test("biAggregationToMetricSnapshots: fallback value from comparison", () => {
   });
   const snaps = biAggregationToMetricSnapshots([f]);
   assert.equal(snaps[0]?.value, 99);
+  assert.equal(snaps[0]?.evidenceLevel, "B");
+  assert.equal(snaps[0]?.sourceRef?.kind, "bi_aggregation");
+  assert.equal(snaps[0]?.sourceRef?.findingId, "f1");
 });
 
 test("biAggregationToMetricSnapshots: thresholdNote summarized", () => {
@@ -111,14 +120,19 @@ test("biAggregationToMetricSnapshots: thresholdNote summarized", () => {
   assert.ok(note.includes("yoyWarn=0.2"));
 });
 
-test("renderMetricSnapshotsBlock: injects 数字锁 prefix + JSON", () => {
+test("renderMetricSnapshotsBlock: injects 数字锁 prefix + JSON + source label", () => {
   const block = renderMetricSnapshotsBlock([
-    { name: "revenue", value: 100, period: "2026-06", status: "warning", source: "bi_aggregation" },
+    {
+      name: "revenue", value: 100, period: "2026-06", status: "warning", source: "bi_aggregation", evidenceLevel: "A",
+      sourceRef: { kind: "bi_aggregation", runId: "r1", findingId: "f1", metricId: "revenue", window: "2026-06" },
+    },
   ]);
   assert.ok(block.includes("[指标快照·代码确定性计算值·禁止重新推导]"));
   assert.ok(block.includes("禁止"));
+  assert.ok(block.includes("[来源:revenue/2026-06·2026-06·实测A]"));
   assert.ok(block.includes(`"name":"revenue"`));
   assert.ok(block.includes(`"value":100`));
+  assert.ok(block.includes(`"sourceRef"`));
 });
 
 test("renderMetricSnapshotsBlock: empty → empty string", () => {

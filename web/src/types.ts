@@ -977,6 +977,8 @@ export interface WorkflowDef {
   version: 1;
   /** Default model for nodes that don't specify one */
   defaultModel: string;
+  /** Explicit workflow-level authorization for web_search. Defaults to false. */
+  allowWeb?: boolean;
   /** Workflow-level skill fallback for nodes without their own skillPaths. */
   defaultSkillPaths?: string[];
   nodes: WorkflowNode[];
@@ -1223,7 +1225,7 @@ export interface SubAgentTaskInput {
   dataFiles: string[];
   model?: string;
   templateId?: string; // 指定子 agent 模板（缺省=回退引擎默认 systemPrompt，行为同现状）
-  skillPaths?: string[]; // undefined=继承 pi 默认 skill 策略；[]=禁用；非空=指定子集
+  skillPaths?: string[]; // 省略/[]=禁用；非空=指定子集
 }
 
 // 子 agent 模板：剥离 runner 硬编码 systemPrompt 的图形化配置（subagents.json）。
@@ -2296,6 +2298,25 @@ export interface MetricComparison {
   window?: string;            // 对比窗口口径（如 "3期移动均值"）
 }
 
+export type EvidenceLevel = "A" | "B" | "C" | "D";
+
+export type MetricSourceRef =
+  | {
+      kind: "extraction_tool";
+      toolId: string;
+      toolName?: string;
+      sourceFile?: string;
+      summaryKey: string;
+      period?: string;
+    }
+  | {
+      kind: "bi_aggregation";
+      runId?: string;
+      findingId?: string;
+      metricId?: string;
+      window?: string;
+    };
+
 export interface MetricSnapshot {
   name: string;               // 指标名，代码定义
   value: number;              // 当期值，代码计算
@@ -2305,6 +2326,37 @@ export interface MetricSnapshot {
   status: "normal" | "warning" | "alert";  // 阈值判定，代码打标
   thresholdNote?: string;
   source: "extraction_tool" | "bi_aggregation";  // 产出链路
+  evidenceLevel: EvidenceLevel;
+  evidenceOverride?: EvidenceLevel;
+  sourceRef?: MetricSourceRef;
+  /** D-ZH7 C-mini：绑定已登记指标（metricId 唯一标识口径，用于对账/核验）。 */
+  metricId?: string;
+}
+
+// ── 关键指标双路径对账（D-ZH8 契约，2026-06-26）── 双侧镜像 server/src/types.ts
+export type ReconciliationVerdict = "matched" | "mismatch" | "missing_pair" | "unregistered";
+
+export interface MetricReconciliationPair {
+  metricId: string;
+  period: string;
+  extraction?: {
+    value: number;
+    unit?: string;
+    evidenceLevel: string;
+    sourceRef?: MetricSourceRef;
+  };
+  biAggregation?: {
+    value: number;
+    unit?: string;
+    evidenceLevel: string;
+    sourceRef?: MetricSourceRef;
+  };
+}
+
+export interface MetricReconciliationResult {
+  verdict: ReconciliationVerdict;
+  pairs: MetricReconciliationPair[];
+  warnings: string[];
 }
 
 // ── 数字锁产出侧校验（X-MLOCK0 契约，2026-06-25）── 双侧镜像 server/src/types.ts
@@ -2319,8 +2371,10 @@ export interface MetricVerificationHit {
   name: string;
   expected: number;
   foundInText: number | null;
-  status: "matched" | "suspect" | "unreferenced";
+  status: "matched" | "suspect" | "unreferenced" | "fabricated" | "label_mismatch";
   relDiff: number | null;
+  /** label_mismatch 时：上下文中实际出现的指标名 */
+  contextLabel?: string;
 }
 
 export interface ModelLabStatsTopModel {
@@ -2536,6 +2590,13 @@ export interface MetricDefinition {
   enabled: boolean;
   createdAt: number;
   updatedAt: number;
+  // D-ZH7 C-mini 字段（口径中心化最小闭环）
+  displayName?: string;       // 展示名（中文，如「销售额」）
+  aggregation?: string;       // 聚合方式（sum/count/avg/max/min/distinct_count）
+  periodGrain?: string;       // 周期粒度（day/week/month/quarter/year）
+  filters?: string;           // 过滤条件（如 "status='paid'"）
+  denominator?: string;       // 分母指标 id（比率类指标，如转化率=订单量/访客量）
+  version?: number;           // 口径版本号
 }
 
 export interface MetricDefinitionInput {
@@ -2547,6 +2608,12 @@ export interface MetricDefinitionInput {
   unit: string;
   objectTypeId?: string;
   boundColumns?: string[];
+  displayName?: string;
+  aggregation?: string;
+  periodGrain?: string;
+  filters?: string;
+  denominator?: string;
+  version?: number;
 }
 
 // ─── 本体形式化层（P6，对齐 nano LogicRule/Action）───────────────────────

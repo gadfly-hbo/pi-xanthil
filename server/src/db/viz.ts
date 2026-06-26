@@ -178,6 +178,12 @@ function initOntoTables(): void {
       unit           TEXT NOT NULL DEFAULT '',
       object_type_id TEXT,
       bound_columns  TEXT,
+      display_name   TEXT,
+      aggregation    TEXT,
+      period_grain   TEXT,
+      filters        TEXT,
+      denominator    TEXT,
+      version        INTEGER,
       enabled        INTEGER NOT NULL DEFAULT 1,
       created_at     INTEGER NOT NULL,
       updated_at     INTEGER NOT NULL
@@ -304,6 +310,20 @@ function initOntoTables(): void {
     db.exec(`CREATE INDEX IF NOT EXISTS idx_monitor_configs_ws ON monitor_configs(workspace_id);`);
   } catch {
     // ignore
+  }
+  for (const [column, ddl] of [
+    ["display_name", "TEXT"],
+    ["aggregation", "TEXT"],
+    ["period_grain", "TEXT"],
+    ["filters", "TEXT"],
+    ["denominator", "TEXT"],
+    ["version", "INTEGER"],
+  ] as const) {
+    try {
+      db.prepare(`ALTER TABLE metric_definitions ADD COLUMN ${column} ${ddl}`).run();
+    } catch (err) {
+      if (!String(err).includes("duplicate column name")) throw err;
+    }
   }
 }
 
@@ -583,7 +603,9 @@ export function deleteLink(id: string): boolean {
 interface MetricRow {
   id: string; workspace_id: string; name: string; category: string; description: string;
   formula: string; caliber: string; unit: string; object_type_id: string | null;
-  bound_columns: string | null; enabled: number; created_at: number; updated_at: number;
+  bound_columns: string | null; display_name: string | null; aggregation: string | null;
+  period_grain: string | null; filters: string | null; denominator: string | null; version: number | null;
+  enabled: number; created_at: number; updated_at: number;
 }
 function parseMetric(r: MetricRow): MetricDefinition {
   let boundColumns: string[] | undefined;
@@ -594,6 +616,12 @@ function parseMetric(r: MetricRow): MetricDefinition {
     id: r.id, workspaceId: r.workspace_id, name: r.name, category: r.category,
     description: r.description, formula: r.formula, caliber: r.caliber, unit: r.unit,
     objectTypeId: r.object_type_id ?? undefined, boundColumns,
+    displayName: r.display_name ?? undefined,
+    aggregation: r.aggregation ?? undefined,
+    periodGrain: r.period_grain ?? undefined,
+    filters: r.filters ?? undefined,
+    denominator: r.denominator ?? undefined,
+    version: r.version ?? undefined,
     enabled: r.enabled === 1, createdAt: r.created_at, updatedAt: r.updated_at,
   };
 }
@@ -613,8 +641,12 @@ export function createMetric(workspaceId: string, input: MetricDefinitionInput):
   const now = Date.now();
   const boundJson = input.boundColumns ? JSON.stringify(input.boundColumns) : null;
   db.prepare(
-    "INSERT INTO metric_definitions (id, workspace_id, name, category, description, formula, caliber, unit, object_type_id, bound_columns, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"
-  ).run(id, workspaceId, input.name, input.category, input.description, input.formula, input.caliber, input.unit, input.objectTypeId ?? null, boundJson, now, now);
+    "INSERT INTO metric_definitions (id, workspace_id, name, category, description, formula, caliber, unit, object_type_id, bound_columns, display_name, aggregation, period_grain, filters, denominator, version, enabled, created_at, updated_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)"
+  ).run(
+    id, workspaceId, input.name, input.category, input.description, input.formula, input.caliber, input.unit,
+    input.objectTypeId ?? null, boundJson, input.displayName ?? null, input.aggregation ?? null,
+    input.periodGrain ?? null, input.filters ?? null, input.denominator ?? null, input.version ?? null, now, now,
+  );
   enableForOrigin(workspaceId, "metric", id); // 新池条目：origin 工作区默认启用
   return { id, workspaceId, ...input, enabled: true, createdAt: now, updatedAt: now };
 }
@@ -632,12 +664,23 @@ export function updateMetric(id: string, patch: Partial<MetricDefinitionInput & 
     unit: patch.unit ?? existing.unit,
     objectTypeId: patch.objectTypeId ?? existing.objectTypeId,
     boundColumns: patch.boundColumns ?? existing.boundColumns,
+    displayName: patch.displayName ?? existing.displayName,
+    aggregation: patch.aggregation ?? existing.aggregation,
+    periodGrain: patch.periodGrain ?? existing.periodGrain,
+    filters: patch.filters ?? existing.filters,
+    denominator: patch.denominator ?? existing.denominator,
+    version: patch.version ?? existing.version,
     enabled: patch.enabled ?? existing.enabled,
     updatedAt: Date.now(),
   };
   db.prepare(
-    "UPDATE metric_definitions SET name = ?, category = ?, description = ?, formula = ?, caliber = ?, unit = ?, object_type_id = ?, bound_columns = ?, enabled = ?, updated_at = ? WHERE id = ?"
-  ).run(next.name, next.category, next.description, next.formula, next.caliber, next.unit, next.objectTypeId ?? null, next.boundColumns ? JSON.stringify(next.boundColumns) : null, next.enabled ? 1 : 0, next.updatedAt, id);
+    "UPDATE metric_definitions SET name = ?, category = ?, description = ?, formula = ?, caliber = ?, unit = ?, object_type_id = ?, bound_columns = ?, display_name = ?, aggregation = ?, period_grain = ?, filters = ?, denominator = ?, version = ?, enabled = ?, updated_at = ? WHERE id = ?"
+  ).run(
+    next.name, next.category, next.description, next.formula, next.caliber, next.unit,
+    next.objectTypeId ?? null, next.boundColumns ? JSON.stringify(next.boundColumns) : null,
+    next.displayName ?? null, next.aggregation ?? null, next.periodGrain ?? null, next.filters ?? null,
+    next.denominator ?? null, next.version ?? null, next.enabled ? 1 : 0, next.updatedAt, id,
+  );
   return next;
 }
 

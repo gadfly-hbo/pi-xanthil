@@ -12,6 +12,7 @@
 
 import { runPiPrompt } from "./pi-adapter.ts";
 import { biAggregationToMetricSnapshots, renderMetricSnapshotsBlock } from "./monitor-metric-snapshot.ts";
+import { checkCoverage, renderCoverageBlock } from "./coverage-check.ts";
 import type { MonitorMetricDraft, MonitorMetricSystemDraft, MonitorMetricBinding, MonitorMetricDependency, MonitorRuleDraft, ObjectType, MetricDefinition, LinkType, LogicRule, BiAggregationDataset, HealthFinding } from "./types.ts";
 
 export interface DraftInput {
@@ -35,10 +36,13 @@ export function buildDraftPrompt(input: DraftInput): string {
   const { aggregations, objects, metrics, links: _links, logicRules, findings } = input;
 
   // D-METRIC3：findings 非空 → 头部注入 MetricSnapshot[] 数字锁块；空/未传 → 走 fallback。
-  // 注意：这里的 findings 是监测引擎纯函数产物（衍生字段），不含原始行级数据。
   const snapshotBlock = findings && findings.length > 0
     ? renderMetricSnapshotsBlock(biAggregationToMetricSnapshots(findings))
     : "";
+
+  // D-ZH6：数据充分性预检。fail → 要求弃答；warn → 降置信并列出限制。
+  const coverage = checkCoverage({ aggregations, findings, metrics });
+  const coverageBlock = renderCoverageBlock(coverage);
 
   let aggText = "";
   if (aggregations.length > 0) {
@@ -65,7 +69,7 @@ export function buildDraftPrompt(input: DraftInput): string {
   }
 
   return `你是一位经营分析专家。请基于以下工作区的数据资产，设计一套观测指标体系。
-${snapshotBlock ? `\n${snapshotBlock}\n` : ""}
+${snapshotBlock ? `\n${snapshotBlock}\n` : ""}${coverageBlock ? `\n${coverageBlock}\n` : ""}
 ## 可用的聚合数据集
 ${aggText}
 
@@ -126,7 +130,7 @@ ${logicText}
 ## 原则
 - metrics 3-10 个，覆盖收入/成本/用户/效率等核心维度
 - 优先绑定到已有的聚合数据集和本体对象
-- 缺失数据标记在 missingData 中，不编造
+- 缺失数据标记在 missingData 中，不编造${coverage.verdict === "fail" ? "\n- ⚠️ 数据充分性预检不通过，请仅输出 missingData 说明缺口，不要生成 metrics/bindings/rules" : coverage.verdict === "warn" ? "\n- ⚠️ 数据充分性预检存在限制，请在 assumptions 中列出置信度限制" : ""}
 `;
 }
 
@@ -220,6 +224,7 @@ export async function draftMetricSystem(
       text: prompt,
       model: model ?? "doubao-pro-32k",
       systemPrompt: "你输出纯 JSON，不要 Markdown fence、不要额外文字。",
+      injectCausalLayering: true,
       timeoutMs: 120_000,
     });
     const draft = parseDraftJson(text);

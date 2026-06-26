@@ -81,6 +81,7 @@ export async function curateSkillEvaluation(request: SkillCurationRequest): Prom
     piSessionId: `skill-curator-${evaluation.evaluationId}`,
     text: prompt,
     model: model || undefined,
+    allowWeb: false,
     onEvent: (event) => {
       collectEvent(emptyMetrics(), event, {
         workspaceId,

@@ -102,6 +102,7 @@ async function runSingleWorkflow(runDir: string, runId: string, workspaceId: str
     piSessionId: runId,
     text: `${contextPrefix}${prompt}`,
     model: model || undefined,
+    allowWeb: false,
     onEvent: (event) => collectEvent(metrics, event, { workspaceId, targetId: runId, title }),
   });
   const code = await run.done;

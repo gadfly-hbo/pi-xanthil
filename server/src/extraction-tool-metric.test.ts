@@ -51,6 +51,8 @@ test("buildMetricSnapshotsFromHints: status thresholds (high-value alert)", () =
       { summaryKey: "churnRate", name: "流失率", statusThresholds: { warning: 0.05, alert: 0.1 } },
     ],
     inputPath: "/tmp/dataset_2026-06.csv",
+    toolId: "test-tool",
+    toolName: "测试工具",
   });
   assert.equal(snaps.length, 2);
   const [s0, s1] = snaps;
@@ -58,6 +60,13 @@ test("buildMetricSnapshotsFromHints: status thresholds (high-value alert)", () =
   assert.equal(s0?.status, "warning");
   assert.equal(s0?.period, "2026-06");
   assert.equal(s0?.source, "extraction_tool");
+  assert.equal(s0?.evidenceLevel, "A");
+  assert.equal(s0?.sourceRef?.kind, "extraction_tool");
+  assert.equal(s0?.sourceRef?.toolId, "test-tool");
+  assert.equal(s0?.sourceRef?.toolName, "测试工具");
+  assert.equal(s0?.sourceRef?.summaryKey, "activeUsers");
+  assert.equal(s0?.sourceRef?.sourceFile, "dataset_2026-06.csv");
+  assert.equal(s0?.sourceRef?.period, "2026-06");
   assert.equal(s0?.thresholdNote, "warning=1000 / alert=2000");
   assert.equal(s1?.status, "warning"); // 0.08 ≥ 0.05 but < 0.1
 });
@@ -67,12 +76,14 @@ test("buildMetricSnapshotsFromHints: low-value alert (alert < warning)", () => {
     summary: { score: 65 },
     hints: [{ summaryKey: "score", name: "评分", statusThresholds: { warning: 80, alert: 60 } }],
     inputPath: "",
+    toolId: "t1",
   });
   assert.equal(snaps[0]?.status, "warning");
   const alertSnaps = buildMetricSnapshotsFromHints({
     summary: { score: 55 },
     hints: [{ summaryKey: "score", name: "评分", statusThresholds: { warning: 80, alert: 60 } }],
     inputPath: "",
+    toolId: "t1",
   });
   assert.equal(alertSnaps[0]?.status, "alert");
 });
@@ -83,6 +94,7 @@ test("buildMetricSnapshotsFromHints: period from params overrides path", () => {
     hints: [{ summaryKey: "x", name: "X" }],
     inputPath: "/tmp/data_2026-01.csv",
     params: { period: "2026-Q2" },
+    toolId: "t1",
   });
   assert.equal(snaps[0]?.period, "2026-Q2");
   assert.equal(snaps[0]?.status, "normal");
@@ -99,6 +111,7 @@ test("buildMetricSnapshotsFromHints: skip non-numeric and missing values", () =>
       { summaryKey: "d", name: "D" },
     ],
     inputPath: "",
+    toolId: "t1",
   });
   assert.equal(snaps.length, 2);
   const [c, d] = snaps;
@@ -109,6 +122,25 @@ test("buildMetricSnapshotsFromHints: skip non-numeric and missing values", () =>
 });
 
 test("buildMetricSnapshotsFromHints: empty / undefined hints → empty array", () => {
-  assert.deepEqual(buildMetricSnapshotsFromHints({ summary: { x: 1 }, hints: undefined, inputPath: "" }), []);
-  assert.deepEqual(buildMetricSnapshotsFromHints({ summary: { x: 1 }, hints: [], inputPath: "" }), []);
+  assert.deepEqual(buildMetricSnapshotsFromHints({ summary: { x: 1 }, hints: undefined, inputPath: "", toolId: "t1" }), []);
+  assert.deepEqual(buildMetricSnapshotsFromHints({ summary: { x: 1 }, hints: [], inputPath: "", toolId: "t1" }), []);
+});
+
+test("buildMetricSnapshotsFromHints: sourceRef populated correctly", () => {
+  const snaps = buildMetricSnapshotsFromHints({
+    summary: { revenue: 5000 },
+    hints: [{ summaryKey: "revenue", name: "营收", unit: "万元" }],
+    inputPath: "/data/2026-06.csv",
+    toolId: "tool-abc",
+    toolName: "营收分析",
+  });
+  assert.equal(snaps.length, 1);
+  const s = snaps[0]!;
+  assert.equal(s.evidenceLevel, "A");
+  assert.equal(s.sourceRef?.kind, "extraction_tool");
+  assert.equal(s.sourceRef?.toolId, "tool-abc");
+  assert.equal(s.sourceRef?.toolName, "营收分析");
+  assert.equal(s.sourceRef?.summaryKey, "revenue");
+  assert.equal(s.sourceRef?.sourceFile, "2026-06.csv");
+  assert.equal(s.sourceRef?.period, "2026-06");
 });

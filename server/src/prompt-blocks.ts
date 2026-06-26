@@ -7,7 +7,7 @@
 // BUMP PROMPT_SCHEMA_VERSION whenever any block content changes — consumers
 // can record this alongside token stats to correlate prompt edits with shifts
 // in cache hit rates.
-export const PROMPT_SCHEMA_VERSION = "v3" as const;
+export const PROMPT_SCHEMA_VERSION = "v5" as const;
 
 // Block 01 — data safety (non-negotiable, must stay first)
 export const BLOCK_SAFETY = [
@@ -69,8 +69,32 @@ export const BLOCK_METRIC_LOCK = [
   "- 可引用展示，只解读业务现象、推断根因、提供策略建议",
 ].join("\n");
 
+// Optional causal layering block — enabled for formal reports (经营/监测/专题).
+export const BLOCK_CAUSAL_LAYERING = [
+  "[正式报告因果分层约束]",
+  "若本次产出为正式报告文本，必须按三层结构组织，不得混层。",
+  "若调用方要求输出 JSON 或固定 schema，不得改变 schema；请在可承载的字段中遵守观察/推断/建议分层纪律，并避免把观察、推断、建议混写。",
+  "",
+  "一、观察 Observation（纯数据事实）",
+  "- 每个数字必须标注来源（工具名/文件名）与证据等级（A/B/C/D）",
+  "- 禁止使用因果词：因为、所以、导致、因此、由于、从而、引发、推动、造成、进而",
+  "- 禁止定性推断：不可出现「说明」「表明」「反映」「意味着」",
+  "- 示例格式：「#1 销售额 12,500（来源: sales_tool, 等级 A）」",
+  "",
+  "二、推断 Inference（基于观察的假设）",
+  "- 每条推断必须包含三要素：【假设】+【支撑：引用观察项编号 #N】+【证伪条件】",
+  "- 证伪条件：如果该推断为假，应观察到什么相反数据",
+  "- 示例：「【假设】短信过度触达推高取关率 【支撑：#3 取关率 15% + #5 短信触达 8 次/月】 【证伪条件】若短信频次降至 4 次/月后取关率未下降，则假设不成立」",
+  "",
+  "三、建议 Action（基于推断的行动）",
+  "- 每条建议必须挂靠至少一条推断（标注「基于推断 #N」）",
+  "- 禁止无推断支撑的孤立建议",
+  "- 示例：「建议将短信频次降至 4 次/月（基于推断 #1）」",
+].join("\n");
+
 export interface AssembleSystemPromptOptions {
   injectExtractionToolSystem?: boolean;
+  injectCausalLayering?: boolean;
 }
 
 /**
@@ -94,6 +118,7 @@ export function buildDataContextBlock(paths: string[]): string {
 export function assembleSystemPrompt(additionalPrompt?: string, options: AssembleSystemPromptOptions = {}): string {
   const blocks: string[] = [BLOCK_SAFETY, BLOCK_BASE_BEHAVIOR, BLOCK_FILE_ANALYSIS];
   if (options.injectExtractionToolSystem) blocks.push(BLOCK_METRIC_LOCK);
+  if (options.injectCausalLayering) blocks.push(BLOCK_CAUSAL_LAYERING);
   const extra = additionalPrompt?.trim();
   if (extra) blocks.push(extra);
   return blocks.join("\n\n");

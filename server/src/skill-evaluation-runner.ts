@@ -386,6 +386,7 @@ async function runDefaultPairwiseJudge(options: SkillPairwiseJudgeOptions): Prom
     piSessionId: `skill-pairwise-${options.evaluationId}-${options.variant.id}`,
     text: prompt,
     model: options.model || undefined,
+    allowWeb: false,
     onEvent: (event) => {
       collectEvent(emptyMetrics(), event, {
         workspaceId: options.workspaceId,
@@ -522,6 +523,7 @@ async function runSkillPiTurn(
     text: `${contextPrefix}${task.prompt}`,
     model: options.model || undefined,
     skillPaths: effectiveSkillPaths,
+    allowWeb: false,
     onEvent: (event) => {
       events.push(event);
       collectEvent(metrics, event, {

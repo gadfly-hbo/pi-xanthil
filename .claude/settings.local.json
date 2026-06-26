@@ -242,7 +242,17 @@
       "Bash(launchctl list *)",
       "Bash(uvx --version)",
       "Bash(export MINIMAX_API_KEY='sk-cp-0Ha6KEPA59f5gFEVFoyRRP6lv90ywdrtYsq-q8bg1REGpgN1Vm3VJR2wTFZi9MPCKT6Tu-fmfwoZKAc8kLXONRjqk_kVdSFl6BionAzaqbBM1Zs50Bsy9nM')",
-      "Bash(export MINIMAX_API_HOST='https://api.minimaxi.com')"
+      "Bash(export MINIMAX_API_HOST='https://api.minimaxi.com')",
+      "Bash(python3 -c \"import json; d=json.load\\(open\\('/Users/huangbo/.pi/agent/settings.json'\\)\\); print\\('JSON 合法 ✓'\\); print\\('packages:', d['packages']\\); print\\('theme:', d.get\\('theme'\\)\\)\")",
+      "Bash(rg -n \"PI_BIN\\\\s*=\" server/src/*.ts)",
+      "Bash(python3 -c \"import json;d=json.load\\(open\\('package.json'\\)\\);print\\(json.dumps\\(d.get\\('scripts',{}\\),indent=1,ensure_ascii=False\\)\\)\")",
+      "Bash(lsof -iTCP -sTCP:LISTEN -P)",
+      "Bash(rg -n \"PORT|listen\\\\\\(|localhost:|5173|3000|8787\" server/src/index.ts web/vite.config.*)",
+      "Bash(timeout 60 pi -p --mode json --no-skills --no-context-files \"回复两个字：就绪\")",
+      "Bash(ps eww *)",
+      "Bash(env)",
+      "Bash(ps -Eww -p 5306)",
+      "Bash(pi -p --mode json --no-skills --no-context-files --tools web_search,subagent,bash \"不要调用任何工具。仅以一行逗号分隔列出你当前实际可用的工具名称。\")"
     ]
   }
 }

@@ -158,7 +158,7 @@
   </div>
 
   <section id="dispatch" class="view active">
-    <p class="legend">当前阶段 <b>2.2（待派发）</b>。机制 A：单工作目录顺序喂。点卡片<b>展开</b>看详情，点「复制」把<b>标题 + 域 brief</b> 整段贴给该 agent。<span style="color:var(--d)">■</span> 数据基座(opencode) <span style="color:var(--e)">■</span> 智能引擎(codex) <span style="color:var(--v)">■</span> 可视交付(antigravity) <span style="color:var(--x)">■</span> 总控(Claude)</p>
+    <p class="legend">当前阶段 <b>2.3（零幻觉·数据可信地基归档）</b>。机制 A：单工作目录顺序喂。点卡片<b>展开</b>看详情，点「复制」把<b>标题 + 域 brief</b> 整段贴给该 agent。<span style="color:var(--d)">■</span> 数据基座(opencode) <span style="color:var(--e)">■</span> 智能引擎(codex) <span style="color:var(--v)">■</span> 可视交付(antigravity) <span style="color:var(--x)">■</span> 总控(Claude)</p>
     <div class="grid" id="taskGrid"></div>
     <details class="done-sec" id="doneWrap">
       <summary>✓ 已完成（待阶段结束时归档进版本历史）</summary>
@@ -273,7 +273,7 @@
 
 <script>
 /* ════════════ 数据区（迭代时在此追加；渲染逻辑见下方） ════════════ */
-const VERSION = "2.2";
+const VERSION = "2.3";
 
 const DOMAINS = {
   D: { name: "数据基座", agent: "opencode (deepseek/glm)", color: "var(--d)" },
@@ -1527,6 +1527,116 @@ interface MetricSnapshot {
 验收：带 analysis 工具工作区跑一轮对话，模型若改写注入数值则 ChatPane 出告警；正常引用无告警；安全 grep 净；typecheck+build 绿。
 
 ✅ 总控终审通过（2026-06-25）：新增 metric-verification-events.ts，从 tool_result / turn_end.toolResults / MCP 文本块 best-effort 提取本轮 MetricSnapshot[]；index.ts handleSend 与 routes/engine.ts handleSendFlow 在 assistant message_end 后校验，仅 mismatch 时追加 metric_verification content block；web types/MessageRow 渲染「模型引用数值与代码计算值不符」告警并保持默认可见。验证：node --experimental-strip-types --test server/src/metric-verification.test.ts server/src/metric-verification-events.test.ts ✅ 8/8；npm run typecheck ✅；npm run build ✅；安全 grep 净。未跑真实 LLM tool-use E2E（需可用 analysis 工具 + 模型实跑环境），已用事件级单测覆盖核心链路。待用户提交。` },
+
+  // ════ 【零幻觉·数据可信地基】（总控拆卡 2026-06-26；定位=LLM 加工环节去幻觉 + 不确定性可见，不承诺数据源/因果实质“零错误”）。调研边界：①模块映射为 explore=日常、zhuanti=专题、multi=重复，监测链路另走 Health/Monitor；②日常/专题主对话 handleSend 当前 skillPaths 可能为 undefined，pi 默认可加载全部 skill；③重复模块有 send_flow 聊天 + executeMultiAgent workflow 节点执行两条路径，workflow.json 尚无 allowWeb；④px-hook-runner 目前只读 PX_HOOKS_CONFIG/LOG，尚无 per-run PX_ALLOW_WEB；⑤MetricSnapshot 已有 value/status/source，但无 evidenceLevel/sourceRef；⑥verifyMetricUsage 已有，但 verdict 只看 suspect，unreferenced 漏告警且不做数字-标签错配；⑦BLOCK_BASE_BEHAVIOR 仅软性禁止无数据定性推断，未形成报告结构和 R-CAUSAL 核验。联网红线：监测/日常/专题 = web_search 硬禁；重复 = workflow 级 allowWeb 显式授权才放行（商圈研究等 workflow 可 true，其余默认 false）；知识库「收集」是独立联网窗口，保留既有 collectWeb 显式路径，不混入四模块授权口径。════
+  { dom: "X", status: "done", created: "2026-06-26 14:00", delegate: "E", title: "【零幻觉·P0护栏】X-ZH0：联网授权 + 默认禁自主 skill 的接缝契约（总控自做）", brief:
+`来源：2026-06-26 总控调研「零幻觉·数据可信地基」。本卡是接缝契约卡，先堵失控口：web_search 出网与 skill 自主加载。
+调研证据：runPiTurn(pi-adapter.ts) 仅 opts.skillPaths truthy 时才 --no-skills；handleSend(index.ts) / handleSendFlow(routes/engine.ts) 在无 skill/command 时会把 skillPaths 留 undefined；px-hook-runner 仅注入 PX_HOOKS_CONFIG/PX_HOOKS_LOG，无 PX_ALLOW_WEB；WorkflowDef/multi-agent-runner/web types 均无 allowWeb。
+
+审定口径：
+1. 四模块联网边界：监测 / 日常(explore) / 专题(zhuanti) web_search 硬禁；重复(multi) workflow.json 增 allowWeb?: boolean，默认 false；仅 allowWeb=true 的 workflow 节点运行可放行 web_search；知识库「收集」独立保留 collectWeb 显式联网，不纳入四模块。
+2. skill 边界：主对话 handleSend、专题 onZhuantiChatSend、flow 聊天 handleSendFlow 默认 skillPaths=[]，即明确 --no-skills；command skillSlugs / ChatPane SkillSelector 显式传入的 skillPaths 仍允许；委派子 agent / workflow node 维持显式 skillPaths 白名单语义，workflow node 未配置 skillPaths 时同步审定为 []。
+3. runPiTurn 增 allowWeb?: boolean，只负责把 PX_ALLOW_WEB=1 注入 hookEnv；不改变 cwd/mcp 加载机制。
+4. px-hook-runner 增内建 web_search guard：tool_call 命中 web_search 且 process.env.PX_ALLOW_WEB!=="1" 时 block；既有用户 hooks 继续执行。block 日志 reason 写清「web_search requires explicit allowWeb」。
+5. WorkflowDef 双侧、multi-agent-runner 本地类型、workflow-config 校验、MultiAgentExecutionPane UI 加 allowWeb 显式开关；模板库默认 false，后续商圈研究模板才 true。
+
+落点：server/src/pi-adapter.ts、pi-extensions/px-hook-runner/index.ts、server/src/multi-agent-runner.ts、server/src/workflow-config.ts、server/src/types.ts、web/src/types.ts、web/src/components/MultiAgentExecutionPane.tsx、index.ts handleSend、routes/engine.ts handleSendFlow/executeMultiAgent。
+验收：新增测试覆盖主对话空 skillPaths 仍 --no-skills；web_search 无 PX_ALLOW_WEB 被 block；PX_ALLOW_WEB=1 放行；workflow allowWeb=false 默认拦截、true 放行；collectWeb 仍可联网。server+web typecheck + build 绿。
+铁律：不得全局松绑 minimax/web_search；不得让监测/日常/专题通过 UI 隐式开启联网；不得破坏 collectWeb。
+
+✅ 总控自做 done（2026-06-26）：① RunPiOptions 增 allowWeb，runPiTurn 仅 allowWeb=true 时向 px-hook-runner 注入 PX_ALLOW_WEB=1；② px-hook-runner 内建 web_search guard（无 PX_ALLOW_WEB 即 block），并把判定抽进 hook-eval-core 与 hooks lab 共用；③ handleSend/handleSendFlow 无显式 skill 时改传 []，触发 --no-skills，collectWeb 仍传 allowWeb=true 保持收集联网；AnaX precheck 明确 skillPaths=[]/allowWeb=false；④ WorkflowDef/WorkflowLike/前端 WorkflowDef 增 allowWeb，multi-agent-runner 默认 skillPaths=[]，workflow.allowWeb=true 时所有节点/fanOut 子任务传 allowWeb=true；⑤ MultiAgentExecutionPane workflow 编辑区新增「允许联网」显式开关，保存入 workflow.json.allowWeb。验证：pi-adapter-skillpaths.test ✅ 4/4；hook-redteam-fixtures.test ✅ 5/5；multi-agent-runner.test ✅ 34/34；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）。` },
+
+  { dom: "E", status: "done", created: "2026-06-26 14:01", title: "【零幻觉·P0回归】E-ZH1：四模块联网/skill 红线回归套件 + hook red-team 样本", brief:
+`前置：X-ZH0 接缝落地。目标：把「监测/日常/专题硬禁联网，重复按 workflow allowWeb 授权」变成可回归的工程门禁。
+范围：扩展 hook red-team fixtures（web_search 正常名、大小写变体、toolName 缺失但 args/input 含 web_search、伪装说明文字）；为 handleSend / handleSendFlow 增 spawn-args 单测（无显式 skill 时传 []，显式 skill/command skillSlugs 时只白名单注入）；为 multi-agent-runner 增 runTurn fake 单测（workflow.allowWeb 默认 false，true 时 opts.allowWeb=true，fanOut 子任务继承）；排查监测/AnaX precheck 等临时 runPiTurn 调用点并显式 allowWeb=false、skillPaths=[]。
+验收：node --experimental-strip-types --test 覆盖新增测试；npm run typecheck + npm run build 绿。回报中列出所有 runPiTurn 调用点的 allowWeb/skillPaths 口径。
+
+✅ Agent-E 交付 + 总控终审通过（2026-06-26）：E 补齐 hook red-team 8/8、pi-adapter-skillpaths 6/6、multi-agent-runner 35/35；补全 autonomous/subagent/evaluation/prompt-eval/skill-eval/memory-eval/evaluation-common/skill-curator/command-eval 等调用点 allowWeb=false，并更新 docs/notes-engine.md。总控终审发现 1 个漏点：subagent-evaluation-runner 也经 runSubAgentTurn，但未显式 skillPaths，仍可能继承 pi 默认 skill；已由总控最小收口为 skillPaths:[]。最终验证：subagent-evaluation-runner.test ✅ 6/6；E-ZH1 三组测试合并 ✅ 49/49；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）。` },
+
+  { dom: "X", status: "done", created: "2026-06-26 14:02", title: "【零幻觉·P1证据契约】X-ZH2：EvidenceLevel + MetricSourceRef + renderSourceLabel 契约（总控自做）", brief:
+`前置：X-METRIC0/MLOCK 已完成。目标：把「输入端可信分级」接到现有 MetricSnapshot，而不是另起炉灶。
+范围：双侧 types.ts 扩展 EvidenceLevel = "A" | "B" | "C" | "D"；MetricSourceRef union 包含 extraction_tool(toolId/toolName/sourceFile/summaryKey/period) 与 bi_aggregation(runId/findingId/metricId/window)；MetricSnapshot 增 evidenceLevel、evidenceOverride?、sourceRef?；新建 renderSourceLabel(snapshot): string，输出确定性短标签，如「[来源:销售工具/summary.gmv·实测A]」。
+边界：sourceRef 粒度为产出器 + 字段坐标 + 周期，不到原始行/cell；禁止引入 row/cell offset。
+验收：server+web typecheck 绿；renderSourceLabel 单测覆盖 extraction_tool / bi_aggregation / override / 缺 sourceRef fallback。安全 grep 不出现 draw_data/rows/cells 读取。
+
+✅ 总控自做 done（2026-06-26）：① 双侧 types.ts 新增 EvidenceLevel、MetricSourceRef，并给 MetricSnapshot 增 evidenceLevel/evidenceOverride/sourceRef；sourceRef 只含产出器、字段坐标和周期/window，不含 row/cell offset。② 新建 server/src/metric-source-label.ts，renderSourceLabel 纯函数按 evidenceOverride??evidenceLevel 输出「实测A/衍生B/引用C/估计D」，支持 extraction_tool / bi_aggregation / 无 sourceRef fallback。③ 为现有 MetricSnapshot 构造补最小 evidenceLevel：ExtractionTool 产物=A；监测适配层暂为 A（D-ZH3 再细分 evidence.current=A、兜底/衍生=B）；metric-verification-events 对旧/外部 snapshot 做兼容 coercion，extraction_tool 默认 A、bi_aggregation 默认 B。验证：metric-source-label/metric-verification/extraction-tool/monitor 相关测试 30/30 ✅；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）；新增纯函数与 coercion 文件安全 grep \`draw_data|dataset\\.rows|rows|cells|BiCell\` 无命中。` },
+
+  { dom: "D", status: "done", created: "2026-06-26 14:03", title: "【零幻觉·P1证据落地】D-ZH3：MetricSnapshot 产出器补 evidenceLevel/sourceRef + 数字锁块引用来源标签", brief:
+`前置：X-ZH2 契约。落点：extraction-tool-metric.ts、monitor-metric-snapshot.ts、相关 tool summary 适配与 prompt 注入。
+范围：extraction_tool 链路命中 summaryKey 默认 evidenceLevel="A"，sourceRef.kind="extraction_tool"；bi_aggregation/监测链路 evidence.current 直接取值默认 A，兜底/衍生值默认 B，sourceRef.kind="bi_aggregation"；renderMetricSnapshotsBlock 输出 JSON 前增加 renderSourceLabel 文本或在 JSON 中保留 sourceRef/evidenceLevel，让 LLM 原样引用，禁止自创来源。
+安全红线：只读工具 summary / MonitorFinding 衍生字段；禁止读取 BiAggregationDataset.rows、draw_data 原始行/cell。
+验收：相关单测更新；server+web typecheck + build 绿；grep \`dataset\\.rows|BiCell|draw_data\` 在本改动触达模块不得新增命中。
+
+✅ Agent-D 交付 + 总控终审通过（2026-06-26）：① extraction_tool 产出器接入 toolId/toolName，snapshot 固定 evidenceLevel=A，sourceRef 精确到 toolId/toolName/sourceFile/summaryKey/period；② monitor/bi_aggregation 产出器按 evidence.current=A、comparisons 兜底=B 分级，sourceRef 精确到 runId/findingId/metricId/window；③ 数字锁块在 JSON 前注入来源标签。总控终审发现 1 个契约漂移：monitor 与 MCP 注入点手写来源标签，和 X-ZH2 renderSourceLabel 口径不一致；已由总控收敛为统一复用 server/src/metric-source-label.ts。验证：extraction-tool/monitor/metric-source-label/metric-verification-events 相关测试 ✅ 25/25；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）；安全 grep \`draw_data|dataset\\.rows|rows|cells|BiCell\` 仅注释命中，无新增 row/cell 读取。` },
+
+  { dom: "E", status: "done", created: "2026-06-26 14:04", title: "【零幻觉·P0数字锁补洞】E-ZH4：MetricVerification 把捏造数字与数字-标签错配纳入告警", brief:
+`前置：X-MLOCK0/MLOCK1 已完成，X-ZH2 可并行但非硬依赖。目标：堵批判评估里两个确定性漏洞。
+现状证据：metric-verification.ts verdict 只在 hit.status==="suspect" 时 mismatch；unreferenced 不报警。verifyOne 只按数值匹配，不看数字附近的指标名。
+范围：解析 answerText 时保留数字 mention 的 index 与上下文窗口，并尝试抽取临近 label；文本里出现未能匹配任何 snapshot 的业务数字时进入 mismatch（排除年份、日期、编号、排序序号等低风险数字）；snapshot 未被引用仍保持 unreferenced 但不单独报警；若某数字值匹配 snapshot A，但上下文包含另一个 snapshot B 的 name/alias，且不包含 A 名称，则标 label_mismatch；前端告警显示「疑似捏造数字 / 数字挂错指标」。
+验收：新增单测覆盖凭空 9999 报警、年份/日期不误报、华东 GMV 值挂到华北 GMV 报 label_mismatch、正常引用不过警；server+web typecheck + build 绿。
+
+✅ Agent-E 交付 + 总控终审通过（2026-06-26）：① MetricVerificationHit.status 增 fabricated / label_mismatch，双侧 types 镜像 contextLabel；② metric-verification 改为数字位置追踪、上下文 label 检测、未注册业务数字 fabricated 告警，并排除年份/日期/序号/小数字；③ MessageRow 前端告警区分 suspect / fabricated / label_mismatch。总控终审发现并修正 2 个边界：原低风险判断只看数字 raw，\`12月\`、\`15号\`、\`第12轮\` 会被 NUMBER_PATTERN 截成 \`12\`/\`15\` 而误报 fabricated，已改为基于前后文判断；原 \`value < 10\` 会漏掉 \`-9999\` 这类负数未注册业务数字，已改为按绝对值阈值判断。验证：metric-verification + events 相关测试 ✅ 16/16；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）。` },
+
+  { dom: "E", status: "done", created: "2026-06-26 14:05", title: "【零幻觉·P1因果分层】E-ZH5：正式报告 BLOCK_CAUSAL_LAYERING + R-CAUSAL 轻量核验", brief:
+`目标：把 BLOCK_BASE_BEHAVIOR 的软约束升级为正式报告的结构化约束和可核验提示。适用范围仅正式报告（经营/监测/专题产出），日常聊天不强制分层。
+范围：prompt-blocks.ts 增 BLOCK_CAUSAL_LAYERING，不放稳定块前部；assembleSystemPrompt 增 injectCausalLayering?: boolean；PROMPT_SCHEMA_VERSION v3 -> v5。正式报告要求三段：观察 Observation（纯数据事实，每个数字带来源+等级，禁因果词）、推断 Inference（【假设】+【支撑：引用观察项编号 #N】+【证伪条件】）、建议 Action（依赖哪条推断）；JSON/fixed schema 场景不得改变 schema，只在可承载字段内遵守分层纪律。新建 causal-layering-check.ts 或并入 DocEval R-CAUSAL，纯正则/结构核验，抓观察段因果词、推断缺三要素、建议无挂靠，高置信提示不阻断。
+验收：单测覆盖合规/观察段越界/推断缺证伪/建议孤儿；server+web typecheck + build 绿。回报中说明哪些报告入口已开启，哪些未开启。
+
+✅ Agent-E 交付 + 总控终审通过（2026-06-26）：① prompt-blocks.ts 新增 BLOCK_CAUSAL_LAYERING，PROMPT_SCHEMA_VERSION v3→v5，assembleSystemPrompt / runPiTurn / runPiPrompt 增 injectCausalLayering 开关；② 新建 causal-layering-check.ts，纯正则 R-CAUSAL 轻量核验 observation 因果词/推断词、inference 缺支撑或缺证伪、action 无推断挂靠。总控终审发现并修正 2 个规则空洞：markdown bullet/编号 Action 原会被跳过，已改为剥离列表标记后检查；【支撑】原只校验字段存在、不要求引用观察项 #N，已改为必须含 #编号。X-ZH9 终审已补接线：专题 AnaX 专题 session 与监测 draftMetricSystem 启用 causal layering；经营报告无独立入口；日常聊天不适用。验证：causal-layering-check 相关测试 ✅ 11/11；knowledge prompt 回归同跑 ✅ 21/21；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）。` },
+
+  { dom: "D", status: "done", created: "2026-06-26 14:06", title: "【零幻觉·P1.5充分性】D-ZH6：数据充分性预检 + 弃答/降置信提示（coverage check）", brief:
+`目标：实现 NotebookLM「不知道」的数据分析版，先判断数据是否足够支撑结论，再让 LLM 写报告。
+范围：设计轻量 CoverageCheckResult（rowCount?/periodCoverage?/baselineAvailable?/metricCoverage?/warnings[]/verdict）；对 clean_data/聚合数据仅读聚合文件元信息、字段字典、已登记分析结果，禁止读 draw_data 原始行；监测/报告/专题生成前注入 coverage block，fail 时提示缺口并要求弃答或只给有限结论，warn 时降置信并列出限制；UI 报告入口显示「数据充分性」提示条。
+验收：缺基线、周期不足、无关键指标三类 fixture；typecheck/build 绿；数据探索隔离 grep 仍为空。
+
+✅ Agent-D 交付 + 总控终审通过（2026-06-26）：新增 server/src/coverage-check.ts，checkCoverage/renderCoverageBlock 基于聚合元信息、finding 衍生字段和已登记指标做充分性预检；monitor-llm buildDraftPrompt 注入 coverage block，fail 时追加仅说明 missingData 的弃答指令，warn 时要求在 assumptions 中列置信限制。验证随 D-ZH7/D-ZH8 终审合并：相关测试 ✅ 48/48；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）；安全 grep 仅注释命中。` },
+
+  { dom: "D", status: "done", created: "2026-06-26 14:07", title: "【零幻觉·P2口径地基】D-ZH7：轻量指标语义层 C-mini（metricId/unit/aggregation/period/filters/denominator）", brief:
+`目标：先补口径中心化的最小闭环，为后续计算对账服务；不做完整 ontology 大工程。
+范围：基于现有 MetricDefinition/metric_definitions，补最小字段或映射：metricId、displayName、unit、aggregation、periodGrain、filters、denominator?、version?；MetricSnapshot 增 metricId? 绑定；renderSourceLabel 优先展示 displayName，但核验/对账用 metricId；LLM prompt 中禁止临场重定义指标，引用指标必须使用 metricId 对应口径，口径缺失时标注「口径未登记」；IndicatorsPane 提供最小编辑入口，先支持关键指标。
+验收：至少 GMV/订单量/转化率/客单价 fixture 可登记并被 MetricSnapshot 绑定；typecheck/build 绿；不改 unrelated ontology 复杂能力。
+
+✅ Agent-D 交付 + 总控终审通过（2026-06-26）：MetricSnapshot 增 metricId；MetricHint/coerceMetricHints 透传 metricId；extraction_tool 与 bi_aggregation 产出器绑定 metricId；metric-source-label 与 metric-verification-events 兼容 metricId。总控终审发现 C-mini 字段只扩了 MetricDefinition 类型、未进入 MetricDefinitionInput/DB schema/create/update/list，无法持久化为口径真源；已由总控最小补齐 metric_definitions 六列、旧库 ALTER 迁移、db/viz parse/create/update、routes/viz POST 接入、双侧 MetricDefinitionInput 字段。验证随 D-ZH6/D-ZH8 终审合并通过。` },
+
+  { dom: "D", status: "done", created: "2026-06-26 14:08", title: "【零幻觉·P3计算对账】D-ZH8：metric-reconciliation.ts 关键指标双路径对账（依赖 C-mini）", brief:
+`前置：D-ZH7 C-mini 至少完成关键指标身份绑定。目标：只对声明的关键指标做 extraction vs bi 双路径对账，避免全量同名指标误报。
+范围：新建 metric-reconciliation.ts，按 metricId+period 配对 extraction_tool 与 bi_aggregation 的 MetricSnapshot；复用 metric-verification 的 relativeDiff/EPSILON/单位归一口径；输出 MetricReconciliationResult（matched/mismatch/missingPair，含两侧 sourceRef/evidenceLevel）；UI/报告入口只提示关键指标对账告警，不阻断生成，告警文案区分「计算不一致」与「口径未登记/无法对账」。
+验收：单测覆盖一致、超阈值、不成对、口径缺失四类；server+web typecheck + build 绿。回报必须说明 common-mode failure 仍是边界外。
+
+✅ Agent-D 交付 + 总控终审通过（2026-06-26）：新增 metric-reconciliation.ts，按 metricId+period 对 extraction_tool 与 bi_aggregation 做关键指标双路径对账，输出 matched/mismatch/missing_pair/unregistered 与 renderReconciliationBlock。总控终审修正 2 个边界：同一侧重复 metricId+period 原会 Map 静默覆盖，已改为 duplicate mismatch 告警；unregistered 原渲染为空，已改为输出「口径未登记/无法对账」告警块以符合验收。边界声明：common-mode failure 仍在工程机制外，两条路径若共享同一错误逻辑可能同时错且对账通过。验证：coverage/reconciliation/extraction/monitor/source-label/verification-events 相关测试 ✅ 48/48；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）；安全 grep 仅注释命中。` },
+
+  { dom: "X", status: "done", created: "2026-06-26 14:09", title: "【零幻觉·总控终审】X-ZH9：四模块红线实跑 + wiki/边界声明/notes 收口", brief:
+`前置：X-ZH0~D-ZH8 按阶段完成后执行。总控终审卡，不委派。
+范围：四模块实跑矩阵：监测不得触发 web_search；日常默认 --no-skills 且 web_search 被 hook 拦截；专题默认 --no-skills 且正式专题报告启用 causal layering；重复 allowWeb=false 拦截、allowWeb=true 的测试 workflow 放行，商圈研究模板若存在/新增必须显式显示联网授权。产品边界声明落文案：「本系统验证 LLM 输出是否忠实于已登记数据、来源与计算结果；不保证原始数据、业务口径或因果解释天然正确，重要结论仍需人工复核。」更新 docs/notes-infra.md、docs/notes-engine.md、docs/notes-data.md；阶段归档时补 changelog。
+验收：npm run typecheck、npm run build、关键单测、数据探索 LLM 隔离 grep；列出仍在边界外的风险（GIGO、选择性叙事、实质因果谬误、common-mode failure）。
+
+✅ 总控终审 done（2026-06-26）：四模块红线矩阵复核并补齐 2 个接线缺口：专题 AnaX 专题 session（flow.sourceName="AnaX 专题"）在 handleSend 传 injectCausalLayering=true；监测 draftMetricSystem 在 runPiPrompt 传 injectCausalLayering=true。日常默认 skillPaths=[]→--no-skills，allowWeb=false；专题默认同样 --no-skills 且 web_search 无 collectWeb 不放行；重复 workflow.allowWeb=false 默认拦截、true 时 PX_ALLOW_WEB=1 放行，UI 有「允许联网」显式开关；监测/eval/subagent/autonomous 等 runPiTurn 调用点均显式 allowWeb=false/skillPaths=[] 或白名单。产品边界声明已落 notes-infra。验证：关键单测 ✅ 110/110；数据探索 LLM 隔离 grep ✅ 无匹配；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）。边界外风险：GIGO、选择性叙事、实质因果谬误、common-mode failure。` },
+
+  { dom: "X", status: "done", created: "2026-06-26 18:10", delegate: "E", title: "【零幻觉·P0补缝】X-ZH10：委派子 agent skillPaths 省略时默认禁用 skill", brief:
+`来源：X-ZH9 后复核追问——日常/专题/重复 workflow 的子 agent 是否可调用 skill。结论：workflow node 已是「默认 [] 禁用，显式白名单放行」；普通委派子 agent 仍有 omit skillPaths 漏口。
+
+现状证据：
+1. runPiTurn(pi-adapter.ts) 只有 opts.skillPaths 存在时才加 --no-skills；[] 表示禁全部，非空数组表示 --no-skills + --skill 白名单。
+2. workflow node(multi-agent-runner.ts) 已用 node.skillPaths ?? fallbackSkillPaths ?? []，默认安全。
+3. /api/sessions/:id/delegate(index.ts) 用 parseRequestedSkillPaths；请求体未带 skillPaths 时返回 undefined，并透传 runSubAgentTurn → runPiTurn，理论上会落回 pi 默认 skill 加载策略。
+
+审定口径：
+委派子 agent 与主对话 / workflow node 对齐：默认禁自主 skill；只有前端显式传入非空 skillPaths 时，才按白名单注入；显式 [] 仍表示禁用。不得再保留「undefined 继承 pi 默认策略」作为生产委派语义。
+
+建议落点：
+1. 后端最小修复优先：在 /delegate 入口把 parseRequestedSkillPaths 的结果兜底为 []，或在 runSubAgentTurn 层做 skillPaths: input.skillPaths ?? []。优先选择更靠近执行内核的一处，确保 resume/retry/未来入口也安全。
+2. 保留白名单能力：非空 skillPaths 仍严格校验可用 skill path，并传给 runPiTurn 生成 --no-skills --skill <path>。
+3. 更新 notes-engine 中 subagent skill 三态旧表述：生产委派的 undefined 不再表示继承 pi 默认策略；默认态即禁用。
+4. 补单测：omit skillPaths 的 delegate/subagent turn 最终 spawn args 必含 --no-skills 且无 --skill；显式白名单仍含 --no-skills + --skill；workflow node 既有测试保持通过。
+
+验收：
+- 相关单测通过，至少覆盖普通委派子 agent omit skillPaths 的默认禁用。
+- npm run typecheck、npm run build 绿。
+- 不改变 workflow node 显式 skillPaths 白名单能力。
+- 不触碰联网 allowWeb 口径；普通委派子 agent 仍 allowWeb=false。
+- 数据探索 LLM 隔离 grep 仍无匹配（若本卡未碰探索子树，也需执行作为安全门禁）。
+
+✅ 总控自做 done（2026-06-26）：在 runSubAgentTurn 内核层将 input.skillPaths ?? [] 传给 runPiTurn，确保普通委派子 agent 省略 skillPaths 时仍生成 --no-skills；显式非空 skillPaths 继续生成 --no-skills + --skill <path> 白名单；allowWeb=false 不变。补 pi-adapter-skillpaths.test 两例：委派 omit skillPaths 默认禁用、显式白名单保留。notes-engine 已同步删除“生产委派 undefined 继承 pi 默认策略”旧口径。验证：pi-adapter-skillpaths 9/9 ✅；multi-agent-runner 35/35 ✅；数据探索 LLM 隔离 grep ✅ 无匹配；npm run typecheck ✅；npm run build ✅（仅既有 echarts/chunk size warnings）。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──
@@ -2028,7 +2138,17 @@ B. 彻底拆除（更干净，碰接缝层）：移除 POST 端点与 createSess
 
 /* 版本历史：每次发版 / 阶段归档时在数组顶部追加一条 */
 const CHANGELOG = [
-  { ver: "2.2", date: "2026-06-20", current: true, title: "记忆重构 + 专题工作台 + 控制台/看板/可视化波次", items: [
+  { ver: "2.3", date: "2026-06-26", current: true, title: "零幻觉·数据可信地基", items: [
+    "联网与 skill 红线收口：监测/日常/专题默认禁 web_search，重复 workflow 仅 allowWeb=true 显式授权放行；主对话/flow chat 默认 --no-skills，显式 skill 白名单仍可审计；hook red-team 覆盖大小写/伪装/缺 toolName 变体",
+    "证据契约闭环：MetricSnapshot 增 EvidenceLevel/MetricSourceRef/metricId，renderSourceLabel 统一来源短标签；extraction_tool=A，monitor/bi evidence.current=A、兜底=B；数字锁块强制 LLM 保留来源",
+    "数字输出核验升级：MetricVerification 新增 fabricated 与 label_mismatch，覆盖捏造业务数字、数字-标签错配、年份/日期/序号低风险排除、负数未注册数字",
+    "正式报告因果分层：BLOCK_CAUSAL_LAYERING + R-CAUSAL 轻量正则核验；专题 AnaX 专题 session 与监测 draftMetricSystem 已接线，日常聊天不强制分层",
+    "数据充分性与弃答：coverage check 基于聚合元信息/finding/指标覆盖在监测 draft prompt 前预检，fail 弃答、warn 降置信",
+    "C-mini 指标语义层 + 双路径对账：metric_definitions 持久化 displayName/aggregation/periodGrain/filters/denominator/version；MetricSnapshot 绑定 metricId；reconcileMetricSnapshots 按 metricId+period 对账，重复口径/缺口径/单路径缺失均显式告警",
+    "可信边界声明：系统验证 LLM 输出是否忠实于已登记数据、来源与计算结果；不保证原始数据、业务口径或因果解释天然正确，重要结论仍需人工复核。GIGO、选择性叙事、实质因果谬误、common-mode failure 仍在边界外",
+    "门禁：关键单测 110/110、typecheck、build、数据探索 LLM 隔离 grep 全绿；build 仅既有 echarts/chunk size warnings",
+  ]},
+  { ver: "2.2", date: "2026-06-20", current: false, title: "记忆重构 + 专题工作台 + 控制台/看板/可视化波次", items: [
     "规则记忆模块 clean-slate 重建(11/11 卡)：统一 MemoryItem 模型 + 多信号检索(relevance/recency/feedback/typePriority) + 治理(时序衰减/supersede/防 poison/dedup) + 自动沉淀闭环(trace 蒸馏→门禁→入库 or 复核队列) + RulesPane 重建 + ChatPane 内联反馈 + KG 关系层/注入检查器/失败诊断。164 测试 + E2E 6/6 烟测",
     "工作区任务模型 + 专题(AnaX)提升为一级工作台：日常(session)/专题(flow+session)/重复 三任务模型(改名 2026-06-18，不互窜)；专题=对话探索↔流水线双模互相 seed + 完整数据/报告链路混合导航(14 tab，左竖栏 5 核心 + 顶部 9 数据/报告)",
     "actions 行动闭环模块：报告 →提取行动项→采纳建任务→执行反馈 三段闭环，落地 onto-xanthil「分析→行动→执行」",

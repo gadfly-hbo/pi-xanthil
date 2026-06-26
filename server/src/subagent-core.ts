@@ -158,7 +158,8 @@ export function runSubAgentTurn(input: SubAgentTurnInput): PiRun {
     text: input.text,
     model: input.model,
     systemPrompt: input.systemPrompt,
-    skillPaths: input.skillPaths,
+    skillPaths: input.skillPaths ?? [],
+    allowWeb: false,
     onEvent: input.onEvent,
   });
 }

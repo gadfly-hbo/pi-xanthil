@@ -31,7 +31,8 @@ export async function runAutonomousTask(opts: AutonomousRunOptions): Promise<Aut
     piSessionId: runId,
     text: query,
     model: model || undefined,
-    skillPaths: skillPaths.length > 0 ? skillPaths : undefined,
+    skillPaths: skillPaths.length > 0 ? skillPaths : [],
+    allowWeb: false,
     onEvent: (event) => {
       collectEvent(emptyMetrics(), event, { workspaceId, targetId: runId, title: "Autonomous" });
       const msg = event.type === "message_end"

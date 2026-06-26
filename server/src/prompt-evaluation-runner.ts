@@ -369,6 +369,7 @@ async function runDefaultPairwiseJudge(options: PromptPairwiseJudgeOptions): Pro
     piSessionId: `prompt-pairwise-${options.evaluationId}-${options.variant.id}`,
     text: prompt,
     model: options.model || undefined,
+    allowWeb: false,
     onEvent: (event) => {
       collectEvent(emptyMetrics(), event, {
         workspaceId: options.workspaceId,
@@ -556,6 +557,7 @@ async function runPromptPiTurn(
     text: `${contextBlock}${userPrompt}`,
     model: options.model || undefined,
     systemPrompt: variant.role === "system" ? variant.promptBody : undefined,
+    allowWeb: false,
     onEvent: (event) => {
       events.push(event);
       collectEvent(metrics, event, {

@@ -13,6 +13,8 @@
 import { createInterface } from "node:readline";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
+import { renderSourceLabel } from "../metric-source-label.ts";
+import type { MetricSnapshot } from "../types.ts";
 
 function argOf(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
@@ -104,12 +106,16 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<{ 
   // 模型只可解读、推因、建议，禁止重新推导或自行算术。
   const metricSnapshots = body.metricSnapshots;
   if (Array.isArray(metricSnapshots) && metricSnapshots.length > 0) {
-    const lockedText = [
+    const lines = [
       "[指标快照·代码确定性计算值·禁止重新推导]",
       "以下 MetricSnapshot 由工具确定性产物计算得出，模型只可解读业务现象、推断根因、提供策略建议；不得修改或自行算术。",
-      JSON.stringify(metricSnapshots),
-    ].join("\n");
-    return { content: [{ type: "text", text: lockedText }] };
+      "每条指标均带确定性 [来源:...·证据等级] 标签，引用时请保留来源标签，禁止自创来源。",
+    ];
+    for (const s of metricSnapshots as MetricSnapshot[]) {
+      lines.push(renderSourceLabel(s));
+      lines.push(JSON.stringify(s));
+    }
+    return { content: [{ type: "text", text: lines.join("\n") }] };
   }
   return { content: [{ type: "text", text: JSON.stringify(body) }] };
 }

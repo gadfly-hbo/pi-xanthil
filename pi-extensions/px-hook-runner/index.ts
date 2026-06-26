@@ -24,7 +24,14 @@
 import { spawn } from "node:child_process";
 import { appendFileSync, readFileSync } from "node:fs";
 // hook 匹配/verdict 判定内核（与实验场 hooks 评测共用同一 matchesHook/safePreview，唯一真源；本文件保留 record/runSideEffect 执行）。
-import { type Hook, safePreview, matchesHook } from "./hook-eval-core.ts";
+import {
+  BUILTIN_WEB_SEARCH_GUARD_ID,
+  WEB_SEARCH_BLOCK_REASON,
+  isWebSearchToolCall,
+  type Hook,
+  safePreview,
+  matchesHook,
+} from "./hook-eval-core.ts";
 
 // pi 扩展 API 的最小本地形状（避免引入 @earendil-works/pi-coding-agent 运行时依赖）。
 interface PiExtAPI {
@@ -147,6 +154,23 @@ export default function (pi: PiExtAPI): void {
     const preview = safePreview(safeEvent);
     const sessionId = getSessionId(ctx);
     let blockReason: string | null = null;
+
+    if (isWebSearchToolCall(safeEvent, preview) && process.env.PX_ALLOW_WEB !== "1") {
+      blockReason = WEB_SEARCH_BLOCK_REASON;
+      record({
+        ts: Date.now(),
+        hookId: BUILTIN_WEB_SEARCH_GUARD_ID,
+        event: "tool_call",
+        matched: true,
+        actionKind: "block",
+        ok: true,
+        durationMs: 0,
+        sessionId,
+        argsPreview: preview,
+        reason: WEB_SEARCH_BLOCK_REASON,
+        blocked: true,
+      });
+    }
 
     for (const hook of hooks) {
       if (!matchesHook(hook, safeEvent, preview)) continue;

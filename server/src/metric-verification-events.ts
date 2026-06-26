@@ -1,11 +1,39 @@
 import { verifyMetricUsage } from "./metric-verification.ts";
 import { flowMessageText } from "./message-text.ts";
-import type { MetricSnapshot, MetricVerification, PiEvent, PiMessage } from "./types.ts";
+import type { EvidenceLevel, MetricSnapshot, MetricSourceRef, MetricVerification, PiEvent, PiMessage } from "./types.ts";
 
 const SNAPSHOT_MARKER = "MetricSnapshot";
 
 function isRecord(value: unknown): value is Record<string, unknown> {
   return typeof value === "object" && value !== null && !Array.isArray(value);
+}
+
+function coerceEvidenceLevel(value: unknown, fallback: EvidenceLevel): EvidenceLevel {
+  return value === "A" || value === "B" || value === "C" || value === "D" ? value : fallback;
+}
+
+function coerceMetricSourceRef(value: unknown): MetricSourceRef | undefined {
+  if (!isRecord(value)) return undefined;
+  if (value.kind === "extraction_tool" && typeof value.toolId === "string" && typeof value.summaryKey === "string") {
+    const ref: MetricSourceRef = {
+      kind: "extraction_tool",
+      toolId: value.toolId,
+      summaryKey: value.summaryKey,
+    };
+    if (typeof value.toolName === "string") ref.toolName = value.toolName;
+    if (typeof value.sourceFile === "string") ref.sourceFile = value.sourceFile;
+    if (typeof value.period === "string") ref.period = value.period;
+    return ref;
+  }
+  if (value.kind === "bi_aggregation") {
+    const ref: MetricSourceRef = { kind: "bi_aggregation" };
+    if (typeof value.runId === "string") ref.runId = value.runId;
+    if (typeof value.findingId === "string") ref.findingId = value.findingId;
+    if (typeof value.metricId === "string") ref.metricId = value.metricId;
+    if (typeof value.window === "string") ref.window = value.window;
+    return ref;
+  }
+  return undefined;
 }
 
 function coerceMetricSnapshot(value: unknown): MetricSnapshot | null {
@@ -21,10 +49,16 @@ function coerceMetricSnapshot(value: unknown): MetricSnapshot | null {
     period: value.period,
     status: value.status,
     source: value.source,
+    evidenceLevel: coerceEvidenceLevel(value.evidenceLevel, value.source === "extraction_tool" ? "A" : "B"),
   };
   if (typeof value.unit === "string") snapshot.unit = value.unit;
+  if (typeof value.metricId === "string") snapshot.metricId = value.metricId;
   if (Array.isArray(value.comparisons)) snapshot.comparisons = value.comparisons as MetricSnapshot["comparisons"];
   if (typeof value.thresholdNote === "string") snapshot.thresholdNote = value.thresholdNote;
+  const evidenceOverride = coerceEvidenceLevel(value.evidenceOverride, snapshot.evidenceLevel);
+  if (evidenceOverride !== snapshot.evidenceLevel) snapshot.evidenceOverride = evidenceOverride;
+  const sourceRef = coerceMetricSourceRef(value.sourceRef);
+  if (sourceRef) snapshot.sourceRef = sourceRef;
   return snapshot;
 }
 

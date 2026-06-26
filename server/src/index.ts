@@ -189,6 +189,8 @@ import { registerChildProcess } from "./child-processes.ts";
 import { buildSanitizedEnv } from "./process-env.ts";
 import { aiToolRowGuardMessage, guardToolRunSummaryForSource, parseAiToolMaxRows } from "./ai-tool-row-guard.ts";
 
+const ZHUANTI_ANAX_SOURCE_NAME = "AnaX 专题";
+
 ensureDirs();
 XLSX.set_fs({ readFileSync });
 
@@ -4715,6 +4717,8 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
               hints: tool.metricHints,
               inputPath,
               params: paramsObj,
+              toolId: tool.id,
+              toolName: tool.name,
             })
           : [];
         const durationMs = Date.now() - startMs;
@@ -4986,7 +4990,7 @@ async function handleSend(
   ];
   let skillPaths: string[] | undefined;
   try {
-    skillPaths = validateSkillPaths(ws_.rootPath, requestedSkillPaths.length > 0 ? requestedSkillPaths : undefined);
+    skillPaths = validateSkillPaths(ws_.rootPath, requestedSkillPaths.length > 0 ? requestedSkillPaths : []);
   } catch (err) {
     return send(ws, { type: "error", sessionId: session.id, message: String(err) });
   }
@@ -5046,6 +5050,7 @@ async function handleSend(
   const systemPrompt = collectWeb
     ? (baseSystemPrompt ? `${COLLECT_SYSTEM_PROMPT}\n\n${baseSystemPrompt}` : COLLECT_SYSTEM_PROMPT)
     : baseSystemPrompt;
+  const injectCausalLayering = boundFlow?.sourceName === ZHUANTI_ANAX_SOURCE_NAME;
 
   // Fork 分支：若本 session 是未播种的分支，首轮用 --fork 从父 session 播种历史。
   const forkFrom = forkBranch && !forkBranch.seeded ? forkBranch.parentSessionId : undefined;
@@ -5059,7 +5064,9 @@ async function handleSend(
     model: msg.model,
     systemPrompt,
     injectExtractionToolSystem: hasAnalysisExtractionTools(),
+    injectCausalLayering,
     skillPaths,
+    allowWeb: collectWeb,
     forkFrom,
     cwdOverride: collectCwd,
     onEvent: (event: PiEvent) => {
