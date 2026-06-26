@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelRightOpen, CircleAlert, TriangleAlert } from "lucide-react";
+import { PanelRightOpen, CircleAlert, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/Sidebar";
 import { type UiMessage } from "@/components/MessageRow";
@@ -8,6 +8,7 @@ import { CleanDataDocsColumn } from "@/components/CleanDataDocsColumn";
 import { FlowListColumn } from "@/components/FlowListColumn";
 import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
+import { QuickNotesPane } from "@/components/QuickNotesPane";
 import { useTabVisibility } from "@/lib/useTabVisibility";
 import { getSubTabsForTab, ONTO_SUB_TABS, LAB_SUB_TABS, LAB_SUB_IDS, ZHUANTI_SIDEBAR_TABS, ZHUANTI_SIDEBAR_IDS, type SubTab } from "@/lib/constants";
 import { DataTabs } from "@/tabs/DataTabs";
@@ -19,7 +20,7 @@ import type { WorkflowTemplate } from "@/components/WorkflowTemplateLibraryPane"
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
-import { asBlocks, textOf, type ContentBlock, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
+import { asBlocks, textOf, type ContentBlock, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type CollectSession, type CollectFolder, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
 
 type ZhuantiTask = { flow: Flow; session: Session };
 type MemoryPromptInfo = {
@@ -136,6 +137,15 @@ export default function App() {
   const [zhuantiChatCompacting, setZhuantiChatCompacting] = useState(false);
   const [zhuantiChatRuntimeNotice, setZhuantiChatRuntimeNotice] = useState("");
   const [zhuantiSeed, setZhuantiSeed] = useState<{ task: string } | null>(null);
+  // 知识库「收集」联网聊天（X-COLLECT3）：独立于业务工作区的全局多会话 + 文件夹。
+  const [collectSessions, setCollectSessions] = useState<CollectSession[]>([]);
+  const [activeCollectSessionId, setActiveCollectSessionId] = useState<string | null>(null);
+  const [collectFolders, setCollectFolders] = useState<CollectFolder[]>([]);
+  const [collectMessages, setCollectMessages] = useState<UiMessage[]>([]);
+  const [collectRunning, setCollectRunning] = useState(false);
+  const [collectRuntime, setCollectRuntime] = useState<SessionRuntime | null>(null);
+  const [collectCompacting, setCollectCompacting] = useState(false);
+  const [collectRuntimeNotice, setCollectRuntimeNotice] = useState("");
   const [model, setModel] = useState("");
   const [models, setModels] = useState<PiModel[]>([]);
   const [totals, setTotals] = useState({ tokens: 0, cost: 0, input: 0, cacheRead: 0, cacheWrite: 0 });
@@ -147,6 +157,13 @@ export default function App() {
 
   const { hiddenTabs, toggleTab, isVisible } = useTabVisibility();
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [quickNotesOpen, setQuickNotesOpen] = useState(false);
+  useEffect(() => {
+    if (!quickNotesOpen) return;
+    const onKey = (e: KeyboardEvent) => { if (e.key === "Escape") setQuickNotesOpen(false); };
+    window.addEventListener("keydown", onKey);
+    return () => window.removeEventListener("keydown", onKey);
+  }, [quickNotesOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
   const [previewOpen, setPreviewOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("explore");
@@ -164,6 +181,8 @@ export default function App() {
   activeRef.current = activeSessionId;
   const zhuantiChatRef = useRef<string | null>(null);
   zhuantiChatRef.current = zhuantiChatSessionId;
+  const collectRef = useRef<string | null>(null);
+  collectRef.current = activeCollectSessionId;
 
   const selectZhuantiTaskData = useCallback((task: ZhuantiTask) => {
     setZhuantiChatFlowId(task.flow.id);
@@ -297,6 +316,7 @@ export default function App() {
     setZhuantiChatRuntimeNotice("");
     setZhuantiChatRunning(false);
     setZhuantiTasks([]);
+    // 注：收集会话独立于业务工作区（X-COLLECT3），不随工作区切换重置。
     api.listSessions(activeWorkspaceId).then((s) => {
       setSessions(s);
       setActiveSessionId(s[0]?.id ?? null);
@@ -421,17 +441,74 @@ export default function App() {
     };
   }, [zhuantiChatSessionId, refreshTokenTotals]);
 
+  // 收集会话/文件夹装载（独立于业务工作区，X-COLLECT3）：进入「知识库·收集」tab 时拉取；
+  // 列表为空则自动建一个会话，并把 active 指到第一个。
+  const refreshCollectFolders = useCallback(() => {
+    api.listCollectFolders().then(setCollectFolders).catch(() => undefined);
+  }, []);
+  useEffect(() => {
+    if (activeTab !== "knowledge_base" || activeSubTab !== "kb_collect") return;
+    let cancelled = false;
+    refreshCollectFolders();
+    api.listCollectSessions().then(async (rows) => {
+      if (cancelled) return;
+      let list = rows;
+      if (list.length === 0) {
+        const created = await api.createCollectSession("新会话").catch(() => null);
+        if (created) list = [created];
+      }
+      if (cancelled) return;
+      setCollectSessions(list);
+      setActiveCollectSessionId((cur) => cur && list.some((s) => s.id === cur) ? cur : (list[0]?.id ?? null));
+    }).catch(() => undefined);
+    return () => { cancelled = true; };
+  }, [activeTab, activeSubTab, refreshCollectFolders]);
+
+  // 收集 active session 消息装载（镜像 zhuantiChat）。
+  useEffect(() => {
+    let cancelled = false;
+    if (!activeCollectSessionId) {
+      setCollectMessages([]);
+      setCollectRuntime(null);
+      setCollectRuntimeNotice("");
+      setCollectRunning(false);
+      return;
+    }
+    api.listMessages(activeCollectSessionId).then((rows: StoredMessage[]) => {
+      if (cancelled) return;
+      let consecutiveStreamErrors = 0;
+      const msgs: UiMessage[] = rows.map((r) => {
+        consecutiveStreamErrors = r.errorMessage === STREAM_END_ERROR ? consecutiveStreamErrors + 1 : 0;
+        return {
+          id: nextId(),
+          role: r.role,
+          content: asBlocks(r.content),
+          error: r.errorMessage ? displayError(r.errorMessage, consecutiveStreamErrors) : undefined,
+        };
+      });
+      setCollectMessages(msgs);
+      void refreshTokenTotals();
+    });
+    api.getSessionRunStatus(activeCollectSessionId)
+      .then((status) => { if (!cancelled) setCollectRunning(status.running); })
+      .catch(() => { if (!cancelled) setCollectRunning(false); });
+    setCollectRuntimeNotice("");
+    api.getSessionRuntime(activeCollectSessionId, true).then(setCollectRuntime).catch(() => setCollectRuntime(null));
+    return () => { cancelled = true; };
+  }, [activeCollectSessionId, refreshTokenTotals]);
+
   // ---- gateway events ----
   useEffect(() => {
     return gateway.subscribe((msg: ServerMessage) => {
       if (msg.type === "flow_event") return;
       if ("flowId" in msg && msg.flowId) return;
       const sessionId = "sessionId" in msg ? msg.sessionId : null;
-      if (sessionId && sessionId !== activeRef.current && sessionId !== zhuantiChatRef.current) return;
-      const isZhuantiChat = Boolean(sessionId && sessionId === zhuantiChatRef.current && sessionId !== activeRef.current);
-      const setTargetMessages = isZhuantiChat ? setZhuantiChatMessages : setMessages;
-      const setTargetRunning = isZhuantiChat ? setZhuantiChatRunning : setRunning;
-      const setTargetRuntime = isZhuantiChat ? setZhuantiChatRuntime : setRuntime;
+      if (sessionId && sessionId !== activeRef.current && sessionId !== zhuantiChatRef.current && sessionId !== collectRef.current) return;
+      const isCollect = Boolean(sessionId && sessionId === collectRef.current && sessionId !== activeRef.current);
+      const isZhuantiChat = Boolean(sessionId && sessionId === zhuantiChatRef.current && sessionId !== activeRef.current && !isCollect);
+      const setTargetMessages = isCollect ? setCollectMessages : isZhuantiChat ? setZhuantiChatMessages : setMessages;
+      const setTargetRunning = isCollect ? setCollectRunning : isZhuantiChat ? setZhuantiChatRunning : setRunning;
+      const setTargetRuntime = isCollect ? setCollectRuntime : isZhuantiChat ? setZhuantiChatRuntime : setRuntime;
       if (msg.type === "run_start") {
         setTargetRunning(true);
         setTargetRuntime((current) => current ? { ...current, status: "running", lastError: null } : current);
@@ -481,7 +558,7 @@ export default function App() {
               return visibleBlocks.length > 0 ? [...cur, { id: nextId(), role: m.role, content: visibleBlocks }] : cur;
             });
             const text = textOf(m.content);
-            if (!isZhuantiChat && m.role === "assistant" && text) setReport(text);
+            if (!isZhuantiChat && !isCollect && m.role === "assistant" && text) setReport(text);
           }
           if (m.usage) void refreshTokenTotals();
         }
@@ -641,7 +718,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "readme" : tab === "health" ? "health_data" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "kb_collect" : tab === "health" ? "health_data" : "view");
     if (tab === "explore") {
       setActiveSessionId(sessions[0]?.id ?? null);
     }
@@ -758,6 +835,84 @@ export default function App() {
     setZhuantiChatMessages((cur) => [...cur, { id: nextId(), role: "assistant", content: [{ type: "text", text: summary }] }]);
   }, []);
 
+  // 收集 session handlers（镜像 zhuantiChat）。onCollectSend 带 collectWeb:true → 后端启用 minimax 联网。
+  const onCollectSend = useCallback(
+    (text: string, skillPaths?: string[]) => {
+      if (!activeCollectSessionId) return;
+      setCollectMessages((cur) => [...cur, { id: nextId(), role: "user", content: [{ type: "text", text }] }]);
+      gateway.send({ type: "send", sessionId: activeCollectSessionId, text, model: model || undefined, skillPaths, collectWeb: true });
+    },
+    [activeCollectSessionId, model],
+  );
+
+  const onCollectStop = useCallback(() => {
+    if (!activeCollectSessionId) return;
+    gateway.send({ type: "abort", sessionId: activeCollectSessionId });
+  }, [activeCollectSessionId]);
+
+  const compactCollectContext = useCallback(async () => {
+    if (!activeCollectSessionId || collectRunning || collectCompacting) return;
+    setCollectCompacting(true);
+    setCollectRuntimeNotice("");
+    try {
+      const result = await api.compactSession(activeCollectSessionId);
+      setCollectRuntime(result.runtime);
+      setCollectRuntimeNotice(result.message);
+    } catch (err) {
+      setCollectRuntime((current) => current ? { ...current, status: "error", lastError: String(err) } : current);
+      setCollectRuntimeNotice("上下文整理失败");
+    } finally {
+      setCollectCompacting(false);
+    }
+  }, [collectCompacting, collectRunning, activeCollectSessionId]);
+
+  const refreshCollectRuntime = useCallback(async () => {
+    if (!activeCollectSessionId || collectRunning || collectCompacting) return;
+    setCollectRuntimeNotice("");
+    try {
+      const next = await api.getSessionRuntime(activeCollectSessionId, true);
+      setCollectRuntime(next);
+      setCollectRuntimeNotice(next.status === "error" ? "上下文状态仍未恢复" : "上下文状态已更新");
+    } catch (err) {
+      setCollectRuntime((current) => current ? { ...current, status: "error", lastError: String(err) } : current);
+      setCollectRuntimeNotice("上下文状态获取失败");
+    }
+  }, [collectCompacting, collectRunning, activeCollectSessionId]);
+
+  // 收集会话/文件夹管理 handlers（供独立侧栏 E-COLLECT5 消费）。
+  const refreshCollectSessions = useCallback(async () => {
+    const rows = await api.listCollectSessions().catch(() => null);
+    if (rows) setCollectSessions(rows);
+  }, []);
+
+  const createCollectSession = useCallback(async (folderId?: string | null) => {
+    const created = await api.createCollectSession("新会话", folderId ?? null).catch(() => null);
+    if (!created) return;
+    setCollectSessions((cur) => [created, ...cur]);
+    setActiveCollectSessionId(created.id);
+  }, []);
+
+  const renameCollectSession = useCallback(async (id: string, title: string) => {
+    const t = title.trim();
+    if (!t) return;
+    await api.renameCollectSession(id, t).catch(() => undefined);
+    setCollectSessions((cur) => cur.map((s) => s.id === id ? { ...s, title: t } : s));
+  }, []);
+
+  const deleteCollectSession = useCallback(async (id: string) => {
+    await api.deleteCollectSession(id).catch(() => undefined);
+    setCollectSessions((cur) => {
+      const next = cur.filter((s) => s.id !== id);
+      setActiveCollectSessionId((active) => active === id ? (next[0]?.id ?? null) : active);
+      return next;
+    });
+  }, []);
+
+  const setCollectSessionFolder = useCallback(async (id: string, folderId: string | null) => {
+    await api.setCollectSessionFolder(id, folderId).catch(() => undefined);
+    setCollectSessions((cur) => cur.map((s) => s.id === id ? { ...s, collectFolderId: folderId } : s));
+  }, []);
+
   const activeWorkspace = workspaces.find((w) => w.id === activeWorkspaceId) ?? null;
   const activeFlow = flows.find((f) => f.id === activeFlowId) ?? null;
   const zhuantiChatFlow = flows.find((f) => f.id === zhuantiChatFlowId) ?? null;
@@ -775,6 +930,11 @@ export default function App() {
   const zhuantiChatFolderScope = useMemo(() => (
     zhuantiChatFlowId ? { type: "flow" as const, flowId: zhuantiChatFlowId } : activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null
   ), [activeWorkspaceId, zhuantiChatFlowId]);
+
+  // 收集 session 始终 workspace scope（不绑 flow，无数据分析路径作用域）。
+  const collectFolderScope = useMemo(() => (
+    activeWorkspaceId ? { type: "workspace" as const, workspaceId: activeWorkspaceId } : null
+  ), [activeWorkspaceId]);
 
   useEffect(() => {
     let cancelled = false;
@@ -812,6 +972,11 @@ export default function App() {
     zhuantiChatMessages, zhuantiChatRunning, zhuantiChatRuntime, zhuantiChatCompacting, zhuantiChatRuntimeNotice,
     onZhuantiChatSend, onZhuantiChatStop, compactZhuantiChatContext, refreshZhuantiChatRuntime,
     zhuantiSeed, setZhuantiSeed, pushZhuantiChatSummary,
+    collectSessionId: activeCollectSessionId, collectFolderScope,
+    collectMessages, collectRunning, collectRuntime, collectCompacting, collectRuntimeNotice,
+    onCollectSend, onCollectStop, compactCollectContext, refreshCollectRuntime,
+    collectSessions, activeCollectSessionId, setActiveCollectSessionId, collectFolders,
+    refreshCollectSessions, createCollectSession, renameCollectSession, deleteCollectSession, setCollectSessionFolder, refreshCollectFolders,
     exploreSeed, setExploreSeed,
     handleReportPathsChange, setArtifactRefreshKey, refreshRulesPromptInfo, refreshKnowledgePromptInfo,
     activeFlow, zhuantiChatFlow, flows, rulesPromptEnabled, knowledgePromptEnabled,
@@ -898,10 +1063,7 @@ export default function App() {
           knowledgePromptCount={knowledgePromptInfo.count}
           knowledgePromptUpdatedAt={knowledgePromptInfo.updatedAt}
           onToggleKnowledgePrompt={() => setKnowledgePromptEnabled((current) => !current)}
-          onOpenQuickNotes={() => {
-            setActiveTab("rule_memory");
-            setActiveSubTab("quick_notes");
-          }}
+          onOpenQuickNotes={() => setQuickNotesOpen(true)}
         />
 
         {/* Sub-tab strip: 工作视图 | 原始数据 | 数据提取 | 聚合计算 | 聚合数据 | 数据探索 | 报告输出。重复(multi) 顶部 workflow tab 见 MultiAgentExecutionPane 三级 tab；专题(zhuanti) AnaX 子项见下方左竖栏。
@@ -1050,6 +1212,27 @@ export default function App() {
         </div>
       </section>
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} hiddenTabs={hiddenTabs} toggleTab={toggleTab} />}
+      {quickNotesOpen && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/45 px-4" onClick={() => setQuickNotesOpen(false)}>
+          <div
+            className="flex h-[85vh] w-full max-w-3xl flex-col overflow-hidden rounded-xl border border-neutral-200 bg-white shadow-xl dark:border-neutral-700 dark:bg-neutral-950"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex h-11 shrink-0 items-center justify-end border-b border-neutral-200 px-3 dark:border-neutral-800">
+              <button
+                onClick={() => setQuickNotesOpen(false)}
+                title="关闭随手记"
+                className="inline-flex h-8 w-8 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
+              >
+                <X className="h-4 w-4" strokeWidth={2} />
+              </button>
+            </div>
+            <div className="min-h-0 flex-1">
+              <QuickNotesPane />
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }

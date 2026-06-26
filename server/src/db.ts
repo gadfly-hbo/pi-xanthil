@@ -11,7 +11,7 @@ import { initSharedTables, backfillMemoryEnablements, listEnabledItemIds, enable
 import { initDataTables } from "./db/data.ts";
 import { initEngineTables } from "./db/engine.ts";
 import { initVizTables } from "./db/viz.ts";
-import type { MetricDefinition, MemoryItemKind, ToolRunRecord } from "./types.ts";
+import type { MetricDefinition, MemoryItemKind, ToolRunRecord, CollectSession } from "./types.ts";
 
 // 全局池模型：按本工作区启用集合过滤池条目（共享单实例；启用关系见 db/shared.ts）。
 function enabledIds(workspaceId: string, kind: MemoryItemKind): Set<string> {
@@ -43,6 +43,10 @@ try {
   const cols = db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "workflow_id")) {
     db.exec("ALTER TABLE sessions ADD COLUMN workflow_id TEXT");
+  }
+  // X-COLLECT3：收集 session 的文件夹归属（仅收集 session 非空，指向 collect_folders.id）。
+  if (!cols.some((c) => c.name === "collect_folder_id")) {
+    db.exec("ALTER TABLE sessions ADD COLUMN collect_folder_id TEXT");
   }
 } catch {
   // ignore
@@ -122,6 +126,7 @@ db.exec(`
     workspace_id TEXT NOT NULL REFERENCES workspaces(id),
     title        TEXT NOT NULL,
     workflow_id  TEXT,
+    collect_folder_id TEXT,
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL
   );
@@ -135,6 +140,14 @@ db.exec(`
   );
   CREATE INDEX IF NOT EXISTS idx_sessions_ws ON sessions(workspace_id);
   CREATE INDEX IF NOT EXISTS idx_messages_session ON messages(session_id);
+  -- X-COLLECT3：知识库「收集」的会话文件夹（机器级，归全局收集工作区容器，不绑业务工作区）。
+  CREATE TABLE IF NOT EXISTS collect_folders (
+    id         TEXT PRIMARY KEY,
+    name       TEXT NOT NULL,
+    sort       INTEGER NOT NULL DEFAULT 0,
+    created_at INTEGER NOT NULL,
+    updated_at INTEGER NOT NULL
+  );
   CREATE TABLE IF NOT EXISTS session_runtime (
     session_id              TEXT PRIMARY KEY REFERENCES sessions(id),
     status                  TEXT NOT NULL DEFAULT 'idle',
@@ -692,10 +705,28 @@ export function createWorkspace(name: string): Workspace {
   return { id, name, rootPath, createdAt };
 }
 
+// ---- X-COLLECT3：知识库「收集」全局容器工作区 ----
+// 收集模块独立于业务工作区：所有收集 session 挂在这个固定的特殊 workspace 名下，
+// 复用 sessions/messages/pi 链路零改造，且不随用户切换业务工作区而变。该容器对工作区列表隐藏。
+export const COLLECT_WORKSPACE_ID = "__collect_global__";
+
+export function getOrCreateCollectWorkspace(): Workspace {
+  const existing = getWorkspace(COLLECT_WORKSPACE_ID);
+  if (existing) return existing;
+  const rootPath = join(WORKSPACES_ROOT, COLLECT_WORKSPACE_ID);
+  mkdirSync(rootPath, { recursive: true });
+  mkdirSync(join(rootPath, ".pi-sessions"), { recursive: true });
+  const createdAt = Date.now();
+  db.prepare(
+    "INSERT INTO workspaces (id, name, root_path, created_at) VALUES (?, ?, ?, ?)",
+  ).run(COLLECT_WORKSPACE_ID, "收集（全局）", rootPath, createdAt);
+  return { id: COLLECT_WORKSPACE_ID, name: "收集（全局）", rootPath, createdAt };
+}
+
 export function listWorkspaces(): Workspace[] {
   return db
-    .prepare("SELECT id, name, root_path AS rootPath, created_at AS createdAt FROM workspaces ORDER BY created_at DESC")
-    .all() as unknown as Workspace[];
+    .prepare("SELECT id, name, root_path AS rootPath, created_at AS createdAt FROM workspaces WHERE id != ? ORDER BY created_at DESC")
+    .all(COLLECT_WORKSPACE_ID) as unknown as Workspace[];
 }
 
 export function getWorkspace(id: string): Workspace | undefined {
@@ -799,6 +830,38 @@ export function deleteSession(id: string): void {
   db.prepare("DELETE FROM session_runtime WHERE session_id = ?").run(id);
   db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
 }
+
+// ---- X-COLLECT3：收集会话（挂全局容器 ws）+ 文件夹 ----
+
+/** 列全局收集容器下的所有收集 session（带 folder 归属），按更新时间倒序。 */
+export function listCollectSessions(): CollectSession[] {
+  getOrCreateCollectWorkspace();
+  return db
+    .prepare(
+      "SELECT id, workspace_id AS workspaceId, title, workflow_id AS workflowId, collect_folder_id AS collectFolderId, created_at AS createdAt, updated_at AS updatedAt FROM sessions WHERE workspace_id = ? ORDER BY updated_at DESC",
+    )
+    .all(COLLECT_WORKSPACE_ID) as unknown as CollectSession[];
+}
+
+/** 新建收集 session（挂全局容器 ws；可选直接归入某文件夹）。 */
+export function createCollectSession(title: string, folderId: string | null = null): CollectSession {
+  const ws = getOrCreateCollectWorkspace();
+  const id = randomUUID();
+  const now = Date.now();
+  ensureStandardDirs(sessionDir(ws.rootPath, id));
+  db.prepare(
+    "INSERT INTO sessions (id, workspace_id, title, workflow_id, collect_folder_id, created_at, updated_at) VALUES (?, ?, ?, NULL, ?, ?, ?)",
+  ).run(id, COLLECT_WORKSPACE_ID, title, folderId, now, now);
+  return { id, workspaceId: COLLECT_WORKSPACE_ID, title, workflowId: null, collectFolderId: folderId, createdAt: now, updatedAt: now };
+}
+
+/** 改某收集 session 的文件夹归属（null = 未分类）。 */
+export function setCollectSessionFolder(id: string, folderId: string | null): void {
+  db.prepare("UPDATE sessions SET collect_folder_id = ?, updated_at = ? WHERE id = ?").run(folderId, Date.now(), id);
+}
+
+// 注：collect_folders 的 CRUD（list/create/rename/reorder/delete）归 E 域，落在 server/src/db/engine.ts（E-COLLECT4）。
+// 此处仅保留收集 session 相关（X-COLLECT3 容器/会话接缝）。collect_folders 表的迁移仍在本文件 schema 块。
 
 // ---- session runtime ----
 

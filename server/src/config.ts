@@ -33,6 +33,11 @@ export const RUN_BUDGET_LIMITS: { maxTotalTokens?: number; maxCostUsd?: number }
     ? null
     : { maxTotalTokens: RUN_MAX_TOKENS, maxCostUsd: RUN_MAX_COST_USD };
 
+// 知识库「收集」联网聊天（收集专题 · X-COLLECT0）：minimax web_search MCP 的 API key。
+// 仅注入收集 session 的 .collect-cwd/.mcp.json（见 collect-mcp.ts）；空 = 收集 session 降级为无联网纯本地聊天。
+// 走 env 不入库、不硬编码。
+export const MINIMAX_API_KEY = process.env.XANTHIL_MINIMAX_API_KEY ?? "";
+
 export const DIRECT_LLM_ROOT = join(DATA_ROOT, "direct-llm");
 export const SQL_CONNECTIONS_PATH = join(DATA_ROOT, "sql-connections.json");
 export const BI_DATASETS_ROOT = join(DATA_ROOT, "bi-datasets");

@@ -16,6 +16,8 @@ import {
   upsertHypothesisFromArchive, createChangeProposal,
   listSessions, listMessages, getSession, getSessionRuntime, createSession,
   addTraceEvent, getTraceTimeline, db,
+  listCollectSessions, createCollectSession, setCollectSessionFolder,
+  renameSession, deleteSession, COLLECT_WORKSPACE_ID,
 } from "../db.ts";
 import {
   archiveSkillRegistryEntry,
@@ -74,6 +76,12 @@ import {
   saveSkillEvaluation,
   listSkillEvaluations,
   getSkillEvaluation,
+  listCollectFolders,
+  getCollectFolder,
+  createCollectFolder,
+  renameCollectFolder,
+  reorderCollectFolder,
+  deleteCollectFolder,
 } from "../db/engine.ts";
 import { readTree, readFlowFile, writeFlowFile, copyLocalFolderIntoFlow, copyFlowSnapshot, inferWorkflow, moveAllFiles } from "../flow-fs.ts";
 import { normalizeWorkflowModels, normalizeWorkflowSkills, type WorkflowLike } from "../workflow-config.ts";
@@ -95,7 +103,8 @@ import { DEFAULT_MEMORY_SKILL_THRESHOLDS, fetchMemoryExperiences, runMemoryToSki
 import { runPromptDistillation } from "../prompt-distillation.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
-import type { ClientMessage, Flow, PiEvent, RetrievalContext, Session } from "../types.ts";
+import type { ClientMessage, Flow, MetricSnapshot, PiEvent, RetrievalContext, Session } from "../types.ts";
+import { appendMetricVerificationBlock, collectMetricSnapshotsFromEvent } from "../metric-verification-events.ts";
 import { buildAnaxWorkflow, buildAnaxQuickWorkflow } from "../anax-template.ts";
 import { buildSqlLoopWorkflow } from "../sql-loop-template.ts";
 import { moveManagedDirToTrash } from "../trash.ts";
@@ -1017,6 +1026,67 @@ engineRouter.post("/api/workspaces/:id/zhuanti/anax-chat", (req, res) => {
   const flowName = String(req.body?.flowName ?? "专题分析").trim() || "专题分析";
   const sessionTitle = String(req.body?.sessionTitle ?? "专题对话探索").trim() || "专题对话探索";
   res.json(ensureLatestZhuantiTask(req.params.id, flowName, sessionTitle));
+});
+
+// 知识库「收集」联网聊天（X-COLLECT3）：收集独立于业务工作区，所有收集 session 挂全局容器 ws，
+// 走 /api/collect/* 全局路由（不接受业务 :workspaceId）。多会话 + 文件夹分类。
+// 注：X-COLLECT0 的 POST /api/workspaces/:id/collect-session 单例路由已废弃（被本组路由替代）。
+engineRouter.get("/api/collect/sessions", (_req, res) => {
+  res.json(listCollectSessions());
+});
+engineRouter.post("/api/collect/sessions", (req, res) => {
+  const title = String(req.body?.title ?? "新会话").trim() || "新会话";
+  const folderId = typeof req.body?.folderId === "string" ? req.body.folderId : null;
+  if (folderId && !getCollectFolder(folderId)) return res.status(404).json({ error: "collect folder not found" });
+  res.json(createCollectSession(title, folderId));
+});
+// 收集 session 改名 / 改文件夹归属（folderId: string 归入 / null 移出到未分类）。
+engineRouter.patch("/api/collect/sessions/:id", (req, res) => {
+  const session = getSession(req.params.id);
+  if (!session || session.workspaceId !== COLLECT_WORKSPACE_ID) return res.status(404).json({ error: "collect session not found" });
+  if (typeof req.body?.title === "string") {
+    const t = req.body.title.trim();
+    if (t) renameSession(req.params.id, t);
+  }
+  if ("folderId" in (req.body ?? {})) {
+    const folderId = typeof req.body.folderId === "string" ? req.body.folderId : null;
+    if (folderId && !getCollectFolder(folderId)) return res.status(404).json({ error: "collect folder not found" });
+    setCollectSessionFolder(req.params.id, folderId);
+  }
+  res.json(listCollectSessions().find((item) => item.id === req.params.id) ?? getSession(req.params.id));
+});
+engineRouter.delete("/api/collect/sessions/:id", (req, res) => {
+  const session = getSession(req.params.id);
+  if (!session || session.workspaceId !== COLLECT_WORKSPACE_ID) return res.status(404).json({ error: "collect session not found" });
+  deleteSession(req.params.id);
+  res.json({ ok: true });
+});
+engineRouter.get("/api/collect/folders", (_req, res) => {
+  res.json(listCollectFolders());
+});
+engineRouter.post("/api/collect/folders", (req, res) => {
+  const name = String(req.body?.name ?? "").trim();
+  if (!name) return res.status(400).json({ error: "name required" });
+  res.json(createCollectFolder(name));
+});
+engineRouter.patch("/api/collect/folders/:id", (req, res) => {
+  if (!getCollectFolder(req.params.id)) return res.status(404).json({ error: "collect folder not found" });
+  let updated = getCollectFolder(req.params.id);
+  if (typeof req.body?.name === "string") {
+    const name = req.body.name.trim();
+    if (!name) return res.status(400).json({ error: "name required" });
+    updated = renameCollectFolder(req.params.id, name);
+  }
+  if (req.body?.sort !== undefined) {
+    const sort = Number(req.body.sort);
+    if (!Number.isFinite(sort)) return res.status(400).json({ error: "sort must be a number" });
+    updated = reorderCollectFolder(req.params.id, sort);
+  }
+  res.json(updated);
+});
+engineRouter.delete("/api/collect/folders/:id", (req, res) => {
+  if (!deleteCollectFolder(req.params.id)) return res.status(404).json({ error: "collect folder not found" });
+  res.json({ ok: true });
 });
 engineRouter.post("/api/workspaces/:id/sql-loop/instantiate", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
@@ -2943,6 +3013,7 @@ export async function handleSendFlow(
   }, flowChatAnalyses);
 
   let capturedText = "";
+  const metricSnapshotsThisTurn: MetricSnapshot[] = [];
   const run = runPiTurn({
     // pi runs *inside* the flow folder so its file tools see the workflow as cwd.
     workspaceRoot: flow.folderPath,
@@ -2958,15 +3029,19 @@ export async function handleSendFlow(
     ),
     skillPaths,
     onEvent: (event: PiEvent) => {
+      metricSnapshotsThisTurn.push(...collectMetricSnapshotsFromEvent(event));
+      const eventForClient: PiEvent = event.type === "message_end"
+        ? { ...event, message: appendMetricVerificationBlock((event as Extract<PiEvent, { type: "message_end" }>).message, metricSnapshotsThisTurn) }
+        : event;
       trackUsageEvent({
         workspaceId: flow.workspaceId,
         targetKind: "flow",
         targetId: flow.id,
         title: `工作流聊天：${flow.name}`,
-      }, event);
-      send(ws, { type: "flow_event", flowId: flow.id, event });
-      if (event.type === "message_end") {
-        const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
+      }, eventForClient);
+      send(ws, { type: "flow_event", flowId: flow.id, event: eventForClient });
+      if (eventForClient.type === "message_end") {
+        const { message: m } = eventForClient as Extract<PiEvent, { type: "message_end" }>;
         if (m.role !== "user") addFlowMessage(flow.id, m.role, m.content, m.usage ?? null);
         if (m.role === "assistant") capturedText += "\n" + flowMessageText(m.content);
         if (m.errorMessage) traceFlowEvent(flow.id, "message_error", "failed", m.errorMessage, { role: m.role, stopReason: m.stopReason });

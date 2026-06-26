@@ -157,6 +157,7 @@ import { getSkillEvaluation, getToolEvaluation } from "./db/engine.ts";
 import { DEFAULT_REVIEW_PROMPT, buildReviewPrompt, buildAutoFixPrompt, AUTO_FIX_SYSTEM_PROMPT, parseReviewScore, type ReviewAnnotation, type ReviewHistoryEntry } from "./report-review.ts";
 import { readFlowFile, readTree, safeResolve, writeFlowFile } from "./flow-fs.ts";
 import { compactPiSession, getPiSessionStats, runPiPrompt, runPiTurn, type PiRun } from "./pi-adapter.ts";
+import { prepareCollectCwd, COLLECT_SYSTEM_PROMPT } from "./collect-mcp.ts";
 import { send, activeSessionRuns, activeSessionControls, activeFlowRuns, activeMultiAgentRuns, type ActiveMultiAgentRun } from "./runtime.ts";
 import { listConfiguredModelIds, resolveConfiguredModelId } from "./workflow-config.ts";
 import { withWorkspacePathStatuses } from "./workspace-path-status.ts";
@@ -177,11 +178,12 @@ import { deleteKgEdge, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHi
 import { buildMemoryInjectionSnapshot, withRulesPrompt } from "./memory-injection.ts";
 import { withKnowledgePrompt } from "./knowledge-injection.ts";
 import { expandCommand } from "./command-expand.ts";
-import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentTemplate, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
+import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, MetricSnapshot, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentTemplate, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
 import type { WorkflowAgentEntry, WorkflowRunView } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
 import { buildMetricSnapshotsFromHints } from "./extraction-tool-metric.ts";
+import { appendMetricVerificationBlock, collectMetricSnapshotsFromEvent } from "./metric-verification-events.ts";
 import { buildExtractionToolsMcpServer, ensureWorkspaceMcpConfig, registerAllWorkspaceMcp } from "./mcp/register.ts";
 import { registerChildProcess } from "./child-processes.ts";
 import { buildSanitizedEnv } from "./process-env.ts";
@@ -5030,17 +5032,26 @@ async function handleSend(
   const memoryPrompt = msg.injectRulesPrompt
     ? withRulesPrompt(session.workspaceId, "chat", rolePrompt, { query: msg.text })
     : rolePrompt;
-  const systemPrompt = withKnowledgePrompt(
+  const baseSystemPrompt = withKnowledgePrompt(
     session.workspaceId,
     msg.injectKnowledgePrompt,
     commandExpansion.expandedText,
     memoryPrompt,
   );
+  // 知识库「收集」联网聊天（X-COLLECT0 wire）：仅当本次 send 显式标 collectWeb 时，
+  // 用 .collect-cwd（含 minimax web_search MCP，E-COLLECT1）作 pi cwd，并前置联网角色 prompt。
+  // 其它 session 一律不联网（守隐私红线）。
+  const collectWeb = msg.collectWeb === true;
+  const collectCwd = collectWeb ? prepareCollectCwd(ws_.rootPath) : undefined;
+  const systemPrompt = collectWeb
+    ? (baseSystemPrompt ? `${COLLECT_SYSTEM_PROMPT}\n\n${baseSystemPrompt}` : COLLECT_SYSTEM_PROMPT)
+    : baseSystemPrompt;
 
   // Fork 分支：若本 session 是未播种的分支，首轮用 --fork 从父 session 播种历史。
   const forkFrom = forkBranch && !forkBranch.seeded ? forkBranch.parentSessionId : undefined;
   if (forkBranch) setForkBranchStatus(session.id, "running");
 
+  const metricSnapshotsThisTurn: MetricSnapshot[] = [];
   const run = runPiTurn({
     workspaceRoot: ws_.rootPath,
     piSessionId: session.id,
@@ -5050,14 +5061,19 @@ async function handleSend(
     injectExtractionToolSystem: hasAnalysisExtractionTools(),
     skillPaths,
     forkFrom,
+    cwdOverride: collectCwd,
     onEvent: (event: PiEvent) => {
-      observeSessionEvent(session, event);
-      send(ws, { type: "pi_event", sessionId: session.id, event });
+      metricSnapshotsThisTurn.push(...collectMetricSnapshotsFromEvent(event));
+      const eventForClient: PiEvent = event.type === "message_end"
+        ? { ...event, message: appendMetricVerificationBlock((event as Extract<PiEvent, { type: "message_end" }>).message, metricSnapshotsThisTurn) }
+        : event;
+      observeSessionEvent(session, eventForClient);
+      send(ws, { type: "pi_event", sessionId: session.id, event: eventForClient });
       // Persist completed assistant/tool messages with their usage. The user
       // turn is already persisted at send time, so skip pi's user echo to
       // avoid duplicating it.
-      if (event.type === "message_end") {
-        const { message: m } = event as Extract<PiEvent, { type: "message_end" }>;
+      if (eventForClient.type === "message_end") {
+        const { message: m } = eventForClient as Extract<PiEvent, { type: "message_end" }>;
         if (m.role !== "user") addMessage(session.id, m.role, m.content, m.usage ?? null, m.errorMessage ?? null);
         if (m.errorMessage) traceSessionEvent(session.id, "message_error", "failed", m.errorMessage, { role: m.role, stopReason: m.stopReason });
         if (m.role === "assistant" && !m.errorMessage) {

@@ -2,6 +2,7 @@
 // 约定: 方法加入 engineApi; 经 api.ts 合并后组件用 api.<name>() 调用。
 //   复用请求工具 `import { json } from "./_http"`; 类型从 "@/types" 引入。
 import type {
+  CollectFolder,
   ForkBranch,
   MemoryInjectionRecord,
   MemoryItem,
@@ -83,6 +84,26 @@ export interface SessionConsolidationResult {
 }
 
 export const engineApi = {
+  createCollectFolder: (name: string) =>
+    fetch(`/api/collect/folders`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then(json<CollectFolder>),
+  renameCollectFolder: (id: string, name: string) =>
+    fetch(`/api/collect/folders/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then(json<CollectFolder>),
+  reorderCollectFolder: (id: string, sort: number) =>
+    fetch(`/api/collect/folders/${encodeURIComponent(id)}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ sort }),
+    }).then(json<CollectFolder>),
+  deleteCollectFolder: (id: string) =>
+    fetch(`/api/collect/folders/${encodeURIComponent(id)}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
   listPromptEvaluations: (workspaceId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/prompt-evaluations`).then(json<PromptEvaluation[]>),
   getPromptEvaluation: (evaluationId: string) =>

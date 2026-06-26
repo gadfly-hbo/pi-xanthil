@@ -2,7 +2,7 @@ import type { Dispatch, SetStateAction } from "react";
 import type { Tab } from "@/components/MainHeader";
 import type { SubTab } from "@/lib/constants";
 import type { UiMessage } from "@/components/MessageRow";
-import type { ExploreSeed, Flow, PiModel, SessionRuntime, WorkspacePath } from "@/types";
+import type { CollectFolder, CollectSession, ExploreSeed, Flow, PiModel, SessionRuntime, WorkspacePath } from "@/types";
 
 /**
  * 域渲染模块的共享上下文契约 —— owner: Claude(总控)。
@@ -58,6 +58,31 @@ export interface TabContext {
   zhuantiSeed: ZhuantiSeed | null;
   setZhuantiSeed: (seed: ZhuantiSeed | null) => void;
   pushZhuantiChatSummary: (text: string) => void;
+
+  // 知识库 · 收集联网聊天（独立于业务工作区的全局多会话 + 文件夹，X-COLLECT3）。
+  // collectSessionId = 当前 active 收集会话 id（保留名兼容 E-COLLECT2 的 CollectPane；新代码用 activeCollectSessionId）。
+  collectSessionId: string | null;
+  collectFolderScope: FolderScope;
+  collectMessages: UiMessage[];
+  collectRunning: boolean;
+  collectRuntime: SessionRuntime | null;
+  collectCompacting: boolean;
+  collectRuntimeNotice: string;
+  onCollectSend: (text: string, skillPaths?: string[]) => void;
+  onCollectStop: () => void;
+  compactCollectContext: () => void;
+  refreshCollectRuntime: () => void;
+  // 多会话 + 文件夹（E-COLLECT5 独立侧栏消费）。
+  collectSessions: CollectSession[];
+  activeCollectSessionId: string | null;
+  setActiveCollectSessionId: (id: string | null) => void;
+  collectFolders: CollectFolder[];
+  refreshCollectSessions: () => void;
+  createCollectSession: (folderId?: string | null) => void;
+  renameCollectSession: (id: string, title: string) => void;
+  deleteCollectSession: (id: string) => void;
+  setCollectSessionFolder: (id: string, folderId: string | null) => void;
+  refreshCollectFolders: () => void;
 
   // 业务需求 → 数据探索 单向 seed
   exploreSeed: ExploreSeed | null;

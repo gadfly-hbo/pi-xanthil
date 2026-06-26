@@ -16,6 +16,9 @@ export interface RunPiOptions {
   injectExtractionToolSystem?: boolean;
   skillPaths?: string[];
   forkFrom?: string; // 若设，则首轮用 `--fork <id>` 把该 session 历史播种进 piSessionId（Fork 分支用）
+  // 若设，则用此目录作 spawn cwd 与 .pi-sessions 基准（替代 workspaceRoot）。
+  // 收集 session（X-COLLECT0）用 .collect-cwd 注入 minimax web_search MCP；不传则行为零变化。
+  cwdOverride?: string;
   onEvent: (event: PiEvent) => void;
   onChildProcess?: ChildProcessListener;
 }
@@ -259,7 +262,8 @@ function extractPiMessageText(content: unknown): string {
 }
 
 export function runPiTurn(opts: RunPiOptions): PiRun {
-  const piSessionDir = sessionDir(opts.workspaceRoot);
+  const cwd = opts.cwdOverride ?? opts.workspaceRoot;
+  const piSessionDir = sessionDir(cwd);
   const args = [
     "-p",
     "--mode",
@@ -287,10 +291,10 @@ export function runPiTurn(opts: RunPiOptions): PiRun {
   }
   args.push(opts.text);
 
-  opts.onEvent({ type: "process_start", cwd: opts.workspaceRoot, command: PI_BIN, args: args.slice(0, -1), sessionDir: piSessionDir });
+  opts.onEvent({ type: "process_start", cwd, command: PI_BIN, args: args.slice(0, -1), sessionDir: piSessionDir });
 
   const child = spawn(PI_BIN, args, {
-    cwd: opts.workspaceRoot,
+    cwd,
     env: { ...process.env, ...hookEnv },
     detached: true,
     stdio: ["ignore", "pipe", "pipe"],

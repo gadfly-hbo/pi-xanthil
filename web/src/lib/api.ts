@@ -1,4 +1,4 @@
-import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, PresentationGenerateInput, PresentationTaskResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlImportPreview, SqlImportCommitResult, SqlQueryResult, SqlValidateResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, ToolRunRecord, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
+import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, PresentationGenerateInput, PresentationTaskResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, CollectSession, CollectFolder, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlImportPreview, SqlImportCommitResult, SqlQueryResult, SqlValidateResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, ToolRunRecord, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
 
 export interface TocGraphItem {
   id: string;
@@ -248,6 +248,31 @@ const legacyApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ title, workflowId: workflowId ?? null }),
     }).then(json<Session>),
+  // 知识库「收集」联网聊天（X-COLLECT3）：独立于业务工作区的全局收集会话 + 文件夹。
+  listCollectSessions: () =>
+    fetch(`/api/collect/sessions`).then(json<CollectSession[]>),
+  createCollectSession: (title: string, folderId?: string | null) =>
+    fetch(`/api/collect/sessions`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title, folderId: folderId ?? null }),
+    }).then(json<CollectSession>),
+  renameCollectSession: (id: string, title: string) =>
+    fetch(`/api/collect/sessions/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ title }),
+    }).then(json<CollectSession>),
+  setCollectSessionFolder: (id: string, folderId: string | null) =>
+    fetch(`/api/collect/sessions/${id}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ folderId }),
+    }).then(json<CollectSession>),
+  deleteCollectSession: (id: string) =>
+    fetch(`/api/collect/sessions/${id}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
+  listCollectFolders: () =>
+    fetch(`/api/collect/folders`).then(json<CollectFolder[]>),
   listMessages: (sessionId: string) =>
     fetch(`/api/sessions/${sessionId}/messages`).then(json<StoredMessage[]>),
   getSessionRunStatus: (sessionId: string) =>

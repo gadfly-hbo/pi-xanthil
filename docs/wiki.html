@@ -290,6 +290,95 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【知识库专题·收集联网聊天】（总控拆卡 2026-06-25；背景=用户需要一个连 web 的聊天窗口，收集最新在线信息/分析方法论，体验对标 chatgpt-web/gemini-web）。总控已实测 minimax-coding-plan-mcp 的 web_search 联网可用（uvx 拉起，MCP 握手 OK，web_search 返回 google 式 organic 结果含 title/link/snippet/date，有 2026 实时条目）。定位：知识库首个二级 tab「收集」= 绑定专属 pi session 的联网聊天，挑回复一键「存为资料」入知识库。红线：联网仅对收集 session 开放（其他 session 一律不联网，守「隐私数据不走第三方」）；MINIMAX_API_KEY 走 env 不入库、.collect-cwd/ gitignore。波次：P0=收集 tab + CollectPane + 收集 session 全链路（先本地聊天 + 存为资料）；P1=接 minimax web_search MCP。落点：X 接缝(constants/App/pi-adapter/config/handleSend)→E 后端 MCP + E 前端 Pane（知识库 UI 归 E 因复用 ChatPane）。════
+  { dom: "X", status: "done", created: "2026-06-25 23:30", title: "【收集·契约+接缝·P0】X-COLLECT0：收集 session 模型 + SubTab/KNOWLEDGE_SUB_TABS + runPiTurn cwdOverride 签名 + minimax env（总控自做）", brief:
+`来源：用户需求（2026-06-25）—— 知识库需要连 web 的聊天窗口收集最新在线信息/方法论，对标 chatgpt-web。总控已实测 minimax web_search 联网 OK（见专题头）。
+本卡=总控接缝契约，一次落定全部接缝骨架，解锁 E-COLLECT1/E-COLLECT2；E 卡不得触碰本卡所列文件。
+现状证据：constants.ts:3 SubTab 联合类型、:39 KNOWLEDGE_SUB_TABS；App.tsx:652 KB 默认 subtab=readme；App.tsx 已有「专题对话」第二 chat session 范式（zhuantiChat* 并行状态 + gateway 按 sessionId 路由，见 :132 / :437-439 / :722-761）；pi-adapter.ts:261 runPiTurn 以 opts.workspaceRoot 作 spawn cwd（:292-296）；index.ts:4966 handleSend 调 runPiTurn（:5046）；subagent-core.ts:113 已有「专属 cwd + .mcp.json」范式可仿。
+范围（接缝层，总控口径审定 / 委派 E 代笔落地 → 回流总控终审）：
+1. constants.ts：SubTab 加 'kb_collect'；KNOWLEDGE_SUB_TABS 队首插入 { id:'kb_collect', label:'收集' }（置于 kb_docs 之前，即第一个 tab）。
+2. App.tsx：① :652 KB 默认 subtab 改 'kb_collect'；② 新增收集 session 并行状态与 handlers，完整镜像 zhuantiChat*（collectSessionId / collectMessages / collectRunning / collectRuntime + onCollectSend / onCollectStop / compactCollectContext / refreshCollectRuntime + collectRef + gateway 消息按 sessionId 三路分流）；③ 收集 session 懒创建：首次进 kb_collect tab 时 createSession(workspaceId,'收集') 并打标 kind=collect（见第 4 点）；④ 经 TabContext 把 collect* 暴露给前端（供 E-COLLECT2）。
+3. pi-adapter.ts：RunPiOptions 加可选 cwdOverride?: string；runPiTurn 以 (cwdOverride ?? workspaceRoot) 作 spawn cwd 与 sessionDir 基准（不传则行为零变化，保回归）。
+4. 收集 session 标记 + handleSend wire：用 session.kind='collect' 标记；handleSend 识别后调 E 提供的 prepareCollectCwd()（E-COLLECT1）拿带 minimax .mcp.json 的 cwd，传 runPiTurn({ cwdOverride })，systemPrompt 用 E 提供的 COLLECT_SYSTEM_PROMPT。本卡只 wire 调用点，两者实装在 E-COLLECT1。
+5. config.ts：加 export const MINIMAX_API_KEY = process.env.XANTHIL_MINIMAX_API_KEY ?? ""（供 E-COLLECT1 注入）；.collect-cwd/ 加进 .gitignore。
+验收：server+web typecheck + web build 绿；不传 cwdOverride 时全部现有 session 行为零变化（回归校验）。解锁 E-COLLECT1 / E-COLLECT2。
+铁律：本卡是唯一可改 constants/App/pi-adapter/config/index.ts(handleSend) 的卡；MINIMAX_API_KEY 绝不硬编码、绝不入库；接缝口径以本 brief 为准，代笔不得自行扩签名。
+✅ 总控自做 done（2026-06-25）：① constants.ts SubTab+'kb_collect'、KNOWLEDGE_SUB_TABS 队首插入「收集」；② App.tsx 收集 session 并行态(collect*)+handlers(onCollectSend 带 collectWeb:true)+gateway 三路分流(collectRef，setReport 排除 collect)+懒创建 effect+消息装载 effect+workspace 切换重置+TabContext 暴露+KB 默认 subtab 改 kb_collect；③ pi-adapter RunPiOptions.cwdOverride（默认 workspaceRoot，零回归）；④ config.ts MINIMAX_API_KEY=env XANTHIL_MINIMAX_API_KEY；⑤ ClientMessage send +collectWeb 双侧；⑥ handleSend wire：collectWeb 命中→prepareCollectCwd+前置 COLLECT_SYSTEM_PROMPT；⑦ engine.ts collect-session find-or-create 路由(sentinel workflow_id='__collect__'，复用 listSessions 隐藏机制，无迁移)+api.ensureCollectSession+tabs/types TabContext collect 字段。验收：server typecheck✅ web typecheck✅ web build✅ 全 391 server tests✅。E-COLLECT2 可开工。
+⚠️ 设计修订（2026-06-26，X-COLLECT3 接替）：用户追加约束「收集独立于工作区 + 多会话 + 文件夹」，本卡的「业务 ws 绑定 sentinel('__collect__') 单例收集 session + POST /api/workspaces/:id/collect-session find-or-create + prepareCollectCwd(业务 workspaceRoot)」整体被 X-COLLECT3 替换为「全局收集工作区 __collect_global__ 容器 + 多会话 + 全局 DATA_ROOT/collect-cwd」。本卡其余接缝(SubTab/KNOWLEDGE_SUB_TABS/ClientMessage collectWeb/handleSend wire/pi-adapter cwdOverride)仍有效。` },
+
+  { dom: "E", status: "done", created: "2026-06-25 23:31", title: "【收集·后端联网·P1】E-COLLECT1：collect-mcp.ts（prepareCollectCwd 写 minimax .mcp.json + COLLECT_SYSTEM_PROMPT）（总控自做）", brief:
+`前置：X-COLLECT0 接缝就绪（runPiTurn cwdOverride、config.MINIMAX_API_KEY、handleSend wire 点）。落点=新建 server/src/collect-mcp.ts（E slot 新文件，不碰接缝骨架）。
+背景：总控实测 minimax web_search 联网 OK。.mcp.json 模板：mcpServers.minimax = { command:'uvx', args:['minimax-coding-plan-mcp','-y'], env:{ MINIMAX_API_KEY: <从 config 注入>, MINIMAX_API_HOST:'https://api.minimaxi.com' } }。
+范围：
+1. prepareCollectCwd(workspaceRoot): string —— 仿 subagent-core.ts:113，建 <workspaceRoot>/.collect-cwd/、幂等写 .mcp.json（minimax server，key 取 config.MINIMAX_API_KEY）；key 为空则写空 mcpServers 并 console.warn（实现「无 key 自动降级为纯本地聊天，不报错」）；返回该 cwd 路径。多轮稳定：同 workspace 复用同一 .collect-cwd。
+2. 导出 COLLECT_SYSTEM_PROMPT：点名「你可用 web_search 联网检索实时信息；凡涉最新动态/方法论/外部事实必须先搜；web_search 返回为 organic JSON（title/link/snippet/date），解析后回答末尾附来源 link 与 date」。
+3. 回退：prompt 内声明「若 web_search 不可用，降级为基于已有知识回答并明确告知未联网」，不让整轮 turn 失败。
+验收：server typecheck 绿；新增 test：prepareCollectCwd 在有/无 key 两种情况生成的 .mcp.json 结构正确（有 key 含 minimax；无 key 不含且不抛错）。
+铁律：只新建 collect-mcp.ts；不改 pi-adapter/index.ts 接缝（由 X-COLLECT0 wire）；key 从 config 读、不硬编码、不打印明文。
+✅ 总控自做 done（2026-06-25）：新建 server/src/collect-mcp.ts：prepareCollectCwd(workspaceRoot, apiKey=config.MINIMAX_API_KEY) 幂等写 .collect-cwd/.mcp.json（有 key→minimax server[uvx minimax-coding-plan-mcp]，无 key→空 mcpServers+warn 降级）+COLLECT_SYSTEM_PROMPT（点名 web_search 优先/附 link+date/联网失败显式降级）；apiKey 设默认参数仅为测试可注入两分支。新增 collect-mcp.test.ts 4 用例（有/无 key/幂等/prompt 内容）全绿。已被 X-COLLECT0 handleSend wire 消费。` },
+
+  { dom: "E", status: "done", created: "2026-06-25 23:32", title: "【收集·前端面板·P0】E-COLLECT2：CollectPane（复用 ChatPane + 消息级「存为资料」按钮 + DataTabs 挂载）", brief:
+`前置：X-COLLECT0 接缝就绪（收集 session 状态/handlers 已在 App + TabContext 暴露 collect*）。落点=新建 web/src/components/CollectPane.tsx + DataTabs.tsx 挂载（E 持有 ChatPane，故知识库聊天 UI 归 E）。
+现状证据：EngineTabs.tsx:43 ZhuantiChatPane 是「ChatPane 复用 + 顶部操作条」范式样板；DataTabs.tsx:121-128 是 KB tab 渲染处；POST /api/workspaces/:id/knowledge（data.ts:1046）建文档已存在，无需新后端。
+范围：
+1. CollectPane.tsx：复用 <ChatPane>，props 取自 TabContext 的 collect* 字段（messages/running/sessionId/onCollectSend/onCollectStop/runtime…）。顶部一行说明：「联网收集 · 仅本窗口可联网，回复请核对来源链接」。
+2. assistant 消息级「存为资料」按钮：对 assistant 回复渲染按钮（在 ChatPane 加可选 renderMessageAction 注入点，或 CollectPane 外层包裹）。点击弹小框（仿 QuickNotesPane / ZhuantiChat draft 弹框）确认/编辑标题，提交调 POST /knowledge { title, content=消息正文, tags:['收集'] }，成功 toast「已存入知识库」。
+3. DataTabs.tsx：加 activeTab==='knowledge_base' && activeSubTab==='kb_collect' → <CollectPane ctx=…>。
+验收：web typecheck + build 绿；「收集」tab 能聊天、能把一条回复存进知识库并在「资料库/检索」tab 看到该文档。
+铁律：复用现有 ChatPane，勿重写聊天；存为资料只调现有 POST /knowledge，不新建 D 后端；勿碰 constants/App 接缝（X-COLLECT0 持有）。
+✅ Agent-E 实装 + 总控终审 done（2026-06-25）：新建 CollectPane.tsx 复用 ChatPane（顶部「联网收集·仅本窗口可联网」条），renderMessageAction 注入「存为资料」按钮（仅 assistant 非错误且有正文）→弹框确认标题→api.createKnowledgeDoc({title,content,tags:['收集'],scope:'workspace'})；DataTabs.tsx 加 kb_collect 挂载。ChatPane/MessageRow 加可选 renderMessageAction/action 注入点（E 域文件，optional 默认 undefined/null，日常/专题零影响）。终审核查：①复用 createKnowledgeDoc 现成 API（KnowledgeBasePane 同款，非新造）✅ ②未越权改 constants/App 接缝（仅 X-COLLECT0 持有）✅ ③无 self-HTTP/execSync/eval/scratch 垃圾 ✅ ④ChatPane 改动向后兼容（web typecheck+build 绿）✅ ⑤391 server tests 绿。遗留(P1 polish 非阻断)：savedIds 用 useMemo Set 靠 sibling setState 触发重渲，切 tab 后「已保存」态丢失（doc 已持久化，重存会产生重复 doc）。UI 点击态未实跑（需起前端 app），代码级通过。` },
+
+  // ════ 【收集专题·子波 收集独立化+多会话+文件夹】（总控拆卡 2026-06-26；背景=用户三条追加约束）。① 收集界面精简（去 沉淀trace/沉淀prompt/业务需求/prompt库/@工具/skill/委派子agent，保留 Fork）；② 收集模块独立于业务工作区（会话/文件夹不随工作区切换，机器级）；③ 多会话 + 文件夹分类 + 独立会话历史侧栏（仅收集自己的 session，与日常/专题无关）；存为资料入全局池(scope=global)。
+  // ── 架构决策（总控审定）── 收集「独立」用「全局收集工作区」固定容器实现：懒建一个特殊 workspace 行 __collect_global__（列表隐藏），所有收集 session 挂它名下→复用 sessions/messages/pi 链路零改造，且不随业务工作区切换（等效独立）。印证：知识库本身即「workspace 底座 + scope 双模(workspace 专属 / global 全局池)」，global doc 仍有 origin ws；收集会话的「独立」= 固定全局 origin ws，与知识库同构。废弃 X-COLLECT0 的「业务 ws 绑定 sentinel 单例」设计。════
+  { dom: "X", status: "done", created: "2026-06-26 00:00", title: "【收集·独立化接缝+迁移·P0】X-COLLECT3：全局收集工作区容器 + collect_folders 迁移 + 收集多会话接缝（App/types/api/最小路由）（总控自做）", brief:
+`来源：用户追加约束（2026-06-26）——收集独立于工作区 + 多会话 + 文件夹。本卡=接缝+迁移，解锁 E-COLLECT4/E-COLLECT5；修订 X-COLLECT0 单例设计。
+现状证据：sessions.workspace_id NOT NULL REFERENCES workspaces(id)、messages.session_id REFERENCES sessions(id)（db.ts:120+）→收集 session 必须挂某 workspace；X-COLLECT0 现用 createSession(业务ws,'收集','__collect__') 单例 + POST /api/workspaces/:id/collect-session find-or-create；listKnowledgeDocs(db/data.ts:1049) scope='global' 跨 ws 可见、'workspace' 仅 origin ws。
+范围（接缝层，总控自做）：
+1. db 迁移：① 懒建全局容器 ws getOrCreateCollectWorkspace()→固定 id '__collect_global__'（不在 listWorkspaces 返回，隐藏）；② collect_folders 表(id TEXT PK, name TEXT, sort INTEGER, created_at, updated_at；不绑业务 ws，归全局容器)；幂等 CREATE + MIGRATIONS 递增。
+2. 收集 session = workspace_id='__collect_global__' 的 sessions 行（复用 sessions/messages/pi 链路，零改造）；保留 workflow_id 标记可空。session→folder 归属：sessions 加 nullable collect_folder_id 列（仅收集用，幂等 ALTER）或独立映射表——本卡审定用 sessions.collect_folder_id（最简，仅收集行非空）。
+3. 最小后端路由（保证 App 重构后可用、不破坏现状）：GET /api/collect/sessions（列全局容器下 session，按 updated_at desc）、POST /api/collect/sessions（建）、PATCH /api/collect/sessions/:id（rename / 改 folder_id）、DELETE /api/collect/sessions/:id。旧 POST /api/workspaces/:id/collect-session 路由废弃（连同 X-COLLECT0 的 ensureCollectSession）。
+4. types：CollectFolder { id; name; sort; createdAt; updatedAt }；CollectSession 复用 Session（带 collectFolderId?）。
+5. api：listCollectSessions/createCollectSession/renameCollectSession/setCollectSessionFolder/deleteCollectSession（实装）；listCollectFolders/createCollectFolder/renameCollectFolder/deleteCollectFolder（签名声明，CRUD 实装留 E-COLLECT4）。
+6. App.tsx：collect 状态升级 collectSessions[]/activeCollectSessionId/collectFolders[]，独立加载（挂载即拉，不随业务 activeWorkspaceId 切换重置）；gateway 路由按 activeCollectSessionId（collectRef 跟随 active）；废旧 ensureCollectSession 懒建单例逻辑；TabContext 暴露多会话字段。
+7. prepareCollectCwd 改用全局 DATA_ROOT/collect-cwd（脱离 workspaceRoot）——pi-adapter/handleSend 对收集 session 传该 cwd。
+验收：server+web typecheck + web build 绿；收集可建多个 session、切换、删除、改名；现有日常/专题/知识库零影响；__collect_global__ 不出现在工作区列表。解锁 E-COLLECT4/E-COLLECT5。
+铁律：本卡唯一可改 db 迁移/sessions 表/App collect 接缝/types/api 签名/pi-adapter；不写 folder CRUD 业务逻辑（留 E-COLLECT4）；不碰前端侧栏 UI（留 E-COLLECT5）。
+✅ 总控自做 done（2026-06-26）：① db.ts：COLLECT_WORKSPACE_ID='__collect_global__' 懒建容器(getOrCreateCollectWorkspace)+listWorkspaces 排除；collect_folders 表(CREATE TABLE+幂等)；sessions.collect_folder_id（CREATE TABLE DDL + 幂等 ALTER 双写）；listCollectSessions/createCollectSession/setCollectSessionFolder/listCollectFolders/createCollectFolder/renameCollectFolder/deleteCollectFolder。② engine.ts：GET/POST /api/collect/sessions、PATCH/DELETE /api/collect/sessions/:id、GET /api/collect/folders；废 POST /api/workspaces/:id/collect-session。③ types(双侧)：CollectSession/CollectFolder。④ api.ts：collect* 方法，废 ensureCollectSession。⑤ App.tsx：collect 状态升级 collectSessions[]/activeCollectSessionId/collectFolders[]，独立加载(不随业务 ws 切换重置)，gateway 按 active 路由，会话/文件夹管理 handlers；TabContext 保留 collectSessionId 别名(兼容 E-COLLECT2 CollectPane)+暴露多会话字段。⑥ pi cwd 复用容器 ws root(prepareCollectCwd 不改)。终审实跑发现并修 1 bug：collect_folder_id 仅在 ALTER 块(对老库)、漏在 CREATE TABLE DDL→新库 fresh 建表无该列、createCollectSession 抛 no such column（同 workflow_id 须双写 DDL+ALTER）。新增 collect-db.test.ts 3 例(容器隐藏/会话多例 CRUD/文件夹删后落未分类)。验收：server+web typecheck✅ web build✅ 394 server tests✅(391+3)。解锁 E-COLLECT4/E-COLLECT5。` },
+
+  { dom: "E", status: "done", created: "2026-06-26 00:01", title: "【收集·文件夹后端·P1】E-COLLECT4：collect_folders CRUD + session 归类 + 分组列表", brief:
+`前置：X-COLLECT3 接缝+迁移就绪（collect_folders 表、sessions.collect_folder_id、全局容器 ws、collect session 最小路由）。落点=server/src/routes/engine.ts + server/src/db/engine.ts（session 域归 E）。
+范围：
+1. collect_folders CRUD：createCollectFolder(name)/renameCollectFolder(id,name)/deleteCollectFolder(id)（删文件夹时其下 session 的 collect_folder_id 置空，不删 session）/reorderCollectFolder(sort)；对应路由 GET/POST /api/collect/folders、PATCH/DELETE /api/collect/folders/:id。
+2. session 归类：setCollectSessionFolder 已由 X-COLLECT3 的 PATCH /api/collect/sessions/:id 覆盖；E 补「分组列表」读取口径：listCollectSessions 返回带 collectFolderId，前端据此分组（无需新路由，确认契约）。
+3. 全局容器 ws 鉴权：collect 路由不接受业务 :workspaceId，固定操作 __collect_global__；校验 folder/session 均属该容器，防越权。
+验收：server typecheck + 新增 test（folder CRUD、删 folder 后 session 落「未分类」、归类改 folder_id）绿。
+铁律：只动 engine 域 folder/ collect session CRUD；不碰 X-COLLECT3 迁移/接缝；不碰前端。
+✅ Agent-E 实装 + 总控终审 done（2026-06-26）：db/engine.ts 加 list/get/create/rename/reorder/deleteCollectFolder（delete 用事务把其下 session collect_folder_id 置空再删 folder）；routes/engine.ts 补 POST/PATCH/DELETE /api/collect/folders + 校验 folderId 存在性(create/patch session 归类时 unknown folder→404)；api/engine.ts 加 folder CRUD 前端方法；collect-routes.test.ts 2 例(folder CRUD+grouping+删后未分类 / unknown folder 拒绝)。终审核查：①未越权接缝(未扩 TabContext/未改全局 Sidebar/未碰 App)✅ ②无 self-HTTP/execSync/scratch✅ ③folder 归属与存在性校验完整✅。总控收口：清理 X-COLLECT3 在 db.ts 误置的 folder CRUD 重复(真源唯一=db/engine.ts E 域)，collect-db.test 移除重复 folder 用例。server+web typecheck✅ 396 tests✅。` },
+
+  { dom: "E", status: "done", created: "2026-06-26 00:02", title: "【收集·独立侧栏前端·P0】E-COLLECT5：收集会话历史侧栏（文件夹树+session 列表）+ CollectPane 布局重构 + 存为资料 scope=global", brief:
+`前置：X-COLLECT3（App 多会话状态/TabContext 已暴露 collectSessions/activeCollectSessionId/collectFolders + handlers）、E-COLLECT4（folder CRUD 路由）就绪。落点=新建收集侧栏组件 + 改 CollectPane.tsx + DataTabs（布局）。
+现状证据：Sidebar.tsx 是「workspace+日常 session+专题」范式样板（文件夹树可仿其折叠/重命名/删除交互）；当前 CollectPane.tsx 仅单 ChatPane。
+范围：
+1. 新建 CollectSidebar（收集专属，非全局 Sidebar）：文件夹树（新建/重命名/删除文件夹）+ 每文件夹下 collect session 列表 + 「未分类」分组 + 新建会话按钮；session 行支持重命名/删除/归入文件夹（拖拽或右键/菜单选 folder）；选中 session→setActiveCollectSessionId。
+2. CollectPane 重构为「左 CollectSidebar + 右 ChatPane」两栏布局（ChatPane 绑 activeCollectSessionId 对应的 collect* 字段）。
+3. 存为资料：scope 由 'workspace' 改 'global'（入全局池，沿用知识库现有 scope 语义）；workspaceId 仍传 UI 当前业务 ws 作 origin。
+4. 修复 E-COLLECT2 遗留：存为资料成功态改由真实 state（如已存 docId 集合进 useState）驱动，切 tab 不丢；或保存后从消息维度标记。
+验收：web typecheck + build 绿；能建多个收集会话、建文件夹、把会话拖/归入文件夹、切换会话、各会话独立联网聊天、存为资料入全局池并在任意工作区知识库（启用后）可见。
+铁律：复用 ChatPane（带 E-COLLECT-TRIM 的能力开关）；侧栏为收集专属勿动全局 Sidebar；存资料只调现有 createKnowledgeDoc；勿碰 X-COLLECT3 接缝。
+✅ Agent-E 实装 + 总控终审 done（2026-06-26）：新建 CollectSidebar.tsx（收集专属侧栏：文件夹树+未分类分组+折叠+会话新建/重命名/删除/下拉归类，复用 X-COLLECT3 ctx handlers + api folder CRUD）；CollectPane 改两栏（左 CollectSidebar + 右 ChatPane，带 TRIM 6 开关）；存为资料 scope 改 'global'（入全局池，origin=UI 当前业务 ws）；修 E-COLLECT2 savedIds 遗留→savedDocs React state + localStorage（按 session:contentHash 持久化，切 tab 不丢）。终审核查：①未扩 TabContext/未动全局 Sidebar✅ ②复用现成 createKnowledgeDoc✅ ③无 self-HTTP/execSync/scratch✅ ④两栏布局+TRIM 开关正确✅。web typecheck+build✅。UI 点击态未实跑(需起 app)，代码级通过。**收集专题全 6 卡 done（X0/E1/E2/X3/E4/E5 + TRIM）**。` },
+
+  { dom: "E", status: "done", created: "2026-06-26 00:03", title: "【收集·界面精简·P0】E-COLLECT-TRIM：ChatPane 能力开关，收集隐藏 7 项保留 Fork（总控自做）", brief:
+`前置：无（独立小改，不依赖迁移）。落点=web/src/components/ChatPane.tsx（加 props）+ CollectPane.tsx（传值）。E 域文件。
+现状证据：ChatPane 顶部工具条有 沉淀trace(632)/沉淀prompt(641)；输入区上方有 SkillSelector(849)/PromptSelector(854)/业务需求下拉(857-864)；会话工具行有 @工具(721)/Fork(735)/委派(749)。
+范围：
+1. ChatPane 加可选能力开关 props（默认全开=现状零影响，日常/专题不传即不变）：hideSediment(沉淀trace+沉淀prompt)、hideSkill、hidePromptLib、hideBizReq、hideToolPanel(@工具)、hideDelegate(委派子agent)。Fork 不加开关（保留）。
+2. 各控件渲染按开关条件隐藏；隐藏的能力对应 state/handler 可保留但不渲染入口。
+3. CollectPane 传：hideSediment/hideSkill/hidePromptLib/hideBizReq/hideToolPanel/hideDelegate 全 true；Fork 保留。
+验收：web typecheck+build 绿；收集界面只剩 模型选择+整理上下文+Fork+输入/发送+存为资料；日常/专题 ChatPane 完全不变（回归）。
+铁律：纯 optional props、默认值=现状；不碰其它 ChatPane 调用方；不碰接缝。
+✅ 总控自做 done（2026-06-26）：ChatPane 加 6 个 optional 开关 hideSediment(沉淀trace+沉淀prompt)/hideSkill/hidePromptLib/hideBizReq/hideToolPanel(@工具)/hideDelegate(委派子agent)，默认 false=现状零变化；各控件 {!p.hideX && (...)} 条件渲染；Fork 保留无开关。CollectPane 6 个全传 true。验收：web typecheck✅ build✅；日常/专题 ChatPane 不传开关行为不变（回归）。收集界面只剩 模型选择+整理上下文+Fork+输入/发送+存为资料。
+🐞 实跑修复（2026-06-26）：收集界面报 403「session belongs to another workspace」——ChatPane 沉淀计数 loader(consolidation-count) 自动以 workspaceId(业务ws)+sessionId(收集 session 属全局收集容器)跨工作区组合调用被后端(engine.ts:1517)403。修：该 loader 加 p.hideSediment 门（计数只服务于已隐藏的沉淀 trace 按钮，故 hideSediment 时不取）。typecheck+build✅。教训再现：跨 ws session 的运行时校验编译期不可见，必须起 app 实跑。` },
+
   // ════ 【知识库专题·分析师文档搜索引擎】（总控拆卡 2026-06-24；背景=用户实测召回率低 + 场景诊断）。命题：分析师知识库≠客服RAG。存储内容=方法论/SOP/业务决议/公司战略/业务模型；消费模式=搜索到某篇文档→全文阅读/引用，不是「提问→片段注入→LLM回答」。现有架构（BM25 chunks→注入6000字 system prompt）根本范式错误，需升级为「文档搜索引擎+全文阅读器」。波次：P0=doc级聚合检索+搜索面板（范式切换）；P1=标题/标签加权+摘要字段（质量提升）；P2=全文注入升级（LLM引用场景）。落点：X契约→D检索/DB→E前端/注入。════
   // ── 根因（代码证据）── ①knowledge-retrieval.ts：BM25跑knowledge_chunks，topK=5，maxChars=6000，返回chunk片段；②knowledge-injection.ts：formatSource格式化chunk.text注入system prompt；③tokenized输入=`${docTitle}\n${tags}\n${chunk.text}`，标题与正文权重相同；④bigram tokenizer：「RFM模型」→「RF」+「FM」，专业术语IDF失真；⑤无doc级聚合：即便文档高度相关，只有顶部chunk出来，文档粒度对用户不可见。 ────
   { dom: "X", status: "done", created: "2026-06-24 10:00", title: "【知识库·契约+接缝·P0】X-KB0：KnowledgeDocSearchResult 类型 + searchKnowledgeDocs API签名 + doc级聚合口径审定（总控自做）", brief:
@@ -1374,8 +1463,10 @@ interface MetricSnapshot {
 
 验收：server typecheck 绿；带 analysis 工具工作区的 pi turn system prompt 含数字锁段；工具 description 含禁止重计约束。` },
 
-  { dom: "D", status: "todo", created: "2026-06-25 16:03", title: "【指标标准层·监测链路对齐·P2】D-METRIC3：buildDraftPrompt 改走 MetricSnapshot[] 注入（BiAggregation→MetricSnapshot 适配层）", brief:
-`前置：X-METRIC0 契约、D-METRIC1（MetricSnapshot 构造逻辑可复用）。落点=server/src（监测引擎 draft 相关，含 buildDraftPrompt 调用路径）。P2，在 D-METRIC1/E-METRIC2 落地后做。
+  { dom: "D", status: "done", created: "2026-06-25 16:03", title: "【指标标准层·监测链路对齐·P2】D-METRIC3：buildDraftPrompt 改走 MetricSnapshot[] 注入（BiAggregation→MetricSnapshot 适配层）", brief:
+`✅ 总控终审通过（2026-06-25）：server typecheck ✅ + 10/10 单测 ✅（monitor-metric-snapshot.test.ts，含 buildDraftPrompt with/without findings 向后兼容两例）+ 安全 grep 净（dataset.rows/BiCell/draw_data 仅命中注释说明、无取数代码）。逐条对验收：新增 server/src/monitor-metric-snapshot.ts（biAggregationToMetricSnapshots + renderMetricSnapshotsBlock）；buildDraftPrompt 头部按 findings 注入数字锁块「[指标快照·代码确定性计算值·禁止重新推导]」+ snapshot JSON，findings 空走原 columns/rowCount fallback（向后兼容）。severity→status（critical→alert/warn→warning/info→normal）、comparison kind 映射（target/benchmark/competitor + history 按 window/label 细分 mom|yoy|ma|other）均按 X-METRIC0 细化口径。微差（合理收敛、不影响 done）：适配层签名实装为 biAggregationToMetricSnapshots(findings) 而非 brief 的 (dataset, findings)——只读 finding 衍生字段、连 dataset 都不碰，更贴合 E-MONITOR8 红线。两条链路（tool-use MCP + 监测 draft）数字锁口径已对齐。待用户提交。
+
+前置：X-METRIC0 契约、D-METRIC1（MetricSnapshot 构造逻辑可复用）。落点=server/src（监测引擎 draft 相关，含 buildDraftPrompt 调用路径）。P2，在 D-METRIC1/E-METRIC2 落地后做。
 
 背景：监测链路（BiAggregationDataset→buildDraftPrompt→LLM）与 tool-use 链路（ExtractionTool→MetricSnapshot→MCP→pi）是两条独立管道，数字锁（E-METRIC2）只覆盖 tool-use 链路。本卡让监测 draft 也经 MetricSnapshot 标准化层，两条链路对齐。
 
@@ -1396,6 +1487,46 @@ interface MetricSnapshot {
 
 安全红线（复用 E-MONITOR8 口径）：biAggregationToMetricSnapshots 只读 MonitorFinding 衍生字段，不读 BiAggregationDataset.rows；grep 验证 rows/cells/draw_data 未进 LLM。
 验收：server typecheck 绿；监测 draft prompt 出现 MetricSnapshot JSON 块含数字锁前缀；E-MONITOR8 安全 grep 仍通过。` },
+
+  { dom: "X", status: "done", created: "2026-06-25 20:30", title: "【数字锁·产出侧·P1】X-MLOCK0：MetricVerification 契约 + 校验核心（提数/容差匹配/verdict，总控自做）", brief:
+`来源：指标标准层 MetricSnapshot 专题交付后暴露的后续候选（backlog: docs/backlog/数字锁输出端校验-MetricVerification.md）。数字锁(E-METRIC2)只覆盖输入侧 prompt 软约束，模型若篡改注入的 MetricSnapshot 数值系统检测不到。本卡=产出侧校验的纯地基，含架构决策→总控自做，解锁 X-MLOCK1。
+
+关键设计边界（证据已核）：只打 tool-use 链路。tool-use 链路 LLM 在自由文本复述/解读 snapshot 数值，可在 message_end 捕获后回校；监测链路 draftMetricSystem 产出是 parseDraftJson 的结构化指标体系设计、不复述 snapshot 数值，无可校数字 → 不适用，本需求不碰监测链路。
+
+核心改动：
+1. 双侧 types.ts 新增 MetricVerification 契约（与现有类型并列、不改旧类型）：
+   interface MetricVerification { verdict: "ok" | "mismatch"; hits: MetricVerificationHit[]; }
+   interface MetricVerificationHit { name; expected:number(snapshot.value); foundInText:number|null; status:"matched"|"suspect"|"unreferenced"; relDiff:number|null; }
+
+2. 新建 server/src/metric-verification.ts 纯函数：verifyMetricUsage(snapshots, answerText): MetricVerification
+   - 提数：正则扫文本，识别千分位/小数/万·亿单位/百分比。
+   - 单位归一后按 snapshot.value 容差匹配：相对差 ≤ ε_ok(默认 0.5%)→matched；ε_ok<差≤ε_suspect(默认 20%)且同量级→suspect；超 ε_suspect→无关不报；未出现→unreferenced。
+   - verdict：任一 suspect → mismatch；否则 ok。best-effort：不阻断/不改写/不重试。ε 首版常量。
+
+3. 单测 metric-verification.test.ts：matched(四舍五入容忍)/suspect(篡改)/unreferenced/万亿单位归一/百分比 各一例 + verdict 聚合。
+
+安全红线：校验器只读 answerText + 已注入 snapshot(衍生值)，不碰 draw_data/dataset.rows；grep 验证。
+接缝边界：只加新类型+新模块，不改现有业务代码、不接链路(留 X-MLOCK1)。
+验收：server+web typecheck 绿；单测全过；安全 grep 净。解锁 X-MLOCK1。
+
+✅ 总控终审通过（2026-06-25）：双侧 types.ts 新增 MetricVerification / MetricVerificationHit；server/src/metric-verification.ts 纯函数完成提数、万/亿/百分比归一、0.5%/20% 容差匹配与 verdict 聚合；metric-verification.test.ts 覆盖 matched/suspect/unreferenced/万亿/百分比/verdict。验证：node --experimental-strip-types --test server/src/metric-verification.test.ts ✅ 6/6；npm run typecheck ✅；npm run build ✅；安全 grep 净（无 draw_data/dataset.rows/文件读取）。待用户提交。` },
+
+  { dom: "X", status: "done", created: "2026-06-25 20:31", title: "【数字锁·产出侧·P1】X-MLOCK1：tool-use 链路接入 verifyMetricUsage + ChatPane 告警（前端可委派 D）", brief:
+`前置：X-MLOCK0（MetricVerification 契约 + verifyMetricUsage 校验核心就绪）。落点=server chat 入口(index.ts handleSend + routes/engine.ts handleSendFlow) + 前端 ChatPane。
+
+背景：把 X-MLOCK0 的纯函数校验接进真实对话产出。tool-use 链路 turn 完成(message_end)后，拿本轮注入的 MetricSnapshot[] + 本轮 assistant 文本跑 verifyMetricUsage，verdict=mismatch 时前端告警。
+
+核心改动：
+1. turn 内留存本轮注入的 snapshot[]：handleSend/handleSendFlow 在本轮捕获经 MCP 注入的 MetricSnapshot（参 notes-infra §五.d：tool 事件走 PiEvent catch-all + turn_end.toolResults），暂存到该 turn 上下文。
+2. message_end 后(参 index.ts:4842 backfillAnalysisFromMessage 钩子范式)：取该 turn assistant 文本 + 留存 snapshot[] → verifyMetricUsage → verdict≠ok 时把 MetricVerification 结果随消息回传前端。
+3. ChatPane：verdict=mismatch 时在该条消息标注告警条（列出 suspect 明细：name/expected/foundInText），提示「模型引用数值与代码计算值不符」。先告警，不自动重试。
+4. 无注入 snapshot 的 turn 零变化(向后兼容)。
+
+安全红线：不碰 draw_data；不新增 ClientMessage 字段(沿用 E-METRIC2 flag 自判范式)；不改数据探索子树。
+接缝边界：handleSend 在 index.ts(接缝/总控)、handleSendFlow 在 routes/engine.ts(E)，前端 ChatPane 告警呈现可委派 D 代笔(总控终审)。
+验收：带 analysis 工具工作区跑一轮对话，模型若改写注入数值则 ChatPane 出告警；正常引用无告警；安全 grep 净；typecheck+build 绿。
+
+✅ 总控终审通过（2026-06-25）：新增 metric-verification-events.ts，从 tool_result / turn_end.toolResults / MCP 文本块 best-effort 提取本轮 MetricSnapshot[]；index.ts handleSend 与 routes/engine.ts handleSendFlow 在 assistant message_end 后校验，仅 mismatch 时追加 metric_verification content block；web types/MessageRow 渲染「模型引用数值与代码计算值不符」告警并保持默认可见。验证：node --experimental-strip-types --test server/src/metric-verification.test.ts server/src/metric-verification-events.test.ts ✅ 8/8；npm run typecheck ✅；npm run build ✅；安全 grep 净。未跑真实 LLM tool-use E2E（需可用 analysis 工具 + 模型实跑环境），已用事件级单测覆盖核心链路。待用户提交。` },
 ];
 
 /* 快修任务（hotfix）── 总控维护 ──

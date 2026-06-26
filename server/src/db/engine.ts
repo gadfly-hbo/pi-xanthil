@@ -4,7 +4,7 @@ import { db } from "../db.ts";
 import { enableForOrigin, setMemoryEnablement, disableItemEverywhere } from "./shared.ts";
 import { detectSkillActivation } from "../skill-activation.ts";
 import { parseEvaluationError, serializeEvaluationError } from "../evaluation-errors.ts";
-import type { CommandCaseSummary, CommandEvalCase, CommandEvalSet, CommandEvaluation, CommandEvaluationDetail, CommandEvaluationRunResult, HookCaseSummary, HookEvalCase, HookEvalSet, HookEvaluation, HookEvaluationDetail, HookEvaluationRunResult, PromptEvalSet, PromptEvalTask, PromptEvaluation, PromptEvaluationDetail, PromptEvaluationRunResult, PromptPairwiseResult, PromptPairwiseSummary, PromptTaskSummary, PromptVariant, PromptVariantSummary, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus, SubAgentCaseSummary, SubAgentEvalCase, SubAgentEvalSet, SubAgentEvaluation, SubAgentEvaluationDetail, SubAgentEvaluationRunResult, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult } from "../types.ts";
+import type { CollectFolder, CommandCaseSummary, CommandEvalCase, CommandEvalSet, CommandEvaluation, CommandEvaluationDetail, CommandEvaluationRunResult, HookCaseSummary, HookEvalCase, HookEvalSet, HookEvaluation, HookEvaluationDetail, HookEvaluationRunResult, PromptEvalSet, PromptEvalTask, PromptEvaluation, PromptEvaluationDetail, PromptEvaluationRunResult, PromptPairwiseResult, PromptPairwiseSummary, PromptTaskSummary, PromptVariant, PromptVariantSummary, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus, SubAgentCaseSummary, SubAgentEvalCase, SubAgentEvalSet, SubAgentEvaluation, SubAgentEvaluationDetail, SubAgentEvaluationRunResult, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult } from "../types.ts";
 
 /**
  * 【Agent-E · 智能引擎域】db 表 slot —— owner: codex(GPT-5.5)
@@ -344,6 +344,57 @@ export function initEngineTables(): void {
     CREATE INDEX IF NOT EXISTS idx_monitor_findings_run ON monitor_findings(run_id);
     CREATE INDEX IF NOT EXISTS idx_monitor_findings_sig ON monitor_findings(signature);
   `);
+}
+
+// ---- collect folders (E-COLLECT4) ----
+
+export function listCollectFolders(): CollectFolder[] {
+  return db
+    .prepare("SELECT id, name, sort, created_at AS createdAt, updated_at AS updatedAt FROM collect_folders ORDER BY sort ASC, created_at ASC")
+    .all() as unknown as CollectFolder[];
+}
+
+export function getCollectFolder(id: string): CollectFolder | undefined {
+  return db
+    .prepare("SELECT id, name, sort, created_at AS createdAt, updated_at AS updatedAt FROM collect_folders WHERE id = ?")
+    .get(id) as unknown as CollectFolder | undefined;
+}
+
+export function createCollectFolder(name: string): CollectFolder {
+  const id = randomUUID();
+  const now = Date.now();
+  const maxSort = (db.prepare("SELECT MAX(sort) AS m FROM collect_folders").get() as { m: number | null }).m ?? 0;
+  db.prepare("INSERT INTO collect_folders (id, name, sort, created_at, updated_at) VALUES (?, ?, ?, ?, ?)").run(id, name, maxSort + 1, now, now);
+  return { id, name, sort: maxSort + 1, createdAt: now, updatedAt: now };
+}
+
+export function renameCollectFolder(id: string, name: string): CollectFolder | undefined {
+  const existing = getCollectFolder(id);
+  if (!existing) return undefined;
+  db.prepare("UPDATE collect_folders SET name = ?, updated_at = ? WHERE id = ?").run(name, Date.now(), id);
+  return getCollectFolder(id);
+}
+
+export function reorderCollectFolder(id: string, sort: number): CollectFolder | undefined {
+  const existing = getCollectFolder(id);
+  if (!existing) return undefined;
+  db.prepare("UPDATE collect_folders SET sort = ?, updated_at = ? WHERE id = ?").run(sort, Date.now(), id);
+  return getCollectFolder(id);
+}
+
+export function deleteCollectFolder(id: string): boolean {
+  const existing = getCollectFolder(id);
+  if (!existing) return false;
+  db.exec("BEGIN");
+  try {
+    db.prepare("UPDATE sessions SET collect_folder_id = NULL, updated_at = ? WHERE collect_folder_id = ?").run(Date.now(), id);
+    db.prepare("DELETE FROM collect_folders WHERE id = ?").run(id);
+    db.exec("COMMIT");
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+  return true;
 }
 
 type PromptEvalSetRow = Omit<PromptEvalSet, "tasks"> & { tasks: string };

@@ -1,9 +1,9 @@
-import { memo } from "react";
+import { memo, type ReactNode } from "react";
 import { AlertTriangle } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { CopyButton } from "@/components/CopyButton";
 import { ToolUse, ToolResult, Thinking } from "@/components/ProcessTrace";
-import type { ContentBlock, Role } from "@/types";
+import type { ContentBlock, MetricVerification, Role } from "@/types";
 
 export interface UiMessage {
   id: string;
@@ -20,14 +20,34 @@ function textOfBlocks(blocks: ContentBlock[]): string {
 }
 
 export function hasTraceBlocks(m: UiMessage): boolean {
-  return m.role === "tool" || m.content.some((block) => block.type !== "text");
+  return m.role === "tool" || m.content.some((block) => block.type !== "text" && block.type !== "metric_verification");
 }
 
 export function hasToolBlocks(m: UiMessage): boolean {
   return m.content.some((block) => block.type === "tool_use" || block.type === "tool_result");
 }
 
-export const MessageRow = memo(function MessageRow({ m, showTrace = false }: { m: UiMessage; showTrace?: boolean }) {
+function MetricVerificationAlert({ verification }: { verification: MetricVerification }) {
+  const suspects = verification.hits.filter((hit) => hit.status === "suspect");
+  if (suspects.length === 0) return null;
+  return (
+    <div className="mt-3 rounded-md border border-amber-200 bg-amber-50 px-3 py-2 text-[12px] leading-5 text-amber-900 dark:border-amber-900/60 dark:bg-amber-950/30 dark:text-amber-200">
+      <div className="flex items-center gap-2 font-medium">
+        <AlertTriangle className="h-3.5 w-3.5 shrink-0" strokeWidth={2} />
+        <span>模型引用数值与代码计算值不符</span>
+      </div>
+      <div className="mt-1 space-y-0.5">
+        {suspects.map((hit) => (
+          <div key={`${hit.name}:${hit.expected}:${hit.foundInText ?? "null"}`} className="font-mono text-[11px]">
+            {hit.name}: expected {hit.expected}, found {hit.foundInText ?? "未引用"}
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+export const MessageRow = memo(function MessageRow({ m, showTrace = false, action = null }: { m: UiMessage; showTrace?: boolean; action?: ReactNode }) {
   if (m.error) {
     return (
       <div className="flex gap-3">
@@ -86,15 +106,21 @@ export const MessageRow = memo(function MessageRow({ m, showTrace = false }: { m
         }
         if (b.type === "tool_use") return <ToolUse key={i} block={b as Extract<ContentBlock, { type: "tool_use" }>} />;
         if (b.type === "tool_result") return <ToolResult key={i} block={b as Extract<ContentBlock, { type: "tool_result" }>} />;
+        if (b.type === "metric_verification") {
+          return <MetricVerificationAlert key={i} verification={(b as Extract<ContentBlock, { type: "metric_verification" }>).verification} />;
+        }
         if (b.type === "thinking") {
           const t = (b as { thinking?: string; text?: string }).thinking ?? (b as { text?: string }).text ?? "";
           return showTrace && t ? <Thinking key={i} text={t} /> : null;
         }
         return null;
       })}
-      {assistantText && (
-        <div className="mt-1 flex justify-start opacity-0 transition-opacity group-hover:opacity-100">
-          <CopyButton text={assistantText} />
+      {(assistantText || action) && (
+        <div className="mt-1 flex items-center justify-start gap-1 opacity-0 transition-opacity group-hover:opacity-100">
+          {action}
+          {assistantText && (
+            <CopyButton text={assistantText} />
+          )}
         </div>
       )}
     </div>

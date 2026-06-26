@@ -10,23 +10,23 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。详见 `Orchestration.md §八` 发布节点。
 
-- 最近更新：2026-06-23 · 总控（全局池池化扩展 X-POOL0/D-POOL1/X-POOL2 全 done，待提交）
-- 本批（2026-06-23 · 全局池池化扩展）：prompts + 知识库从「工作区独占」升级「全局池 + 按工作区启用」。**X-POOL0 契约**：types.ts 双侧 MemoryItemKind +'prompt'|'knowledge'、KnowledgeDoc/Input 加可选 scope('global'|'workspace')、清 ontology 过时注释。**D-POOL1 落地**：listPromptTemplates 纯池(SELECT *)、knowledge_docs 加 scope 列+ALTER、createX 仅入池条目 enableForOrigin、listKnowledgeChunksForRetrieval 消费侧按 enablement 过滤、两 Pane 勾选+scope radio。**X-POOL2 收口**：db/shared.ts backfill 加 prompt(skip NULL)/knowledge(scope='global')/ontology 三源 + 全链终审 + 修 App.tsx chip 计数口径对齐注入候选(本ws私有∪已启用global)。关键设计：**prompt 的 workspace_id IS NULL 全局模板恒启用、不入 enablement 表**(消费侧 NULL∪enabled，新增 ws 零维护)；knowledge 通用入池/专属独占；GET 仅 global 跨 ws 豁免 403、PATCH 不豁免。门禁全绿(typecheck/build/相关 41 测试/隔离 grep)。**待用户提交**。
-  - ⚠ **收口踩坑(已修+实测)**：D-POOL1 把 knowledge_docs 的 `CREATE INDEX ...(scope)` 写在 CREATE TABLE 的 db.exec 块内、**早于** idempotent ALTER → 旧库 boot 报 `no such column: scope`（typecheck/build/单测全过，仅**旧库运行时**触发；总控终审也漏看了 CREATE INDEX 与 ALTER 的先后）。修复=把 scope 索引移出 CREATE TABLE 块、放到 ALTER 之后无条件建(IF NOT EXISTS)。已用临时旧库(无 scope 列)实测迁移：列+索引补上、旧行 scope 默认 'workspace'、boot 无报错。**教训：依赖新列的 CREATE INDEX 必须在 ALTER 加列之后；schema 变更终审须含「旧库运行时 boot」一步，不能只靠 typecheck/build/单测。**
-- 本批进度（总控 infra/接缝/契约侧，2026-06-19~20）：
-  - ✅ **汇报可视化契约**（types.ts 双侧单一真源）：`PresentationChartSpec{id,title,option}` / `PresentationDatasetMeta` / `PresentationGenerateInput`(datasetId **string**) / `PresentationTaskResult`(chartSpecs?/datasetMeta?)。server `presentation-charts.ts` 以 `type ChartSpec=PresentationChartSpec` 别名引用；web `api.ts`/`PresentationVersionPane.tsx` import 契约——**零本地重声明**。
-    - ⚠ 教训：契约首版我误定 `datasetId:number` + `echartsOption` 命名 + 漏 `id/datasetMeta`，D 实装绕过(本地重声明 + 改 seam api.ts inline)致 **3 套并存漂移** → 用户拍板「总控校准」、改契约对齐实现收口。**契约冻结前须先核证消费端真实形态**（BI dataset id 实为 string）。
-  - ✅ **汇报可视化 D 终审通过**（主面板 + 取数，均 D 承接 V）：红线重点核——出图 `buildChartSpecsFromDataset` 全确定性零 LLM、`summarizeDatasetForLlm` 只喂 schema+数值统计(不含 row)、数据=已聚合 BI dataset(clean_data 系)、隔离 grep 净。生成端点在冻结 `index.ts`，D 加 datasetId 薄接线——**总控追认**(核心逻辑已抽到 D-own slot)。
-  - ✅ **prompts管理 D 面板终审通过**：`PromptsManagementPane` 双区(模板库 CRUD / 系统prompt 只读聚合)，接 D CRUD `/api/workspaces/:id/prompt-templates` + E `/api/prompts/system`；红线净、接缝未越界、契约 import 无重声明。
-- 已交付里程碑（非本批，详见 `Orchestration §八`）：
-  - LLM 管理后端底座（2026-06-16，§七）——`/api/llm/*` + `llm-config.ts` 直写 pi 真源 + apiKey 脱敏铁律。
-  - 规则记忆模块重构 11/11 全链交付（2026-06-19，V-OBS 由总控收口、V-agent 已停用）。
+- 最近更新：2026-06-25 · 总控（数字锁产出侧 P1：X-MLOCK0/X-MLOCK1 done，待用户提交）
+- 本批（2026-06-25 · 数字锁产出侧校验）：
+  - ✅ **X-MLOCK0 契约 + 校验核心**：双侧 `types.ts` 新增 `MetricVerification` / `MetricVerificationHit`；新增 `server/src/metric-verification.ts:verifyMetricUsage()` 纯函数，支持千分位、小数、`万`/`亿`、百分比归一；容差常量 `ε_ok=0.5%`、`ε_suspect=20%`；`matched/suspect/unreferenced` 明细 + `verdict` 聚合。新增 `metric-verification.test.ts` 覆盖 matched/suspect/unreferenced/万亿/百分比/verdict。
+  - ✅ **X-MLOCK1 tool-use 链路接入 + ChatPane 告警**：新增 `server/src/metric-verification-events.ts` 从 `tool_result` / `turn_end.toolResults` / MCP 文本块中 best-effort 提取本轮 `MetricSnapshot[]`，在 `handleSend`(`index.ts`) 与 `handleSendFlow`(`routes/engine.ts`) 的 assistant `message_end` 后跑 `verifyMetricUsage()`；仅 `verdict="mismatch"` 时追加 `{type:"metric_verification"}` content block。前端 `ContentBlock` 增加该 block，`MessageRow` 默认可见地渲染琥珀色告警条（列 suspect 的 name/expected/foundInText）。无 snapshot 或正常引用零变化；不自动重试、不阻断、不改写。
+  - ✅ **验证**：`node --experimental-strip-types --test server/src/metric-verification.test.ts server/src/metric-verification-events.test.ts` 8/8 通过；`npm run typecheck` 绿；`npm run build` 绿（仅既有 Vite chunk/dynamic import 警告）；红线 grep 无 `draw_data` / `dataset.rows` / raw path / 文件读取命中。未跑真实 LLM tool-use 端到端（需可用 analysis 工具 + 模型实跑环境）。
+- 仍待提交的既有批次（本批未处理）：
+  - **全局池池化扩展（2026-06-23）**：prompts + 知识库从「工作区独占」升级「全局池 + 按工作区启用」，X-POOL0/D-POOL1/X-POOL2 已 done，门禁记录为全绿，待用户提交。关键踩坑：依赖新列的 `CREATE INDEX` 必须在 idempotent `ALTER` 之后，schema 终审需旧库 boot 实测。
+  - **知识库新模块**：`knowledge-injection/retrieval(.ts/.test)`、`system-prompts(.ts/.test)`、前端 `KnowledgeBasePane`/`KnowledgeBaseReadmePane`/`MemoryReadmePane` 已存在；wiki 标 done，但总控尚未逐卡运行时实跑终审。
+  - 汇报可视化 / prompts 管理 / 规则记忆重构 / 知识库等跨批改动仍处于工作区未提交状态，本批未清理、不回滚。
 - 下一步：
-  - **知识库新模块**(untracked：`knowledge-injection/retrieval(.ts/.test)`、`system-prompts(.ts/.test)`、前端 `KnowledgeBasePane`/`KnowledgeBaseReadmePane`/`MemoryReadmePane`)据 wiki 标 done，但总控**尚未逐卡运行时实跑终审**、文件未提交 → 待补点检或用户确认。
-  - 汇报可视化 / prompts / 记忆重构 / 知识库 全批改动**待用户手动提交**（本批全程无 git）。
-- 阻塞：无代码阻塞。
+  - 优先做 **数字锁真实 tool-use smoke**：准备一个 `analysis` 工具返回 `metricSnapshots`，让模型故意把注入值改写，确认 `ChatPane` 出现“模型引用数值与代码计算值不符”；再跑正常引用确认无告警。也要覆盖 `send_flow` 的 flow chat 消费侧是否能看到同一 block。
+  - 继续补 **知识库新模块运行时终审**：API/DB/前端逐卡实跑，尤其全局/专属 scope、enablement、检索注入、系统 prompt 聚合与旧库迁移。
+  - LLM 管理补测：`llm-config.ts` 三处脱敏链路逐行终审 + node:test 覆盖 key 保留/OAuth 不写 key/settings 局部写。
+- 阻塞：无代码阻塞；真实数字锁 smoke 依赖本机可用模型与 analysis 工具运行环境。
 - 开放问题（待总控/后续拍板）：
-  - LLM 管理：前端面板卡是否已落地未核实；`llm-config.ts` 三处脱敏链路逐行终审 + node:test 覆盖(key 保留/OAuth 不写 key/settings 局部写) 仍欠(上批仅 HTTP smoke)；扩 `LlmApiKind` 须同步 `SUPPORTED_API_KINDS`/`coerceApiKind()`/`testProvider()`。
+  - `metric_verification` block 当前随消息 content 持久化；是否需要后续在 DB/trace 中单独索引为可筛选的质量信号，待 X 后续拍板。
+  - 数字锁目前只对 tool-use 链路自由文本做 best-effort 告警；是否要做自动纠偏/重试，需要结合预算上限与误报风险另行设计。
   - 工作区大量跨批次 untracked/modified 累积未提交；§0 与历史里程碑的对齐依赖 `Orchestration §八`。
 
 ---
@@ -172,6 +172,14 @@
 - **输入路径决策（2026-06-13 红线政策同步）**：输入选择不再 clean_data-only；`ManualAnalysisToolCard` 读取 workspace 已登记路径并只展示 `draw_data` / `clean_data` 文件，analysis 工具筛选仍不变。
 - **输出路径决策**：`outputPath` 固定取当前任务 session 的 `report` 目录（标准 060_reports），UI 只读显示，不再提供多选下拉。复用现有 `api.listSessionPaths(sessionId, "report")`，无需新增后端 output-dir/session-reports 端点，不自动创建 `tool_runs`。
 - **回流决策**：先做文本 summary + outputs 路径，可编辑后“发送到对话”；暂不做结构化结果卡、JSON viewer 或产物预览。pi 后续负责解释、整合、写作、下一步规划，不重复工具的确定性计算。
+
+**10 · 数字锁产出侧校验 MetricVerification（2026-06-25，总控）**：
+- **问题来源**：D-METRIC1/E-METRIC2/D-METRIC3 把工具/监测的确定性 `MetricSnapshot.value` 注入 LLM，并用 prompt 要求“只解读、不重新推导”。这只是输入侧软约束；若模型把 `12500` 复述成 `12000`，系统原先没有产出侧信号。
+- **适用范围决策**：只打 **tool-use 链路**。tool-use 的 `MetricSnapshot[]` 经 MCP tool result 注入，assistant 会在自由文本里复述/解读数值，适合在 `message_end` 后回校。监测链路 `draftMetricSystem` 输出是结构化指标体系设计（metrics/dependencies/monitorRules），不复述 snapshot 数值，无可校数字，本期不碰。
+- **契约与核心**：双侧 `types.ts` 增 `MetricVerification{verdict,hits}` / `MetricVerificationHit{name,expected,foundInText,status,relDiff}`；`server/src/metric-verification.ts:verifyMetricUsage()` 只读 `MetricSnapshot[] + answerText`，正则提数并归一千分位/小数/`万`/`亿`/百分比。容差首版固定：`relDiff <= 0.5%` → `matched`；`0.5% < relDiff <= 20%` 且同量级 → `suspect`；其他数字视为无关；没出现 → `unreferenced`；任一 suspect → `verdict="mismatch"`。
+- **接入方式**：`server/src/metric-verification-events.ts` 从 `tool_result` / `turn_end.toolResults` / MCP 文本块中 best-effort 抽取本轮 snapshots；`index.ts:handleSend` 与 `routes/engine.ts:handleSendFlow` 在同一 turn 局部数组留存，assistant `message_end` 后校验。只有 mismatch 时在同条 assistant message 的 `content` 追加 `{type:"metric_verification", verification}`；前端 `MessageRow` 渲染琥珀色告警。无 snapshot 或 verdict ok 时完全不回传，向后兼容。
+- **为什么用 content block**：不新增 `ClientMessage` 字段，不改 WS 顶层协议；沿用 pi content block 的宽松结构，历史消息持久化后也能复现告警。注意 `ChatPane` 的 business/trace 过滤要把 `metric_verification` 视为业务可见 block，否则会被折叠到“执行详情”。
+- **安全与行为边界**：校验器不碰 `draw_data`、不读文件、不看 dataset rows；只消费 LLM 已产生文本和已注入的衍生 snapshot。首版只告警，不阻断、不改写、不自动重试；自动纠偏需另设预算和最大迭代，避免误报导致死循环。
 
 ---
 

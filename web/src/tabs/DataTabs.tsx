@@ -26,6 +26,7 @@ import { XanDbReadmePane } from "@/components/XanDbReadmePane";
 import { MemoryReadmePane } from "@/components/MemoryReadmePane";
 import { KnowledgeBasePane } from "@/components/KnowledgeBasePane";
 import { KnowledgeBaseReadmePane } from "@/components/KnowledgeBaseReadmePane";
+import { CollectPane } from "@/components/CollectPane";
 import { cn } from "@/lib/cn";
 import type { TabContext } from "./types";
 
@@ -118,6 +119,9 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       )}
 
       {/* 知识库（D-PANEL · 2026-06-19，V-agent 已停用前端归 D 承接） */}
+      {activeTab === "knowledge_base" && activeSubTab === "kb_collect" && (
+        <CollectPane ctx={ctx} />
+      )}
       {activeTab === "knowledge_base" && activeSubTab === "kb_docs" && (
         <KnowledgeBasePane workspaceId={ctx.activeWorkspaceId} view="docs" onDocsChanged={() => void ctx.refreshKnowledgePromptInfo()} />
       )}

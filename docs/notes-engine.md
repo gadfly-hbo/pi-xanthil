@@ -9,37 +9,36 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-25 · **E-METRIC2 Prompt 组装层数字锁约束** 完成。目标是让启用 analysis ExtractionTool 的 pi turn 在 system prompt 层显式约束 MetricSnapshot「代码计算值」不可被模型重推/改算，同时硬化 MCP tool description。
+- 最近更新：2026-06-25 · **E-COLLECT2 收集前端面板** 完成。目标是在知识库「收集」tab 复用 ChatPane 的联网 collect session，并允许把 assistant 回复保存为知识库资料。
 - 进度：
-  - **Prompt 前缀数字锁（落点 `server/src/prompt-blocks.ts` + `server/src/pi-adapter.ts`）**：
-    - 新增 `BLOCK_METRIC_LOCK`，内容为 `[数据指标约束]`，明确 MetricSnapshot 中标注「代码计算值」的数字禁止重新推导或自行算术运算，只可引用展示、解读业务现象、推断根因、提供策略建议。
-    - `assembleSystemPrompt(additionalPrompt, { injectExtractionToolSystem })` 支持可选注入；默认不传 flag 时行为零变化。因稳定 prompt block 内容变化，`PROMPT_SCHEMA_VERSION` 从 `v2` 升到 `v3`。
-    - `runPiTurn` / `runPiPrompt` 增加可选 `injectExtractionToolSystem?: boolean`，仅透传给 `assembleSystemPrompt`，不新增 `ClientMessage` 字段。
-  - **Chat 入口自判 flag**：
-    - 普通 chat 入口在 legacy `server/src/index.ts`，flow chat 在 `server/src/routes/engine.ts`；两处按 `listExtractionTools().some(tool => tool.category === "analysis")` 自判后传 `injectExtractionToolSystem`。
-    - 本卡未改 hooks / commands / skill / knowledge 注入链路；未接 multi-agent execute 的 `systemPromptPrefix` 路径，避免扩大题面范围。
-  - **MCP tool description 数字锁硬化（落点 `server/src/mcp/extraction-tools-mcp.ts`）**：
-    - `toMcpTool()` 返回的 tool description 追加「工具返回的 MetricSnapshot 数值为代码确定性计算结果，模型禁止修改或重新计算；只可解读、推因、建议」。
-    - `cleanDataPath` 参数 description 同步追加同一约束，确保工具选择/参数层也能看到数字锁。
-  - **类型收敛**：
-    - `server/src/extraction-tool-metric.ts` 的 `inferPeriodFromPath()` 对正则 capture 加非空断言，修复 strict TS 下 `string | undefined` 报错；运行语义不变。
+  - **CollectPane 新增（落点 `web/src/components/CollectPane.tsx`）**：
+    - 复用 `<ChatPane>`，props 全部取自 `TabContext` 的 `collect*` 字段：`collectMessages` / `collectRunning` / `collectSessionId` / `onCollectSend` / `onCollectStop` / runtime / compact handlers。
+    - 顶部固定提示「联网收集 · 仅本窗口可联网，回复请核对来源链接」；发送仍走 X-COLLECT0 已接好的 `collectWeb:true`，本卡不改 App 接缝。
+    - assistant 消息操作区显示「存为资料」；点击后弹小框确认/编辑标题，内容取该条 assistant 文本，提交 `api.createKnowledgeDoc(workspaceId, { title, content, tags:["收集"], scope:"workspace" })`。
+    - 保存成功后显示「已存入知识库」，本地把该消息标为「已保存」，并调用 `ctx.refreshKnowledgePromptInfo()` 更新顶部知识库计数/状态。
+  - **ChatPane 可选消息 action 插槽（落点 `ChatPane.tsx` + `MessageRow.tsx`）**：
+    - `ChatPane` 新增可选 `renderMessageAction?: (message: UiMessage) => ReactNode`，默认不传时普通 chat 行为零变化。
+    - `MessageRow` 在 assistant hover 操作区渲染 action，与原 `CopyButton` 同层；不改消息结构、不新增 `UiMessage` 字段。
+  - **知识库 tab 挂载（落点 `web/src/tabs/DataTabs.tsx`）**：
+    - `activeTab==="knowledge_base" && activeSubTab==="kb_collect"` 渲染 `<CollectPane ctx={ctx} />`。
+    - 未改 `App.tsx` / `constants.ts` / `types.ts` / 后端；未新增 D 后端，存资料只调既有 `POST /api/workspaces/:id/knowledge`。
 - 校验：
-  - **本次收尾**：`npm run typecheck` ✅（server + web）、`npm run build` ✅（warning 仅既有 Vite chunk / dynamic import）、`node --experimental-strip-types --test server/src/pi-adapter-skillpaths.test.ts` ✅、`node --experimental-strip-types --test server/src/extraction-tool-metric.test.ts` ✅。
-  - 验收覆盖：新增 `runPiTurn conditionally injects metric lock prompt for extraction tools` 测试，断言 `--system-prompt` 含 `[数据指标约束]`、`MetricSnapshot`、`禁止重新推导或自行算术运算`。
+  - **本次收尾**：`npm run typecheck` ✅（server + web）、`npm run build` ✅（warning 仅既有 Vite chunk / dynamic import / chunk size）。
+  - 本地服务点检：前端 Vite 曾以 `http://127.0.0.1:5174/` 启动；现有后端 `http://127.0.0.1:8787/api/health` 在提权 curl 下返回 `{"ok":true}`。未做浏览器手工点击验收。
 - 下一步：
+  - **E-COLLECT2 浏览器验收**：进入「知识库 → 收集」，发起一次联网 collect chat，确认回复产生后 hover assistant 消息可见「存为资料」，保存后在「资料库/检索」能看到该文档与 tag「收集」。
+  - **保存后资料库刷新联动**：当前只刷新知识库 prompt info；如果用户在另一个 tab 已打开资料库，需要切回资料库时由 `KnowledgeBasePane` 自身 reload。若产品要求保存后立即跳转/强刷资料库，需要新增 UI 行为确认。
   - **E-METRIC2 联调 smoke**：在带 analysis 工具的真实工作区跑一次 chat/flow chat pi turn，检查 `process_start.args` 的 `--system-prompt` 确含数字锁段；再通过 MCP `tools/list` 或真实工具调用确认 tool description 暴露禁止重计约束。
-  - **multi-agent 是否也需要数字锁**：当前按题面只覆盖 chat/flow chat；如果后续要求 multi-agent 节点也可调用 analysis MCP 工具，需要给 `runMultiAgent` / step `runPiTurn` 路径增加同类 flag，由总控确认范围。
   - **Chat 侧「引用全文」UI 开关**：当前 `fullDocMode` 仅 server 端实装，前端 Chat composer 未加触发 UI。需把 `injectKnowledgePrompt` 单一开关扩为「关闭 / chunk 注入 / 全文注入」三态，通过 `ClientMessage` 透传至 server `buildKnowledgePrompt`。**该改动会触及 `types.ts` 接缝（`ClientMessage.injectKnowledgePrompt` 字段语义扩展）+ `App.tsx` 状态扩展**，需总控审接缝。
-  - **fullDocMode 与 `withKnowledgePrompt` 衔接**：当前 `withKnowledgePrompt(workspaceId, requested, query, systemPrompt)` 第二参数仍是 `boolean | undefined`，未透传 `fullDocMode`；如果 UI 开关落地，需要把签名扩为 `boolean | { mode: "chunk" | "full" }` 或拆成两个 helper，由总控拍板接缝。
-  - 监测引擎遗留 smoke（LLM draft 真实模型 + 多 workspace 隔离单测）仍未做。
-  - E-PROMPT2 真实模型 smoke 仍欠（旧 backlog）。
+  - 监测引擎遗留 smoke（LLM draft 真实模型 + 多 workspace 隔离单测）仍未做；E-PROMPT2 真实模型 smoke 仍欠（旧 backlog）。
 - 阻塞：无。
 - 开放问题（需总控）：
-  1. **E-METRIC2 覆盖范围**：multi-agent execute / evaluation runner / autonomous runner 是否也需要数字锁前缀？当前仅按题面覆盖普通 chat 与 flow chat。
-  2. **E-KB4 触发口径**：「引用全文」UI 是单独开关还是替换现有「知识库注入」chip？是否做成三态（关 / chunk / 全文）？涉及 `ClientMessage.injectKnowledgePrompt` 接缝字段升级，E 不擅改。
-  3. **E-KB4 阈值参数化**：题面写死 `0.75` 与 `2.0`；是否要在 `KnowledgeInjectionOptions` 暴露 `fullDocThreshold/fullDocDominanceRatio` 供 ChatPane 或评测覆盖？当前实装是硬编码常量。
-  4. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空（旧问题，未答）。
-  5. 记忆→skill 默认阈值仍待确认（旧问题，未答）。
+  1. **E-COLLECT2 资料刷新口径**：保存为资料后是否需要自动切到「资料库」并刷新，还是保持当前「收集」上下文只给成功提示？当前实现选择后者。
+  2. **E-METRIC2 覆盖范围**：multi-agent execute / evaluation runner / autonomous runner 是否也需要数字锁前缀？当前仅按题面覆盖普通 chat 与 flow chat。
+  3. **E-KB4 触发口径**：「引用全文」UI 是单独开关还是替换现有「知识库注入」chip？是否做成三态（关 / chunk / 全文）？涉及 `ClientMessage.injectKnowledgePrompt` 接缝字段升级，E 不擅改。
+  4. **E-KB4 阈值参数化**：题面写死 `0.75` 与 `2.0`；是否要在 `KnowledgeInjectionOptions` 暴露 `fullDocThreshold/fullDocDominanceRatio` 供 ChatPane 或评测覆盖？当前实装是硬编码常量。
+  5. E-PROMPT1 当前要求每个 body 占位变量均非空后才允许插入；请确认变量是否应允许显式留空（旧问题，未答）。
+  6. 记忆→skill 默认阈值仍待确认（旧问题，未答）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -96,6 +95,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **ChatPane 抽屉化布局契约（2026-06-14，2026-06-15 polish）**：三个助手面板（Fork/@工具/委派）不再内联在 composer 列，改为 ChatPane 内部右侧可调宽抽屉。ChatPane 根容器横向 flex（左主列 flex-1 + 右抽屉 shrink-0），不动 App 布局、不动成果面板、不动后端。抽屉宽度 clamp [360px, 容器 60%]，localStorage 持久化（key `chatpane.assistDrawerWidth`），零新依赖；拖拽和 mount/window resize 必须共用同一 clamp 逻辑，避免已存大宽度在窄屏把主列压没。ForkBranchPanel 满高 flex 列（去 max-h-[360px]），分支 tabs/输入 shrink-0，会话区 flex-1 overflow-y-auto。抽屉头是三助手标题唯一显示位置，子组件内不再重复标题；ManualAnalysisToolCard / DelegateSubAgentCard 在抽屉内通过 `embedded` 态去自身外层 border/rounded/bg/padding，避免边框套边框，默认非嵌入 card 样式保持不变。
 - **委派抽屉响应式契约（2026-06-22）**：`DelegateSubAgentCard` 的 embedded 模式必须使用单列 `minmax(0,1fr)`，所有 grid/select 子项显式 `min-w-0`，防止 native select 的 min-content 把 360–460px 抽屉撑宽；非 embedded 卡才保留 `md` 双列。`SkillSelector` 默认 `up+left` 供 ChatPane composer 使用，embedded 委派卡显式用 `down+left`，下拉宽度上限为 `min(20rem, 100vw-2rem)`；指定 skill 的 trigger 必须放在三态按钮下方独立行，不能与 tooltip/按钮挤在同一行。
 - **ChatPane fork/delegate 前端边界**：普通日常 chat 仍从 `folderScope.type === "session"` 取活跃 session；专题 `anax_chat` 是明确例外：`folderScope` 传 `{type:"flow", flowId}`（让 clean_data/report/数据 tab 按专题 flow 作用域），但 ChatPane 的 session 工具（@工具/Fork/委派）走 `activeSessionId`，默认只从 `folderScope.type==="session"` 推断 → flow scope 下取不到 → 三按钮禁用。**故 flow scope 复用 ChatPane 必须显式传 `sessionId` prop**（`ChatPane:273 activeSessionId = p.sessionId || folderScope 推断`），专题传 `zhuantiChatSessionId`；卡3 初版只传 folderScope+disabled、漏传 sessionId 致三按钮禁用，2026-06-18 总控快修补上（clean_data 加载 `ChatPane:337-344` 早已支持 flow scope，故只缺 sessionId 一处）。send/runtime 仍由 App 层独立 zhuantiChat* 状态驱动。fork 分支是一个真实 session，前端只复用现有 gateway `send`、`listMessages` 和 `pi_event` 订阅；delegate 子 agent 只走 REST + 轮询。回流一律作为主 session 普通 `onSend` 消息注入，不新增旁路写 transcript。
+- **CollectPane 复用 ChatPane 边界（2026-06-25 E-COLLECT2）**：知识库「收集」是专属 collect session 的 ChatPane 复用，不重写聊天 UI、不新增消息协议。联网能力由 App/X-COLLECT0 的 `onCollectSend(... collectWeb:true)` 保证，CollectPane 只消费 `TabContext.collect*`。assistant 级「存为资料」走 `ChatPane.renderMessageAction` 可选插槽 + `MessageRow.action` hover 操作区扩展，默认不传时普通 chat 行为零变化；保存资料只调 D 域既有 `api.createKnowledgeDoc` / `POST /api/workspaces/:id/knowledge`，不得新增 E 后端或绕过知识库入库校验。后续类似「专题 seed」「收集存资料」这类消息级局部动作，优先复用可选 action 插槽，不要把动作状态塞进 `UiMessage` 或扩 `ClientMessage`。
 - **Fork 分支路径作用域回退父 session（2026-06-14 快修2.3）**：fork 分支是独立 session、名下无注册路径。`handleSend` 解析输出/数据路径时必须把作用域回退到父任务 session：`pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id`，用于 `buildRegisteredPathContext` 的 `sessionId` 与 `fallbackOutputDir`。否则 `output-paths.selectOutputPath` 逐级回退（scoped report→scoped clean_data→workspace report→workspace clean_data）会坍缩到 workspace 级最近 clean_data 源目录，导致分支产物写到数据源目录而非任务 `060_reports`。数据安全不受影响：fork 继承的是父 clean_data，`draw_data` 仍被 `buildRegisteredPathContext` 排除且永不作为输出目标。
 - **委派数据安全**：子 agent 选择 `020_clean` 文件时，前端只传 `WorkspacePath.path`，不读取文件内容，不把数据样本/列名/剖析结果送入任何前端 LLM 功能。
 - **subagent ↔ skill 绑定（F 卡，2026-06-16）**：`SubAgentTaskInput.skillPaths?`（双侧 types，三态同 `node.skillPaths`：undefined 继承/[]禁用/非空子集）。delegate 端点(`index.ts /api/sessions/:id/delegate`)用 `skills.ts` 的 **`parseRequestedSkillPaths(workspaceRoot, value, {mode:"strict"})`** 解析（三态 + 数组守卫，复用 `validateSkillPaths`，与 workflow 同校验口径）→ 透传到 `runDelegatedSubAgent` → `runPiTurn({skillPaths})` 经 pi-adapter `--skill` 注入，无新注入机制。前端 `DelegateSubAgentCard` 复用 `SkillSelector` + 三态 `skillMode`。子 agent **成功完成后调 `recordSkillActivationForRun`**，激活进 A 生产遥测（与 flow/workflow/autonomous 同口径）。三态解析有 `skills.test.ts` 单测覆盖。

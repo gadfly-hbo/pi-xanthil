@@ -239,7 +239,10 @@
       "Bash(awk '/TASKS *=/{f=1} f&&/\\\\{/{c++} f{print NR\": \"$0} f&&/\\\\},?$/{if\\(c>=1\\){n++}; if\\(n>=2\\)exit}' docs/wiki.html)",
       "Bash(launchctl unload *)",
       "Bash(crontab -l)",
-      "Bash(launchctl list *)"
+      "Bash(launchctl list *)",
+      "Bash(uvx --version)",
+      "Bash(export MINIMAX_API_KEY='sk-cp-0Ha6KEPA59f5gFEVFoyRRP6lv90ywdrtYsq-q8bg1REGpgN1Vm3VJR2wTFZi9MPCKT6Tu-fmfwoZKAc8kLXONRjqk_kVdSFl6BionAzaqbBM1Zs50Bsy9nM')",
+      "Bash(export MINIMAX_API_HOST='https://api.minimaxi.com')"
     ]
   }
 }

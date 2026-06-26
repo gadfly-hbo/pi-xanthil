@@ -1,4 +1,4 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent } from "react";
+import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
 import { Archive, ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Square, WandSparkles, Wrench, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
@@ -41,6 +41,14 @@ interface Props {
   runtimeNotice: string;
   onCompact: () => void;
   onRefreshRuntime: () => void;
+  renderMessageAction?: (message: UiMessage) => ReactNode;
+  // E-COLLECT-TRIM：能力开关（默认 false=保持现状；收集场景关掉这些会话工具/沉淀/选择器）。
+  hideSediment?: boolean;   // 沉淀 trace + 沉淀 prompt
+  hideSkill?: boolean;      // skill 选择器
+  hidePromptLib?: boolean;  // prompt 库
+  hideBizReq?: boolean;     // 业务需求下拉
+  hideToolPanel?: boolean;  // @工具
+  hideDelegate?: boolean;   // 委派子 agent
 }
 
 function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (v: string) => void }) {
@@ -316,7 +324,9 @@ export function ChatPane(p: Props) {
     let cancelled = false;
     setConsolidationCount(0);
     setConsolidationNotice(null);
-    if (!p.workspaceId || !activeSessionId) return () => { cancelled = true; };
+    // 沉淀计数只服务于（已隐藏的）沉淀 trace 按钮；hideSediment 场景（如收集，session 属全局收集容器）
+    // 不取计数——否则 workspaceId(业务ws)+sessionId(收集ws) 跨工作区组合会被后端 403。
+    if (p.hideSediment || !p.workspaceId || !activeSessionId) return () => { cancelled = true; };
     api.getSessionConsolidationCount(p.workspaceId, activeSessionId)
       .then(({ count }) => {
         if (!cancelled) setConsolidationCount(count);
@@ -325,7 +335,7 @@ export function ChatPane(p: Props) {
         if (!cancelled) setConsolidationNotice({ tone: "error", text: `计数加载失败：${error instanceof Error ? error.message : String(error)}` });
       });
     return () => { cancelled = true; };
-  }, [activeSessionId, p.workspaceId]);
+  }, [activeSessionId, p.workspaceId, p.hideSediment]);
 
   async function consolidateTrace() {
     if (!p.workspaceId || !activeSessionId || consolidatingTrace) return;
@@ -628,6 +638,7 @@ export function ChatPane(p: Props) {
           {p.compacting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Gauge className="h-3.5 w-3.5" strokeWidth={1.75} />}
           {p.compacting ? "正在整理" : "整理上下文"}
         </button>
+        {!p.hideSediment && (
         <button
           onClick={() => void consolidateTrace()}
           disabled={!p.workspaceId || !activeSessionId || consolidatingTrace}
@@ -637,6 +648,8 @@ export function ChatPane(p: Props) {
           {consolidatingTrace ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Archive className="h-3.5 w-3.5" strokeWidth={1.75} />}
           {consolidatingTrace ? "沉淀中…" : `沉淀 trace（${consolidationCount}）`}
         </button>
+        )}
+        {!p.hideSediment && (
         <button
           onClick={() => void distillPrompt()}
           disabled={!p.workspaceId || !activeSessionId || distillingPrompt}
@@ -646,6 +659,7 @@ export function ChatPane(p: Props) {
           {distillingPrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" strokeWidth={1.75} />}
           {distillingPrompt ? "提炼中…" : "沉淀 prompt"}
         </button>
+        )}
         {p.runtimeNotice && <span className="truncate text-[11px] text-neutral-400" title={p.runtimeNotice}>{p.runtimeNotice}</span>}
         {consolidationNotice && (
           <span
@@ -680,7 +694,7 @@ export function ChatPane(p: Props) {
           )}
 
           {visibleMessages.map((m) => (
-            <MessageRow key={m.id} m={m} showTrace={showTrace} />
+            <MessageRow key={m.id} m={m} showTrace={showTrace} action={p.renderMessageAction?.(m)} />
           ))}
 
           {activeSessionId && (
@@ -716,6 +730,7 @@ export function ChatPane(p: Props) {
       <div className="shrink-0 px-6 pb-5">
         <div className="mx-auto max-w-[760px]">
           <div className="mb-2 flex flex-wrap items-center gap-2">
+            {!p.hideToolPanel && (
             <button
               onClick={() => setActiveAssistPanel((current) => current === "tool" ? null : "tool")}
               disabled={!canUseSessionTools}
@@ -730,6 +745,7 @@ export function ChatPane(p: Props) {
               <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
               @工具
             </button>
+            )}
             <button
               onClick={() => setActiveAssistPanel((current) => current === "fork" ? null : "fork")}
               disabled={!canUseSessionTools}
@@ -744,6 +760,7 @@ export function ChatPane(p: Props) {
               <GitBranch className="h-3.5 w-3.5" strokeWidth={1.75} />
               Fork 分支
             </button>
+            {!p.hideDelegate && (
             <button
               onClick={() => setActiveAssistPanel((current) => current === "delegate" ? null : "delegate")}
               disabled={!canUseSessionTools}
@@ -758,6 +775,7 @@ export function ChatPane(p: Props) {
               <Bot className="h-3.5 w-3.5" strokeWidth={1.75} />
               委派子 agent
             </button>
+            )}
           </div>
 
           <div className="relative rounded-2xl border border-neutral-200 bg-white shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -845,13 +863,15 @@ export function ChatPane(p: Props) {
                     />
                   )}
                 </label>
+                {!p.hideSkill && (
                 <SkillSelector
                   scope={p.workspaceId ? { type: "workspace", workspaceId: p.workspaceId } : null}
                   selectedPaths={selectedSkillPaths}
                   onChange={setSelectedSkillPaths}
                 />
-                <PromptSelector workspaceId={p.workspaceId} onInsert={insertPrompt} />
-                {businessRequirementContexts.length > 0 && (
+                )}
+                {!p.hidePromptLib && <PromptSelector workspaceId={p.workspaceId} onInsert={insertPrompt} />}
+                {!p.hideBizReq && businessRequirementContexts.length > 0 && (
                   <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
                     <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
                     <select

@@ -145,6 +145,19 @@ export interface Session {
   updatedAt: number;
 }
 
+// X-COLLECT3：知识库「收集」会话（挂全局收集容器 ws，独立于业务工作区）+ 文件夹。
+export interface CollectSession extends Session {
+  collectFolderId: string | null;
+}
+
+export interface CollectFolder {
+  id: string;
+  name: string;
+  sort: number;
+  createdAt: number;
+  updatedAt: number;
+}
+
 export type SessionRuntimeStatus = "idle" | "running" | "compacting" | "error";
 
 export interface SessionRuntime {
@@ -384,6 +397,22 @@ export interface MetricSnapshot {
   status: "normal" | "warning" | "alert";  // 阈值判定，代码打标
   thresholdNote?: string;
   source: "extraction_tool" | "bi_aggregation";  // 产出链路
+}
+
+// ── 数字锁产出侧校验（X-MLOCK0 契约，2026-06-25）──
+// 对 tool-use 链路 assistant 自由文本中复述的数字做 best-effort 回校；
+// 只读 MetricSnapshot.value + answerText，不阻断、不改写、不自动重试。
+export interface MetricVerification {
+  verdict: "ok" | "mismatch";
+  hits: MetricVerificationHit[];
+}
+
+export interface MetricVerificationHit {
+  name: string;
+  expected: number;
+  foundInText: number | null;
+  status: "matched" | "suspect" | "unreferenced";
+  relDiff: number | null;
 }
 
 export type FlowRunStatus = "running" | "success" | "failed" | "aborted";
@@ -1763,7 +1792,7 @@ export type PiEvent =
 // ---- WebSocket protocol: client <-> gateway ----
 
 export type ClientMessage =
-  | { type: "send"; sessionId: string; text: string; model?: string; skillPaths?: string[]; injectRulesPrompt?: boolean; injectKnowledgePrompt?: boolean; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }
+  | { type: "send"; sessionId: string; text: string; model?: string; skillPaths?: string[]; injectRulesPrompt?: boolean; injectKnowledgePrompt?: boolean; collectWeb?: boolean; businessRequirementContext?: { pathId: number; markdownPath: string; jsonPath?: string } }
   | { type: "abort"; sessionId: string }
   | { type: "send_flow"; flowId: string; text: string; model?: string; systemPrompt?: string; skillPaths?: string[]; injectRulesPrompt?: boolean; injectKnowledgePrompt?: boolean }
   | { type: "abort_flow"; flowId: string }
