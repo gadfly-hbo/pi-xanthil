@@ -10,46 +10,29 @@
 
 > **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
 
-- 最近更新：2026-06-26 · **零幻觉·数据可信地基 v2.3 终审完成**（D-ZH3/6/7/8 + 总控接缝收口）
+- 最近更新：2026-06-26 · **记忆 v2.0 缺口3/4 维护与升级 UI 接线**（D 纯前端，后端已就绪）
 - 进度：
-  - **D-METRIC1/3 + D-ZH3（基础适配 + 来源标签，2026-06-25/26 完成）**：见上轮 §0。
-  - **D-ZH6（数据充分性预检，2026-06-26 完成）**：
-    - 新建 `server/src/coverage-check.ts`(~120 行)：`checkCoverage({ aggregations, findings?, metrics? })` → `CoverageCheckResult { verdict, rowCount, periodCoverage, baselineAvailable, metricCoverage, warnings }`。
-    - 判定规则：总行数 < 10 → fail（弃答）；< 100 → warn（降置信）；finding 缺 baseline → warn；指标覆盖缺口 → warn；空字段 → fail。
-    - `renderCoverageBlock` 渲染 prompt 注入块：fail → 要求 LLM 弃答仅输出缺口；warn → 降置信并列出限制。
-    - `monitor-llm.ts buildDraftPrompt` 注入 coverage block，fail 时追加「仅输出 missingData」指令。
-    - 安全红线：只读 BiAggregationDataset 元信息 + finding 衍生字段，不读 rows/cells/draw_data。
-  - **D-ZH7（C-mini 指标语义层，2026-06-26 完成）**：
-    - `MetricDefinition` 双侧 types 扩 C-mini 字段：`displayName?` / `aggregation?` / `periodGrain?` / `filters?` / `denominator?` / `version?`。
-    - 总控终审补齐持久化接缝：`metric_definitions` 新增六列，旧库启动时 idempotent `ALTER TABLE`；`db/viz.ts` parse/create/update 与 `routes/viz.ts` POST 接通；双侧 `MetricDefinitionInput` 同步扩字段。
-    - `MetricSnapshot` 双侧 types 加 `metricId?: string` 字段。
-    - `MetricHint` 加 `metricId?`，`coerceMetricHints` 透传，`buildMetricSnapshotsFromHints` 绑定到 snapshot。
-    - `biAggregationToMetricSnapshots` 从 `f.boundTo.metricId` 绑定到 snapshot。
-    - `metric-source-label.ts` 的 `sourceName` 优先展示 metricId（如 `gmv(工具/summaryKey)`）。
-    - `metric-verification-events.ts` 的 `coerceMetricSnapshot` 补 `metricId` 解析。
-  - **D-ZH8（关键指标双路径对账，2026-06-26 完成）**：
-    - 新建 `server/src/metric-reconciliation.ts`(~140 行)：`reconcileMetricSnapshots(extSnaps, biSnaps)` 按 metricId+period 配对。
-    - 双侧 types 加 `ReconciliationVerdict` / `MetricReconciliationPair` / `MetricReconciliationResult`。
-    - 对账逻辑：仅双方都有 metricId 的 snapshot 参与；配对成功 → 比较 value（≤0.5% → matched，>0.5% → mismatch）；仅一侧 → missing_pair；无配对 → unregistered。
-    - `renderReconciliationBlock` 渲染告警块：matched → 空串；mismatch/missing_pair/unregistered → 告警文本（unregistered 明示「口径未登记/无法对账」）。
-    - 总控终审核心收口：同一侧重复 `metricId+period` 不再被 Map 静默覆盖，改为 duplicate mismatch 告警。
-    - common-mode failure 仍是边界外（双方同向偏差无法检测）。
-  - 接缝纪律：types.ts 只扩字段不删不改；未碰 db.ts、未碰他域路由。
+  - **D-MEM-MAINTAIN-UI（缺口3 立即维护 UI，2026-06-26 完成）**：
+    - `web/src/lib/api/engine.ts` 加 `maintainMemory(workspaceId, { dryRun })` → `POST /api/workspaces/:id/memory/maintain`（engineRouter:1550）；附 `MemoryMaintenanceResult` 局部类型（不入接缝层 types.ts，对齐 server/src/memory-maintenance.ts:44）。
+    - `RulesPane.tsx` 头部工具区加「立即维护」按钮：先 dryRun 拉 changes 明细，预览块按 action（promote/demote/retire）三色着色，显示 `id`、`conf X→Y`、`validUntil` 变更、`reason`；用户确认 `window.confirm` 后非 dryRun 执行 + `refreshData`/`refreshPreview`/`onRulesChanged`；空库/无变更走 `maintainNote` 友好提示。
+  - **D-MEM-PROMOTE-UI（缺口4 升级 Skill UI，2026-06-26 完成）**：
+    - `web/src/lib/api/engine.ts` 加 `promoteMemorySkills(workspaceId, body?)` → `POST /api/workspaces/:id/memory/promote-skills`（engineRouter:1563）；附 `MemoryToSkillResult`/`MemorySkillClusterView`/`MemorySkillPromotionOutcome` 局部类型。**关键契约**：thresholds 字段需**平铺到 body 根**（与 server `parseMemorySkillPromotionBody` 对齐，不接受嵌套 `thresholds:{}`）——本卡只用 dryRun + 默认阈值，故 UI 不暴露阈值入参。
+    - `RulesPane.tsx` 头部工具区加「升级 Skill」按钮：dryRun 列 clusters（tag/items.length/highConfidenceCount/totalUsedCount/positiveSignals/reasons），eligible 绿框、未达阈值灰框；用户二次确认（**明示"会调 LLM"**）后执行 → 提示「N 个候选已入 Skill 候选库(registry candidate)，去实验场评测」+ **强调不自动启用**。
+  - 接缝纪律：未碰 `types.ts`/`api.ts`/`constants.ts`/`App.tsx`；types 走 `lib/api/engine.ts` 局部 export，与 server `memory-maintenance.ts` / `memory-to-skill.ts` 行号对齐注释。
 - 校验：
-  - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
   - `npm -w web run build`：✅ 仅既有 chunk size warning
-  - `node --test` 相关：✅ **48/48**（coverage/reconciliation/extraction/monitor/source-label/verification-events）
-  - 安全 grep：✅ 仅注释命中，无功能代码
+  - 红线 grep（数据探索隔离）：✅ 无匹配
+  - 接缝层 git diff：✅ 本卡未碰（types.ts 既有 XanCommand toolIds diff 为他卡遗留）
 - 下一步（接续优先级）：
-  - ① 用户 review 后手动提交（D-METRIC1/3 + D-ZH3/6/7/8 改动未 commit）。
-  - ② 可选端到端验证：给某 analysis 工具补 `metricHints` + `metricId` → 跑工具 → 跑监测 → 调 `reconcileMetricSnapshots` 验证双路径对账闭环。
-- 阻塞 / 待总控：
-  - 无。
+  - ① 用户 review 后手动提交本卡（feat/data-memory-maintain-ui + feat/data-memory-promote-ui 合并落地）。
+  - ② 实跑点检：选一个 workspace → 「立即维护」→ 预览有/无变化两路径 → 应用后看 confidence/validUntil 真变；「升级 Skill」→ 预览簇 → 执行后去 SkillManagementPane 看 candidate。
+  - ③ 上一轮 v2.3 遗留：D-METRIC1/3 + D-ZH3/6/7/8 改动仍待 commit；renderReconciliationBlock UI 接入点待总控指定。
+- 阻塞 / 待确认：
+  - 无硬阻塞。
 - 开放问题：
-  - common-mode failure（双方同向偏差）无法检测——需要第三方真源（如财务系统对账）才能发现。
-  - C-mini 字段已进入 DB/API/types；IndicatorsPane 编辑入口待后续补 UI。
-  - 对账结果尚未接入任何 UI/报告入口——`renderReconciliationBlock` 已就绪，接入点待总控指定。
+  - 升级 Skill 当前不暴露 thresholds 调节 UI（用 server 默认 0.75/3/6/3）；如要让用户自调，需 form 控件 + 平铺到 body 根传递。
+  - 维护/升级两个面板的 dryRun 预览均不持久化，刷新或切换 workspace 会丢失——按 ponytail 不引入 store，用户确认前重新跑即可。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -362,6 +345,16 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - SQL 参数化查询(`{{start_date}}`)、增量取数水位线、Python 子进程隔离 — 历史 P1。
 - 商圈/行业/竞品/the-crowd 看板待建（数据源待定）。
 - Python 工具运行时缺依赖的"友好提示"（ImportError → summary.json 引导 `pip install`）与 server 启动 `pip check` / import 预热 — 低优可选增强（见 §0 下一步 ④⑤）。
+
+---
+
+**记忆 v2.0 缺口3/4 维护与升级 UI 接线（D-MEM-MAINTAIN-UI + D-MEM-PROMOTE-UI, 2026-06-26）**
+- **后端在 engineRouter 而非 dataRouter**：`POST /memory/maintain` 与 `POST /memory/promote-skills` 都在 `server/src/routes/engine.ts:1550/1563`，故前端调用必须挂在 `lib/api/engine.ts`（engineApi）而非 `lib/api/data.ts`。沿用既有 SkillManagementPane "D 域 Pane 跨域调 E 端点"模式，注释里把"engineRouter"四字写死供后续 grep 定位。
+- **响应类型不入接缝层 types.ts**：`MemoryMaintenanceResult`/`MemoryToSkillResult` 等结构是 server 内部域契约（对应 `memory-maintenance.ts:44` / `memory-to-skill.ts:32`），与既有 `SkillPackage`/`SessionConsolidationResult` 同范式 export 在 `lib/api/engine.ts` 顶部。**关键收益**：① 不污染接缝 types；② 改后端结构时一侧编译错误立即暴露漂移；③ 避免 web `MemoryMaintenanceChange.before.validUntil` 与 server `MemoryItemPatch` 之间的过度耦合（前端只读 patch 摘要展示，不还原 patch 对象）。
+- **缺口4 thresholds 字段平铺到 body 根（非嵌套）**：`parseMemorySkillPromotionBody`（engine.ts:2151）的 thresholds（highConfidence/minHighConfidenceItems/minUsedCount/minPositiveSignals）**从 raw 根读，不从 raw.thresholds 读**。第一版 API client 若写成嵌套 `body.thresholds = {...}` server 会全部走默认值，调用看似成功但阈值永远生效不了。本卡 API client 直接平铺字段；本期 UI 不暴露阈值入参（用默认 0.75/3/6/3），如需暴露需 form 控件 + 平铺到 body。
+- **dryRun → 预览 → 确认 → apply 二段提交范式**：维护按钮 = `dryRun:true` 拉明细 → 预览块按 action 三色（promote 绿 / demote 琥珀 / retire 玫红）→ `window.confirm` 二次确认 → `dryRun:false` 执行；升级 Skill 同范式，**但二次确认必须明示「会调 LLM」**（区别于纯算术维护）。预览块不持久化，刷新/切换 workspace 会丢——按 ponytail 不引 store，用户重新跑即可。
+- **执行后联动刷新**：维护改 confidence/validUntil → `refreshData` + `refreshPreview` + `onRulesChanged?.()` 全调；升级 Skill 不改 memory 本体（只入 skill registry candidate）→ 不必 refreshData，提示用户去 SkillManagementPane 看候选即可。
+- **强调"不自动启用"**：升级 Skill 的预览块顶部加琥珀色提示行 + 二次确认对话框 + 完成 toast 都重复"status=candidate / 不自动启用 / 去实验场评测"——这是缺口4 的关键安全契约（防误把未评测的高频经验直接进入主提示词链路）。
 
 ---
 
