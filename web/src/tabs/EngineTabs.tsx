@@ -138,7 +138,8 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
   const { activeTab, activeSubTab } = ctx;
   return (
     <>
-      {activeTab === "zhuanti" && activeSubTab === "anax_chat" && (
+      {/* 专题主对话：由「数据分析」(分析报告组 view) 承载 ZhuantiChatPane，对齐日常 view=主对话（原独立「对话探索」入口已去除）。 */}
+      {activeTab === "zhuanti" && activeSubTab === "view" && (
         <ZhuantiChatPane ctx={ctx} />
       )}
 

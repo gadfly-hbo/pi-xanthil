@@ -10,7 +10,7 @@ import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
 import { SettingsModal } from "@/components/SettingsModal";
 import { QuickNotesPane } from "@/components/QuickNotesPane";
 import { useTabVisibility } from "@/lib/useTabVisibility";
-import { getSubTabsForTab, ONTO_SUB_TABS, LAB_SUB_TABS, LAB_SUB_IDS, ZHUANTI_SIDEBAR_TABS, ZHUANTI_SIDEBAR_IDS, type SubTab } from "@/lib/constants";
+import { getSubTabsForTab, getL2GroupsForTab, getActiveL2Group, getDefaultSubTab, ONTO_SUB_TABS, LAB_SUB_TABS, LAB_SUB_IDS, ZHUANTI_SIDEBAR_TABS, type SubTab } from "@/lib/constants";
 import { DataTabs } from "@/tabs/DataTabs";
 import { EngineTabs } from "@/tabs/EngineTabs";
 import { HealthTabs } from "@/tabs/HealthTabs";
@@ -628,7 +628,7 @@ export default function App() {
     setZhuantiTasks((cur) => [task, ...cur.filter((item) => item.flow.id !== task.flow.id)]);
     selectZhuantiTaskData(task);
     setActiveTab("zhuanti");
-    setActiveSubTab("anax_chat");
+    setActiveSubTab("view");
   }, [activeWorkspaceId, selectZhuantiTaskData]);
 
   const handleSelectZhuantiTask = useCallback((flowId: string) => {
@@ -636,7 +636,7 @@ export default function App() {
     if (!task) return;
     selectZhuantiTaskData(task);
     setActiveTab("zhuanti");
-    setActiveSubTab("anax_chat");
+    setActiveSubTab("view");
   }, [selectZhuantiTaskData, zhuantiTasks]);
 
   const renameZhuantiTask = useCallback(async (flowId: string, name: string) => {
@@ -718,7 +718,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "anax_chat" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "kb_collect" : tab === "health" ? "health_data" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "view" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "kb_collect" : tab === "health" ? "health_data" : "view");
     if (tab === "explore") {
       setActiveSessionId(sessions[0]?.id ?? null);
     }
@@ -982,6 +982,33 @@ export default function App() {
     activeFlow, zhuantiChatFlow, flows, rulesPromptEnabled, knowledgePromptEnabled,
   };
 
+  // L3 左竖栏按钮（分组类 tab：日常/专题），含报告路径告警与聚合数据安全提示。
+  const renderL3SubTabButton = (t: { id: SubTab; label: string }) => {
+    const active = t.id === activeSubTab;
+    return (
+      <button
+        key={t.id}
+        onClick={() => setActiveSubTab(t.id)}
+        className={cn(
+          "flex items-center rounded-md px-2.5 py-1.5 text-left text-[12.5px] transition-colors",
+          active
+            ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+            : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
+        )}
+      >
+        {t.label}
+        {t.id === "report" && !hasReportPath && (
+          <TriangleAlert className="ml-1 h-3.5 w-3.5 text-amber-500" strokeWidth={2} aria-label="未设置报告输出路径" />
+        )}
+        {t.id === "clean_data" && (
+          <span title="数据安全：可被 LLM 读取，不要放入明细数据">
+            <CircleAlert className="ml-1 h-3.5 w-3.5 text-amber-500" strokeWidth={2} aria-label="数据安全：可被 LLM 读取，不要放入明细数据" />
+          </span>
+        )}
+      </button>
+    );
+  };
+
   return (
     <div className="flex h-screen overflow-hidden bg-background text-foreground">
       {sidebarOpen && (
@@ -1066,41 +1093,81 @@ export default function App() {
           onOpenQuickNotes={() => setQuickNotesOpen(true)}
         />
 
-        {/* Sub-tab strip: 工作视图 | 原始数据 | 数据提取 | 聚合计算 | 聚合数据 | 数据探索 | 报告输出。重复(multi) 顶部 workflow tab 见 MultiAgentExecutionPane 三级 tab；专题(zhuanti) AnaX 子项见下方左竖栏。
+        {/* Sub-tab strip。分组类 tab(日常/专题)：横条 = L2 分组，L3 子项见下方左竖栏；其余 tab：横条 = 扁平二级 tab。
+            重复(multi) 顶部 workflow tab 见 MultiAgentExecutionPane 三级 tab；专题(zhuanti) 核心项见下方左竖栏。
             本体库(onto-xanthil) 的二级 tab 全部以左侧竖栏呈现（见下方），故此处顶部条对 onto 隐藏。 */}
-        {activeTab !== "onto_xanthil" && (
-        <div className="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
-          {getSubTabsForTab(activeTab).filter((t) => isVisible(activeTab + ":" + t.id) && (activeTab !== "zhuanti" || !ZHUANTI_SIDEBAR_IDS.has(t.id))).map((t) => {
-            const active = t.id === activeSubTab || (activeTab === "aggregate" && t.id === "skill" && LAB_SUB_IDS.has(activeSubTab));
+        {activeTab !== "onto_xanthil" && (() => {
+          const l2Groups = getL2GroupsForTab(activeTab);
+          if (l2Groups) {
+            const activeGroup = getActiveL2Group(l2Groups, activeSubTab);
             return (
-              <button
-                key={t.id}
-                onClick={() => setActiveSubTab(t.id)}
-                className={cn(
-                  "inline-flex h-7 items-center rounded-md px-2.5 text-[12px] transition-colors",
-                  active
-                    ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
-                    : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
-                )}
-              >
-                {t.label}
-                {t.id === "report" && !hasReportPath && (
-                  <TriangleAlert className="ml-1 h-3.5 w-3.5 text-amber-500" strokeWidth={2} aria-label="未设置报告输出路径" />
-                )}
-                {t.id === "clean_data" && (
-                  <span title="数据安全：可被 LLM 读取，不要放入明细数据">
-                    <CircleAlert
-                      className="ml-1 h-3.5 w-3.5 text-amber-500"
-                      strokeWidth={2}
-                      aria-label="数据安全：可被 LLM 读取，不要放入明细数据"
-                    />
-                  </span>
-                )}
-              </button>
+              <div className="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
+                {l2Groups
+                  .filter((g) => (g.leaf ? isVisible(activeTab + ":" + g.leaf) : g.children!.some((c) => isVisible(activeTab + ":" + c.id))))
+                  .map((g) => {
+                    const active = activeGroup?.id === g.id;
+                    const hasReportWarn = !hasReportPath && g.children?.some((c) => c.id === "report");
+                    const hasCleanData = g.children?.some((c) => c.id === "clean_data");
+                    return (
+                      <button
+                        key={g.id}
+                        onClick={() => { if (!active) setActiveSubTab(getDefaultSubTab(g)); }}
+                        className={cn(
+                          "inline-flex h-7 items-center rounded-md px-2.5 text-[12px] transition-colors",
+                          active
+                            ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+                            : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
+                        )}
+                      >
+                        {g.label}
+                        {hasReportWarn && (
+                          <TriangleAlert className="ml-1 h-3.5 w-3.5 text-amber-500" strokeWidth={2} aria-label="未设置报告输出路径" />
+                        )}
+                        {hasCleanData && (
+                          <span title="数据安全：可被 LLM 读取，不要放入明细数据">
+                            <CircleAlert className="ml-1 h-3.5 w-3.5 text-amber-500" strokeWidth={2} aria-label="数据安全：可被 LLM 读取，不要放入明细数据" />
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+              </div>
             );
-          })}
-        </div>
-        )}
+          }
+          return (
+            <div className="flex h-9 shrink-0 items-center gap-1 border-b border-neutral-200 px-4 dark:border-neutral-800">
+              {getSubTabsForTab(activeTab).filter((t) => isVisible(activeTab + ":" + t.id)).map((t) => {
+                const active = t.id === activeSubTab || (activeTab === "aggregate" && t.id === "skill" && LAB_SUB_IDS.has(activeSubTab));
+                return (
+                  <button
+                    key={t.id}
+                    onClick={() => setActiveSubTab(t.id)}
+                    className={cn(
+                      "inline-flex h-7 items-center rounded-md px-2.5 text-[12px] transition-colors",
+                      active
+                        ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
+                        : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
+                    )}
+                  >
+                    {t.label}
+                    {t.id === "report" && !hasReportPath && (
+                      <TriangleAlert className="ml-1 h-3.5 w-3.5 text-amber-500" strokeWidth={2} aria-label="未设置报告输出路径" />
+                    )}
+                    {t.id === "clean_data" && (
+                      <span title="数据安全：可被 LLM 读取，不要放入明细数据">
+                        <CircleAlert
+                          className="ml-1 h-3.5 w-3.5 text-amber-500"
+                          strokeWidth={2}
+                          aria-label="数据安全：可被 LLM 读取，不要放入明细数据"
+                        />
+                      </span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          );
+        })()}
 
         <div className="flex min-h-0 flex-1">
           {/* onto-xanthil：全部二级 tab 以左侧竖栏呈现（说明/对象/关系/指标/逻辑/动作/图谱/导入） */}
@@ -1147,34 +1214,36 @@ export default function App() {
               })}
             </nav>
           )}
-          {/* 专题：左侧竖栏 = 核心 5 项（对话探索/流水线/假设库/变更管理/readme）；数据/报告链路在顶部横条 */}
-          {activeTab === "zhuanti" && (
-            <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
-              {ZHUANTI_SIDEBAR_TABS.filter((t) => isVisible("zhuanti:" + t.id)).map((t) => {
-                const active = t.id === activeSubTab;
-                return (
-                  <button
-                    key={t.id}
-                    onClick={() => setActiveSubTab(t.id)}
-                    className={cn(
-                      "rounded-md px-2.5 py-1.5 text-left text-[12.5px] transition-colors",
-                      active
-                        ? "bg-neutral-100 font-medium text-neutral-900 dark:bg-neutral-800 dark:text-neutral-100"
-                        : "text-neutral-500 hover:bg-neutral-50 hover:text-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800/40 dark:hover:text-neutral-100",
-                    )}
-                  >
-                    {t.label}
-                  </button>
-                );
-              })}
-            </nav>
-          )}
+          {/* 日常：左侧竖栏 = 当前 L2 组的 L3 子项（叶子组「业务需求/readme」无竖栏） */}
+          {activeTab === "explore" && (() => {
+            const groups = getL2GroupsForTab("explore")!;
+            const children = (getActiveL2Group(groups, activeSubTab)?.children ?? []).filter((c) => isVisible("explore:" + c.id));
+            if (children.length === 0) return null;
+            return (
+              <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
+                {children.map(renderL3SubTabButton)}
+              </nav>
+            );
+          })()}
+          {/* 专题：左竖栏上区 = 当前 L2 组的 L3 子项（叶子组上区为空）；下区 = 专属 3 项（流水线/假设库/变更管理） */}
+          {activeTab === "zhuanti" && (() => {
+            const groups = getL2GroupsForTab("zhuanti")!;
+            const children = (getActiveL2Group(groups, activeSubTab)?.children ?? []).filter((c) => isVisible("zhuanti:" + c.id));
+            const core = ZHUANTI_SIDEBAR_TABS.filter((t) => isVisible("zhuanti:" + t.id));
+            return (
+              <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
+                {children.map(renderL3SubTabButton)}
+                {children.length > 0 && core.length > 0 && <div className="my-1 border-t border-neutral-200 dark:border-neutral-800" />}
+                {core.map(renderL3SubTabButton)}
+              </nav>
+            );
+          })()}
           {/* 探索·工作视图：左侧「聚合数据」只读文档竖栏（红线域，纯读取+复制） */}
           {activeTab === "explore" && activeSubTab === "view" && (
             <CleanDataDocsColumn scope={folderScope} />
           )}
-          {/* 专题·对话探索：左侧「聚合数据」只读文档竖栏（复用探索范式，scope=专题 flow） */}
-          {activeTab === "zhuanti" && activeSubTab === "anax_chat" && (
+          {/* 专题·数据分析(主对话)：左侧「聚合数据」只读文档竖栏（复用探索范式，scope=专题 flow） */}
+          {activeTab === "zhuanti" && activeSubTab === "view" && (
             <CleanDataDocsColumn scope={zhuantiChatFolderScope} />
           )}
           {/* 工作流·工作视图：左侧工作流列表竖栏（由原侧边栏迁入） */}

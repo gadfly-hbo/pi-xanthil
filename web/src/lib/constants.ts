@@ -4,8 +4,39 @@ export type SubTab = 'view' | 'business_requirement' | 'business_context' | 'rea
 
 export const SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'view', label: '工作视图' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'extraction', label: '数据提取' }, { id: 'aggregate_compute', label: '聚合计算' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }, { id: 'dlf', label: 'DLF' }];
 
-// 日常(explore) tab 专用排序：view 改名「数据分析」并移至数据探索之后（重复(multi) 仍用 SUB_TABS，工作视图保持首位）。
-export const EXPLORE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'extraction', label: '数据提取' }, { id: 'aggregate_compute', label: '聚合计算' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'view', label: '数据分析' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }, { id: 'dlf', label: 'DLF' }, { id: 'readme', label: 'readme' }];
+// ── L2 分组（横向二级 tab）→ L3 子项以左侧竖栏呈现（2026-06-26 二级 tab 梳理，复用 lab/onto 范式）。
+// 叶子组直接指向单个 subtab（业务需求/readme，无 L3 竖栏）；分组组用 children 列出 L3 子项。
+// subtab id 全部保留不变，仅分组 + 改名（汇报版本→业务语言、行动→执行反馈、DLF→模拟实验），故 pane 分发与可见性持久化不受影响。
+export interface L2Group {
+  id: string;                                  // 顶部横条标识
+  label: string;
+  leaf?: SubTab;                               // 叶子组：直接指向单个 subtab
+  children?: { id: SubTab; label: string }[];  // 分组组：L3 子项
+}
+
+export function flattenL2Groups(groups: L2Group[]): { id: SubTab; label: string }[] {
+  return groups.flatMap((g) => (g.leaf ? [{ id: g.leaf, label: g.label }] : g.children ?? []));
+}
+
+export function getActiveL2Group(groups: L2Group[], sub: SubTab): L2Group | undefined {
+  return groups.find((g) => g.leaf === sub || g.children?.some((c) => c.id === sub));
+}
+
+export function getDefaultSubTab(group: L2Group): SubTab {
+  return group.leaf ?? group.children![0]!.id;
+}
+
+// 日常(explore) L2 分组：业务需求 / 数据准备 / 分析报告 / 报告解读 / 行动闭环 / readme。
+export const EXPLORE_L2_GROUPS: L2Group[] = [
+  { id: 'business_requirement', label: '业务需求', leaf: 'business_requirement' },
+  { id: 'data_prep', label: '数据准备', children: [{ id: 'draw_data', label: '原始数据' }, { id: 'extraction', label: '数据提取' }, { id: 'aggregate_compute', label: '聚合计算' }, { id: 'clean_data', label: '聚合数据' }] },
+  { id: 'analysis_report', label: '分析报告', children: [{ id: 'data_exploration', label: '数据探索' }, { id: 'view', label: '数据分析' }, { id: 'report', label: '报告输出' }, { id: 'report_review', label: '报告审核' }] },
+  { id: 'report_interpret', label: '报告解读', children: [{ id: 'presentation_version', label: '业务语言' }, { id: 'golden_strategy', label: '黄金策' }] },
+  { id: 'action_loop', label: '行动闭环', children: [{ id: 'actions', label: '执行反馈' }, { id: 'dlf', label: '模拟实验' }] },
+  { id: 'readme', label: 'readme', leaf: 'readme' },
+];
+// 扁平表由分组派生（供默认 subtab 纠偏 + SettingsModal 可见性列表）。
+export const EXPLORE_SUB_TABS: { id: SubTab; label: string }[] = flattenL2Groups(EXPLORE_L2_GROUPS);
 
 // 重复(multi) tab 专用：在 SUB_TABS 基础上追加「readme」操作说明二级 tab（结合案例讲解重复模块；其产物仍称工作流）。
 export const MULTI_SUB_TABS: { id: SubTab; label: string }[] = [...SUB_TABS, { id: 'readme', label: 'readme' }];
@@ -22,13 +53,23 @@ export const AGGREGATE_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'tool_
 export const LAB_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'lab_overview', label: '总览' }, { id: 'lab_regression', label: '回归' }, { id: 'skill', label: 'skill' }, { id: 'tool', label: 'tool' }, { id: 'hooks_lab', label: 'hooks' }, { id: 'command_lab', label: 'command' }, { id: 'subagents_lab', label: 'subagents' }, { id: 'prompts_lab', label: 'prompts' }];
 export const LAB_SUB_IDS = new Set<SubTab>(['lab_overview', 'lab_regression', 'skill', 'tool', 'hooks_lab', 'command_lab', 'subagents_lab', 'prompts_lab']);
 
-// 专题(zhuanti) = AnaX 提升为一级 tab，做成「对话探索 + 流水线」双模并列、互相 seed，并对齐探索的数据/报告链路。
-// 全部二级 tab（供 getSubTabsForTab / 可见性 / 默认 subtab）。
-// 混合导航(2026-06-18，用户方案C)：左侧竖栏 = ZHUANTI_SIDEBAR_TABS(核心 5 项)；顶部横条 = 其余项数据/报告链路(= 全集排除 ZHUANTI_SIDEBAR_IDS)。
-export const ZHUANTI_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_chat', label: '对话探索' }, { id: 'business_requirement', label: '业务需求' }, { id: 'draw_data', label: '原始数据' }, { id: 'extraction', label: '数据提取' }, { id: 'aggregate_compute', label: '聚合计算' }, { id: 'clean_data', label: '聚合数据' }, { id: 'data_exploration', label: '数据探索' }, { id: 'anax_view', label: '流水线' }, { id: 'report', label: '报告输出' }, { id: 'presentation_version', label: '汇报版本' }, { id: 'report_review', label: '报告审核' }, { id: 'golden_strategy', label: '黄金策' }, { id: 'actions', label: '行动' }, { id: 'dlf', label: 'DLF' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
-// 专题左侧竖栏：核心 5 项（对话探索/流水线/假设库/变更管理/readme）。
-export const ZHUANTI_SIDEBAR_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_chat', label: '对话探索' }, { id: 'anax_view', label: '流水线' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }, { id: 'readme', label: 'readme' }];
-export const ZHUANTI_SIDEBAR_IDS = new Set<SubTab>(['anax_chat', 'anax_view', 'hypothesis', 'change_mgmt', 'readme']);
+// 专题(zhuanti) = AnaX 提升为一级 tab，对齐探索的数据/报告链路。
+// 混合导航(2026-06-26 二级 tab 梳理)：顶部横条 = ZHUANTI_L2_GROUPS(6 组，与日常一致)；
+//   左竖栏上区 = 当前 L2 组的 L3 子项（叶子组上区为空）；左竖栏下区 = ZHUANTI_SIDEBAR_TABS(专题专属 3 项：流水线/假设库/变更管理)。
+// 「数据分析」(view) 在专题指向主对话(ZhuantiChatPane)，与日常 view=主 ChatPane 对齐；原独立「对话探索」入口已去除（与数据分析重叠）。readme 上移至 L2 横条叶子组。
+export const ZHUANTI_L2_GROUPS: L2Group[] = [
+  { id: 'business_requirement', label: '业务需求', leaf: 'business_requirement' },
+  { id: 'data_prep', label: '数据准备', children: [{ id: 'draw_data', label: '原始数据' }, { id: 'extraction', label: '数据提取' }, { id: 'aggregate_compute', label: '聚合计算' }, { id: 'clean_data', label: '聚合数据' }] },
+  { id: 'analysis_report', label: '分析报告', children: [{ id: 'data_exploration', label: '数据探索' }, { id: 'view', label: '数据分析' }, { id: 'report', label: '报告输出' }, { id: 'report_review', label: '报告审核' }] },
+  { id: 'report_interpret', label: '报告解读', children: [{ id: 'presentation_version', label: '业务语言' }, { id: 'golden_strategy', label: '黄金策' }] },
+  { id: 'action_loop', label: '行动闭环', children: [{ id: 'actions', label: '执行反馈' }, { id: 'dlf', label: '模拟实验' }] },
+  { id: 'readme', label: 'readme', leaf: 'readme' },
+];
+// 专题左竖栏专属项（下区）：流水线/假设库/变更管理（对话探索已去除，readme 已上移至 L2 横条叶子组）。
+export const ZHUANTI_SIDEBAR_TABS: { id: SubTab; label: string }[] = [{ id: 'anax_view', label: '流水线' }, { id: 'hypothesis', label: '假设库' }, { id: 'change_mgmt', label: '变更管理' }];
+export const ZHUANTI_SIDEBAR_IDS = new Set<SubTab>(['anax_view', 'hypothesis', 'change_mgmt']);
+// 全集：供 getSubTabsForTab 默认纠偏 + SettingsModal 可见性列表。
+export const ZHUANTI_SUB_TABS: { id: SubTab; label: string }[] = [...flattenL2Groups(ZHUANTI_L2_GROUPS), ...ZHUANTI_SIDEBAR_TABS];
 
 // 记忆模块二级 tab：统一记忆 / onto-knowhow / 业务环境 / trace / 知识图谱 / readme。
 export const RULE_MEMORY_SUB_TABS: { id: SubTab; label: string }[] = [{ id: 'rules', label: '统一记忆' }, { id: 'indicators', label: 'onto-knowhow' }, { id: 'business_context', label: '业务环境' }, { id: 'trace', label: 'trace' }, { id: 'knowledge_graph', label: '知识图谱' }, { id: 'readme', label: 'readme' }];
@@ -54,4 +95,11 @@ export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'health') return HEALTH_SUB_TABS;
   if (VIEW_ONLY_TABS.has(tab)) return SUB_TABS.slice(0, 1);
   return SUB_TABS;
+}
+
+// 采用 L2 分组（横条 L2 + 左竖栏 L3）的 tab 返回其分组定义；其余 tab 返回 null（走扁平横条）。
+export function getL2GroupsForTab(tab: Tab): L2Group[] | null {
+  if (tab === 'explore') return EXPLORE_L2_GROUPS;
+  if (tab === 'zhuanti') return ZHUANTI_L2_GROUPS;
+  return null;
 }
