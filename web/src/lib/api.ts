@@ -158,6 +158,12 @@ const legacyApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ name }),
     }).then(json<Workspace>),
+  // 工作区归档（X-ARCHIVE0）：listWorkspaces 默认只返回活跃；归档项走 listArchivedWorkspaces。
+  listArchivedWorkspaces: () => fetch("/api/workspaces/archived").then(json<Workspace[]>),
+  archiveWorkspace: (id: string) =>
+    fetch(`/api/workspaces/${id}/archive`, { method: "PATCH" }).then(json<{ ok: true }>),
+  unarchiveWorkspace: (id: string) =>
+    fetch(`/api/workspaces/${id}/unarchive`, { method: "PATCH" }).then(json<{ ok: true }>),
   listSessions: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/sessions`).then(json<Session[]>),
   listRules: (workspaceId: string) =>

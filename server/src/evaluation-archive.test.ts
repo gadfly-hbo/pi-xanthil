@@ -85,7 +85,7 @@ test("archiveSubAgentEvaluation includes trajectory metrics", () => {
     endedAt: 1000,
     durationSec: 1,
     cases: [{ id: "case", name: "Case", personaOverride: "analyst", brief: "Analyze", dataFiles: [], expected: { kind: "tool-sequence", required: ["read", "write"] } }],
-    caseSummaries: [{ caseId: "case", caseName: "Case", total: 1, success: 1, failed: 0, avgDurationSec: 1, avgStepCount: 2, avgTotalTokens: 30, avgTotalCost: 0.01 }],
+    caseSummaries: [{ caseId: "case", caseName: "Case", total: 1, success: 1, failed: 0, avgDurationSec: 1, avgStepCount: 2, avgTotalTokens: 30, avgTotalCost: 0.01, ruleCheckPassed: true, ruleCheckDetails: [], passAtK: 1, outputVariance: 0 }],
     results: [],
   } satisfies SubAgentEvaluationDetail);
   assert.match(readFileSync(archived.markdownPath, "utf8"), /SubAgent Evaluation Report/);

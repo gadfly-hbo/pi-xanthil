@@ -105,6 +105,9 @@ import {
   listWorkspacePaths,
   listWorkspaces,
   recordMemoryFeedback,
+  archiveWorkspace,
+  unarchiveWorkspace,
+  listArchivedWorkspaces,
   recordMemoryInjectionUsage,
   removeWorkspacePath,
   renameSession,
@@ -850,6 +853,9 @@ app.post("/api/workspaces/:id/autonomous-run", (req, res) => {
 
 // ---- REST: workspaces ----
 app.get("/api/workspaces", (_req, res) => res.json(listWorkspaces()));
+// 工作区归档（X-ARCHIVE0）：归档=隐藏不删，/archived 取归档列表；/:id/archive·/unarchive 切换。
+// 注：此 GET 须在任何 GET /api/workspaces/:id 之前；当前无该路由，且方法为 GET 与下方 PATCH/:id 不冲突。
+app.get("/api/workspaces/archived", (_req, res) => res.json(listArchivedWorkspaces()));
 app.post("/api/workspaces", (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   if (!name) return res.status(400).json({ error: "name required" });
@@ -864,6 +870,16 @@ app.patch("/api/workspaces/:id", (req, res) => {
   const name = String(req.body?.name ?? "").trim();
   if (!name) return res.status(400).json({ error: "name required" });
   renameWorkspace(req.params.id, name);
+  res.json({ ok: true });
+});
+app.patch("/api/workspaces/:id/archive", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  archiveWorkspace(req.params.id);
+  res.json({ ok: true });
+});
+app.patch("/api/workspaces/:id/unarchive", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  unarchiveWorkspace(req.params.id);
   res.json({ ok: true });
 });
 app.delete("/api/workspaces/:id", (req, res) => {
@@ -4995,7 +5011,18 @@ async function handleSend(
     return send(ws, { type: "error", sessionId: session.id, message: String(err) });
   }
 
-  const memoryInjection = buildMemoryInjectionSnapshot(session.workspaceId, msg.injectRulesPrompt, "chat", {}, { query: msg.text });
+  // 缺口1·chat dataPaths boost：本 session(fork 回退父任务作用域)名下 clean_data 文件 → data:<stem> 检索 boost（仅加权、不硬过滤）。
+  // forkBranch/pathScopeSessionId 提前到此计算，供记忆注入与下方输出路径作用域共用。
+  const forkBranch = getForkBranchByBranchSession(session.id);
+  const pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id;
+  const chatDataPaths = listWorkspacePaths(session.workspaceId, "clean_data", pathScopeSessionId)
+    .filter((p) => p.kind === "file")
+    .map((p) => p.path);
+  const chatRetrievalCtx = {
+    query: msg.text,
+    ...(chatDataPaths.length > 0 ? { dataPaths: chatDataPaths } : {}),
+  };
+  const memoryInjection = buildMemoryInjectionSnapshot(session.workspaceId, msg.injectRulesPrompt, "chat", {}, chatRetrievalCtx);
   recordMemoryInjectionUsage(session.workspaceId, memoryInjection);
 
   // Persist the user turn immediately (original text, without injected context).
@@ -5006,10 +5033,8 @@ async function handleSend(
 
   const sessionPaths = listWorkspacePaths(session.workspaceId);
   const boundFlow = session.workflowId ? getFlow(session.workflowId) : undefined;
-  // Fork 分支是独立 session，名下无注册路径。输出/数据路径作用域回退到父任务 session，
-  // 否则 selectOutputPath 会逐级回退、坍缩到 workspace 级最近 clean_data 源目录（见 output-paths.ts）。
-  const forkBranch = getForkBranchByBranchSession(session.id);
-  const pathScopeSessionId = forkBranch ? forkBranch.parentSessionId : session.id;
+  // forkBranch/pathScopeSessionId 已在上方记忆注入处计算。Fork 分支是独立 session、名下无注册路径，
+  // 故输出/数据路径作用域回退到父任务 session，否则 selectOutputPath 会坍缩到 workspace 级最近 clean_data 源目录（见 output-paths.ts）。
   const sessionAnalyses = getFileAnalysesByPathIds(
     sessionPaths.filter((p) => p.folder === "clean_data" && p.kind === "file").map((p) => p.id),
   );
@@ -5034,7 +5059,7 @@ async function handleSend(
 
   const rolePrompt = session.workflowId ? WORKFLOW_SYSTEM_PROMPTS[session.workflowId] : undefined;
   const memoryPrompt = msg.injectRulesPrompt
-    ? withRulesPrompt(session.workspaceId, "chat", rolePrompt, { query: msg.text })
+    ? withRulesPrompt(session.workspaceId, "chat", rolePrompt, chatRetrievalCtx)
     : rolePrompt;
   const baseSystemPrompt = withKnowledgePrompt(
     session.workspaceId,

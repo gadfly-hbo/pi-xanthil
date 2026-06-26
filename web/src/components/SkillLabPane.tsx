@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { downloadArchiveTextFile, downloadArchivesZip, downloadEvaluationArchiveManifest, downloadEvaluationJson, downloadSkillEvaluationMarkdown } from "@/lib/evaluation-export";
 import { ArchiveList, EvalHistoryList, ExportActions, ResultCard as SharedResultCard, SummaryTable as SharedSummaryTable } from "@/components/eval-shared";
-import type { AutonomousRunResult, EvaluationArchiveIndexItem, EvaluationError, PiModel, PiSkill, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseSummary, SkillVariant, SkillVariantSummary } from "@/types";
+import type { AutonomousRunResult, EvaluationArchiveIndexItem, EvaluationError, PiModel, PiSkill, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseSummary, SkillRegistryEntry, SkillVariant, SkillVariantSummary } from "@/types";
 
 interface Props {
   workspaceId: string | null;
@@ -18,12 +18,22 @@ interface DraftTask {
   prompt: string;
 }
 
+interface RegistryCandidateOption {
+  entry: SkillRegistryEntry;
+  path: string | null;
+}
+
 let taskSeq = 2;
 const nextTask = (): DraftTask => ({ id: `task_${taskSeq++}`, prompt: "" });
 
 export function SkillLabPane(p: Props) {
   const [skills, setSkills] = useState<PiSkill[]>([]);
   const [selectedPaths, setSelectedPaths] = useState<string[]>([]);
+  const [registryCandidates, setRegistryCandidates] = useState<SkillRegistryEntry[]>([]);
+  const [selectedRegistryIds, setSelectedRegistryIds] = useState<string[]>([]);
+  const [evaluatedRegistryIds, setEvaluatedRegistryIds] = useState<string[]>([]);
+  const [registryActionBusyId, setRegistryActionBusyId] = useState<string | null>(null);
+  const [registryActionNote, setRegistryActionNote] = useState("");
   const [tasks, setTasks] = useState<DraftTask[]>([{ id: "task_1", prompt: "" }]);
   const [evalSets, setEvalSets] = useState<SkillEvalSet[]>([]);
   const [newEvalSetName, setNewEvalSetName] = useState("");
@@ -62,6 +72,11 @@ export function SkillLabPane(p: Props) {
 
   useEffect(() => {
     setSelectedPaths([]);
+    setRegistryCandidates([]);
+    setSelectedRegistryIds([]);
+    setEvaluatedRegistryIds([]);
+    setRegistryActionBusyId(null);
+    setRegistryActionNote("");
     setSkills([]);
     setEvalSets([]);
     setNewEvalSetName("");
@@ -87,14 +102,16 @@ export function SkillLabPane(p: Props) {
     setLoadingSkills(true);
     Promise.all([
       api.listWorkspaceSkills(p.workspaceId),
+      api.listSkillRegistry(p.workspaceId, "candidate"),
       api.listSkillEvaluations(p.workspaceId),
       api.listSkillEvalSets(p.workspaceId),
       api.listEvaluationArchives(p.workspaceId),
       api.listSkillCurationProposals(p.workspaceId),
     ])
-      .then(async ([skillItems, evaluationItems, evalSetItems, archiveItems, proposalItems]) => {
+      .then(async ([skillItems, candidateItems, evaluationItems, evalSetItems, archiveItems, proposalItems]) => {
         if (cancelled) return;
         setSkills(skillItems);
+        setRegistryCandidates(candidateItems);
         setHistory(evaluationItems);
         setEvalSets(evalSetItems);
         setArchives(archiveItems);
@@ -120,17 +137,37 @@ export function SkillLabPane(p: Props) {
     () => skills.filter((skill) => selectedPaths.includes(skill.path)),
     [selectedPaths, skills],
   );
+  const registryCandidateOptions = useMemo(
+    () => registryCandidates.map((entry): RegistryCandidateOption => ({
+      entry,
+      path: findRegistrySkillPath(skills, entry.slug),
+    })),
+    [registryCandidates, skills],
+  );
+  const selectedRegistryCandidates = useMemo(
+    () => registryCandidateOptions.filter((item) => selectedRegistryIds.includes(item.entry.id) && item.path),
+    [registryCandidateOptions, selectedRegistryIds],
+  );
+  const evaluatedRegistryCandidates = useMemo(
+    () => registryCandidates.filter((entry) => evaluatedRegistryIds.includes(entry.id)),
+    [registryCandidates, evaluatedRegistryIds],
+  );
   const runnableTasks = useMemo(
     () => tasks
       .map((task, index): SkillEvalTask => ({ id: task.id || `task_${index + 1}`, prompt: task.prompt.trim() }))
       .filter((task) => task.prompt.length > 0),
     [tasks],
   );
-  const canRun = !!p.workspaceId && !!p.model && selectedSkills.length > 0 && runnableTasks.length > 0 && !running;
+  const canRun = !!p.workspaceId && !!p.model && (selectedSkills.length > 0 || selectedRegistryCandidates.length > 0) && runnableTasks.length > 0 && !running;
 
   function toggleSkill(skill: PiSkill): void {
     if (!skill.available) return;
     setSelectedPaths((cur) => cur.includes(skill.path) ? cur.filter((path) => path !== skill.path) : [...cur, skill.path]);
+  }
+
+  function toggleRegistryCandidate(candidate: RegistryCandidateOption): void {
+    if (!candidate.path) return;
+    setSelectedRegistryIds((cur) => cur.includes(candidate.entry.id) ? cur.filter((id) => id !== candidate.entry.id) : [...cur, candidate.entry.id]);
   }
 
   function updateTask(id: string, prompt: string): void {
@@ -229,6 +266,14 @@ export function SkillLabPane(p: Props) {
         label: skill.name,
         skillPaths: [skill.path],
       })),
+      ...selectedRegistryCandidates.flatMap((candidate): SkillVariant[] => {
+        if (!candidate.path) return [];
+        return [{
+          id: registryVariantId(candidate.entry.id),
+          label: `${candidate.entry.name} (candidate)`,
+          skillPaths: [candidate.path],
+        }];
+      }),
     ];
     if (includeRetrievalVariant) {
       variants.push({
@@ -253,6 +298,7 @@ export function SkillLabPane(p: Props) {
         dataContextPaths: dataContextPaths.filter(Boolean),
       });
       setResult(summary);
+      setEvaluatedRegistryIds(selectedRegistryCandidates.map((candidate) => candidate.entry.id));
       setHistory((cur) => [summary, ...cur.filter((item) => item.evaluationId !== summary.evaluationId)]);
     } catch (err) {
       setError(String(err));
@@ -267,8 +313,53 @@ export function SkillLabPane(p: Props) {
     try {
       const detail = await api.getSkillEvaluation(evaluationId);
       setResult(detail);
+      setEvaluatedRegistryIds(extractRegistryIdsFromVariants(detail.variants));
     } catch (err) {
       setError(String(err));
+    }
+  }
+
+  async function refreshRegistryCandidates(): Promise<void> {
+    if (!p.workspaceId) return;
+    const [skillItems, candidateItems] = await Promise.all([
+      api.listWorkspaceSkills(p.workspaceId),
+      api.listSkillRegistry(p.workspaceId, "candidate"),
+    ]);
+    setSkills(skillItems);
+    setRegistryCandidates(candidateItems);
+    setSelectedRegistryIds((cur) => cur.filter((id) => candidateItems.some((entry) => entry.id === id)));
+    setEvaluatedRegistryIds((cur) => cur.filter((id) => candidateItems.some((entry) => entry.id === id)));
+  }
+
+  async function adoptRegistryCandidate(entry: SkillRegistryEntry): Promise<void> {
+    if (!window.confirm(`采纳「${entry.name}」为 active skill？`)) return;
+    setRegistryActionBusyId(entry.id);
+    setRegistryActionNote("");
+    setError(null);
+    try {
+      await api.patchSkillRegistry(entry.id, { status: "active", confirmed: true });
+      setRegistryActionNote(`已采纳：${entry.name}`);
+      await refreshRegistryCandidates();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setRegistryActionBusyId(null);
+    }
+  }
+
+  async function archiveRegistryCandidate(entry: SkillRegistryEntry): Promise<void> {
+    if (!window.confirm(`弃用「${entry.name}」？SKILL.md 会保留，registry 状态归档。`)) return;
+    setRegistryActionBusyId(entry.id);
+    setRegistryActionNote("");
+    setError(null);
+    try {
+      await api.archiveSkillRegistry(entry.id);
+      setRegistryActionNote(`已弃用：${entry.name}`);
+      await refreshRegistryCandidates();
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setRegistryActionBusyId(null);
     }
   }
 
@@ -423,6 +514,45 @@ export function SkillLabPane(p: Props) {
               </label>
             );
           })}
+        </div>
+
+        <div className="mt-4 rounded-md border border-amber-200 bg-amber-50/60 p-2 dark:border-amber-900/70 dark:bg-amber-950/20">
+          <div className="flex items-center justify-between gap-2">
+            <div className="text-xs font-medium text-amber-800 dark:text-amber-200">Registry 候选</div>
+            <button
+              type="button"
+              onClick={() => void refreshRegistryCandidates()}
+              disabled={loadingSkills}
+              className="rounded border border-amber-200 bg-white px-1.5 py-0.5 text-[10px] text-amber-700 hover:bg-amber-50 disabled:opacity-40 dark:border-amber-800 dark:bg-neutral-900 dark:text-amber-300 dark:hover:bg-amber-950/30"
+              title="刷新 candidate skill 列表"
+            >
+              刷新
+            </button>
+          </div>
+          <p className="mt-1 text-[10.5px] leading-4 text-amber-700/80 dark:text-amber-300/80">promote / distill 产物先在这里送 SkillLab 对照评测，再采纳或弃用。</p>
+          <div className="mt-2 space-y-1">
+            {registryCandidateOptions.length === 0 && <p className="px-1 py-1 text-[11px] text-amber-700/70 dark:text-amber-300/70">暂无 registry candidate。</p>}
+            {registryCandidateOptions.map((candidate) => {
+              const checked = selectedRegistryIds.includes(candidate.entry.id);
+              const disabled = !candidate.path;
+              return (
+                <label key={candidate.entry.id} className="flex cursor-pointer items-start gap-2 rounded px-1.5 py-1.5 text-xs hover:bg-amber-100/60 dark:hover:bg-amber-950/40">
+                  <input className="mt-0.5" type="checkbox" checked={checked} disabled={disabled} onChange={() => toggleRegistryCandidate(candidate)} />
+                  <span className="min-w-0 flex-1">
+                    <span className="block truncate font-medium text-neutral-800 dark:text-neutral-100">{candidate.entry.name}</span>
+                    <span className={cn("mt-0.5 block truncate font-mono text-[10px] text-neutral-400", disabled && "text-rose-500")}>
+                      {disabled ? "SKILL.md 未被 listSkills 识别，请检查 frontmatter description" : `.pi/skills/${candidate.entry.slug}/SKILL.md`}
+                    </span>
+                    <span className="mt-0.5 block text-[10px] text-neutral-400">
+                      score {candidate.entry.score === null ? "—" : candidate.entry.score.toFixed(2)}
+                      {" · "}
+                      activation {candidate.entry.activationRate === null ? "—" : `${Math.round(candidate.entry.activationRate * 100)}%`}
+                    </span>
+                  </span>
+                </label>
+              );
+            })}
+          </div>
         </div>
 
         {/* BM25 检索技能 */}
@@ -747,6 +877,45 @@ export function SkillLabPane(p: Props) {
               </div>
             </div>
             {archiveMessage && <p className="mt-2 break-all rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300">{archiveMessage}</p>}
+            {registryActionNote && <p className="mt-2 break-all rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300">{registryActionNote}</p>}
+            {evaluatedRegistryCandidates.length > 0 && (
+              <div className="mt-3 rounded-md border border-amber-200 bg-amber-50/50 p-3 dark:border-amber-900/70 dark:bg-amber-950/20">
+                <div className="text-xs font-semibold text-amber-800 dark:text-amber-200">Registry candidate 决策</div>
+                <div className="mt-2 space-y-1.5">
+                  {evaluatedRegistryCandidates.map((entry) => {
+                    const pairwise = result.pairwiseSummaries.find((item) => item.variantId === registryVariantId(entry.id));
+                    const variant = result.variantSummaries.find((item) => item.variantId === registryVariantId(entry.id));
+                    return (
+                      <div key={entry.id} className="flex flex-wrap items-center gap-2 rounded border border-amber-200 bg-white px-2 py-1.5 text-xs dark:border-amber-900 dark:bg-neutral-950">
+                        <span className="min-w-0 flex-1 truncate font-medium text-neutral-800 dark:text-neutral-100" title={entry.name}>{entry.name}</span>
+                        <span className="text-[10.5px] text-neutral-500">
+                          {pairwise ? `win/tie/loss ${pairwise.win}/${pairwise.tie}/${pairwise.loss} · Δ ${pairwise.avgScoreDelta.toFixed(1)}` : "未产生 pairwise"}
+                          {variant ? ` · activation ${Math.round(variant.activationRate * 100)}%` : ""}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => void adoptRegistryCandidate(entry)}
+                          disabled={registryActionBusyId === entry.id}
+                          className="inline-flex h-6 items-center gap-1 rounded border border-emerald-300 px-1.5 text-[10.5px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 dark:border-emerald-800 dark:text-emerald-300 dark:hover:bg-emerald-950/30"
+                          title="采纳为 active skill"
+                        >
+                          <CheckCircle2 className="h-3 w-3" />采纳
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => void archiveRegistryCandidate(entry)}
+                          disabled={registryActionBusyId === entry.id}
+                          className="inline-flex h-6 items-center gap-1 rounded border border-rose-300 px-1.5 text-[10.5px] font-medium text-rose-700 hover:bg-rose-50 disabled:opacity-40 dark:border-rose-800 dark:text-rose-300 dark:hover:bg-rose-950/30"
+                          title="弃用并归档 registry entry"
+                        >
+                          <Archive className="h-3 w-3" />弃用
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
             {curating && <p className="mt-2 flex items-center gap-2 rounded-md bg-violet-50 px-3 py-2 text-xs text-violet-700 dark:bg-violet-950/20 dark:text-violet-300"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在分析 skill 改进方向，请稍候…</p>}
             {curation && <CurationPanel curation={curation} approvals={approvals} expanded={expandedProposals} applying={applying} applyResult={applyResult} onToggleApproval={(i) => setApprovals((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; })} onToggleExpand={(i) => setExpandedProposals((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; })} onApply={() => void applyApprovedProposals()} />}
             <SummaryTable summaries={result.variantSummaries} />
@@ -861,6 +1030,21 @@ function StatusIcon({ status }: { status: "success" | "failed" }) {
 
 function statusLabel(status: "success" | "failed"): string {
   return status === "success" ? "成功" : "失败";
+}
+
+function registryVariantId(registryId: string): string {
+  return `registry_${registryId}`;
+}
+
+function extractRegistryIdsFromVariants(variants: SkillVariant[]): string[] {
+  return variants
+    .map((variant) => variant.id.startsWith("registry_") ? variant.id.slice("registry_".length) : "")
+    .filter(Boolean);
+}
+
+function findRegistrySkillPath(skills: PiSkill[], slug: string): string | null {
+  const suffix = `/.pi/skills/${slug}/SKILL.md`;
+  return skills.find((skill) => skill.available && skill.path.endsWith(suffix))?.path ?? null;
 }
 
 function formatEvaluationError(error: EvaluationError | null): string {

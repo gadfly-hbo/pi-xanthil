@@ -37,6 +37,14 @@ export function parseSubAgentEvaluationCases(value: unknown): SubAgentEvalCase[]
     if (!id || seen.has(id) || (!templateId && !personaOverride) || !brief || !expected) continue;
     seen.add(id);
     const timeoutMs = Number(raw.timeoutMs ?? 0);
+    // D-QEVAL3 硬断言字段（均可选）
+    const mustCallTools = stringArray(raw.mustCallTools);
+    const mustNotCallTools = stringArray(raw.mustNotCallTools);
+    const outputContains = stringArray(raw.outputContains);
+    const outputNotContains = stringArray(raw.outputNotContains);
+    const minOutputChars = Number(raw.minOutputChars);
+    const maxToolCalls = Number(raw.maxToolCalls);
+    const maxCostUsd = Number(raw.maxCostUsd);
     result.push({
       id,
       name: stringOf(raw.name) || id,
@@ -47,6 +55,13 @@ export function parseSubAgentEvaluationCases(value: unknown): SubAgentEvalCase[]
       dataFiles: stringArray(raw.dataFiles),
       expected,
       ...(Number.isInteger(timeoutMs) && timeoutMs > 0 ? { timeoutMs } : {}),
+      ...(mustCallTools.length ? { mustCallTools } : {}),
+      ...(mustNotCallTools.length ? { mustNotCallTools } : {}),
+      ...(outputContains.length ? { outputContains } : {}),
+      ...(outputNotContains.length ? { outputNotContains } : {}),
+      ...(Number.isFinite(minOutputChars) && minOutputChars > 0 ? { minOutputChars } : {}),
+      ...(Number.isFinite(maxToolCalls) && maxToolCalls >= 0 ? { maxToolCalls } : {}),
+      ...(Number.isFinite(maxCostUsd) && maxCostUsd >= 0 ? { maxCostUsd } : {}),
     });
   }
   return result;

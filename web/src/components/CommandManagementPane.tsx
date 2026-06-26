@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SquareTerminal, RefreshCw, Plus, Save, Trash2, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
-import type { XanCommand, XanCommandParam, XanCommandParamType, SkillRegistryEntry } from "@/types";
+import type { ExtractionTool, XanCommand, XanCommandParam, XanCommandParamType, SkillRegistryEntry } from "@/types";
 
 /**
  * 计算工具·command 管理（pi-xanthil 自有的「斜杠命令注册表」）。
@@ -70,6 +70,12 @@ function validateCommand(cmd: XanCommand | null, all: XanCommand[]): ValidationI
       if (!SAFE_NAME_RE.test(s)) out.push({ level: "error", msg: `skillSlugs[${i}] 命名非法（${s}）` });
     });
   }
+  if (cmd.toolParamMap) {
+    for (const [key, target] of Object.entries(cmd.toolParamMap)) {
+      if (!SAFE_NAME_RE.test(key)) out.push({ level: "error", msg: `toolParamMap key 非法（${key}）` });
+      if (!SAFE_NAME_RE.test(target)) out.push({ level: "error", msg: `toolParamMap target 非法（${target}）` });
+    }
+  }
   return out;
 }
 
@@ -85,6 +91,7 @@ export function CommandManagementPane({ workspaceId }: Props) {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [skills, setSkills] = useState<SkillRegistryEntry[]>([]);
+  const [tools, setTools] = useState<ExtractionTool[]>([]);
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -101,6 +108,19 @@ export function CommandManagementPane({ workspaceId }: Props) {
   }, []);
 
   useEffect(() => reload(), [reload]);
+
+  useEffect(() => {
+    let cancelled = false;
+    api
+      .listExtractionTools()
+      .then((list) => {
+        if (!cancelled) setTools(list.filter((tool) => tool.category === "analysis"));
+      })
+      .catch(() => {
+        if (!cancelled) setTools([]);
+      });
+    return () => { cancelled = true; };
+  }, []);
 
   // skill 多选数据源：workspace 级 active skill；无 workspace 时退化为纯文本输入。
   useEffect(() => {
@@ -134,6 +154,20 @@ export function CommandManagementPane({ workspaceId }: Props) {
   const updateSkillSlugs = (slugs: string[]) => {
     const dedup = Array.from(new Set(slugs.map((s) => s.trim()).filter(Boolean)));
     updateSelected({ skillSlugs: dedup.length ? dedup : undefined });
+  };
+
+  const updateToolIds = (ids: string[]) => {
+    const dedup = Array.from(new Set(ids.map((s) => s.trim()).filter(Boolean)));
+    updateSelected({ toolIds: dedup.length ? dedup : undefined });
+  };
+
+  const updateToolParamMap = (map: Record<string, string>) => {
+    const cleaned = Object.fromEntries(
+      Object.entries(map)
+        .map(([key, value]) => [key.trim(), value.trim()])
+        .filter(([key, value]) => key && value),
+    );
+    updateSelected({ toolParamMap: Object.keys(cleaned).length ? cleaned : undefined });
   };
 
   const addCommand = () => {
@@ -200,10 +234,13 @@ export function CommandManagementPane({ workspaceId }: Props) {
             issues={issues}
             error={error}
             skills={skills}
+            tools={tools}
             workspaceId={workspaceId ?? null}
             onUpdate={updateSelected}
             onUpdateParams={updateParams}
             onUpdateSkillSlugs={updateSkillSlugs}
+            onUpdateToolIds={updateToolIds}
+            onUpdateToolParamMap={updateToolParamMap}
             onRemove={removeSelected}
           />
         </div>
@@ -291,6 +328,11 @@ function CommandList({
                   {c.skillSlugs.length}s
                 </span>
               )}
+              {c.toolIds && c.toolIds.length > 0 && (
+                <span className="shrink-0 rounded bg-emerald-100 px-1 py-0.5 text-[9.5px] text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300">
+                  {c.toolIds.length}t
+                </span>
+              )}
             </button>
           );
         })}
@@ -315,10 +357,13 @@ interface CommandEditorProps {
   issues: ValidationIssue[];
   error: string;
   skills: SkillRegistryEntry[];
+  tools: ExtractionTool[];
   workspaceId: string | null;
   onUpdate: (patch: Partial<XanCommand>) => void;
   onUpdateParams: (params: XanCommandParam[]) => void;
   onUpdateSkillSlugs: (slugs: string[]) => void;
+  onUpdateToolIds: (ids: string[]) => void;
+  onUpdateToolParamMap: (map: Record<string, string>) => void;
   onRemove: () => void;
 }
 
@@ -327,10 +372,13 @@ function CommandEditor({
   issues,
   error,
   skills,
+  tools,
   workspaceId,
   onUpdate,
   onUpdateParams,
   onUpdateSkillSlugs,
+  onUpdateToolIds,
+  onUpdateToolParamMap,
   onRemove,
 }: CommandEditorProps) {
   return (
@@ -425,6 +473,23 @@ function CommandEditor({
               workspaceId={workspaceId}
               onChange={onUpdateSkillSlugs}
             />
+          </div>
+
+          <div className="mt-3 rounded border border-neutral-200 p-3 dark:border-neutral-800">
+            <div className="mb-2 flex items-center gap-2 text-[11.5px] font-medium text-neutral-600 dark:text-neutral-300">
+              场景工具 toolIds
+              <span className="font-normal text-neutral-400">仅预填 @工具卡，仍需人工确认运行</span>
+            </div>
+            <ToolIdsEditor value={selected.toolIds ?? []} tools={tools} onChange={onUpdateToolIds} />
+            <div className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+              <ToolParamMapEditor
+                params={selected.params ?? []}
+                value={selected.toolParamMap ?? {}}
+                tools={tools}
+                toolIds={selected.toolIds ?? []}
+                onChange={onUpdateToolParamMap}
+              />
+            </div>
           </div>
 
           {issues.length > 0 && (
@@ -695,6 +760,135 @@ function SkillSlugsEditor({
           添加
         </button>
       </div>
+    </div>
+  );
+}
+
+function ToolIdsEditor({
+  value,
+  tools,
+  onChange,
+}: {
+  value: string[];
+  tools: ExtractionTool[];
+  onChange: (ids: string[]) => void;
+}) {
+  const selectedSet = useMemo(() => new Set(value), [value]);
+  const byId = useMemo(() => new Map(tools.map((tool) => [tool.id, tool])), [tools]);
+  const toggle = (id: string) => {
+    if (selectedSet.has(id)) onChange(value.filter((item) => item !== id));
+    else onChange([...value, id]);
+  };
+  const remove = (id: string) => onChange(value.filter((item) => item !== id));
+
+  return (
+    <div className="flex flex-col gap-2">
+      <div className="flex flex-wrap gap-1.5">
+        {value.length === 0 && <span className="text-[11px] text-neutral-400">未关联 tool</span>}
+        {value.map((id) => (
+          <span
+            key={id}
+            className="flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 font-mono text-[11px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+            title={byId.get(id)?.name ?? id}
+          >
+            {id}
+            <button
+              onClick={() => remove(id)}
+              className="text-emerald-500 hover:text-emerald-700 dark:text-emerald-400 dark:hover:text-emerald-200"
+              title="移除"
+            >
+              ×
+            </button>
+          </span>
+        ))}
+      </div>
+      {tools.length > 0 ? (
+        <details className="rounded border border-neutral-200 bg-white text-[11.5px] dark:border-neutral-700 dark:bg-neutral-900">
+          <summary className="cursor-pointer select-none px-2 py-1 text-neutral-600 dark:text-neutral-300">
+            从 analysis tools 中选择（{tools.length}）
+          </summary>
+          <div className="max-h-56 overflow-auto border-t border-neutral-100 dark:border-neutral-800">
+            {tools.map((tool) => (
+              <label
+                key={tool.id}
+                className="flex cursor-pointer items-center gap-2 px-2 py-1 hover:bg-neutral-50 dark:hover:bg-neutral-800"
+              >
+                <input
+                  type="checkbox"
+                  checked={selectedSet.has(tool.id)}
+                  onChange={() => toggle(tool.id)}
+                />
+                <code className="font-mono text-[11px] text-neutral-700 dark:text-neutral-200">{tool.id}</code>
+                <span className="truncate text-[11px] text-neutral-400">{tool.name}</span>
+              </label>
+            ))}
+          </div>
+        </details>
+      ) : (
+        <p className="text-[11px] text-neutral-400">当前没有可绑定的 analysis tool。</p>
+      )}
+    </div>
+  );
+}
+
+function ToolParamMapEditor({
+  params,
+  value,
+  tools,
+  toolIds,
+  onChange,
+}: {
+  params: XanCommandParam[];
+  value: Record<string, string>;
+  tools: ExtractionTool[];
+  toolIds: string[];
+  onChange: (map: Record<string, string>) => void;
+}) {
+  const boundTools = useMemo(() => tools.filter((tool) => toolIds.includes(tool.id)), [tools, toolIds]);
+  const targetOptions = useMemo(() => {
+    const names = new Set<string>(["inputPath"]);
+    for (const tool of boundTools) {
+      for (const param of tool.parameters ?? []) names.add(param.name);
+    }
+    return Array.from(names);
+  }, [boundTools]);
+
+  const setTarget = (key: string, target: string) => {
+    const next = { ...value };
+    if (target) next[key] = target;
+    else delete next[key];
+    onChange(next);
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="text-[11.5px] font-medium text-neutral-600 dark:text-neutral-300">
+        参数映射
+        <span className="ml-2 font-normal text-neutral-400">command param.key → tool 参数名 / inputPath</span>
+      </div>
+      {params.length === 0 && <p className="text-[11px] text-neutral-400">当前命令没有具名参数，无需映射。</p>}
+      {params.length > 0 && toolIds.length === 0 && <p className="text-[11px] text-neutral-400">先绑定 tool 后再配置映射。</p>}
+      {params.length > 0 && toolIds.length > 0 && (
+        <div className="grid gap-2">
+          {params.map((param) => (
+            <label key={param.key} className="grid grid-cols-[minmax(120px,180px)_1fr] items-center gap-2 text-[11.5px]">
+              <code className="truncate rounded bg-neutral-100 px-1.5 py-1 font-mono text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                {param.key}
+              </code>
+              <select
+                value={value[param.key] ?? ""}
+                onChange={(event) => setTarget(param.key, event.target.value)}
+                className="rounded border border-neutral-200 bg-white px-2 py-1 text-[11.5px] dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200"
+              >
+                <option value="">不映射</option>
+                {targetOptions.map((target) => (
+                  <option key={target} value={target}>{target}</option>
+                ))}
+              </select>
+            </label>
+          ))}
+        </div>
+      )}
     </div>
   );
 }

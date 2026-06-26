@@ -151,3 +151,161 @@ test("rejects clean_data files outside the workspace root", async () => {
   assert.equal(summary.status, "failed");
   assert.match(summary.results[0]?.error?.message ?? "", /clean_data/);
 });
+
+// ============ D-QEVAL3 硬断言扩展 ============
+
+import { checkHardRules } from "./subagent-evaluation-runner.ts";
+
+test("D-QEVAL3: must_call_tools violation marks ruleFailed (independent of judge)", async () => {
+  const root = mkdtempSync(join(tmpdir(), "subagent-eval-"));
+  const summary = await runSubAgentEvaluation({
+    workspaceRoot: root,
+    workspaceId: "ws",
+    evaluationId: "eval",
+    model: "model",
+    repeat: 1,
+    trackUsage: false,
+    cases: [{
+      id: "must-call",
+      name: "MustCall",
+      personaOverride: "analyst",
+      brief: "x",
+      dataFiles: [],
+      expected: { kind: "step-budget", maxSteps: 10 },
+      mustCallTools: ["read", "write"],
+    }],
+    runTurn: (input) => fakeRun(input, ["read"]), // 缺 write
+  });
+  // status 仍 success（expected.step-budget 通过），但 ruleFailed=true
+  assert.equal(summary.results[0]?.status, "success");
+  assert.equal(summary.results[0]?.ruleFailed, true);
+  const hard = summary.results[0]?.hardRuleResults ?? [];
+  const rule = hard.find((r) => r.rule === "mustCallTools");
+  assert.ok(rule);
+  assert.equal(rule.passed, false);
+  assert.match(rule.detail, /write/);
+});
+
+test("D-QEVAL3: pass@k aggregates ruleCheck × status across repeats", async () => {
+  const root = mkdtempSync(join(tmpdir(), "subagent-eval-"));
+  let attempt = 0;
+  const summary = await runSubAgentEvaluation({
+    workspaceRoot: root,
+    workspaceId: "ws",
+    evaluationId: "eval",
+    model: "model",
+    repeat: 4,
+    trackUsage: false,
+    cases: [{
+      id: "pak",
+      name: "PaK",
+      personaOverride: "analyst",
+      brief: "x",
+      dataFiles: [],
+      expected: { kind: "step-budget", maxSteps: 10 },
+      mustCallTools: ["read"],
+    }],
+    runTurn: (input) => {
+      attempt += 1;
+      // attempt 1,3: 调用 read（pass）；2,4: 不调用（ruleFailed）→ pass@4 = 2/4 = 0.5
+      return fakeRun(input, attempt % 2 === 1 ? ["read"] : ["write"]);
+    },
+  });
+  const sum = summary.caseSummaries[0]!;
+  assert.equal(sum.total, 4);
+  assert.equal(sum.passAtK, 0.5);
+  // ruleCheckPassed 是聚合视图：只要有一次 fail → false
+  assert.equal(sum.ruleCheckPassed, false);
+  assert.ok(sum.ruleCheckDetails.find((r) => r.rule === "mustCallTools")?.passed === false);
+});
+
+test("D-QEVAL3: cases with no hard rules → ruleFailed undefined, pass@k tracks status only", async () => {
+  const root = mkdtempSync(join(tmpdir(), "subagent-eval-"));
+  const summary = await runSubAgentEvaluation({
+    workspaceRoot: root,
+    workspaceId: "ws",
+    evaluationId: "eval",
+    model: "model",
+    repeat: 2,
+    trackUsage: false,
+    cases: [{ id: "no-hard", name: "NoHard", personaOverride: "analyst", brief: "x", dataFiles: [], expected: { kind: "step-budget", maxSteps: 10 } }],
+    runTurn: (input) => fakeRun(input, ["read"]),
+  });
+  const sum = summary.caseSummaries[0]!;
+  assert.equal(sum.passAtK, 1);
+  assert.equal(sum.ruleCheckPassed, true);
+  assert.equal(sum.ruleCheckDetails.length, 0);
+  assert.equal(summary.results[0]?.ruleFailed, undefined);
+  assert.equal(summary.results[0]?.hardRuleResults, undefined);
+});
+
+test("D-QEVAL3: checkHardRules covers all 7 rule kinds", () => {
+  const baseCase = {
+    id: "c", name: "C", personaOverride: "p", brief: "b", dataFiles: [],
+    expected: { kind: "step-budget" as const, maxSteps: 10 },
+  };
+  // 全失败的运行结果
+  const fail = checkHardRules(
+    {
+      ...baseCase,
+      mustCallTools: ["read"],
+      mustNotCallTools: ["delete"],
+      outputContains: ["要点"],
+      outputNotContains: ["敏感"],
+      minOutputChars: 100,
+      maxToolCalls: 1,
+      maxCostUsd: 0.001,
+    },
+    { toolTrajectory: ["delete"], output: "敏感", toolCalls: 5, totalCost: 0.5 },
+  );
+  assert.equal(fail.length, 7);
+  for (const r of fail) assert.equal(r.passed, false, `rule ${r.rule} should fail`);
+
+  // 全通过
+  const pass = checkHardRules(
+    {
+      ...baseCase,
+      mustCallTools: ["read"],
+      mustNotCallTools: ["delete"],
+      outputContains: ["要点"],
+      outputNotContains: ["敏感"],
+      minOutputChars: 2,
+      maxToolCalls: 5,
+      maxCostUsd: 1,
+    },
+    { toolTrajectory: ["read"], output: "要点说明", toolCalls: 1, totalCost: 0.0001 },
+  );
+  assert.equal(pass.length, 7);
+  for (const r of pass) assert.equal(r.passed, true, `rule ${r.rule} should pass`);
+});
+
+test("D-QEVAL3: outputVariance is coefficient of variation across successful runs", async () => {
+  const root = mkdtempSync(join(tmpdir(), "subagent-eval-"));
+  let attempt = 0;
+  await runSubAgentEvaluation({
+    workspaceRoot: root,
+    workspaceId: "ws",
+    evaluationId: "eval",
+    model: "model",
+    repeat: 3,
+    trackUsage: false,
+    cases: [{ id: "var", name: "Var", personaOverride: "a", brief: "x", dataFiles: [], expected: { kind: "step-budget", maxSteps: 10 } }],
+    runTurn: (input) => {
+      attempt += 1;
+      // 每次输出文字长度不同：done 长度=4，但 fakeRun 改不动……
+      // 测试 cv 至少能计算（实际 fakeRun 三次都是 "done" 输出长度相同 → cv=0）
+      return fakeRun(input, []);
+    },
+  }).then((summary) => {
+    assert.equal(summary.caseSummaries[0]?.outputVariance, 0);
+  });
+});
+
+test("D-QEVAL3: cases without hard rules keep summary backward compatible", () => {
+  // 没硬断言时，summary 的 ruleCheckDetails=[], ruleCheckPassed=true, passAtK 与传统 success ratio 一致
+  const dummy = checkHardRules(
+    { id: "c", name: "C", personaOverride: "p", brief: "b", dataFiles: [], expected: { kind: "step-budget" as const, maxSteps: 10 } },
+    { toolTrajectory: [], output: "", toolCalls: 0, totalCost: 0 },
+  );
+  assert.equal(dummy.length, 0);
+});

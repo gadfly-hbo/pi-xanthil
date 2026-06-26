@@ -334,6 +334,8 @@ export interface Workspace {
   name: string;
   rootPath: string;
   createdAt: number;
+  // 归档标记：缺省/null=活跃；时间戳=已归档（侧边栏隐藏、数据完整保留，可取消归档恢复）。
+  archivedAt?: number | null;
 }
 
 export interface Session {
@@ -1773,6 +1775,20 @@ export interface SubAgentEvalCase {
   dataFiles: string[];
   expected: SubAgentExpectation;
   timeoutMs?: number;
+  // ---- D-QEVAL3 硬断言（X-QEVAL0 契约扩展；均可选）----
+  mustCallTools?: string[];
+  mustNotCallTools?: string[];
+  outputContains?: string[];
+  outputNotContains?: string[];
+  minOutputChars?: number;
+  maxToolCalls?: number;
+  maxCostUsd?: number;
+}
+
+export interface HardRuleCheckResult {
+  rule: "mustCallTools" | "mustNotCallTools" | "outputContains" | "outputNotContains" | "minOutputChars" | "maxToolCalls" | "maxCostUsd";
+  passed: boolean;
+  detail: string;
 }
 
 export interface SubAgentEvalSet {
@@ -1802,6 +1818,8 @@ export interface SubAgentEvaluationRunResult {
   output: string;
   expectation: SubAgentExpectation;
   error: EvaluationError | null;
+  hardRuleResults?: HardRuleCheckResult[];
+  ruleFailed?: boolean;
 }
 
 export interface SubAgentCaseSummary {
@@ -1814,6 +1832,10 @@ export interface SubAgentCaseSummary {
   avgStepCount: number;
   avgTotalTokens: number;
   avgTotalCost: number;
+  ruleCheckPassed: boolean;
+  ruleCheckDetails: HardRuleCheckResult[];
+  passAtK: number;
+  outputVariance: number;
 }
 
 export interface SubAgentEvaluation {
@@ -1898,6 +1920,42 @@ export interface HookEvaluation {
 }
 export interface HookEvaluationDetail extends HookEvaluation {
   results: HookEvaluationRunResult[];
+}
+
+// ──── 文档质量评测（X-QEVAL0 契约，eval_plugin 移植）。与上方六类 *-Evaluation 并列，
+// runner=D-QEVAL1（runJudge 单调，3 次取中位数逻辑在 runner 层）、lab=E-QEVAL2；不混入现有 runner。 ────
+export interface DocumentEvalRuleResult {
+  ruleName: string;
+  passed: boolean;
+  score: number;
+  detail: string;
+}
+
+export interface DocumentEvalCase {
+  id: string;
+  name: string;
+  domain: "mall" | "return_profile" | string;
+  reportPath: string;
+  rubrics: Array<{ criterion: string; weight: number; anchors?: string }>;
+}
+
+export interface DocumentSessionMetrics {
+  totalTokens: number;
+  totalCost: number;
+  subagentCount: number;
+  wordCount: number;
+  costPer1kWords: number;
+}
+
+export interface DocumentEvalResult {
+  caseId: string;
+  ruleResults: DocumentEvalRuleResult[];
+  ruleTotalScore: number;
+  judgeScore: number;
+  judgeDetails: Array<{ criterion: string; score: number; reason: string }>;
+  combinedScore: number;
+  consistencyAlerts: string[];
+  sessionMetrics?: DocumentSessionMetrics;
 }
 
 export interface EvaluationArchiveResult {
@@ -2845,6 +2903,8 @@ export interface XanCommand {
   template: string;            // 展开目标 prompt 模板，含上述占位
   params?: XanCommandParam[];  // 具名参数定义（驱动向导表单 + {{param.key}} 展开）
   skillSlugs?: string[];       // 触发该命令时一并启用的 skill（并入该 turn 的 skillPaths）
+  toolIds?: string[];           // 场景包绑定的 analysis ExtractionTool；仅预填 @工具卡，不自动运行
+  toolParamMap?: Record<string, string>; // command param.key -> tool 参数名 / inputPath
   source: "custom";            // MVP 仅自定义命令；extension/skill 类命令为后续只读展示
 }
 

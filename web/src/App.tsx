@@ -119,6 +119,7 @@ function appendToolResult(messages: UiMessage[], block: Extract<ContentBlock, { 
 
 export default function App() {
   const [workspaces, setWorkspaces] = useState<Workspace[]>([]);
+  const [archivedWorkspaces, setArchivedWorkspaces] = useState<Workspace[]>([]);
   const [activeWorkspaceId, setActiveWorkspaceId] = useState<string | null>(null);
   const [sessions, setSessions] = useState<Session[]>([]);
   const [activeSessionId, setActiveSessionId] = useState<string | null>(null);
@@ -292,6 +293,7 @@ export default function App() {
       setWorkspaces(ws);
       if (ws[0]) setActiveWorkspaceId(ws[0].id);
     });
+    api.listArchivedWorkspaces().then(setArchivedWorkspaces);
     void refreshModels().then((list) => {
       const defaultModel = list.find((item) => item.id === DEFAULT_CHAT_MODEL)
         ?? list.find((item) => item.isDefault)
@@ -604,6 +606,26 @@ export default function App() {
     },
     [activeWorkspaceId],
   );
+
+  // 工作区归档（X-ARCHIVE0/E-ARCHIVE1）：归档=隐藏不删，从活跃列表移除并切换选中；可在「已归档」恢复。
+  const archiveWorkspace = useCallback(
+    async (id: string) => {
+      await api.archiveWorkspace(id);
+      setWorkspaces((cur) => {
+        const next = cur.filter((w) => w.id !== id);
+        if (activeWorkspaceId === id) setActiveWorkspaceId(next[0]?.id ?? null);
+        return next;
+      });
+      api.listArchivedWorkspaces().then(setArchivedWorkspaces);
+    },
+    [activeWorkspaceId],
+  );
+
+  const unarchiveWorkspace = useCallback(async (id: string) => {
+    await api.unarchiveWorkspace(id);
+    setArchivedWorkspaces((cur) => cur.filter((w) => w.id !== id));
+    api.listWorkspaces().then(setWorkspaces);
+  }, []);
 
   const renameSession = useCallback(async (id: string, title: string) => {
     await api.renameSession(id, title);
@@ -1035,6 +1057,9 @@ export default function App() {
               onNewZhuantiTask={newZhuantiTask}
               onRenameWorkspace={renameWorkspace}
               onDeleteWorkspace={deleteWorkspace}
+              archivedWorkspaces={archivedWorkspaces}
+              onArchiveWorkspace={archiveWorkspace}
+              onUnarchiveWorkspace={unarchiveWorkspace}
               onRenameSession={renameSession}
               onDeleteSession={deleteSession}
               onRenameZhuantiTask={renameZhuantiTask}
@@ -1059,6 +1084,9 @@ export default function App() {
               onNewZhuantiTask={newZhuantiTask}
               onRenameWorkspace={renameWorkspace}
               onDeleteWorkspace={deleteWorkspace}
+              archivedWorkspaces={archivedWorkspaces}
+              onArchiveWorkspace={archiveWorkspace}
+              onUnarchiveWorkspace={unarchiveWorkspace}
               onRenameSession={renameSession}
               onDeleteSession={deleteSession}
               onRenameZhuantiTask={renameZhuantiTask}

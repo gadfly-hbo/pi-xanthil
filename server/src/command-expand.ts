@@ -3,6 +3,8 @@ import type { XanCommand } from "./types.ts";
 export interface CommandExpandResult {
   expandedText: string;
   skillSlugs: string[];
+  toolIds: string[];
+  toolParamMap: Record<string, string>;
 }
 
 interface ParsedArgs {
@@ -13,15 +15,17 @@ interface ParsedArgs {
 
 export function expandCommand(text: string, commands: XanCommand[]): CommandExpandResult {
   const parsed = parseCommandPrefix(text);
-  if (!parsed) return { expandedText: text, skillSlugs: [] };
+  if (!parsed) return { expandedText: text, skillSlugs: [], toolIds: [], toolParamMap: {} };
 
   const command = commands.find((candidate) => candidate.enabled && candidate.name === parsed.name);
-  if (!command) return { expandedText: text, skillSlugs: [] };
+  if (!command) return { expandedText: text, skillSlugs: [], toolIds: [], toolParamMap: {} };
 
   const args = parseArgs(parsed.argsText);
   return {
     expandedText: expandTemplate(command.template, args),
     skillSlugs: [...(command.skillSlugs ?? [])],
+    toolIds: [...(command.toolIds ?? [])],
+    toolParamMap: { ...(command.toolParamMap ?? {}) },
   };
 }
 

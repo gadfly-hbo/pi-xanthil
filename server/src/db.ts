@@ -53,6 +53,16 @@ try {
 }
 
 try {
+  // 工作区归档（X-ARCHIVE0）：archived_at 为空=活跃、有时间戳=已归档。幂等加列，老库 boot 不炸。
+  const cols = db.prepare("PRAGMA table_info(workspaces)").all() as Array<{ name: string }>;
+  if (!cols.some((c) => c.name === "archived_at")) {
+    db.exec("ALTER TABLE workspaces ADD COLUMN archived_at INTEGER");
+  }
+} catch {
+  // ignore
+}
+
+try {
   const cols = db.prepare("PRAGMA table_info(rule_memories)").all() as Array<{ name: string }>;
   if (!cols.some((c) => c.name === "scope")) {
     db.exec("ALTER TABLE rule_memories ADD COLUMN scope TEXT NOT NULL DEFAULT 'global'");
@@ -116,10 +126,11 @@ try {
 
 db.exec(`
   CREATE TABLE IF NOT EXISTS workspaces (
-    id         TEXT PRIMARY KEY,
-    name       TEXT NOT NULL,
-    root_path  TEXT NOT NULL,
-    created_at INTEGER NOT NULL
+    id          TEXT PRIMARY KEY,
+    name        TEXT NOT NULL,
+    root_path   TEXT NOT NULL,
+    created_at  INTEGER NOT NULL,
+    archived_at INTEGER
   );
   CREATE TABLE IF NOT EXISTS sessions (
     id           TEXT PRIMARY KEY,
@@ -723,15 +734,31 @@ export function getOrCreateCollectWorkspace(): Workspace {
   return { id: COLLECT_WORKSPACE_ID, name: "收集（全局）", rootPath, createdAt };
 }
 
-export function listWorkspaces(): Workspace[] {
+export function listWorkspaces(includeArchived = false): Workspace[] {
+  const sql = "SELECT id, name, root_path AS rootPath, created_at AS createdAt, archived_at AS archivedAt FROM workspaces WHERE id != ?"
+    + (includeArchived ? "" : " AND archived_at IS NULL")
+    + " ORDER BY created_at DESC";
+  return db.prepare(sql).all(COLLECT_WORKSPACE_ID) as unknown as Workspace[];
+}
+
+// 已归档工作区列表（侧边栏「已归档」折叠区用），按归档时间倒序。
+export function listArchivedWorkspaces(): Workspace[] {
   return db
-    .prepare("SELECT id, name, root_path AS rootPath, created_at AS createdAt FROM workspaces WHERE id != ? ORDER BY created_at DESC")
+    .prepare("SELECT id, name, root_path AS rootPath, created_at AS createdAt, archived_at AS archivedAt FROM workspaces WHERE id != ? AND archived_at IS NOT NULL ORDER BY archived_at DESC")
     .all(COLLECT_WORKSPACE_ID) as unknown as Workspace[];
+}
+
+export function archiveWorkspace(id: string): void {
+  db.prepare("UPDATE workspaces SET archived_at = ? WHERE id = ?").run(Date.now(), id);
+}
+
+export function unarchiveWorkspace(id: string): void {
+  db.prepare("UPDATE workspaces SET archived_at = NULL WHERE id = ?").run(id);
 }
 
 export function getWorkspace(id: string): Workspace | undefined {
   return db
-    .prepare("SELECT id, name, root_path AS rootPath, created_at AS createdAt FROM workspaces WHERE id = ?")
+    .prepare("SELECT id, name, root_path AS rootPath, created_at AS createdAt, archived_at AS archivedAt FROM workspaces WHERE id = ?")
     .get(id) as unknown as Workspace | undefined;
 }
 

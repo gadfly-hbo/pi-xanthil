@@ -1,5 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import {
+  Archive,
+  ArchiveRestore,
   ChevronDown,
   ChevronRight,
   Folder,
@@ -38,6 +40,9 @@ interface Props {
   onNewZhuantiTask: () => void;
   onRenameWorkspace: (id: string, name: string) => void;
   onDeleteWorkspace: (id: string, deleteFiles: boolean) => void;
+  archivedWorkspaces: Workspace[];
+  onArchiveWorkspace: (id: string) => void;
+  onUnarchiveWorkspace: (id: string) => void;
   onRenameSession: (id: string, title: string) => void;
   onDeleteSession: (id: string, deleteFiles: boolean) => void;
   onRenameZhuantiTask: (flowId: string, name: string) => void;
@@ -77,6 +82,7 @@ export function Sidebar(p: Props) {
   const [pendingDelete, setPendingDelete] = useState<PendingDelete | null>(null);
   const [dailyCollapsed, setDailyCollapsed] = useState(false);
   const [zhuantiCollapsed, setZhuantiCollapsed] = useState(false);
+  const [archivedCollapsed, setArchivedCollapsed] = useState(true);
 
   const [width, setWidth] = useState(() => Number(localStorage.getItem("xanthil-sidebar-w")) || 264);
   const dragging = useRef(false);
@@ -177,6 +183,15 @@ export function Sidebar(p: Props) {
                   <div className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100">
                     <button className={rowActionBtn} title="重命名" onClick={() => setEditing({ kind: "ws", id: w.id, value: w.name })}>
                       <Pencil className="h-3.5 w-3.5" strokeWidth={ICON} />
+                    </button>
+                    <button
+                      className={rowActionBtn}
+                      title="归档"
+                      onClick={() => {
+                        if (window.confirm(`归档工作区「${w.name}」？\n归档后从侧边栏隐藏，数据完整保留，可在「已归档」中恢复。`)) p.onArchiveWorkspace(w.id);
+                      }}
+                    >
+                      <Archive className="h-3.5 w-3.5" strokeWidth={ICON} />
                     </button>
                     <button
                       className={rowActionBtn}
@@ -345,6 +360,38 @@ export function Sidebar(p: Props) {
                 {p.zhuantiTasks.length === 0 && (
                   <div className="px-3 py-1 text-[11px] text-neutral-500 dark:text-neutral-400">还没有专题任务，点上方 + 新建。</div>
                 )}
+              </div>
+            )}
+          </section>
+        )}
+
+        {/* 已归档工作区（默认收起；数据保留、可取消归档恢复） */}
+        {p.archivedWorkspaces.length > 0 && (
+          <section className="pt-3">
+            <SectionHeader label={`已归档 (${p.archivedWorkspaces.length})`}>
+              <button
+                className={iconBtn}
+                title={archivedCollapsed ? "展开已归档" : "折叠已归档"}
+                onClick={() => setArchivedCollapsed((current) => !current)}
+              >
+                {archivedCollapsed ? <ChevronRight className="h-3.5 w-3.5" strokeWidth={ICON} /> : <ChevronDown className="h-3.5 w-3.5" strokeWidth={ICON} />}
+              </button>
+            </SectionHeader>
+            {!archivedCollapsed && (
+              <div className="space-y-0.5">
+                {p.archivedWorkspaces.map((w) => (
+                  <div key={w.id} className="group flex items-center rounded-md hover:bg-neutral-100 dark:hover:bg-neutral-800/60">
+                    <div className="flex min-w-0 flex-1 items-center gap-1.5 px-2 py-1.5 text-[12.5px] text-neutral-500 dark:text-neutral-400">
+                      <Folder className="h-3.5 w-3.5 shrink-0" strokeWidth={ICON} />
+                      <span className="truncate">{w.name}</span>
+                    </div>
+                    <div className="flex shrink-0 items-center pr-1 opacity-0 transition-opacity group-hover:opacity-100">
+                      <button className={rowActionBtn} title="取消归档" onClick={() => p.onUnarchiveWorkspace(w.id)}>
+                        <ArchiveRestore className="h-3.5 w-3.5" strokeWidth={ICON} />
+                      </button>
+                    </div>
+                  </div>
+                ))}
               </div>
             )}
           </section>

@@ -19,6 +19,8 @@ test("expandCommand expands positional arguments", () => {
 
   assert.equal(result.expandedText, "Analyze sales with north region. Args=sales \"north region\"");
   assert.deepEqual(result.skillSlugs, []);
+  assert.deepEqual(result.toolIds, []);
+  assert.deepEqual(result.toolParamMap, {});
 });
 
 test("expandCommand expands named parameters and returns skill slugs", () => {
@@ -33,6 +35,20 @@ test("expandCommand expands named parameters and returns skill slugs", () => {
   assert.deepEqual(result.skillSlugs, ["retention-analysis"]);
 });
 
+test("expandCommand returns scenario tool bindings", () => {
+  const result = expandCommand("/brief --dataset=orders", [
+    command({
+      template: "Dataset={{param.dataset}}",
+      toolIds: ["seasonal-forecast"],
+      toolParamMap: { dataset: "inputPath", horizon: "periods" },
+    }),
+  ]);
+
+  assert.equal(result.expandedText, "Dataset=orders");
+  assert.deepEqual(result.toolIds, ["seasonal-forecast"]);
+  assert.deepEqual(result.toolParamMap, { dataset: "inputPath", horizon: "periods" });
+});
+
 test("expandCommand expands quoted equals named parameters", () => {
   const result = expandCommand("/brief --dataset=\"north orders\" --metric=gmv", [
     command({ template: "Dataset={{param.dataset}} Metric={{param.metric}}" }),
@@ -45,10 +61,14 @@ test("expandCommand passes through unknown or disabled commands", () => {
   assert.deepEqual(expandCommand("/missing a b", [command({})]), {
     expandedText: "/missing a b",
     skillSlugs: [],
+    toolIds: [],
+    toolParamMap: {},
   });
   assert.deepEqual(expandCommand("/brief a b", [command({ enabled: false })]), {
     expandedText: "/brief a b",
     skillSlugs: [],
+    toolIds: [],
+    toolParamMap: {},
   });
 });
 

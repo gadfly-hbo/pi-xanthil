@@ -1,6 +1,6 @@
-# command 场景调用框（候选 · command = {tools+skills+prompts} 定制集合，一键调用）
+# command 场景调用框（已落地 · command = {tools+skills+prompts} 定制集合，一键装配）
 
-> **状态**：暂缓 · 入池 2026-06-22 · 总控持有（接缝契约 XanCommand 扩字段 + 跨 D/E 实现）
+> **状态**：已完成 · 入池 2026-06-22 · 捞出落地 2026-06-26 · 总控持有（接缝契约 XanCommand 扩字段 + 跨 D/E 实现）
 > **来源**：chat 框接入 prompts/command 改造（2026-06-22）收尾讨论。先澄清「command 与 bash/脚本无关」，再由用户校准定位：**command 应能调用三类东西——tools、skills、prompts；command 调用框 = 把它们按场景打成定制集合，特定数据分析场景下一键调用，免去分别找。**
 > **零残留**：本需求从未在产品代码起头，入池不涉及清理。
 
@@ -8,9 +8,16 @@
 
 ## 0. 一句话结论
 
-把 `XanCommand` 升级为**场景包（scenario pack）**：一条命令可绑定一套定制化的 **{prompt + skills + tools}** 组合；将来在 chat 框做一个 **command 调用框**，把这些场景包列出来供一键调用——用户在特定数据分析场景下不必再分别去 @工具 / SkillSelector / Prompt 库三处找零件。
+把 `XanCommand` 升级为**场景包（scenario pack）**：一条命令可绑定一套定制化的 **{prompt + skills + tools}** 组合。2026-06-26 已落地甜点档：command 管理面可绑定 analysis tools 与参数映射；ChatPane 选择带 tools 的 command 时预填并打开 `@工具`，由用户确认后运行。
 
-**暂不做的部分（用户决策 2026-06-22）**：chat 内的 command 调用框现在不做——因为三类零件（tool/skill/prompt）在 chat 框已各自可用，单独调用无缺口。本需求专指"把三类打包成场景集合 + 一键调用框"这层增量。
+**仍不做的部分**：不做独立重型 command 调用框，不做全自动 tool run。tools 仍走 `@工具` 卡和 `/api/extraction-tools/:id/run`，保留人工确认在环。
+
+**落地记录（2026-06-26）**：
+- `XanCommand` 双侧新增 `toolIds?: string[]`、`toolParamMap?: Record<string,string>`。
+- server `coerceCommand()` 只接受当前已注册的 `analysis` tools；`expandCommand()` 向后兼容返回 tool 绑定。
+- `CommandManagementPane` 新增“场景工具 toolIds”与参数映射编辑。
+- `ChatPane` 对带 tools 的 command 预填 `ManualAnalysisToolCard`；无 tools 的旧命令行为不变。
+- 验证：command 单测、command evaluation 单测、`npm run typecheck`、`npm run build` 通过。
 
 ---
 

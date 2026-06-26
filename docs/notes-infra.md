@@ -10,8 +10,14 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。详见 `Orchestration.md §八` 发布节点。
 
-- 最近更新：2026-06-26 · 总控（零幻觉·数据可信地基 v2.3 终审归档）
-- 本批（2026-06-26 · 零幻觉·数据可信地基）：
+- 最近更新：2026-06-26 · 总控（记忆 v2.0 收尾 UI+闭环 4 卡全 done + 终审）
+- 本批（2026-06-26 · 记忆 v2.0 缺口1/3/4 收尾 UI+闭环）：
+  - ✅ **缺口1·chat dataPaths boost（X，总控自做 index.ts）**：chat 注入点(`index.ts` handleSend)原 query-only，本批补 `dataPaths` boost 与 flow 侧一致。把 `forkBranch`/`pathScopeSessionId` 提前到 `buildMemoryInjectionSnapshot` 前计算（供记忆注入 + 下方输出路径作用域**单源共用**，删原 5011-5012 重复），构造带 `dataPaths` 的 `chatRetrievalCtx`（`listWorkspacePaths(ws,"clean_data",pathScopeSessionId)` 的 file 项 path），`buildMemoryInjectionSnapshot` 与 `withRulesPrompt` 两处 ctx 同步带 dataPaths。守 `RetrievalContext` 既定语义（dataPaths→`boostTags` 仅加权、`deriveTags` 不硬过滤、untagged 不清空）；fork 作用域回退父任务与输出路径同源；缓存稳定前缀不回退（仅影响检索打分）。
+  - ✅ **缺口3·维护 UI / 缺口4·升级 Skill UI（D）**：两张面板接线卡（RulesPane「立即维护」+ dryRun 预览 / 「从记忆升级 Skill」+ dryRun 列簇），已审核通过转 done。
+  - ✅ **缺口4·评测闭环（E，回流终审通过·一次过）**：仅改 `SkillLabPane.tsx`（E slot）——「Registry 候选」勾选区(`listSkillRegistry candidate`)→载入为 eval variant(`registry_<id>`)→baseline vs candidate 对照→评测后「采纳(PATCH status=active,confirmed=true)/弃用(DELETE=archive，保留 SKILL.md)」决策区(pairwise+Δ+activation)。复用既有 `api/engine.ts` 三方法（本会话无改动）+ 后端 10 条 skill-registry 路由，**零接缝零新后端**；三道人工在环不自动启用；红线净。**注：此即开场标记的 `SkillLabPane.tsx +175` 改动，归属已坐实。**
+  - ✅ **验证**：`npm run typecheck` 绿；`npm run build` 绿；全量记忆测试 **83/83**。
+  - 📌 **记忆 v2.0 缺口1/3/4 全部完成**；缺口2（向量层）按既定暂缓。
+- 历史批次（2026-06-26 · 零幻觉·数据可信地基 v2.3 终审归档）：
   - ✅ **产品边界声明**：本系统验证 LLM 输出是否忠实于已登记数据、来源与计算结果；不保证原始数据、业务口径或因果解释天然正确，重要结论仍需人工复核。
   - ✅ **四模块红线矩阵**：监测/日常/专题 web_search 硬禁；重复仅 workflow.allowWeb=true 显式授权放行。主对话/专题/flow chat 默认 `skillPaths=[]` 禁自主 skill；显式白名单仍可审计。collect 是独立联网窗口，不混入四模块口径。
   - ✅ **证据与核验闭环**：EvidenceLevel/MetricSourceRef/renderSourceLabel + fabricated/label_mismatch + causal layering + coverage check + C-mini + reconciliation 已完成并经 X-ZH9 终审。
@@ -26,6 +32,7 @@
   - **知识库新模块**：`knowledge-injection/retrieval(.ts/.test)`、`system-prompts(.ts/.test)`、前端 `KnowledgeBasePane`/`KnowledgeBaseReadmePane`/`MemoryReadmePane` 已存在；wiki 标 done，但总控尚未逐卡运行时实跑终审。
   - 汇报可视化 / prompts 管理 / 规则记忆重构 / 知识库等跨批改动仍处于工作区未提交状态，本批未清理、不回滚。
 - 下一步：
+  - **command 场景调用框收口**（工作树未提交，§六-外的在飞批）：`command-expand`/`routes/engine.ts`/双侧 `types.ts`(toolIds/toolParamMap)/`CommandManagementPane`/`ChatPane`/`ManualAnalysisToolCard`。backlog 标已落地，但需总控核 §0 未记的这批：跑 command 单测 + typecheck/build，并核 `ChatPane`/`ManualAnalysisToolCard` 仍走 `@工具`/`/api/extraction-tools/:id/run` 的 `source=ai` 闸门、不绕 clean_data 红线。
   - 优先做 **数字锁真实 tool-use smoke**：准备一个 `analysis` 工具返回 `metricSnapshots`，让模型故意把注入值改写，确认 `ChatPane` 出现“模型引用数值与代码计算值不符”；再跑正常引用确认无告警。也要覆盖 `send_flow` 的 flow chat 消费侧是否能看到同一 block。
   - 继续补 **知识库新模块运行时终审**：API/DB/前端逐卡实跑，尤其全局/专属 scope、enablement、检索注入、系统 prompt 聚合与旧库迁移。
   - LLM 管理补测：`llm-config.ts` 三处脱敏链路逐行终审 + node:test 覆盖 key 保留/OAuth 不写 key/settings 局部写。
@@ -81,8 +88,21 @@
 
 ## 二·五、deleteWorkspace 漏删子表 + 测试污染真实库（2026-06-13 修）
 
+> 🚫 **「deleteWorkspace 全量补齐」已放弃（2026-06-27）**：对应 wiki 卡已删除、不再做。「侧边栏清爽」诉求改由**工作区归档**满足（归档=标记位隐藏、不删任何数据、零风险，X-ARCHIVE0/E-ARCHIVE1 已上线，见 §八之后归档实现 / wiki CHANGELOG）。下方的缺口重盘点（53 表/漏 27 硬 FK + origin 语义三选项）**仅留作 schema 参考**：若将来确实要做物理删除（如清理磁盘/合规删档），这份盘点是起点，但当前**无对应待办**，勿当 TODO 误读。
+
 - **症状**：UI 删工作区报错/删不掉（删除按钮在行 hover 才显示，但点了也 500）。根因 = `deleteWorkspace` 抛 `FOREIGN KEY constraint failed`：它没清掉所有带 `workspace_id` 外键的子表。**已补 `token_usage_stats` + `token_usage_daily_stats`**（每个用过的工作区都会累积 token 统计，不补则任何用过的工作区都删不掉）。
-- **⚠ 仍不完整（待办）**：对 workspaces 有 FK 的表共 20+ 张，`deleteWorkspace` 仍漏：`analysis_cases/analysis_standards/business_contexts/change_proposals/dashboards/hypothesis_library/metric_definitions/onto_prompts/ontologies/rule_memories/trace_events`。其中 ontologies 有嵌套子表、metric/rule/standard/ontology 涉及**全局池 origin 语义**（删 origin 工作区是否连带删全局定义=产品决策），需专门设计，勿盲目补 DELETE。
+- **⚠ 仍不完整（2026-06-27 重新盘点，原"11 张"清单已严重过时）**：当前 schema 共 **53 张**带 `workspace_id` 列的表，其中 **43 张有硬 FK `REFERENCES workspaces(id)`**（真正阻断删除）。`deleteWorkspace` 现仅处理 16 类，**仍漏 27 张硬 FK 表 + 7 张孤儿表**。
+  - **现已删（16）**：sessions·workspace_paths·workflow/memory/skill/tool_evaluations(+results)·skill_eval_sets·tool_case_sets·skill_curation_proposals·memory_proposals·memory_usage_stats·rule_conflicts·memory_failure_attributions·flows(经 deleteFlow→flow_messages/flow_runs)·token_usage_stats/daily。
+  - **缺口 A·硬 FK 阻断（27 张，真 bug「删不掉/500」）**：
+    - ⚠️ **记忆重构(新)**：`memory_items`(核心记忆库)、`memory_reviews` —— **原笔记"memory_* 已处理"是 clean-slate 重建前的过时说法**；这俩是重建后主表，FK 阻断 → **任何存过记忆的工作区现在都删不掉**（最普遍的现行阻塞，可先热修止血）。
+    - **数据/语义(卡内)**：analysis_cases·analysis_standards·business_contexts·metric_definitions·ontologies(+嵌套 object_types/property_types/link_types/logic_rules/onto_actions)·onto_prompts·rule_memories·hypothesis_library·dashboards·change_proposals·trace_events。
+    - **监测/体检(新)**：monitor_configs·monitor_runs·monitor_metric_systems（monitor_findings 已 `ON DELETE CASCADE` 随 runs 走）·health_runs。
+    - **知识库(新)**：knowledge_docs(+ knowledge_chunks 子表，无 cascade，须先删)。
+    - **prompts 池(新)**：prompt_templates。
+    - **4 类新 eval(新)**：command/hook/prompt/subagent_evaluations（各带 `*_results` 子表，须 results 先删）+ 对应 command_case_sets/hook_eval_sets/prompt_eval_sets/subagent_eval_sets。
+  - **缺口 B·孤儿行（7 张，无硬 FK 不阻断删除但留垃圾）**：anax_gate_config·kg_nodes·kg_edges·skill_registry·skill_registry_eval_history·workflow_favorites·**workspace_memory_enablements**（无 FK 但 origin 语义**必须**清，否则留下指向已删工作区的启用记录）。
+  - **三个结构性难点**：① 嵌套删除顺序（ontologies 子表 / 4 类 eval 的 results / knowledge_chunks 须子表先删）；② `deleteWorkspace` **无事务包裹**（裸 DELETE 串，中途 FK 失败留半删状态）→ 补全须 `db.exec("BEGIN"/"COMMIT"/"ROLLBACK")`（node:sqlite 无 `.transaction()`）；③ **枚举式天然脆弱**——每新增一张 `workspace_id` 表就静默重现此 bug（本次过时即明证），更耐久修法待评估：建表统一 `ON DELETE CASCADE` / 维护"工作区级表"中央清单做通用 `DELETE WHERE workspace_id=?` / 加 schema 自检测试遍历断言覆盖。
+  - **P0 阻塞·全局池 origin 语义（仍未拍板，范围由 6→8 张）**：池化表现为 metric_definitions·rule_memories·memory_items·analysis_standards·analysis_cases·business_contexts·ontologies·**prompt_templates·knowledge_docs**（后两张卡后新池化）。删 origin 工作区时三选一须先定：(a) 连带删全局定义(他工作区会丢内容) / (b) 仅删 enablement 保定义为孤儿 / (c) 改派 origin 给其他工作区；无论哪个都要同步清 `workspace_memory_enablements`。**勿盲目补 DELETE，先定语义。**
 - **测试污染真实库（已修）**：`multi-agent-runner.test.ts` 预算用例 `createWorkspace("runner budget stop")` 曾静态 import db.ts、未隔离 → 多次跑测试在真实 `~/.pi-xanthil` 堆了 12 个测试工作区。**已按 memory-injection.test.ts 范式修**：import 任何经 cache→db 的模块前先 `process.env.XANTHIL_DATA_DIR = mkdtempSync(...)` + 动态 import。**铁律：任何 *.test.ts 在碰 db.ts 前必须先设临时 XANTHIL_DATA_DIR，否则污染真实库**（db.ts 在 import 期即按 env 打开 DB_PATH）。已清掉 12 个污染工作区（经 API/直连，保留森马会员）。
 
 ## 三、本机已知坑（pi 侧，非本项目 bug）
@@ -108,6 +128,7 @@
 **实验室（research_lab）= 两级嵌套**：
 - 顶部横向 `LAB_SUB_TABS` = workflow/skill/tool/model/DLF/**AnaX**（AnaX 顶部 tab id 复用 `anax_view`）。
 - 仅当 `activeSubTab ∈ LAB_ANAX_SUB_IDS`（anax_view/hypothesis/change_mgmt/readme）时，`App.tsx` 在内容区左侧渲染 `LAB_ANAX_SUB_TABS` 竖栏；顶部 AnaX tab 在任一子项激活时保持高亮。复用单一 `activeSubTab`，无额外状态。AnaX 4 pane 渲染条件已迁到 `research_lab + 上述子 id`（EngineTabs）。
+- **`document_eval`「文档评测」第 7 个测评台（E-QEVAL2，2026-06-26 接缝追认）**：E 卡接线时在 `constants.ts`（接缝层·总控 slot）加了 `document_eval` 到 `SubTab` union + `LAB_SUB_TABS` + `LAB_SUB_IDS`。**总控裁决：追认**——足迹严格遵循既有 lab-subtab 范式（与 prompts_lab/command_lab 同构、三处同步），是接 lab 子栏的唯一方式，回滚等于删能跑接线再原样重写（纯 churn）。同模板库前端接缝追认先例（§六）。渲染分发在 `EngineTabs`（`aggregate + document_eval` → `DocumentEvalPane`），`App.tsx` 左竖栏靠 `LAB_SUB_IDS` 既有泛型逻辑自动拾取、无需改。**后续同类「pane→后端」接线 E 仍应先报口径由总控加 constants enum。**
 
 **规则记忆（rule_memory）9 项**：6 大记忆模块（`rules`偏好 / `indicators`指标 / `cases`项目 / `failure_memory`失败 / `field_memory`字段 / `process_memory`流程）+ 业务环境/trace/知识图谱并列。`token_stats`/`quick_notes`（随手记）为 header 按钮跳转的隐藏子页，不入二级条（沿用 token_stats 既有范式）。
 
@@ -244,3 +265,23 @@
 - 必测：providers/auth 无明文 key；PUT 往返保留旧 key/未知字段/model 级 `baseUrl`；settings 只改三键；错误 baseUrl 的 test 返回失败且不含 key。
 
 **未来扩展**：新增 api 类型时，`types.ts` 的 `LlmApiKind`、`llm-config.ts` 的 `SUPPORTED_API_KINDS`、`coerceApiKind()`、`testProvider()` 分支必须同步扩；否则会出现 UI 能保存但 testProvider 不会测的漂移。
+
+---
+
+## 八、文档质量评测契约（X-QEVAL0，2026-06-26 总控自做）
+
+**背景**：eval_plugin 盘点（2026-06-25）→ Python `eval_plugin` 移植为 TS。本卡=接缝契约先行，解锁 **D-QEVAL1**(runner) / **E-QEVAL2**(lab)。与现有六类评测（prompt/command/hook/skill/subagent/tool）并列，**不破坏、不混入**任何现有 `*-evaluation-runner.ts`。
+
+**已交付（仅加法，不改现有业务代码）**：
+- **双侧 `types.ts`** 4 类型（`HookEvaluationDetail` 后、`EvaluationArchiveResult` 前，字面一致）：`DocumentEvalRuleResult`{ruleName,passed,score,detail} · `DocumentEvalCase`{id,name,domain,reportPath,rubrics[]} · `DocumentSessionMetrics`{totalTokens,totalCost,subagentCount,wordCount,costPer1kWords} · `DocumentEvalResult`{caseId,ruleResults[],ruleTotalScore,judgeScore,judgeDetails[],combinedScore,consistencyAlerts[],sessionMetrics?}。`domain` 取 `"mall"|"return_profile"|string`（开放域）。
+- **`server/src/document-eval-api.ts`**（HTTP 签名 + 入参校验，对齐 `command-evaluation-api.ts` 范式）：`DocumentEvaluationRunRequest`{cases,model} / `DocumentEvaluationRunResponse`{resultId} / `parseDocumentEvaluationRunRequest()` / `parseDocumentEvaluationCases()`（去重、reportPath 必填、rubric criterion 必填、weight 非有限回退 1）。**只定契约，不注册路由、不实现评测。**
+  - `POST /workspaces/:id/document-eval/run {cases,model}` → `{resultId}`
+  - `GET /workspaces/:id/document-eval/results/:resultId` → `DocumentEvalResult[]`
+
+**接缝审定（D-QEVAL1/E-QEVAL2 必守）**：
+1. **复用 `evaluation-common.ts:runJudge`**（单次 LLM judge）。**3 次取中位数逻辑在 runner 层实现**，勿改 runJudge 本身。
+2. **新建 `document-evaluation-runner.ts`** 与现有 `*-evaluation-runner.ts` 并列，独立文件，不混入现有 runner。
+3. **不新增 lab 类型枚举**——lab 落点（实验场 subtab/范式 A or B）归 E-QEVAL2 自行判断。
+4. 路由落 `routes/`（engine 域），前端 api 方法落 `api/engine.ts`（E slot）——本契约卡均**未碰**，留给下游。
+
+**验证**：server + web typecheck 绿、build 绿，现有业务代码零改动。

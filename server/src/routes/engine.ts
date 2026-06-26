@@ -128,9 +128,11 @@ import { runHookEvaluation } from "../hook-evaluation-runner.ts";
 import { runToolEvaluation } from "../tool-evaluation-runner.ts";
 import { runSkillEvaluation } from "../skill-evaluation-runner.ts";
 import { parseToolEvaluationCases, parseToolEvaluationRunRequest } from "../tool-evaluation-api.ts";
+import { parseDocumentEvaluationRunRequest } from "../document-eval-api.ts";
+import { runDocumentEvaluation } from "../document-evaluation-runner.ts";
 import { getExtractionTool, listExtractionTools } from "../../tools/registry.ts";
 import { archiveHookEvaluation } from "../evaluation-archive.ts";
-import { type Hook } from "../types.ts";
+import { type DocumentEvalResult, type Hook } from "../types.ts";
 import { autoTriggerCuration } from "../skill-curator.ts";
 import { retrieveSkills, rankSkillSimilarity } from "../skill-retrieval.ts";
 import { analyzeSkillCoverageGaps, type SkillCoverageGapCluster, type SkillCoverageTask } from "../skill-coverage-gap.ts";
@@ -160,6 +162,8 @@ import {
  * 禁止：触碰 index.ts（legacy 冻结，归总控）/ 他域 router。
  */
 export const engineRouter = Router();
+
+const documentEvalResults = new Map<string, { workspaceId: string; results: DocumentEvalResult[]; createdAt: number }>();
 
 function hasAnalysisExtractionTools(): boolean {
   return listExtractionTools().some((tool) => tool.category === "analysis");
@@ -475,6 +479,34 @@ engineRouter.post("/api/hook-evaluations/:id/archive", (req, res) => {
   const workspace = getWorkspace(evaluation.workspaceId);
   if (!workspace) return res.status(404).json({ error: "workspace not found" });
   res.json(archiveHookEvaluation(workspace.rootPath, evaluation));
+});
+
+engineRouter.post("/api/workspaces/:id/document-eval/run", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const parsed = parseDocumentEvaluationRunRequest(req.body);
+  if (!parsed.ok) return res.status(400).json({ error: parsed.error });
+  const resultId = randomUUID();
+  try {
+    const results = await runDocumentEvaluation({
+      workspaceRoot: workspace.rootPath,
+      workspaceId: workspace.id,
+      evaluationId: resultId,
+      model: parsed.value.model,
+      cases: parsed.value.cases,
+    });
+    documentEvalResults.set(resultId, { workspaceId: workspace.id, results, createdAt: Date.now() });
+    res.json({ resultId });
+  } catch (err) {
+    res.status(400).json({ error: String(err) });
+  }
+});
+
+engineRouter.get("/api/workspaces/:id/document-eval/results/:resultId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const item = documentEvalResults.get(req.params.resultId);
+  if (!item || item.workspaceId !== req.params.id) return res.status(404).json({ error: "document evaluation result not found" });
+  res.json(item.results);
 });
 
 // ---- tool evaluations（从 index.ts 迁入·P5-C0 批1·只搬不改，路径不变）----
@@ -1197,7 +1229,7 @@ engineRouter.get("/api/flows/:id/skills", (req, res) => {
   res.json(listSkills(flow.folderPath));
 });
 
-const COMMAND_KEYS = new Set(["id", "name", "enabled", "description", "argumentHint", "template", "params", "skillSlugs", "source"]);
+const COMMAND_KEYS = new Set(["id", "name", "enabled", "description", "argumentHint", "template", "params", "skillSlugs", "toolIds", "toolParamMap", "source"]);
 const COMMAND_PARAM_KEYS = new Set(["key", "label", "required", "type", "options", "source"]);
 const COMMAND_PARAM_TYPES = new Set<XanCommandParamType>(["text", "select", "file"]);
 const SAFE_COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
@@ -1236,6 +1268,31 @@ function coerceCommand(input: unknown): XanCommand | null {
     }
   }
 
+  let toolIds: string[] | undefined;
+  if (o.toolIds !== undefined) {
+    if (!Array.isArray(o.toolIds)) return null;
+    const analysisToolIds = new Set(listExtractionTools().filter((tool) => tool.category === "analysis").map((tool) => tool.id));
+    toolIds = [];
+    for (const rawToolId of o.toolIds) {
+      const toolId = asCommandString(rawToolId);
+      if (!toolId || !analysisToolIds.has(toolId)) return null;
+      if (!toolIds.includes(toolId)) toolIds.push(toolId);
+    }
+  }
+
+  let toolParamMap: Record<string, string> | undefined;
+  if (o.toolParamMap !== undefined) {
+    const map = toRecord(o.toolParamMap);
+    if (Array.isArray(o.toolParamMap)) return null;
+    toolParamMap = {};
+    for (const [key, value] of Object.entries(map)) {
+      if (!SAFE_COMMAND_NAME.test(key)) return null;
+      const target = asCommandString(value);
+      if (!target || !SAFE_COMMAND_NAME.test(target)) return null;
+      toolParamMap[key] = target;
+    }
+  }
+
   const description = asOptionalString(o.description);
   const argumentHint = asOptionalString(o.argumentHint);
   return {
@@ -1247,6 +1304,8 @@ function coerceCommand(input: unknown): XanCommand | null {
     template,
     ...(params && params.length > 0 ? { params } : {}),
     ...(skillSlugs && skillSlugs.length > 0 ? { skillSlugs } : {}),
+    ...(toolIds && toolIds.length > 0 ? { toolIds } : {}),
+    ...(toolParamMap && Object.keys(toolParamMap).length > 0 ? { toolParamMap } : {}),
     source: "custom",
   };
 }

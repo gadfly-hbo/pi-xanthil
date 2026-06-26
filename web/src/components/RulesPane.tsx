@@ -433,7 +433,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
     setError("");
     try {
       const out = await api.promoteMemorySkills(workspaceId, { dryRun: false });
-      setPromoteNote(`已产出 ${out.promotions.length} 个 Skill 候选（status=candidate），请去实验场评测后再启用。`);
+      setPromoteNote(`已产出 ${out.promotions.length} 个 Skill 候选（status=candidate）。请到「实验场 → Skill → Registry 候选」选择 candidate 跑 baseline 对照，再采纳或弃用。`);
       setPromotePreview(null);
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
@@ -519,7 +519,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
             {promotePreview && (
               <p className="mt-1 text-[11.5px] text-neutral-500">扫描 experience {promotePreview.scanned} 条 · 共 {promotePreview.clusters.length} 簇 · eligible {promotePreview.eligibleClusters} · dryRun={String(promotePreview.dryRun)}</p>
             )}
-            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">执行后只入 skill registry candidate 状态，不会自动启用。请去实验场评测后再决定是否激活。</p>
+            <p className="mt-1 text-[11px] text-amber-700 dark:text-amber-300">执行后只入 skill registry candidate 状态，不会自动启用。请到「实验场 → Skill → Registry 候选」评测后再决定是否激活。</p>
             {promoteNote && <p className="mt-2 text-[12px] text-neutral-600 dark:text-neutral-300">{promoteNote}</p>}
             {promotePreview && promotePreview.clusters.length > 0 && (
               <div className="mt-3 max-h-80 space-y-2 overflow-auto">

@@ -641,7 +641,25 @@ export function getSubAgentEvaluation(id: string): SubAgentEvaluationDetail | un
 }
 
 function parseSubAgentEvaluationRow(row: SubAgentEvaluationRow): SubAgentEvaluation {
-  return { ...row, status: row.status === "failed" ? "failed" : "success", cases: parseJsonArray<SubAgentEvalCase>(row.cases), caseSummaries: parseJsonArray<SubAgentCaseSummary>(row.caseSummaries) };
+  return {
+    ...row,
+    status: row.status === "failed" ? "failed" : "success",
+    cases: parseJsonArray<SubAgentEvalCase>(row.cases),
+    caseSummaries: parseJsonArray<SubAgentCaseSummary>(row.caseSummaries).map(normalizeSubAgentCaseSummary),
+  };
+}
+
+// D-QEVAL3 向后兼容：本卡给持久化的 SubAgentCaseSummary 加了 4 个必填聚合字段；旧归档 JSON 没有它们，
+// 反序列化得 undefined，前端 ruleCheckDetails.length / outputVariance.toFixed 会 TypeError 炸结果视图。
+// 读边界统一补缺省（旧档无硬断言→视为通过、passAtK 以成功率近似），让类型与运行时一致。
+function normalizeSubAgentCaseSummary(s: SubAgentCaseSummary): SubAgentCaseSummary {
+  return {
+    ...s,
+    ruleCheckPassed: s.ruleCheckPassed ?? true,
+    ruleCheckDetails: s.ruleCheckDetails ?? [],
+    passAtK: s.passAtK ?? (s.total > 0 ? s.success / s.total : 0),
+    outputVariance: s.outputVariance ?? 0,
+  };
 }
 
 type HookEvalSetRow = Omit<HookEvalSet, "cases"> & { cases: string };

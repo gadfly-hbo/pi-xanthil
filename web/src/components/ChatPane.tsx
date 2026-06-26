@@ -264,6 +264,7 @@ export function ChatPane(p: Props) {
   const [selectedCommand, setSelectedCommand] = useState<XanCommand | null>(null);
   const [commandFormValues, setCommandFormValues] = useState<Record<string, string>>({});
   const [commandFormError, setCommandFormError] = useState("");
+  const [toolPreset, setToolPreset] = useState<{ toolId?: string; inputPath?: string; params?: Record<string, string | number | boolean>; nonce: number } | null>(null);
   const [cleanDataFiles, setCleanDataFiles] = useState<WorkspacePath[]>([]);
   const [cleanDataLoading, setCleanDataLoading] = useState(false);
   const [consolidationCount, setConsolidationCount] = useState(0);
@@ -554,11 +555,32 @@ export function ChatPane(p: Props) {
       return;
     }
     setInput(`/${command.name} `);
+    applyCommandToolPreset(command, {});
     setCommandMenuOpen(false);
     requestAnimationFrame(() => {
       taRef.current?.focus();
       autosize();
     });
+  }
+
+  function applyCommandToolPreset(command: XanCommand, values: Record<string, string>) {
+    const toolId = command.toolIds?.[0];
+    if (!toolId || p.hideToolPanel) return;
+    const params: Record<string, string | number | boolean> = {};
+    let inputPath = "";
+    for (const [paramKey, target] of Object.entries(command.toolParamMap ?? {})) {
+      const value = values[paramKey]?.trim();
+      if (!value) continue;
+      if (target === "inputPath" || target === "cleanDataPath") inputPath = value;
+      else params[target] = value;
+    }
+    setToolPreset({
+      toolId,
+      ...(inputPath ? { inputPath } : {}),
+      ...(Object.keys(params).length > 0 ? { params } : {}),
+      nonce: Date.now(),
+    });
+    setActiveAssistPanel("tool");
   }
 
   function updateCommandFormValue(key: string, value: string) {
@@ -575,6 +597,17 @@ export function ChatPane(p: Props) {
       return;
     }
     const line = encodeCommandLine(command, commandFormValues);
+    if (command.toolIds && command.toolIds.length > 0) {
+      setInput(`${line} `);
+      applyCommandToolPreset(command, commandFormValues);
+      setSelectedCommand(null);
+      setCommandFormValues({});
+      requestAnimationFrame(() => {
+        taRef.current?.focus();
+        autosize();
+      });
+      return;
+    }
     sendText(line);
     setSelectedCommand(null);
     setCommandFormValues({});
@@ -980,6 +1013,7 @@ export function ChatPane(p: Props) {
                 sessionId={activeSessionId}
                 workspaceId={p.workspaceId}
                 onBackflow={(text) => p.onSend(text)}
+                preset={toolPreset}
                 embedded
               />
             )}

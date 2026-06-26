@@ -11,6 +11,8 @@ import type {
   CommandEvalSet,
   CommandEvaluation,
   CommandEvaluationDetail,
+  DocumentEvalCase,
+  DocumentEvalResult,
   EvaluationArchiveResult,
   HookEvalCase,
   HookEvalSet,
@@ -273,6 +275,14 @@ export const engineApi = {
     fetch(`/api/hook-case-sets/${encodeURIComponent(setId)}`, { method: "DELETE" }).then(json<{ ok: boolean }>),
   archiveHookEvaluation: (evaluationId: string) =>
     fetch(`/api/hook-evaluations/${encodeURIComponent(evaluationId)}/archive`, { method: "POST" }).then(json<EvaluationArchiveResult>),
+  runDocumentEvaluation: (workspaceId: string, payload: { model: string; cases: DocumentEvalCase[] }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/document-eval/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ resultId: string }>),
+  getDocumentEvaluationResult: (workspaceId: string, resultId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/document-eval/results/${encodeURIComponent(resultId)}`).then(json<DocumentEvalResult[]>),
   consolidateSessionTrace: (workspaceId: string, sessionId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidate-trace`, {
       method: "POST",

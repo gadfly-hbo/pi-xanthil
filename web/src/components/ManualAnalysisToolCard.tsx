@@ -12,6 +12,12 @@ interface Props {
   workspaceId: string | null;
   onBackflow: (text: string) => void;
   embedded?: boolean;
+  preset?: {
+    toolId?: string;
+    inputPath?: string;
+    params?: Record<string, string | number | boolean>;
+    nonce: number;
+  } | null;
 }
 
 function categoryOf(tool: ExtractionTool): "ingestion" | "analysis" {
@@ -137,7 +143,7 @@ function isToolInputPath(path: WorkspacePath): boolean {
     && path.status !== "missing";
 }
 
-export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, embedded = false }: Props) {
+export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, embedded = false, preset = null }: Props) {
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [inputFiles, setInputFiles] = useState<WorkspacePath[]>([]);
   const [reportDir, setReportDir] = useState<WorkspacePath | null>(null);
@@ -195,6 +201,20 @@ export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, emb
     setRun(null);
     setBackflowText("");
   }, [selectedTool?.id]);
+
+  useEffect(() => {
+    if (!preset) return;
+    if (preset.toolId && selectedTool?.id !== preset.toolId) {
+      setToolId(preset.toolId);
+      return;
+    }
+    if (preset.inputPath) setInputPath(preset.inputPath);
+    if (preset.params) {
+      setParams((current) => ({ ...current, ...preset.params }));
+    }
+    setRun(null);
+    setBackflowText("");
+  }, [preset?.nonce, selectedTool?.id]);
 
   async function runTool() {
     if (!workspaceId || !selectedTool || running) return;

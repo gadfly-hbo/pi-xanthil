@@ -10,6 +10,7 @@ import { CommandLabPane } from "@/components/CommandLabPane";
 import { SubAgentLabPane } from "@/components/SubAgentLabPane";
 import { HookLabPane } from "@/components/HookLabPane";
 import { PromptLabPane } from "@/components/PromptLabPane";
+import { DocumentEvalPane } from "@/components/DocumentEvalPane";
 import { LabOverviewPane } from "@/components/LabOverviewPane";
 import { RegressionDashboardPane } from "@/components/RegressionDashboardPane";
 import { AnaXPane } from "@/components/AnaXPane";
@@ -206,6 +207,9 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
       )}
       {activeTab === "aggregate" && activeSubTab === "prompts_lab" && (
         <PromptLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} onModelChange={ctx.setModel} />
+      )}
+      {activeTab === "aggregate" && activeSubTab === "document_eval" && (
+        <DocumentEvalPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} />
       )}
       {activeTab === "aggregate" && String(activeSubTab) === "lab_overview" && (
         <LabOverviewPane workspaceId={ctx.activeWorkspaceId} onNavigate={(target) => ctx.setActiveSubTab(target)} onOpenRegression={() => ctx.setActiveSubTab("lab_regression" as Parameters<typeof ctx.setActiveSubTab>[0])} />

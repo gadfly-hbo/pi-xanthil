@@ -18,10 +18,11 @@
 | 需求 | 方案文件 | 入池日期 | 状态 | 一句话 |
 |---|---|---|---|---|
 | onto-xanthil 全局本体扩展 | [onto-xanthil-全局本体扩展.md](onto-xanthil-全局本体扩展.md) | 2026-06-11 | 暂缓 | 把分析运行时制品（任务/洞察/报告/run/action/eval）对象化并串成 Search Around 血缘 + Action 治理 + 对象级 Trace/Eval 的全局对象图 |
-| 模拟决策 | （方案待迁入本池） | 2026-06-11 | 暂缓 | 模拟推演 / 决策智能模块，已从产品剥离；原方案散见会话与 `decision-intelligence` 记忆，捞出前需补齐方案文件 |
+| 安全红线·skill 沙箱 + session 敞口 | [安全红线-skill沙箱与session敞口.md](安全红线-skill沙箱与session敞口.md) | 2026-06-27 | 暂缓 | 两项安全红线沉淀：① 代码执行类 skill 的沙箱（A 禁用脚本/B 进程隔离+网络禁用+白名单，须在 skill「可执行」落地前先定红线）；② 数据分析 pi session 内建 bash/read 可达 draw_data 的既有敞口（行为性不披露→评估是否升级硬沙箱）。均不阻塞当前功能，重启触发条件见文档 |
+| 模拟决策 | （方案待迁入本池） | 2026-06-11 | 暂缓 | 模拟推演 / 决策智能模块（曾设想一级 tab「决策」下 决策看板/工作台/助手/复盘 + `sim/` 推演引擎），已从产品剥离；**2026-06-27 删除 wiki 最后一张「导航/渲染接线」派发卡，代码侧骨架与接缝字面量已无残留（`DecisionTabs.tsx`/Tab `"decision"`/SubTab `decision_board` 等均已移除，仅余无关的 `decision_tree`）**；原方案散见会话与 `decision-intelligence` 记忆，捞出前需补齐方案文件 |
 | agent-loop 工作流闭环 | [agent-loop-工作流闭环.md](agent-loop-工作流闭环.md) | 2026-06-13 | 暂缓 | 给工作流 runner 加"gate 失败→带证据回跳上游重跑+预算约束"的反馈闭环，让 DAG 单向流升级为 agent-loop；植入工作流而非另开模块，MVP=SQL 修复 loop。**2026-06-23 增补 §3.5**(Affordance Harness 2605.00663)：诊断式定向纠正(按缺陷类别路由)+benefit/cost 预算路由 |
 | subagents 看板 · 节点级运行落库 | [subagents看板-节点级运行落库.md](subagents看板-节点级运行落库.md) | 2026-06-20 | 暂缓 | 工作流节点运行态不落库（只流式广播），新建 `flow_node_runs` 表 + runner 落库，让看板到真 agent 粒度统计；方案 A（流水线级聚合）先做，本条为治本增强排后续 |
-| command 场景调用框 | [command-场景调用框.md](command-场景调用框.md) | 2026-06-22 | 暂缓 | command 升级为 {prompt+skills+tools} 场景包：XanCommand 已含 prompt(template)+skills(skillSlugs)，补第三腿 tools(`toolIds`+参数映射)，再做 chat 调用框把场景包列出一键装配，免去分别找三处；三类零件 chat 已各自可用故现不做，待沉淀高频组合后捞出 |
+| command 场景调用框 | [command-场景调用框.md](command-场景调用框.md) | 2026-06-22 | 已完成 | 2026-06-26 捞出落地甜点档：XanCommand 扩 `toolIds`+`toolParamMap`，command 管理面可绑定 analysis tools，ChatPane 选择带 tools 的 command 时预填并打开 @工具卡；不做独立重型调用框、不自动运行 tool |
 | 本体持续积累机制 | [本体持续积累机制.md](本体持续积累机制.md) | 2026-06-22 | 暂缓 | 体检价值 ∝ 本体丰满度，但单开「建本体」任务必烂尾；构思=积累搭已有工作流便车(数据登记 from-aggregation / 分析提条目 / 体检缺口驱动)+正循环(体检产缺口→用户补本体→体检更准)+成熟度治理(draft→active)；不与体检 MVP 绑死，待缺口循环验证后捞出 |
 | 反馈效率度量 (EFC) | [EFC-反馈效率度量.md](EFC-反馈效率度量.md) | 2026-06-22 | 开发中(P0·wiki) | harness 论文集精读产出；测评台从「比分数」升级到「比反馈效率」——只给信息量/有效/非冗余/被后续用上的反馈记分(I·V·R·M 乘积)，η=EFC/C_raw 复用 cache-harness token 监控、M_t 接记忆模块；先做规则版 η 验证「同分不同 EFC」，不绑测评台 MVP |
 | 可证伪编辑契约 (AHE) | [AHE-可证伪编辑契约.md](AHE-可证伪编辑契约.md) | 2026-06-22 | 开发中(P0·wiki) | harness 论文集精读产出；给实验场每次 harness 编辑附 change manifest(失败证据/根因/预期修好+预期回归任务集)，下轮用实测 delta 取交集打 verdict，把试错升级为可累积因果账本；七类组件对位 4 lab+记忆+工具，attribute 阶段用 EFC 升级；最大缺口=pi-xanthil 无 git 需自有组件级回滚；先只做「人改+手填 manifest+自动对照」半自动，不绑实验场 MVP |

@@ -10,29 +10,37 @@
 
 > **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
 
-- 最近更新：2026-06-26 · **记忆 v2.0 缺口3/4 维护与升级 UI 接线**（D 纯前端，后端已就绪）
+- 最近更新：2026-06-26 · **D-QEVAL3 SubAgent eval 硬断言扩展 + pass@k 聚合**（X-QEVAL0 P1 卡，"总控卡委派" 模式 = 按图代笔）
 - 进度：
-  - **D-MEM-MAINTAIN-UI（缺口3 立即维护 UI，2026-06-26 完成）**：
-    - `web/src/lib/api/engine.ts` 加 `maintainMemory(workspaceId, { dryRun })` → `POST /api/workspaces/:id/memory/maintain`（engineRouter:1550）；附 `MemoryMaintenanceResult` 局部类型（不入接缝层 types.ts，对齐 server/src/memory-maintenance.ts:44）。
-    - `RulesPane.tsx` 头部工具区加「立即维护」按钮：先 dryRun 拉 changes 明细，预览块按 action（promote/demote/retire）三色着色，显示 `id`、`conf X→Y`、`validUntil` 变更、`reason`；用户确认 `window.confirm` 后非 dryRun 执行 + `refreshData`/`refreshPreview`/`onRulesChanged`；空库/无变更走 `maintainNote` 友好提示。
-  - **D-MEM-PROMOTE-UI（缺口4 升级 Skill UI，2026-06-26 完成）**：
-    - `web/src/lib/api/engine.ts` 加 `promoteMemorySkills(workspaceId, body?)` → `POST /api/workspaces/:id/memory/promote-skills`（engineRouter:1563）；附 `MemoryToSkillResult`/`MemorySkillClusterView`/`MemorySkillPromotionOutcome` 局部类型。**关键契约**：thresholds 字段需**平铺到 body 根**（与 server `parseMemorySkillPromotionBody` 对齐，不接受嵌套 `thresholds:{}`）——本卡只用 dryRun + 默认阈值，故 UI 不暴露阈值入参。
-    - `RulesPane.tsx` 头部工具区加「升级 Skill」按钮：dryRun 列 clusters（tag/items.length/highConfidenceCount/totalUsedCount/positiveSignals/reasons），eligible 绿框、未达阈值灰框；用户二次确认（**明示"会调 LLM"**）后执行 → 提示「N 个候选已入 Skill 候选库(registry candidate)，去实验场评测」+ **强调不自动启用**。
-  - 接缝纪律：未碰 `types.ts`/`api.ts`/`constants.ts`/`App.tsx`；types 走 `lib/api/engine.ts` 局部 export，与 server `memory-maintenance.ts` / `memory-to-skill.ts` 行号对齐注释。
+  - **D-QEVAL3（2026-06-26 完成，P1）**：subagent 评测从「LLM judge 主观打分」升级为「硬断言（规则层）+ LLM judge（语义层）双轨」。
+    - **`types.ts` 双侧**：`SubAgentEvalCase` 加 7 个可选字段（`mustCallTools` / `mustNotCallTools` / `outputContains` / `outputNotContains` / `minOutputChars` / `maxToolCalls` / `maxCostUsd`）；新 `HardRuleCheckResult` 接口；`SubAgentEvaluationRunResult` 加 `hardRuleResults?` / `ruleFailed?`；`SubAgentCaseSummary` 加 4 个聚合字段（`ruleCheckPassed` / `ruleCheckDetails` / `passAtK` / `outputVariance`）。按 Orchestration §六「总控卡委派」规则代笔（brief 内字段写死、零架构自由度）。
+    - **`subagent-evaluation-api.ts` parser**：7 个新字段全部空值不写入，保持旧 case 反序列化向后兼容（无值即 `undefined`）。
+    - **`subagent-evaluation-runner.ts`**：导出 `checkHardRules(case, runResult) → HardRuleCheckResult[]`；`runCase` 在 `assertExpectation`（含 LLM judge）**之前**跑硬断言，任一 must 失败 → `ruleFailed=true`。**关键决策**：硬断言失败**不**让 `status=fail`（brief 要求"独立于 judge 分"），仅元数据标记；`status` 仍由 expected 断言 + LLM judge 决定。这样 `pass@k = (status=success ∧ !ruleFailed) / total` 能真区分"judge 过但硬断言挂"vs"全绿"。
+    - **聚合公式**：`passAtK = passedRuns / total`；`outputVariance = σ/μ`（变异系数，对长度归一）<2 样本时返回 0；`ruleCheckDetails` 每条 rule 在 repeat 内任一 fail → 在 summary 显示为 fail（取代表性 fail 详情）。
+    - **前端 SubAgentLabPane.tsx**：`DraftCase` 加 7 字段；`CaseEditor` 末尾「硬断言（可选 · N）」可折叠区（默认收起，hardCount 实时显示）；结果表加 `pass@k` / `硬断言` / `输出 cv` 三列；ResultCard 列硬断言每条 detail + ruleFailed 徽标。
+    - **`evaluation-archive.test.ts`**：补齐 fixture 新字段（archive 渲染未加新字段，archive MD 仍按旧 schema——见开放问题）。
+  - 早间 **D-QEVAL1 文档质量评测 runner** 已完成（见正文「文档质量评测 runner」节），与 MEM-MAINTAIN/PROMOTE-UI 同等待 review 提交。
 - 校验：
+  - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
   - `npm -w web run build`：✅ 仅既有 chunk size warning
-  - 红线 grep（数据探索隔离）：✅ 无匹配
-  - 接缝层 git diff：✅ 本卡未碰（types.ts 既有 XanCommand toolIds diff 为他卡遗留）
+  - 数据探索红线 grep：✅ 无匹配
+  - 单测 **19/19** 绿（subagent runner 12：原 6 + 新 6 / subagent api parser 3 / evaluation archive 4）
 - 下一步（接续优先级）：
-  - ① 用户 review 后手动提交本卡（feat/data-memory-maintain-ui + feat/data-memory-promote-ui 合并落地）。
-  - ② 实跑点检：选一个 workspace → 「立即维护」→ 预览有/无变化两路径 → 应用后看 confidence/validUntil 真变；「升级 Skill」→ 预览簇 → 执行后去 SkillManagementPane 看 candidate。
-  - ③ 上一轮 v2.3 遗留：D-METRIC1/3 + D-ZH3/6/7/8 改动仍待 commit；renderReconciliationBlock UI 接入点待总控指定。
+  - ① 用户 review 后手动提交（D-QEVAL3 + 早间 D-QEVAL1 + 上次 MEM-MAINTAIN/PROMOTE-UI 一并）。
+  - ② **持久化向后兼容**（开放问题①，待总控决议是否本卡补）：历史 archive 反序列化得到的 `SubAgentCaseSummary` 缺新 4 字段，前端访问 `item.passAtK` 会得 `undefined`。修补点 = `db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底：`{ ruleCheckPassed: row.ruleCheckPassed ?? true, ruleCheckDetails: row.ruleCheckDetails ?? [], passAtK: row.passAtK ?? (row.total > 0 ? row.success / row.total : 0), outputVariance: row.outputVariance ?? 0 }`。`db/engine.ts` 是 E 域 slot，需总控派 E 或允许跨域。
+  - ③ **archive MD 渲染补硬断言摘要**（`evaluation-archive.ts` 的 subagent 渲染周边），让历史归档可看到 pass@k / 硬断言结果——纯文本输出，工作量小，可与 ② 同步派单。
+  - ④ 实跑：mall 报告 md → 跑 D-QEVAL1 看 combined_score；subagent eval 加硬断言 → 看 pass@k 区分度。
+  - ⑤ 早间 D-QEVAL1 + 记忆 UI 实跑点检 / D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
 - 阻塞 / 待确认：
   - 无硬阻塞。
 - 开放问题：
-  - 升级 Skill 当前不暴露 thresholds 调节 UI（用 server 默认 0.75/3/6/3）；如要让用户自调，需 form 控件 + 平铺到 body 根传递。
-  - 维护/升级两个面板的 dryRun 预览均不持久化，刷新或切换 workspace 会丢失——按 ponytail 不引入 store，用户确认前重新跑即可。
+  - **① 持久化向后兼容缺口（必须解）**：旧 `subagent_evaluations.case_summaries` JSON 列反序列化得到的 summary 缺 4 个新字段，前端读 history 时 `passAtK/ruleCheckPassed/ruleCheckDetails/outputVariance` 为 undefined。修在 `db/engine.ts:644` 附近 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底（具体值见上"下一步②"）。本卡按 brief 边界（落点=types/runner/UI）未碰 db slot，需总控决议派单。
+  - **② archive MD 渲染未加新字段**：`evaluation-archive.ts` 的 subagent 报告仍按旧 schema 输出，归档报告读不到 pass@k / 硬断言结果。不影响功能，仅减少 archive 可读性。是否本期补由总控决定。
+  - **③ outputVariance cv 阈值化**：当前只输出 cv 数值，未规定"cv ≥ X 算不稳定"的阈值。E-QEVAL2 lab 看板若要把 cv 用作 gate（如回归告警），需总控审定阈值。
+  - **④ "总控卡委派" 终审加重**：本卡按 §六 修了双侧 `types.ts`，按规约"接缝层经代笔后动的是跨域单一真源，总控终审须逐行核"——需总控复核：字段双侧对齐、无本地重声明、无 baseline 报错、无跨域副作用、`typecheck`/`build` 全绿（已自检全过，但合规上仍需总控逐行核）。
+  - **⑤ D-QEVAL1 R01-R15 关键词包待校准**（保留自上次）：首版按 prompt 语义自由实现；如有 `eval_plugin/doc_eval.py` 源文件请提供路径做 1:1 同步。
+  - **⑥ D-QEVAL1 DocumentSessionMetrics 来源**（保留自上次）：依赖 E-QEVAL2 如何把 workflow run 元数据传入 runner。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -405,3 +413,27 @@ python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print
 - **EPSILON = 0.5%**：与 metric-verification 的 EPSILON_OK 一致，复用 `relativeDiff` 公式。
 - **common-mode failure 是边界外**：双方同向偏差（如都漏了退款）无法检测——需要第三方真源（如财务系统对账）。
 - **对账结果未接入 UI**：`renderReconciliationBlock` 已就绪，matched 为空；mismatch/missing_pair/unregistered 均输出告警文本，接入点（监测报告/专题生成前）待总控指定。
+
+---
+
+**文档质量评测 runner（D-QEVAL1，2026-06-26）**
+- **规则引擎数据驱动 = 原语 kind × params JSON**：拒绝写死 15 条规则函数（"扩 R16 需改代码"），改用 8 个原语 kind（`section-coverage` / `subsection-coverage` / `keyword-presence` / `keyword-hit-ratio` / `list-coverage` / `numeric-consistency` / `derivation-chain` / `freshness`）。R01-R15 全部是这 8 个原语 + 不同 params 的组合。**核心收益**：① 加规则只是写 RuleSpec、加 domain 只是建 RulePack、加新原语才需扩 dispatcher；② 用户能不动代码改规则；③ 默认 pack 与用户覆盖共用同一份执行路径，零分叉。**反范式（已拒绝）**：把 R01-R15 各写成独立函数固定调用——规则系统无扩展性，加新报告类型必须改源码。
+- **三路覆盖优先级**：runner options `ruleConfigs` > `<workspaceRoot>/.pi/document-eval-rules/<domain>.json` > 默认 pack。其中文件覆盖**全量替换**该 domain 的整个 pack（不做 merge）——merge 语义复杂（如何指定"删除某条默认规则"），全量替换简洁且可预测。优先级设计与项目 hooks.json/commands.json 全局覆盖范式一致。**覆盖文件解析失败兜底默认 pack**（try/catch 不抛错），避免一份坏 json 阻断整批评估。
+- **judge 用中位数而非均值**：3 次独立调用取中位数防 LLM 偶发抖动（一次极端值不污染结果）。每个 criterion 单独跑 3 次，**weight 不进 judge prompt**——weight 是聚合层超参（rubric.criterion 之间加权），judge 只给单维分。
+- **长文档前/中/后段抽样**：超 `sampleThreshold`（默认 10000 字）做 3 段拼接（默认每段 3200 字），带明显分隔标记「... [中段] ...」让 judge 知道是抽样而非完整文档。短文档原样送，不做无谓抽样。
+- **路径穿越守护**：`reportPath` 绝对路径强制 `startsWith(workspaceRoot)` 检查（safeResolve 只处理相对路径）；相对路径过 `safeResolve(workspaceRoot, reportPath)` 走标准沙箱校验。这是任何"前端可控字符串 → server 端落盘读取"场景的标准范式（参 D-MONITOR6 沉淀的 sanitize + resolve startsWith 双步防御）。
+- **consistencyAlerts 保守策略**：仅 `rule.name === rubric.criterion` 完全相同时比较，不做模糊匹配。原因：rule 维度（如 R01_structure）与 judge 维度（用户自填 criterion 文本）大概率不同名，强行模糊匹配（如包含关系/token 重叠）误告率高，会扰乱用户判断。同名场景的契约由用户在配置 rubric 时显式对齐：要触发 alert 就把 criterion 写成 rule.name。
+- **vacuous pass 语义**：keyword-hit-ratio / numeric-consistency 在"无 antecedent 句"/"无关键数字命中"时返回 score=1（vacuous pass），不是 score=0。理由：rule 描述的是"如果 X 出现，则需 Y"，X 完全不出现等于约束未被触发，给 0 反而冤枉文档。detail 字段会标注「vacuous pass」让用户知情。
+- **新原语 kind 添加路径**：① 写 `ruleXxx(spec, text) → {score, detail}` 纯函数；② `RuleKind` union 加值；③ `dispatchRule` switch 加 case；④ `isKnownRuleKind` 加分支（normalizeRulePack 解析覆盖文件用）。**勿改 RuleSpec.params 类型签名**——params 是 `Record<string, unknown>`，每个 rule 函数自己用 `readStringArray` / `readNumber` 等 helpers 取值并兜底，保证 JSON 配置容错。
+- **零落库、零路由**：runner 只产 `DocumentEvalResult[]` 内存返回。X-QEVAL0 契约 `document-eval-api.ts` 已就绪（含 parser），但路由接线 + 持久化策略归 E-QEVAL2 决议——是否落 `evaluation-*` 既有表 / 还是新建 `document_evaluations`、是否复用 `runs.archive` 流程，待 E 域定。本 runner 不假设。
+
+---
+
+**SubAgent eval 硬断言扩展 + pass@k（D-QEVAL3，2026-06-26）**
+- **「硬断言独立于 LLM judge」的双轨设计**：brief 明文要求"任意一条 must 断言失败 → 本次 run 标记 ruleFailed（独立于 judge 分）"。实现上 `runCase` 把 `checkHardRules()` 跑在 `assertExpectation`（含 LLM judge）之前；硬断言失败**不**让 `status=fail`，仅写元数据 `ruleFailed=true`；`status` 仍由 expected 断言 + LLM judge 决定。**为什么这么设计**：① `pass@k = (status=success ∧ !ruleFailed) / total` 才能真区分"judge 通过但硬断言挂"vs"全绿"——若硬断言一失败就把 status 拉 fail，pass@k 就退化为 success ratio，丢失"哪一层挂的"信息。② 硬断言是廉价的 sanity check（关键词命中/工具调用名/字符数），不应取代 LLM judge 的语义评估，两者关注的不是同一维度。**反范式（已拒绝）**：硬断言失败→status=fail，简化逻辑但损失信号。
+- **可选字段一律不写默认值进 case JSON**：`subagent-evaluation-api.ts` parser 对 7 个新字段用 `...(value > 0 ? { field: value } : {})` 形态注入——零值不写入 case JSON。原因：① 老 case 反序列化时这 7 字段恒 undefined，行为完全等价旧逻辑；② DB 存的 case JSON 不膨胀；③ runner 用 `if (testCase.mustCallTools && testCase.mustCallTools.length > 0)` 一律 length 检查，undefined 与 [] 行为一致。**踩坑**：第一版 parser 用 `Number(raw.minOutputChars) ?? 0` 兜底，导致每个 case 都带 `minOutputChars: 0` 字段，老 case 读出来开始触发"产出 0 字 / 要求 ≥0"的 vacuous rule（虽然 pass，但污染 hardRuleResults 列表）。改为 `Number.isFinite(n) && n > 0 ? { field: n } : {}` 形态后干净。
+- **`status` 与 `ruleFailed` 的契约语义**：`SubAgentEvaluationRunResult.status` 表示 "expected 断言 + LLM judge 是否通过"（旧语义不变），`ruleFailed?` 是 D-QEVAL3 新加的元数据"硬断言层是否挂"。两者**正交**：一条 run 可以 status=success ∧ ruleFailed=true（语义对但形式错），也可以 status=failed ∧ ruleFailed=false（如 token-budget 超但调用了所有 must 工具）。pass@k 是两者的与运算结果。**勿合并两个字段**——前端/E-QEVAL2 lab 需要分别看"哪一层挂的"来诊断。
+- **summary 聚合采"最严"视图**：`SubAgentCaseSummary.ruleCheckDetails` 对同一 rule 在 N 次 repeat 内任一 fail → summary 显示该 rule 为 fail（取代表性 fail 详情）；全 pass 才显示 pass。`ruleCheckPassed` 是 `ruleCheckDetails.every(r => r.passed)`。**为什么最严**：硬断言是"必须满足"的约束，间歇性挂仍是产品风险（不稳定就是失败）。要看"平均通过率"用 `passAtK`，要看"是否曾挂"用 `ruleCheckPassed`，两个视图都暴露给前端。
+- **outputVariance = 变异系数 cv（σ/μ）**：选 cv 而非方差/标准差是为了归一化——不同 case 的输出长度量级差异巨大（几百 vs 几千字），方差不可比，cv 可比。<2 个 success 样本返回 0（避免 NaN）；μ=0 也返回 0（除零保护）。fakeRun 测试样本固定输出 "done"，cv 恒 0；真实运行才能体现稳定性。**阈值化留给总控**（开放问题③）：什么 cv 算"不稳定"是产品决策，runner 只算不判。
+- **接缝层「总控卡委派」首次实操**：本卡按 Orchestration §六 修了双侧 `types.ts`——这是 D 域 agent 首次代笔接缝层。**严格遵守的代笔边界**：① 只改 brief 写死的字段（7 个 case 字段 + 4 个 summary 字段 + 1 个 result 字段 + 1 个新接口），不顺手扩其他类型；② 双侧严格同步（server/web 字段名/类型/可选性完全一致）；③ 不在 `lib/api/engine.ts` 重声明 `SubAgentEvalCase` 局部类型（避免接缝层漂移），全部从 `@/types` import；④ 收尾在 §0 「开放问题④」显式提醒总控终审加重。可作后续接缝层代笔模板范例。
+- **历史 archive 反序列化向后兼容缺口**：`db/engine.ts:644` 的 `parseJsonArray<SubAgentCaseSummary>` 直接 `JSON.parse` 老数据，缺新 4 字段。本卡按 brief 边界（落点不含 db slot）未碰，列为开放问题①等总控决议。**通用范式**：接缝层 type 扩字段后，db 反序列化出口须加缺省值兜底（不能依赖 TS 编译时的 optional 标记——`row.passAtK` 是 runtime 行为，没有静态保护）。修补模板：`{ ...row, ruleCheckPassed: row.ruleCheckPassed ?? true, ruleCheckDetails: row.ruleCheckDetails ?? [], passAtK: row.passAtK ?? (row.total > 0 ? row.success / row.total : 0), outputVariance: row.outputVariance ?? 0 }`。
