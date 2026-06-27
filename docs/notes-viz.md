@@ -9,28 +9,29 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-23 · **监测初始化数据库单入口全链路终审完成**：D-MONITOR6 / D-MONITOR7 / E-MONITOR8 / X-MONITOR9 全部 done；等待用户 review 后手动提交。
+- 最近更新：2026-06-27 · **F-MONITOR-TARGET2（目标测算页面）+ F-MONITOR-TARGET4（保存联动观星台）done**。
 - 进度：
-  - **X-MONITOR0**（done）：经营指标监测契约与接缝定稿；UI 二级 tab 为「初始化 / 观星台 / 行动环 / readme」，趋势合并进观星台，内部 health id 暂保留避免无谓迁移。
+  - **X-MONITOR0**（done）：经营指标监测契约与接缝定稿；UI 二级 tab 为「初始化 / 目标测算 / 观星台 / 行动环 / readme」。
   - **D-MONITOR1 / E-MONITOR2 / D-MONITOR3 / X-MONITOR4**（done）：监测配置、指标体系草案、观星台、行动环、全链路 run/findings/actions 基线已完成并通过前序总控终审。
-  - **X-MONITOR5**（done）：初始化入口新口径审定。只保留数据库连接导入；不展示工作区其他 clean_data；监测导入产物登记为 `folder=clean_data`，物理路径固定 `clean_data/monitor/`，不新增 folder 枚举。
-  - **D-MONITOR6**（done，总控初审通过）：`server/src/routes/data.ts` 新增 workspace-scoped `POST /api/workspaces/:id/monitor/import-sql` 与 `GET /api/workspaces/:id/monitor/imports`。SQL 只允许 SELECT/WITH；SQLite tableName 走 schema 校验；路径由后端固定到 `clean_data/monitor/`；同名导入自动版本化；成功后登记 pathId。
-  - **D-MONITOR7**（done，总控初审通过）：`HealthDataPane` 重写为数据库连接单入口；只展示监测专用 `clean_data/monitor/` 数据集；导入成功后可自动绑定角色并持久化到 monitor_configs；workspace/schema 异步请求已加 cancellation guard。
-  - **E-MONITOR8**（done，总控核验通过）：agent/workflow/subagent 未引用 monitor 导入写端点或 addWorkspacePath/exportTableQuery；工作流 SQL 工具仍只走 validateSql + executeQuery；monitor-llm 只读 aggregations 元数据与 ontology 结构；monitor run rows 只进纯函数；actions/draft 只基于 findings 衍生产物。
-  - **X-MONITOR9**（done，总控收口）：wiki/notes 已收口；D/E/X 卡置 done。
+  - **X-MONITOR5**（done）：初始化入口新口径审定。
+  - **D-MONITOR6 / D-MONITOR7 / E-MONITOR8 / X-MONITOR9**（done）：监测初始化数据库单入口全链路终审完成。
+  - **X-MONITOR-TARGET0**（done，总控）：双侧 types 定 TargetScenarioKind/TargetMetricKind/TargetCase/TargetPlan 等契约；`monitor-target-calculator.ts` 纯函数计算器。
+  - **F-MONITOR-TARGET2**（done，本次）：`HealthTargetPane` 页面完整实现（场景选择/指标选择/11 参数输入/三情景结果卡/拆解表）+ `constants.ts` SubTab 增 `health_target` + `HealthTabs.tsx` 接线。
+  - **F-MONITOR-TARGET4**（done，本次）：保存按钮接入 `vizApi.createTargetPlan` + `adoptTargetPlan`；成功后绿色提示条 +「去观星台 →」跳转；`HealthDashboardPane` 加载 adopted target plan 并展示「已绑定目标计划：xxx」状态条 + 无目标时「去目标测算 →」入口。
 - 校验：
   - `npm -w server run typecheck` ✅
   - `npm -w web run typecheck` ✅
   - `npm -w web run build` ✅（仅既有 echarts dynamic/static import 与 chunk-size warning）
-  - `node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/monitor-import.test.ts server/src/multi-agent-runner.test.ts server/src/health-check-engine.test.ts` ✅ **80/80**
   - 数据探索 LLM 隔离 grep ✅ EXIT=1 无匹配
 - 下一步：
   - 用户 review 后手动 `git add/commit`。
-  - 可选人工浏览器点检：SQLite 连接 → 选表 → 导入 → 自动绑定角色 → 观星台 run → 行动环 draft。
+  - 可选人工浏览器点检：目标测算 → 保存 → 跳转观星台 → 查看目标绑定状态。
+  - 等待 D-MONITOR-TARGET3（server 端 target-plans CRUD 端点）完成后浏览器端到端实跑保存链路。
 - 阻塞 / 待总控：无。
 - 开放问题：
   - PG/MySQL tableName 模式目前依靠 quoteIdent，未做 schema 预校验；后续如需严格校验，再补 information_schema / SHOW TABLES。
   - 行动环继续复用 `ActionItem.sourceKind="session" + reportPath="monitor:${runId}"` 标识 monitor 来源；暂不扩 `"monitor"` 枚举，待统计/过滤需求明确再扩。
+  - 保存目标依赖 D-MONITOR-TARGET3 的 server 端点（`POST /api/workspaces/:id/monitor/target-plans` 等），前端已按契约调用，但需 server 端实装后才能真跑。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -70,7 +71,7 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - 看板画布数据聚合格式统一：各图表聚合输出类型强制统一为 `Array<{ name: string; value: number }>`，无维度时返回 `name: "总计"`。此机制根除了不同图表组件间因聚合数据结构不一致导致的 TypeScript Union 类型推导冲突。
 - Dashboard / API 路由约定：所有业务路由必须带有 `/api` 前缀（由于 `index.ts` 中 `app.use(vizRouter)` 未指定前缀，因此 `viz.ts` 内部必须显式声明如 `/api/dashboards`）。
 - Dashboard 交互容错与默认行为：空列表状态下不再自动建表（避免误导用户产生脏数据），改为友好的空状态引导加"一键生成"按钮；所有 API 错误均在 UI 层给予显式反馈（如 alert），禁止静默 `console.error`；旧版留存/召回的固定图表组件不再保留独立入口，功能已完全并入多图画布的默认配置中。
-- 看板数据源解耦重构：从原本绑死的双 slot（`member_retention` / `member_recall`）改造为基于 `api.getBiAggregations` 读取 D 域 `clean_data` 聚合结果池的动态模式。历史的预置看板被收拢为"从模板新建"入口以作向下兼容。
+- **目标测算保存流程（2026-06-27）**：`HealthTargetPane` 保存走 `createTargetPlan` → `adoptTargetPlan` 两步（创建 draft 后立即 adopt），adopt 返回 `goalDatasetPathId` 写入 monitor_config 的 datasetBindings（role=goal）。观星台通过 `listTargetPlans` 筛选 `status === "adopted"` 展示绑定状态。D-MONITOR-TARGET3 未实装前前端调用会 404，但契约已对齐。
 
 **模型历史 dashboard**
 - row 对齐 = **id 优先，无 id 回退下标**（自动）；diff 导出 MD 单文件全量（meta+字段+行级）；删除接口 `onlyFailed` **缺省 true**（防误删成功记录），显式传 false 才按时间删全部；单行删除按钮**仅失败行**显示（成功记录是有价值历史）；diff 走 `summarizeResult()` 扁平输出，不递归 row-level（28 模型 row 结构差异大，按需展开 UI 复杂度爆炸）。

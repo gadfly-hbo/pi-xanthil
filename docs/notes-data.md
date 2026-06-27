@@ -10,30 +10,27 @@
 
 > **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-06-27 · **D-SAFEDISTILL1 Safe Distiller + 子技能提案人审入库**（红线卡，零 draw_data 零 LLM）
+- 最近更新：2026-06-27 · **D-MONITOR-TARGET3 目标计划 API + adopt 写入 monitor goal 数据集**
 - 进度：
-  - **D-SAFEDISTILL1（2026-06-27 完成）**：把"用户多次执行某类关联查询"提炼为子技能提案，人审通过后写入 skill-registry。**纯模板渲染，零 LLM 调用**；输入仅 SQL 骨架 + trace 元数据 + 衍生文件名，**绝不接触 draw_data**。
-    - **`server/src/safe-distiller.ts`** 新文件 316 行：`assertSafeInput`（含 draw_data 字面 / `rows`/`values`/`row`/`records` 字段名即抛错的冗余防御）+ `normalizeSqlSkeleton`（字符串/数字/IN(...) → ?）+ `skeletonSignature`（sha1 前缀 16）+ `distillProposals`（阈值默认 3 次，sort desc by occurrences，body 仅含 frontmatter+骨架+目标+拓扑+报告路径）+ `collectSqlSkeletonsFromTrace` / `collectApiTopologyFromTrace`（trace_events 元数据，不读 payload.rowCount 之外字段）+ `listSafeReportPaths`（workspace_paths folder ∈ {report, clean_data, business_requirements}，显式排除 draw_data）。
-    - **`server/src/db/data.ts`**：新增 `skill_proposals` 表（UNIQUE(workspace_id, signature) + status enum + decided_skill_id + JSON evidence）+ `upsertSkillProposal` / `listSkillProposals` / `getSkillProposal` / `approveSkillProposal` / `rejectSkillProposal` CRUD。upsert 三态：created/refreshed/skipped（同骨架已 approved/rejected 不被自动扫描覆盖）。
-    - **`server/src/routes/data.ts`**：4 端点 `POST .../skill-proposals/scan`（手动触发 + window 1-365 天 / threshold 2-20 边界）/ `GET .../skill-proposals?status=` / `POST .../approve` / `POST .../reject`。approve 路径**HTTP fetch self** `POST /api/workspaces/:id/skill-registry`（E 域），不 import E 域函数（守接缝纪律 + 复用 D-MONITOR1 范式）。三阶段都写 trace_events（skill_proposal_scan / skill_proposal_decision）。
-    - **`server/src/safe-distiller.test.ts`** 12 测试：5 normalize + 3 assertSafeInput（draw_data 字面 / rows 字段 / 合法输入）+ 4 distill（阈值聚合 / 阈值以下不出 / signature 稳定 / body 不含 draw_data）。
-    - **`web/src/lib/api/data.ts`**：`SkillProposal`/`SkillProposalEvidence`/`SkillProposalStatus`/`SkillProposalScanResult` 4 类型 + `scanSkillProposals` / `listSkillProposals` / `approveSkillProposal` / `rejectSkillProposal` 4 方法（不上提 `types.ts`，跨域 E-SUBSKILL1 走 HTTP）。
-    - **`web/src/components/RulesPane.tsx`**：新增「💡 提案」tab（与 review 同级）+ 扫描按钮 + 可编辑 draft（title/body 二次审阅）+ 证据折叠展示（骨架/拓扑/报告路径/signature）+ 采纳/拒绝双按钮。
-    - **跨域消费契约**：E-SUBSKILL1 / E-SKILLINJECT1 通过 HTTP `GET /api/workspaces/:id/skill-proposals` 拉提案，**禁止 import** `safe-distiller.ts` / `db/data.ts:SkillProposal`（守 §五 接缝纪律）。
+  - **D-MONITOR-TARGET3（2026-06-27 完成）**：目标测算计划持久化 + adopt 为监测 goal 数据集。纯确定性 CRUD，零 LLM，零 draw_data。
+    - **`server/src/db/viz.ts`**：新增 `target_plans` 表（id/workspace_id/name/input_json/result_json/status/goal_dataset_path_id/timestamps）+ `initTargetPlanTables()` + `createTargetPlan` / `listTargetPlans` / `getTargetPlan` / `adoptTargetPlan` 4 个 CRUD 函数。`adoptTargetPlan` 更新 status→adopted + 记录 goalDatasetPathId。
+    - **`server/src/routes/viz.ts`**：4 端点 `POST /monitor/target-plans`（创建）/ `GET /monitor/target-plans`（列表）/ `GET /monitor/target-plans/:planId`（详情）/ `POST /monitor/target-plans/:planId/adopt`（采纳）。adopt 路径：① 将目标计划写 JSON 到 `clean_data/monitor/` ② `addWorkspacePath` 登记 ③ 更新 `monitor_configs.datasetBindings` 替换已有 `role=goal` 绑定（保留其他 role）④ 返回 `replacedGoalBinding` 供前端提示。文件名 sanitize + resolve 沙箱双步防御（复用 D-MONITOR6 范式）。
+    - **`web/src/lib/api/viz.ts`**：`createTargetPlan` / `listTargetPlans` / `getTargetPlan` / `adoptTargetPlan` 4 个 API client 方法。类型不上提 types.ts（仅 D 域消费 + 跨域走 HTTP）。
+  - **D-SAFEDISTILL1（2026-06-27 完成）**：子技能提案人审入库，纯模板渲染零 LLM。`server/src/safe-distiller.ts` 316 行 + db 表 + 4 端点 + 12 测试全绿 + 前端提案 tab。
   - 上次 D-AGING2 + D-EVOLVE2 + D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 仍等待用户 review 后手动提交。
 - 校验：
-  - `node --experimental-strip-types --test safe-distiller.test.ts`：✅ 12/12 绿
-  - `node --experimental-strip-types --test memory-aging-signals.test.ts`：✅ 8/8 绿（未回归 D-AGING2）
   - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
   - `npm -w web run build`：✅ 仅既有 chunk size warning
   - 数据探索红线 grep（DataExplorationPane.tsx + data-exploration/）：✅ 0 匹配
 - 下一步（接续优先级）：
-  - ① 用户 review 后手动提交（D-SAFEDISTILL1 + D-AGING2 + 历史 D-EVOLVE2 / D-QEVAL3 / D-QEVAL1 / MEM-MAINTAIN/PROMOTE-UI 一并）。
-  - ② 实跑验证：在含 ≥3 次同骨架查询的工作区跑 `/skill-proposals/scan` → 检验 evidence 完整性 + approve 后 skill-registry 出现 draft 条目 + RulesPane 提案消失。
-  - ③ **持久化向后兼容**（开放问题①，待总控决议）：`db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底。
-  - ④ **archive MD 渲染补硬断言摘要**（开放问题②）。
-  - ⑤ D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
+  - ① 用户 review 后手动提交（D-MONITOR-TARGET3 + D-SAFEDISTILL1 + D-AGING2 + 历史 D-EVOLVE2 / D-QEVAL3 / D-QEVAL1 / MEM-MAINTAIN/PROMOTE-UI 一并）。
+  - ② 实跑验证：在含 ≥3 次同骨架查询的工作区跑 `/skill-proposals/scan` → 检验 evidence 完整性 + approve 后 skill-registry 出现 draft 条目。
+  - ③ 实跑验证 D-MONITOR-TARGET3：POST 创建计划 → GET 列表 → POST adopt → 检查 `monitor_configs.datasetBindings` 中 goal 绑定 + `clean_data/monitor/` 下 JSON 文件。
+  - ④ 前端 UI（HealthDataPane 目标测算板块）待 E-MONITOR-TARGET1 公式稳定后接。API 已就绪可直接调。
+  - ⑤ **持久化向后兼容**（开放问题①，待总控决议）：`db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底。
+  - ⑥ **archive MD 渲染补硬断言摘要**（开放问题②）。
+  - ⑦ D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
 - 阻塞 / 待确认：
   - 无硬阻塞。
 - 开放问题：
@@ -47,6 +44,7 @@
   - **⑧ D-AGING2 与 E-AGING1 算法重叠**：E `memory-aging-inspector.ts` 同样实现了 detectInterferenceFindings / detectRevisionFindings（且 import D 域 `listMemoryItems`），违反"D 真源 + E HTTP 消费"契约。
   - **⑨ D-SAFEDISTILL1 scan 触发方式**：当前仅手动按钮，无后台定时扫描。若 backlog Phase 3「后台轻量提炼」要全自动，需总控审定 cron 频率 + 用户感知策略（推送/badge）。
   - **⑩ D-SAFEDISTILL1 skill body 模板可读性**：当前纯模板拼接（无 LLM 包装），用户审阅时 body 偏机械。若总控认可"输入仍是脱敏骨架 → 调 LLM 包装 body 文笔"不违反红线，可后续升级为方案 B（pi-adapter 调用，输入零 draw_data 字面量）。
+  - **⑪ D-MONITOR-TARGET3 前端 UI 缺失**：API 已就绪，但 HealthDataPane 尚无目标测算板块（创建计划表单 + 列表 + adopt 按钮）。需等 E-MONITOR-TARGET1 公式稳定后接 UI。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -475,4 +473,11 @@ python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print
 - **零 LLM 模板渲染**（方案 A）：`renderSkillBody` 拼接 frontmatter + 触发场景 + 骨架 + 报告路径 + 「使用建议（人审填写）」占位。**故意不调 LLM** 让 body 更自然——红线卡先求"输入边界永远可证"，宁可 body 机械也别 LLM 出错把骨架字面量泄漏到 body 里。若总控认可"输入是脱敏骨架 → LLM 包装 body 文笔不违反红线"再升 B 方案，把 `runPiPrompt` 接进来。当前用户审阅时可在 UI 编辑器直接改 title/body 再采纳，弥补文笔机械问题。
 - **types.ts 不上提**：5 个新类型（`SkillProposalStatus` / `SkillProposalEvidence` / `SkillProposal` / `SkillProposalScanResult`）仅在 D 域消费 + 跨域走 HTTP，与 D-AGING2 同范式。**判定标准**：跨域 HTTP/网络边界传播 + 单域消费时类型私有；只在 multi-pane 直接 import 共享时才上提。
 - **trace_events 写入审计两阶段**：scan 写 `skill_proposal_scan` 一条（payload 含 summary + generated），decision 写 `skill_proposal_decision` 一条（payload 含 decision/skillId/reason）。后续 RulesPane 若要做"提案历史"视图，从 `target_kind='skill_proposal'` 拉即可，无需新表。这也是后续 E-SUBSKILL1 想观测"自动蒸馏 → 人审采纳率"指标的真源（按 status 聚合 trace_events）。
+
+**目标测算 target_plans（D-MONITOR-TARGET3, 2026-06-27）**
+- **表归属 viz 而非 data**：`target_plans` 是监测（monitor）子系统的持久化资产，与 `monitor_configs` 同属 viz slot（`db/viz.ts` + `routes/viz.ts`）。adopt 行为直接改写 `monitor_configs.datasetBindings` 的 goal 绑定——这是 viz 域内闭环，不跨域。
+- **adopt 替换策略（非追加）**：`monitor_configs.datasetBindings` 中 `role=goal` 唯一，adopt 新计划时**替换**旧 goal 绑定（filter 掉旧 goal → push 新 goal），保留 source/industry/competitor 绑定不动。响应返回 `replacedGoalBinding`（旧绑定或 null）供前端提示用户。**不追加**的原因：监测引擎 R-GAP-TARGET 只认一个 goal 数据集，多 goal 绑定会歧义。
+- **文件名沙箱复用 D-MONITOR6 范式**：`sanitizeTargetFileName`（去非法字符 + 截断 80）+ `resolveMonitorTargetPath`（resolve + startsWith 双步防穿越）+ `uniqueTargetFileName`（同名自动 `_2` 递增）。与 `sanitizeMonitorFileName` / `resolveMonitorPath` 同款但独立函数——因为目标计划固定 `.json` 扩展名、不走 tabular ext 白名单。
+- **类型不上提 types.ts**：`TargetPlan` 等类型已在 X-MONITOR-TARGET0 时写入双侧 types.ts（总控契约），D-MONITOR-TARGET3 只做实现不做类型定义。API client 从 `@/types` import 消费，与 `MonitorConfig` 同范式。
+- **前端 UI 待 E-MONITOR-TARGET1 公式稳定后接**：API 已就绪（创建/列表/详情/adopt），但 HealthDataPane 尚无目标测算板块。等 E 域公式引擎稳定后再补表单 + 列表 + adopt 按钮。
 

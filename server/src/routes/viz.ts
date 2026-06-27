@@ -1,5 +1,5 @@
 import { Router } from "express";
-import { readFileSync } from "node:fs";
+import { readFileSync, existsSync, mkdirSync, writeFileSync } from "node:fs";
 import { resolve, dirname, basename } from "node:path";
 import {
   listDashboards,
@@ -62,8 +62,12 @@ import {
   listOntologyGaps,
   getMonitorConfig,
   upsertMonitorConfig,
+  createTargetPlan,
+  listTargetPlans,
+  getTargetPlan,
+  adoptTargetPlan,
 } from "../db/viz.ts";
-import { getWorkspacePath, getWorkspace } from "../db.ts";
+import { getWorkspacePath, getWorkspace, addWorkspacePath } from "../db.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { extractOntologyFromText, runChunkedExtraction } from "../onto-extract.ts";
 import { exportOntology, type ExportFormat } from "../onto-export.ts";
@@ -71,7 +75,7 @@ import { readFlowFile } from "../flow-fs.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { runHealthSuite, classifyAggregation, listHealthRules } from "../health-check-engine.ts";
 import { renderMarkdownReportToHtml } from "../html-report.ts";
-import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind, HealthSuite, HealthFinding, OntologyGap, MonitorDatasetBinding, MonitorSourceRole } from "../types.ts";
+import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind, HealthSuite, HealthFinding, OntologyGap, MonitorDatasetBinding, MonitorSourceRole, TargetCalculationInput, TargetCalculationResult, TargetPlan } from "../types.ts";
 
 function validateArtifactPath(path: string, source: string): void {
   const segments = path.split(/[\\/]/).filter(Boolean);
@@ -940,5 +944,162 @@ vizRouter.put("/api/workspaces/:id/monitor/config", async (req, res) => {
   try {
     const config = upsertMonitorConfig(workspaceId, { suite, datasetBindings: bindings, ontologyId, metricSystemId, thresholds });
     res.json(config);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// ── 目标测算 target-plans（D-MONITOR-TARGET3）──
+
+function sanitizeTargetFileName(raw: string): string {
+  const base = raw.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]+/g, "_").replace(/^_+|_+$/g, "");
+  return (base.slice(0, 80) || "target_plan") + ".csv";
+}
+
+function resolveMonitorTargetPath(workspaceRoot: string, fileName: string): string {
+  const monitorBase = resolve(workspaceRoot, "clean_data/monitor");
+  const target = resolve(monitorBase, fileName);
+  if (target === monitorBase || !target.startsWith(monitorBase + "/")) {
+    throw new Error(`unsafe path: ${fileName}`);
+  }
+  return target;
+}
+
+function uniqueTargetFileName(workspaceRoot: string, fileName: string): string {
+  if (!existsSync(resolveMonitorTargetPath(workspaceRoot, fileName))) return fileName;
+  const dotIdx = fileName.lastIndexOf(".");
+  const stem = dotIdx > 0 ? fileName.slice(0, dotIdx) : fileName;
+  const ext = dotIdx > 0 ? fileName.slice(dotIdx) : ".json";
+  for (let i = 2; i < 10_000; i += 1) {
+    const candidate = `${stem}_${i}${ext}`;
+    if (!existsSync(resolveMonitorTargetPath(workspaceRoot, candidate))) return candidate;
+  }
+  throw new Error(`too many versions for target plan: ${fileName}`);
+}
+
+function csvCell(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  const text = String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replace(/"/g, '""')}"` : text;
+}
+
+function targetPlanToCsv(plan: TargetPlan): string {
+  const headers = ["period", "case", "scenarioKind", "metric", "targetValue", "value", "planId", "planName"];
+  const rows = plan.result.breakdown.length > 0
+    ? plan.result.breakdown.map((item) => ({
+        period: item.period,
+        case: item.case,
+        targetValue: item.targetValue,
+      }))
+    : plan.result.cases.map((item) => ({
+        period: plan.input.periodEnd,
+        case: item.case,
+        targetValue: item.targetValue,
+      }));
+  return [
+    headers.join(","),
+    ...rows.map((row) => headers.map((header) => {
+      const valueByHeader: Record<string, unknown> = {
+        period: row.period,
+        case: row.case,
+        scenarioKind: plan.input.scenarioKind,
+        metric: plan.input.metric,
+        targetValue: row.targetValue,
+        value: row.targetValue,
+        planId: plan.id,
+        planName: plan.name,
+      };
+      return csvCell(valueByHeader[header]);
+    }).join(",")),
+  ].join("\n");
+}
+
+// POST /api/workspaces/:id/monitor/target-plans
+vizRouter.post("/api/workspaces/:id/monitor/target-plans", (req, res) => {
+  const workspaceId = req.params.id;
+  const ws = getWorkspace(workspaceId);
+  if (!ws) { res.status(404).json({ error: "workspace not found" }); return; }
+  const body = req.body ?? {};
+  const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : null;
+  if (!name) { res.status(400).json({ error: "name required" }); return; }
+  const input = body.input as TargetCalculationInput | undefined;
+  if (!input || typeof input !== "object") { res.status(400).json({ error: "input required" }); return; }
+  const result = body.result as TargetCalculationResult | undefined;
+  if (!result || typeof result !== "object") { res.status(400).json({ error: "result required" }); return; }
+  try {
+    const plan = createTargetPlan(workspaceId, name, input, result);
+    res.json(plan);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// GET /api/workspaces/:id/monitor/target-plans
+vizRouter.get("/api/workspaces/:id/monitor/target-plans", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) { res.status(404).json({ error: "workspace not found" }); return; }
+  try {
+    res.json(listTargetPlans(workspaceId));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// GET /api/workspaces/:id/monitor/target-plans/:planId
+vizRouter.get("/api/workspaces/:id/monitor/target-plans/:planId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) { res.status(404).json({ error: "workspace not found" }); return; }
+  try {
+    const plan = getTargetPlan(req.params.planId);
+    if (!plan || plan.workspaceId !== workspaceId) { res.status(404).json({ error: "target plan not found" }); return; }
+    res.json(plan);
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// POST /api/workspaces/:id/monitor/target-plans/:planId/adopt
+vizRouter.post("/api/workspaces/:id/monitor/target-plans/:planId/adopt", async (req, res) => {
+  const workspaceId = req.params.id;
+  const ws = getWorkspace(workspaceId);
+  if (!ws) { res.status(404).json({ error: "workspace not found" }); return; }
+  try {
+    const plan = getTargetPlan(req.params.planId);
+    if (!plan || plan.workspaceId !== workspaceId) { res.status(404).json({ error: "target plan not found" }); return; }
+    if (plan.status === "adopted") { res.status(400).json({ error: "target plan already adopted" }); return; }
+
+    const config = getMonitorConfig(workspaceId);
+    const existingGoal = config?.datasetBindings.find((b) => b.role === "goal");
+    const replaceExisting = req.body?.replaceExisting === true;
+    if (existingGoal && !replaceExisting) {
+      res.status(409).json({
+        error: "goal binding already exists; pass replaceExisting=true to replace it",
+        existingGoalBinding: existingGoal,
+      });
+      return;
+    }
+
+    const fileName = uniqueTargetFileName(ws.rootPath, sanitizeTargetFileName(plan.name));
+    const targetAbs = resolveMonitorTargetPath(ws.rootPath, fileName);
+    mkdirSync(dirname(targetAbs), { recursive: true });
+    writeFileSync(targetAbs, targetPlanToCsv(plan), "utf8");
+
+    const entry = addWorkspacePath(workspaceId, "clean_data", targetAbs, "file");
+
+    const updatedPlan = adoptTargetPlan(plan.id, String(entry.id));
+
+    const nextBindings: MonitorDatasetBinding[] = (config?.datasetBindings ?? [])
+      .filter((b) => b.role !== "goal");
+    nextBindings.push({
+      datasetPathId: String(entry.id),
+      role: "goal",
+      label: plan.name,
+      updatedAt: Date.now(),
+    });
+    upsertMonitorConfig(workspaceId, {
+      suite: config?.suite ?? "monthly",
+      datasetBindings: nextBindings,
+      ontologyId: config?.ontologyId,
+      metricSystemId: config?.metricSystemId,
+      thresholds: config?.thresholds,
+    });
+
+    res.json({
+      plan: updatedPlan,
+      goalDatasetPathId: String(entry.id),
+      replacedGoalBinding: existingGoal ?? null,
+    });
   } catch (err) { res.status(500).json({ error: String(err) }); }
 });

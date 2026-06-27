@@ -30,6 +30,10 @@ import type {
   ExtractJobStatus,
   MonitorConfig,
   MonitorDatasetBinding,
+  TargetPlan,
+  TargetPlanStatus,
+  TargetCalculationInput,
+  TargetCalculationResult,
 } from "../types.ts";
 import type { ValidationIssue } from "../onto-validator.ts";
 
@@ -65,6 +69,7 @@ export function initVizTables(): void {
   }
   initOntoTables();
   initActionTables();
+  initTargetPlanTables();
 }
 
 function initActionTables(): void {
@@ -1336,4 +1341,96 @@ export function upsertMonitorConfig(workspaceId: string, input: MonitorConfigInp
     now,
   );
   return getMonitorConfig(workspaceId)!;
+}
+
+// ── 目标测算 target_plans（D-MONITOR-TARGET3）──
+
+function initTargetPlanTables(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS target_plans (
+      id                   TEXT PRIMARY KEY,
+      workspace_id         TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name                 TEXT NOT NULL,
+      input_json           TEXT NOT NULL,
+      result_json          TEXT NOT NULL,
+      status               TEXT NOT NULL DEFAULT 'draft',
+      goal_dataset_path_id TEXT,
+      created_at           INTEGER NOT NULL,
+      updated_at           INTEGER NOT NULL,
+      adopted_at           INTEGER
+    );
+  `);
+  try {
+    db.exec(`CREATE INDEX IF NOT EXISTS idx_target_plans_ws ON target_plans(workspace_id);`);
+  } catch {
+    // ignore
+  }
+}
+
+interface TargetPlanRow {
+  id: string;
+  workspace_id: string;
+  name: string;
+  input_json: string;
+  result_json: string;
+  status: string;
+  goal_dataset_path_id: string | null;
+  created_at: number;
+  updated_at: number;
+  adopted_at: number | null;
+}
+
+function rowToTargetPlan(r: TargetPlanRow): TargetPlan {
+  let input: TargetCalculationInput;
+  let result: TargetCalculationResult;
+  try { input = JSON.parse(r.input_json) as TargetCalculationInput; } catch { input = {} as TargetCalculationInput; }
+  try { result = JSON.parse(r.result_json) as TargetCalculationResult; } catch { result = { cases: [], breakdown: [] }; }
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    name: r.name,
+    input,
+    result,
+    status: r.status as TargetPlanStatus,
+    goalDatasetPathId: r.goal_dataset_path_id ?? undefined,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+    adoptedAt: r.adopted_at ?? undefined,
+  };
+}
+
+export function createTargetPlan(
+  workspaceId: string,
+  name: string,
+  input: TargetCalculationInput,
+  result: TargetCalculationResult,
+): TargetPlan {
+  const now = Date.now();
+  const id = randomUUID();
+  db.prepare(
+    "INSERT INTO target_plans (id, workspace_id, name, input_json, result_json, status, created_at, updated_at) VALUES (?, ?, ?, ?, ?, 'draft', ?, ?)",
+  ).run(id, workspaceId, name, JSON.stringify(input), JSON.stringify(result), now, now);
+  return getTargetPlan(id)!;
+}
+
+export function listTargetPlans(workspaceId: string): TargetPlan[] {
+  const rows = db
+    .prepare("SELECT * FROM target_plans WHERE workspace_id = ? ORDER BY created_at DESC")
+    .all(workspaceId) as unknown as TargetPlanRow[];
+  return rows.map(rowToTargetPlan);
+}
+
+export function getTargetPlan(planId: string): TargetPlan | null {
+  const r = db
+    .prepare("SELECT * FROM target_plans WHERE id = ?")
+    .get(planId) as TargetPlanRow | undefined;
+  return r ? rowToTargetPlan(r) : null;
+}
+
+export function adoptTargetPlan(planId: string, goalDatasetPathId: string): TargetPlan {
+  const now = Date.now();
+  db.prepare(
+    "UPDATE target_plans SET status = 'adopted', goal_dataset_path_id = ?, adopted_at = ?, updated_at = ? WHERE id = ?",
+  ).run(goalDatasetPathId, now, now, planId);
+  return getTargetPlan(planId)!;
 }

@@ -9,47 +9,31 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-27 · **E-SKILLINJECT1 + E-SUBSKILL1 完成**（运行时瘦 context 动态技能注入 + 子技能蒸馏/关系图纯函数）
+- 最近更新：2026-06-27 · **E-MONITOR-TARGET1 完成**（确定性目标测算纯函数 + 8 单测全绿）
 - 进度：
-  - **A · 运行时瘦 context 动态技能注入**（`skill-retrieval.ts` + `multi-agent-runner.ts`）：
-    - 新增 `planDynamicSkillInjection()` / `selectDynamicSkillPaths()`：读取 SKILL.md **full body**（路由上限 12k chars），按 `utility proxy + semantic + diversity` 排序，不再只看 name/description。
-    - 自适应预算：默认 `maxSkills=3`、`minNormalizedScore=0.55`，候选不足/低分则可少于固定预算；候选数 ≤ 3 时保持原白名单，不额外路由。
-    - set-aware 渲染：被选 skill 生成 scope 子句并拼入 node system prompt，提示 pi 只用各 skill 独有判断点，减少重叠展开。
-    - `runMultiAgent()` 每个 node 执行前根据 topo Todo List + 当前 prompt + 最近 blackboard 构造 query，动态选择 `workflow.defaultSkillPaths` / `node.skillPaths` 的子集；`node.skillPaths=[]` 仍是显式禁用。
-  - **B · 执行效用 Δ proxy 接线**（`routes/engine.ts`）：
-    - 不扩 schema，生产入口 `handleExecuteMultiAgent` 用现有 skill registry 指标构造 `dynamicSkillUtilityByPath`。
-    - utility 口径：优先 `prodActivationRate`，其次 `activationRate` / `score` / 中性 0.5；`usageCount` 小幅加权；`regressionStatus==="regression"` 降权。
-    - 该 proxy 是 EFC/反馈质量的轻量替代；后续若 EFC per-skill 历史可查询，再替换或加权，不改 runner 接口。
-  - **C · 子技能蒸馏纯函数**（`skill-distillation.ts`）：
-    - 新增 `distillSubSkillsFromTraces()`：从成功/失败轨迹切 2-5 动作序列，生成 `MicroSkillCandidate`。
-    - Trace2Skill 口径：失败轨迹不直接产候选，但会形成 `targetedPatch`，把冗余失败原因合并为单一补丁说明。
-    - SkillX 口径：基于动作 token Jaccard 生成 `SkillRelation`（`merge/reuse/keep_diverse`），去重后按动作 family 优先多样路径，防单一路径依赖。
-    - 当前是 E 域纯函数能力，不新增 LLM 路由/DB/UI；后续要写入 `.pi/skills` 仍必须走既有 candidate + 人审门。
+  - **E-MONITOR-TARGET1**（`web/src/lib/monitor-target-calculator.ts`）：
+    - 纯函数 `calculateTarget(input)`：输入 `TargetCalculationInput` → 输出 `TargetCalculationResult`（三情景 cases + 分期 breakdown）。
+    - 核心公式链：traffic × conversionRate → orders → gmv → revenue → grossProfit → profit → roi；反推公式按 metric 类型推导 requiredOrders/requiredTraffic/requiredAov/requiredConversionRate。
+    - 情景因子：conservative ×0.85、baseline ×1.0、stretch ×1.15，应用于 conversionRate 和 aov。
+    - 分期：yearly_kpi/rolling_monthly 按月，campaign 按天；invalid date range → 空 breakdown。
+    - 边界：safeDiv/safeMul 防 NaN/null/0/Infinity；marketingCost=0 → roi=null；conversionRate=0 → requiredTraffic=null。
+    - 类型自包含（内联 TargetScenarioKind/TargetMetricKind/TargetCase/TargetAssumptions 等），不依赖 @/types 别名，确保 node --test 可独立运行。
+    - 测试文件 `monitor-target-calculator.test.ts`：8 用例（年度 GMV 反推/大促利润/marketingCost=0/conversionRate=0/缺失 assumptions/无效日期/rolling_monthly/NaN 负值），`@ts-nocheck` 兼容 tsc + node --experimental-strip-types。
   - **前序状态仍有效**：
-    - E-SKILLOPT1 MVP 已完成但未跑真实 pi/browser smoke。
-    - subagents 进阶浏览器/API smoke 仍待跑。
-    - flow_node_runs smoke、E-QEVAL2、SkillLab candidate、E-COLLECT2 浏览器验收仍待执行。
+    - E-SKILLINJECT1/E-SUBSKILL1 已完成但未跑真实 pi/browser smoke。
+    - E-SKILLOPT1 浏览器 smoke 仍待跑。
+    - subagents 进阶/flow_node_runs/E-QEVAL2/SkillLab/E-COLLECT2 浏览器验收仍待执行。
 - 校验：
   - `npm run typecheck` ✅（server + web）
   - `npm run build` ✅（仅既有 Vite chunk warning）
-  - `node --experimental-strip-types --test server/src/multi-agent-runner.test.ts server/src/*skill*.test.ts` ✅（111/111）
+  - `node --experimental-strip-types --test web/src/lib/monitor-target-calculator.test.ts` ✅（8/8）
 - 下一步：
-  - **E-SKILLINJECT1 真实 workflow smoke**：准备 4+ active/project skills 的 workflow → 运行典型多节点任务 → 观察每步 `--skill` 从全量降到 2-3 个、SQL/图表等节点选择不同 skill、成功率不低于原 workflow。
-  - **动态注入可观测化（P1）**：当前 selection plan 只进入内存 systemPrompt，不落 trace；后续可在 flow trace 或 node run metadata 记录 selected/rejected/estimatedTokenChars，便于验收 context token 下降。
-  - **E-SUBSKILL1 落库/人审闭环（P1）**：当前只提供轨迹→micro-skill 候选/关系图纯函数；下一步需接成功轨迹来源、脱敏边界（若含数据探索走 D-SAFEDISTILL1）、candidate 写入和 SkillManagement UI 人审。
-  - **E-SKILLOPT1 浏览器 smoke**：起 server → 在 SkillLab 跑一次 skill evaluation → 触发 curator 生成 proposal → 调 evaluate 端点跑 held-out 评测 → 观察严格门裁决 → accept/reject → 查被拒编辑列表。
-  - **有界 L_t 余弦衰减**（P2 优化）：当前未实现，`skill-rewrite-gate.ts` 预留接口。
-  - 前序 smoke 队列：subagents 进阶、flow_node_runs、E-QEVAL2、SkillLab candidate、E-COLLECT2。
-- 阻塞：无硬阻塞；E-SKILLINJECT1 未跑真实 pi/browser smoke，E-SUBSKILL1 未接真实轨迹来源/人审写入链路。
+  - **E-MONITOR-TARGET1 已完成**；下游 F-MONITOR-TARGET2（HealthTargetPane）和 D-MONITOR-TARGET3（目标计划 API）可开工。
+  - **E-SKILLINJECT1 真实 workflow smoke**：准备 4+ active/project skills 的 workflow → 运行典型多节点任务 → 观察每步 skill 从全量降到 2-3 个。
+  - **E-SKILLOPT1 浏览器 smoke**：起 server → SkillLab 跑一次 skill evaluation → 触发 curator → 调 evaluate 端点跑 held-out → 观察严格门裁决。
+- 阻塞：无硬阻塞。
 - 开放问题（需总控）：
-  - 动态注入的 selection plan 是否需要持久化到 `flow_node_runs` / trace（若要 UI 验收 token 下降，需总控定接缝位置）。
-  - EFC per-skill 执行效用是否要形成正式历史表/查询接口；当前只用生产激活率/评测分/usage/regression 作 Δ proxy。
-  - micro-skill 关系图是否需要入库，以及归属 `db/engine.ts` 还是共享 skill graph 表；当前仅纯函数返回。
-  - 子技能蒸馏若输入包含数据探索轨迹，需等待/遵守 D-SAFEDISTILL1 脱敏边界，禁止 draw_data 原始行进入蒸馏。
-  - `skill_rejected_edits` 表是否纳入接缝层 `db/shared.ts`（当前在 `db/engine.ts`）。
-  - held-out 评测当前每次跑完整 evaluation，是否后续加缓存/增量。
-  - Creator/Evaluator 隔离当前是软隔离（systemPrompt + 路径校验），pi 进程仍可读绝对路径；是否后续加 OS 级沙箱。
-  - 沿用前序开放项（subagents 进阶接缝归属、黑板 scope、Save as Skill 工具化、flow_node_runs 归档、文档评测持久化等）。
+  - 沿用前序开放项（动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -386,3 +370,9 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 
 - Notebook（SQL/Python/MD 混排）为 E 域 P1。
 - 指标语义层 `MetricDefinition`（总控定契约、D 实现）：E 生成 SQL 时**强制引用 metric 口径**，不自造。
+
+**监测·目标测算（E-MONITOR-TARGET1，2026-06-27）**
+- 计算函数落点 `web/src/lib/monitor-target-calculator.ts`（前端首版直接消费）；如 D-MONITOR-TARGET3 需要服务端校验，再镜像到 server/src/，必须保持公式一致。
+- 类型自包含：计算器文件内联所有 Target* 类型（不 import `@/types`），确保 `node --experimental-strip-types --test` 可独立运行，不受 web tsconfig paths 别名限制。
+- 测试文件 `@ts-nocheck` 模式：`node --experimental-strip-types` 要求 import 带 `.ts` 扩展名，但 `tsc` 不允许；`@ts-nocheck` 是兼容两者的最小方案。ponytail: 若后续 web 端测试增多，可考虑 vitest 或 tsconfig 排除 test 文件，避免每文件 `@ts-nocheck`。
+- `safeDiv`/`safeMul` 必须同时防 `null` 和 `NaN` 输入：`isFinite(null)` 返回 `true`（`Number(null)=0`），仅靠 `isFinite` 不够，必须先 `== null` 检查。

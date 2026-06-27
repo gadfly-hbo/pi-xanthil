@@ -30,6 +30,10 @@ import type {
   MonitorMetricSystemEntry,
   MonitorRun,
   MonitorActionSource,
+  MonitorDatasetBinding,
+  TargetPlan,
+  TargetCalculationInput,
+  TargetCalculationResult,
 } from "@/types";
 
 // 单一真源：Action 契约由 @/types 持有（总控），此处仅 re-export 供本域消费者引用。
@@ -223,4 +227,16 @@ export const vizApi = {
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/runs/${encodeURIComponent(runId)}/findings`).then(json<HealthFinding[]>),
   draftMonitorActions: (workspaceId: string, body: MonitorActionSource & { model?: string }) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/actions/draft`, jsonBody("POST", body)).then(json<{ drafts: ActionItemDraft[] }>),
+
+  // ── 目标测算 target-plans（D-MONITOR-TARGET3）──
+  createTargetPlan: (workspaceId: string, body: { name: string; input: TargetCalculationInput; result: TargetCalculationResult }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/target-plans`, jsonBody("POST", body)).then(json<TargetPlan>),
+  listTargetPlans: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/target-plans`).then(json<TargetPlan[]>),
+  getTargetPlan: (workspaceId: string, planId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/target-plans/${encodeURIComponent(planId)}`).then(json<TargetPlan>),
+  adoptTargetPlan: (workspaceId: string, planId: string, body?: { replaceExisting?: boolean }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/target-plans/${encodeURIComponent(planId)}/adopt`, jsonBody("POST", body)).then(
+      json<{ plan: TargetPlan; goalDatasetPathId: string; replacedGoalBinding: MonitorDatasetBinding | null }>,
+    ),
 };

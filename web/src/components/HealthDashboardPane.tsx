@@ -8,6 +8,7 @@ import type {
   HealthFinding,
   MonitorRun,
   MonitorComparison,
+  TargetPlan,
 } from "@/types";
 
 const SUITES: { id: HealthSuite; label: string }[] = [
@@ -90,6 +91,7 @@ export function HealthDashboardPane({
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [findings, setFindings] = useState<HealthFinding[]>([]);
   const [loadingFindings, setLoadingFindings] = useState(false);
+  const [goalPlan, setGoalPlan] = useState<TargetPlan | null>(null);
   const resultRef = useRef<HTMLDivElement | null>(null);
 
   useEffect(() => {
@@ -99,6 +101,7 @@ export function HealthDashboardPane({
       setSelectedRunId(null);
       setFindings([]);
       setHasMetricSystem(false);
+      setGoalPlan(null);
       return;
     }
     let cancelled = false;
@@ -128,6 +131,12 @@ export function HealthDashboardPane({
       if (cancelled) return;
       setRuns(rs);
       if (rs.length > 0) setSelectedRunId(rs[0]!.id);
+    }).catch(() => {});
+
+    vizApi.listTargetPlans(workspaceId).then((plans) => {
+      if (cancelled) return;
+      const adopted = plans.find((p) => p.status === "adopted");
+      setGoalPlan(adopted ?? null);
     }).catch(() => {});
 
     return () => { cancelled = true; };
@@ -178,15 +187,38 @@ export function HealthDashboardPane({
       <div className="mx-auto w-full max-w-5xl space-y-4 p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">观星台</h2>
-        {!hasMetricSystem && (
-          <button
-            onClick={() => setActiveSubTab("health_data")}
-            className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
-          >
-            ⚠ 未配置指标体系，去初始化 →
-          </button>
-        )}
+        <div className="flex items-center gap-2">
+          {!hasMetricSystem && (
+            <button
+              onClick={() => setActiveSubTab("health_data")}
+              className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
+            >
+              ⚠ 未配置指标体系，去初始化 →
+            </button>
+          )}
+          {!goalPlan && (
+            <button
+              onClick={() => setActiveSubTab("health_target")}
+              className="rounded-md border border-blue-300 bg-blue-50 px-2 py-0.5 text-[11px] text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-900/40 dark:text-blue-200"
+            >
+              去目标测算 →
+            </button>
+          )}
+        </div>
       </div>
+
+      {goalPlan && (
+        <div className="flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-[12px] dark:border-emerald-700 dark:bg-emerald-950/30">
+          <span className="text-emerald-700 dark:text-emerald-300">已绑定目标计划：</span>
+          <span className="font-medium text-emerald-800 dark:text-emerald-200">{goalPlan.name}</span>
+          <button
+            onClick={() => setActiveSubTab("health_target")}
+            className="ml-auto text-[11px] text-emerald-600 hover:underline dark:text-emerald-400"
+          >
+            查看 →
+          </button>
+        </div>
+      )}
 
       {error && (
         <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[12.5px] text-red-700 dark:border-red-700 dark:bg-red-950/40 dark:text-red-300">

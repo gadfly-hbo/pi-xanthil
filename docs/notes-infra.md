@@ -10,7 +10,17 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。2.3 发布后增量（Harness 全专题等）见 `Orchestration.md §八「2.3 阶段进展」`。详见发布节点。
 
-- 最近更新：2026-06-27 · 总控（Harness 自进化专题 P0 全交付 + 产品 Agent 自进化 EVOLVE 链解冻推进）
+- 最近更新：2026-06-27 · 总控（监测·目标测算全链 QA 完成 + Harness 自进化专题 P0 全交付）
+- 本批（2026-06-27 · 监测目标测算专题，总控规划/派发）：
+  - ✅ **X-MONITOR-TARGET0 总控契约完成**：双侧 `types.ts` 镜像新增 `TargetScenarioKind`/`TargetMetricKind`/`TargetCase`/`TargetPlanStatus` + `TargetAssumptions`/`TargetCalculationInput`/`TargetCaseResult`/`TargetBreakdownItem`/`TargetCalculationResult`/`TargetPlan`。详见 §十三。
+  - ✅ **E-MONITOR-TARGET1 终审通过（含总控两处收口）**：`web/src/lib/monitor-target-calculator.ts:calculateTarget()` 纯函数 + 9 个 node:test 用例。总控收口：① 改从 `@/types` import X 契约类型，避免 calculator 本地重声明；② `upliftFactor` 接入 GMV/订单链路并补回归测试。因工作树已提前接入 `health_target` 但缺组件，总控补 `HealthTargetPane.tsx` 最小编译占位（仅为恢复门禁，不代表 F 卡完成）。
+  - ✅ **F-MONITOR-TARGET2 终审通过（含总控一处收口）**：`HealthTargetPane` 完整页面落地，接 `calculateTarget()`，含场景/指标选择、11 个参数输入、三情景结果卡、周期拆解表、禁用保存按钮；接缝 `health_target` 已挂入监测二级 tab。总控收口：默认 `upliftFactor` 从 0.1 改为 1，避免基准 GMV 被默认压成 10%。
+  - ✅ **D-MONITOR-TARGET3 终审通过（含总控两处收口）**：新增 `target_plans` 表与 create/list/get/adopt CRUD，新增 4 个 target-plans API 与 web client。总控收口：① adopt 写入 `clean_data/monitor/` 的目标数据集由 JSON 改为 CSV（`period/case/scenarioKind/metric/targetValue/value/planId/planName`），确保进入现有 `/api/bi/aggregations` 与观星台数据读取链路；② 已有 `role="goal"` 绑定时后端返回 409，必须显式传 `replaceExisting: true` 才替换，避免静默覆盖。
+  - ✅ **F-MONITOR-TARGET4 终审通过（含总控一处收口）**：`HealthTargetPane` 保存接 `createTargetPlan` + `adoptTargetPlan`，成功后绿色状态条 + 跳观星台；`HealthDashboardPane` 拉取 adopted target plan 并显示目标绑定状态/目标测算快捷入口；`HealthTabs` 透传 `setActiveSubTab`。总控收口：补齐 D 卡 `replaceExisting` 契约，已有 goal 时首次 adopt 409 后显示替换确认条，确认后用同一 draft plan 传 `{ replaceExisting: true }`，避免重复创建与静默覆盖。
+  - ✅ **QA-MONITOR-TARGET5 总控全链验收通过**：临时服务 HTTP smoke 覆盖 create/adopt target plan、goal CSV 进入 `/api/bi/aggregations`、409 + `replaceExisting:true` 替换策略、monitor config 单 goal、最小 metric system 运行观星台产出 `R-GAP-TARGET` finding（`gmv_actual 落后目标 30.0%`）、无目标工作区旧流程为空列表不回归。公式侧复跑 9/9。
+  - ✅ **wiki 新增 6 张任务卡并推进全专题 done**：`X-MONITOR-TARGET0`（契约/红线，done）→ `E-MONITOR-TARGET1`（确定性测算纯函数，done）→ `F-MONITOR-TARGET2`（HealthTargetPane + 二级 tab，done）→ `D-MONITOR-TARGET3`（目标计划 API + adopt 写入 monitor goal，done）→ `F-MONITOR-TARGET4`（保存后跳转观星台/目标状态，done）→ `QA-MONITOR-TARGET5`（全链验收，done）。
+  - ✅ **总控口径**：目标测算定位为“监测前生成/推演/拆解目标”，不是观星台差距发现；首版确定性测算，零 LLM，零 raw row；用户确认后写入 `clean_data/monitor/` 作为 `goal` 数据集，复用现有 `R-GAP-TARGET` actual vs target 监测。
+  - 📌 **派发顺序**：先 X 契约；E 纯函数与 F 页面可并行；D 持久化/绑定接公式稳定后做；最后 F 联动与 QA 终审。
 - 本批（2026-06-27 · Harness 自进化 + 产品 Agent 自进化专题，总控自做 + 多卡终审）：
   - ✅ **X-HARNESS0（总控自做·契约+回滚预研）**：双侧 `types.ts` 加 EFC 度量（`FeedbackEvent`/`EFC_KAPPA`/`TaskDemand`/`EfcScore`）+ AHE 契约（`HarnessComponent`/`ChangeOutcome`/`ChangeManifest`/`EditVerdict`/`HarnessVariant`/`ScopedRevision`）；`cache.ts` 加 C_raw 只读 getter（`RawComputeUsage`+`getRawComputeForSession/Run`，纯读既有 token 统计、toolCalls 由 E 回填）；§九 记录 + 回滚底座审定（typed scoped revision）。
   - ✅ **E-EFC1 终审通过（含总控收口契约漂移）**：EFC scorer + 6 runner 接入 + 6 Pane 加 EFC/η 列。终审发现 E 本地重声明 `EfcScore`/`EFC_KAPPA` 绕过 X-HARNESS0 单一真源 → **总控收口 9 文件**：`efc-scoring` import 契约 `EFC_KAPPA`、本地超集改 `EfcScoreDetail extends EfcScore`；6 runner rename；web `EfcScoreView extends` 契约。收口后 EFC 2/2 + runner 45/45 复跑绿。
@@ -64,6 +74,7 @@
   - **知识库新模块**：`knowledge-injection/retrieval(.ts/.test)`、`system-prompts(.ts/.test)`、前端 `KnowledgeBasePane`/`KnowledgeBaseReadmePane`/`MemoryReadmePane` 已存在；wiki 标 done，但总控尚未逐卡运行时实跑终审。
   - 汇报可视化 / prompts 管理 / 规则记忆重构 / 知识库等跨批改动仍处于工作区未提交状态，本批未清理、不回滚。
 - 下一步：
+  - **监测·目标测算专题全链完成**：当前无代码阻塞。可选后续为浏览器点击级 Playwright 点检，以及用真实业务 metric system/actual 数据跑一次人工验收；工程闭环已通过 HTTP/API smoke 与门禁。
   - **Harness 全专题已完成**（五论文 + 技能工程子波，wiki 无冻结/待派 harness 卡）；后续皆可选增强，非阻塞按需排期：
     - **D-SAFEDISTILL1 self-HTTP 清理**（flag）：approve 现 `await fetch` 自调 E skill-registry 端点（async 安全、非 V-OBS 死锁，但 smell）；更净=E 经 GET 消费 approved 提案 + 自写 registry，消自调。
     - EVOLVE：eval 候选→AHE attribute 实跑、注释→confirmed 复核 UI、bounded change 应用（守 human gate）。
@@ -421,3 +432,43 @@
 - 与 Orchestration「冲突协议」互补——冲突协议管冲突，本机制管信息流越权与资源越界。
 
 **验证**：server + web typecheck 绿、build 绿（双侧各 8 export 对齐），现有业务代码零改动。
+
+---
+
+## 十三、监测目标测算接缝契约（X-MONITOR-TARGET0，2026-06-27 总控自做）
+
+**背景**：用户要求监测模块新增“目标测算”，用于全年 KPI（销售/利润等）与大促活动销售测算。总控裁决：目标测算不是观星台的差距发现，而是**监测前的目标生成/推演/拆解**；用户确认后写回监测目标，复用现有 `R-GAP-TARGET` actual vs target 监测。
+
+**已交付（仅契约，未实现 UI/API/公式）**：
+- **双侧 `types.ts` 镜像**（放在监测契约块内、`MonitorDatasetBinding` 前）：
+  - `TargetScenarioKind = "yearly_kpi" | "campaign" | "rolling_monthly"`
+  - `TargetMetricKind = "gmv" | "revenue" | "gross_profit" | "profit" | "orders"`
+  - `TargetCase = "conservative" | "baseline" | "stretch"`
+  - `TargetPlanStatus = "draft" | "adopted" | "archived"`
+  - `TargetAssumptions`：`traffic/conversionRate/aov/refundRate/grossMarginRate/marketingCost/fixedCost/upliftFactor`，均为可选 number。
+  - `TargetCalculationInput`：`scenarioKind/metric/periodStart/periodEnd/targetValue/assumptions`。
+  - `TargetCaseResult`：三情景结果，含 `requiredTraffic/requiredOrders/requiredAov/requiredConversionRate/gmv/revenue/grossProfit/profit/roi`，可为 `number | null`，避免除零产生 `Infinity`。
+  - `TargetBreakdownItem`：`period/case/targetValue`。
+  - `TargetCalculationResult`：`cases + breakdown`。
+  - `TargetPlan`：`id/workspaceId/name/input/result/status/goalDatasetPathId?/createdAt/updatedAt/adoptedAt?`。
+
+**红线与边界（下游卡必守）**：
+- 首版只做确定性测算，**零 LLM**：不得调用 `chat*` / `generate*` / `extract*` / `clarify*` / `runPiPrompt`。
+- **零 raw row**：不得读取 `draw_data` 原始行；目标计划只保存用户输入参数、测算结果与聚合目标值。
+- 目标测算结果是可复算的衍生产物，adopt 后允许写入 `clean_data/monitor/` 并绑定 `MonitorSourceRole="goal"`。
+- adopt 不得静默覆盖既有 `monitor_configs`：必须保留 `suite/ontologyId/metricSystemId/thresholds/source` 等既有配置；已有 goal 绑定时需显式策略（追加/选择/替换确认）。
+
+**下游分工审定**：
+- `E-MONITOR-TARGET1`：实现纯函数目标测算与单测；无 IO、无 fetch、无 LLM。
+- `F-MONITOR-TARGET2`：新增 `HealthTargetPane` 与 `health_target` 二级 tab；可先本地计算，公式稳定后切 E 真源。
+- `D-MONITOR-TARGET3`：目标计划持久化 + adopt 写 `clean_data/monitor/` + 更新 `monitor_configs.datasetBindings(role="goal")`。
+- `F-MONITOR-TARGET4`：保存成功后跳转观星台、观星台显示目标绑定状态；不改 `monitor-engine`。
+- `QA-MONITOR-TARGET5`：全链验收 + 红线核查。
+
+**建议 API 签名（D 卡落地前仍为契约，不代表已实现）**：
+- `POST /api/workspaces/:id/monitor/target-plans`
+- `GET /api/workspaces/:id/monitor/target-plans`
+- `GET /api/workspaces/:id/monitor/target-plans/:planId`
+- `POST /api/workspaces/:id/monitor/target-plans/:planId/adopt`
+
+**验证**：X 卡仅新增双侧类型 + wiki/notes 契约；未注册路由、未接 UI、未改监测引擎。

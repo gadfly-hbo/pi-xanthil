@@ -3054,6 +3054,70 @@ export type DatasetShape = "timeseries" | "snapshot" | "dimension";
 export type MonitorSourceRole = "goal" | "source" | "industry" | "competitor";
 export type MonitorComparisonKind = "target" | "history" | "industry" | "competitor";
 
+// X-MONITOR-TARGET0: 目标测算契约（确定性测算，零 LLM，零 raw row）。
+export type TargetScenarioKind = "yearly_kpi" | "campaign" | "rolling_monthly";
+export type TargetMetricKind = "gmv" | "revenue" | "gross_profit" | "profit" | "orders";
+export type TargetCase = "conservative" | "baseline" | "stretch";
+export type TargetPlanStatus = "draft" | "adopted" | "archived";
+
+export interface TargetAssumptions {
+  traffic?: number;
+  conversionRate?: number;
+  aov?: number;
+  refundRate?: number;
+  grossMarginRate?: number;
+  marketingCost?: number;
+  fixedCost?: number;
+  upliftFactor?: number;
+}
+
+export interface TargetCalculationInput {
+  scenarioKind: TargetScenarioKind;
+  metric: TargetMetricKind;
+  periodStart: string;
+  periodEnd: string;
+  targetValue: number;
+  assumptions: TargetAssumptions;
+}
+
+export interface TargetCaseResult {
+  case: TargetCase;
+  targetValue: number;
+  requiredTraffic?: number | null;
+  requiredOrders?: number | null;
+  requiredAov?: number | null;
+  requiredConversionRate?: number | null;
+  gmv?: number | null;
+  revenue?: number | null;
+  grossProfit?: number | null;
+  profit?: number | null;
+  roi?: number | null;
+}
+
+export interface TargetBreakdownItem {
+  period: string;
+  case: TargetCase;
+  targetValue: number;
+}
+
+export interface TargetCalculationResult {
+  cases: TargetCaseResult[];
+  breakdown: TargetBreakdownItem[];
+}
+
+export interface TargetPlan {
+  id: string;
+  workspaceId: string;
+  name: string;
+  input: TargetCalculationInput;
+  result: TargetCalculationResult;
+  status: TargetPlanStatus;
+  goalDatasetPathId?: string;
+  createdAt: number;
+  updatedAt: number;
+  adoptedAt?: number | null;
+}
+
 export interface MonitorDatasetBinding {
   datasetPathId: string;
   role: MonitorSourceRole;
