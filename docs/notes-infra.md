@@ -8,7 +8,7 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-> 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。详见 `Orchestration.md §八` 发布节点。
+> 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。2.3 发布后增量（Harness 全专题等）见 `Orchestration.md §八「2.3 阶段进展」`。详见发布节点。
 
 - 最近更新：2026-06-27 · 总控（Harness 自进化专题 P0 全交付 + 产品 Agent 自进化 EVOLVE 链解冻推进）
 - 本批（2026-06-27 · Harness 自进化 + 产品 Agent 自进化专题，总控自做 + 多卡终审）：
@@ -23,6 +23,10 @@
   - ✅ **wiki 7 卡转 done**：X-HARNESS0 / E-EFC1 / E-AHE1 / X-EVOLVE0 / E-SKILLOPT1 / E-EVOLVE1 / D-EVOLVE2。
   - ✅ **剩余冻结卡全解冻（用户授意·暂不开发）**：AgingBench P1（X-AGING0/E-AGING1/D-AGING2）+ HarnessAudit P2（X-AUDIT0/E-AUDIT1）去【冻结】标记、状态保持 `todo`，待排期捞出。**wiki 已无任何冻结卡**。卡面留语境提示：AGING 前置=X-AGING0 契约先行；AUDIT 原冻结理由=「待多 agent 协作规模上来」（非技术前置，捞出前先评估价值）。注：line 560/714 两处分组 `//` 注释含历史「冻结」语境，已 stale 但属注释非卡状态，未动。
   - ✅ **fast-follow backlog 开卡**（§十一 零残留）：`docs/backlog/SkillOpt-fast-follow-防作弊硬隔离与EFC接入.md`（#1 防作弊硬隔离=接 pi-sandbox/真实 access log；#2 EFC 真接 `resolveSkillScore`）+ README 登记。捞出建议先 EFC（小独立）后硬隔离（随「安全红线·统一单点守卫」立项）。
+  - ✅ **AgingBench 全链 + 去重 + 测试隔离**（§十一）：X-AGING0 契约 → E-AGING1（Dream Worker 巡检，含脱敏直读裁决）→ D-AGING2（memory 老化信号 GET，红线净）→ **X-AGING-DEDUP**（总控抽 `memory-aging-core.ts` 共享核消两套重复算法）→ §二·五 测试隔离收口（3 memory test 文件设临时 XANTHIL_DATA_DIR）。
+  - ✅ **HarnessAudit**（§十二）：X-AUDIT0 契约（Π/Φ/Σ + 四类违规 V-OT/OR/IC/ID + SAR + YAML 策略规约 schema）→ E-AUDIT1（`harness-audit.ts` 确定性 checker + SAR 报表 + multi-agent auditLogPath opt-in + px-hook-runner PX_TRAJECTORY_LOG）。终审守住 px-hook-runner 门控 return 完整（opt-in best-effort，无 execSync/self-HTTP/越权门控）。
+  - ✅ **技能工程子波（3 卡终审通过）**：**E-SKILLINJECT1**（运行时瘦-context 动态注入：`skill-retrieval` 选授权集子集 + utility/diversity，**显式 skillPaths:[] 守卫——只选已授权子集绝不自主引入**，四模块红线完整）+ **E-SUBSKILL1**（`skill-distillation` additive 加 `distillSubSkillsFromTraces` 2-5 切片，无重叠）+ **D-SAFEDISTILL1**（红线·`safe-distiller.ts`：`assertSafeInput` 递归守门 + SQL skeleton 字面量全剥 + topology 元数据零 payload + report 仅路径名；`skill_proposals` per-workspace；RulesPane「💡提案」人审）。**flag**：① D-SAFEDISTILL1 approve 用 self-HTTP（`await fetch` async 非 execSync，避开 V-OBS 死锁；user-triggered；smell 待改 E 经 GET 消费）② `skill_proposals` 无 CASCADE（归档政策下无碍）。
+  - 📌 **Harness 全专题完成**：五篇论文（EFC/AHE/产品自进化/AgingBench/HarnessAudit）+ 技能工程子波 全部 done；wiki 已无冻结/待派 harness 卡。
   - ✅ **验证**：每卡 server+web `typecheck`/`build` 绿；EFC 2/2、6 runner 45/45、AHE 2/2、SkillOpt 新 20/20；红线 grep（draw_data/data-exploration 隔离）全净；双侧 types 镜像对齐、无本地重声明（E-EFC1 收口后）。
   - 待用户提交：`server/src/{types,cache,efc-scoring(.test),ahe-attribute(.test),evolve-engine(.test),skill-rewrite-gate(.test),skill-rejected-buffer,skill-sandbox(.test)}`、6 `*-evaluation-runner`、`db/engine`、`skill-curator`、`routes/engine`、`web/src/{types,lib/api/engine,lib/efc,components/{6×LabPane,AheManifestPanel,SkillManagementPane,HealthReportPane,ReportReviewPane,GoldenStrategyPane}}`、`docs/{notes-infra §九/§十,wiki(7 卡 done+4 卡解冻),backlog 2 文件}`（+ E 自维护 `notes-engine`）。
 - 历史批次（2026-06-27 · subagents 体系 readme，总控自做）：
@@ -60,7 +64,11 @@
   - **知识库新模块**：`knowledge-injection/retrieval(.ts/.test)`、`system-prompts(.ts/.test)`、前端 `KnowledgeBasePane`/`KnowledgeBaseReadmePane`/`MemoryReadmePane` 已存在；wiki 标 done，但总控尚未逐卡运行时实跑终审。
   - 汇报可视化 / prompts 管理 / 规则记忆重构 / 知识库等跨批改动仍处于工作区未提交状态，本批未清理、不回滚。
 - 下一步：
-  - **EVOLVE 链已闭环**（X-EVOLVE0 + E-EVOLVE1 + D-EVOLVE2 全 done）；后续可选增强：eval 候选→AHE attribute 实跑（confirmed eval 进对照器）、注释→confirmed 的人工复核 UI、产品 agent bounded change 应用（仍守 human gate）。非阻塞，按需排期。
+  - **Harness 全专题已完成**（五论文 + 技能工程子波，wiki 无冻结/待派 harness 卡）；后续皆可选增强，非阻塞按需排期：
+    - **D-SAFEDISTILL1 self-HTTP 清理**（flag）：approve 现 `await fetch` 自调 E skill-registry 端点（async 安全、非 V-OBS 死锁，但 smell）；更净=E 经 GET 消费 approved 提案 + 自写 registry，消自调。
+    - EVOLVE：eval 候选→AHE attribute 实跑、注释→confirmed 复核 UI、bounded change 应用（守 human gate）。
+    - 技能工程：动态注入/子技能蒸馏的真实 pi/browser smoke（当前仅 deterministic runner 测试覆盖）。
+    - HarnessAudit/AgingBench 均 P1/P2，实跑验证按规模/需要再排。
   - **SkillOpt fast-follow 可随时捞**：`docs/backlog/SkillOpt-fast-follow-*` 的 #2 EFC 真接入（小、独立、软依赖 E-EFC1 已满足）可优先；#1 防作弊硬隔离待「安全红线·统一单点守卫」立项一起做。
   - **command 场景调用框收口**（工作树未提交，§六-外的在飞批）：`command-expand`/`routes/engine.ts`/双侧 `types.ts`(toolIds/toolParamMap)/`CommandManagementPane`/`ChatPane`/`ManualAnalysisToolCard`。backlog 标已落地，但需总控核 §0 未记的这批：跑 command 单测 + typecheck/build，并核 `ChatPane`/`ManualAnalysisToolCard` 仍走 `@工具`/`/api/extraction-tools/:id/run` 的 `source=ai` 闸门、不绕 clean_data 红线。
   - 优先做 **数字锁真实 tool-use smoke**：准备一个 `analysis` 工具返回 `metricSnapshots`，让模型故意把注入值改写，确认 `ChatPane` 出现“模型引用数值与代码计算值不符”；再跑正常引用确认无告警。也要覆盖 `send_flow` 的 flow chat 消费侧是否能看到同一 block。
@@ -395,3 +403,21 @@
 - **✅ 顺带收口预存测试隔离缺陷（§二·五 铁律，2026-06-27）**：`memory-aging-signals.test.ts` / `memory-aging-inspector.test.ts` 原未在 import 前设临时 `XANTHIL_DATA_DIR`——两文件用注入 `items`（纯函数、runtime 不查 DB），但 import 链触发 `db.ts` boot 开真实 `~/.pi-xanthil` 库，**多文件同进程合并跑时 `initSharedTables` 报 `database is locked`**（单文件跑无碍）。已按 `collect-db.test.ts` 范式修：`import type` 保留静态（编译期擦除不触发 runtime）+ `process.env.XANTHIL_DATA_DIR=mkdtempSync(tmpdir/...)` 后 `await import` 被测模块。验证：合并跑 23/23（signals 8+inspector 4+maintenance 11）+ 12/12 稳定无 locked、typecheck/build 绿。同款修 `memory-maintenance.test.ts`（原同样未自设隔离），三个 memory test 文件现各自独立隔离、不靠加载顺序兜底，任意组合合并跑均无 locked（复验 23/23）。
 
 **验证**：server + web typecheck 绿、build 绿（双侧各 4 处 export 对齐）。
+
+---
+
+## 十二、Harness 轨迹级安全审计契约（X-AUDIT0，2026-06-27 总控自做·P2）
+
+**背景**：backlog `HarnessAudit-轨迹级安全审计.md`（arxiv 2605.14271）落地。核心警示「任务完成≠执行安全」——harness 能返回正确答案，途中却越权访问资源/把私有 context 泄漏给错的 agent；违规中途发生、终审查不出；多 agent 放大风险面（SAR 0.91→0.58）。**P2**：随多 agent 协作规模扩大才紧迫（用户授意先解冻、契约先行，捞出前先评估价值是否随规模显现）。本卡=接缝契约，仅定单一真源，**不实装**轨迹日志/checker/SAR 报表。解锁 **E-AUDIT1**（结构化轨迹日志 px-hook-runner + 确定性 access checker Judge + SAR 报表）。
+
+**已交付（双侧 `types.ts` 镜像，接在 X-AGING0 块后、跨 lab 回归看板前，字面一致·8 export）**：
+- **harness 形式化 Π/Φ/Σ**：`HarnessPolicy{permissions:Π, infoFlow:Φ, coordination:Σ}` + `RolePermission`（Π·工具三层 required/forbidden/unnecessary + 资源参数白名单 resourceWhitelist）+ `InfoFlowPolicy`（Φ·allowPairs/denyPairs + defaultTopology hub-spoke + leakRules 数据泄露规则）+ `CoordinationPolicy`（Σ·hubRole + requireResultCheck）。**= YAML 策略规约 schema**（E-AUDIT1 将 YAML 解析为此结构）。
+- **四类违规 + 度量**：`ViolationClass`（V-OT 工具/V-OR 资源/V-IC 路由/V-ID 泄露）+ `Violation{class,severity:'low'|'high',actingRole,evidence}` + `SafetyAdherence{tool,resource,flow}` 三通道 SAR + `SAR_WEIGHTS{low:0.15,high:0.3}` 常量。
+
+**接缝审定（E-AUDIT1 必守）**：
+- 落点 multi-agent/hooks（E：`multi-agent-runner.ts`、px-hook-runner、`health-check-engine.ts` 扩 Judge 钩子）。
+- **后验审计、非在线拦截起步**：先记结构化轨迹（append-only JSONL）+ 事后判 SAR 出报表，验证「完成≠安全」真实存在，再谈在线门禁；与多 agent 总控终审互补（终审看产出对错，本机制看途中越权）。
+- **先做 V-IC/V-ID（信息流）**：多 agent 跌最狠是信息流(0.58)/资源(0.63)；先审 D/E/V handoff 是否把不该传的产物传给不该收的域；**默认 hub-spoke**（三域不直连经总控中转）。
+- 与 Orchestration「冲突协议」互补——冲突协议管冲突，本机制管信息流越权与资源越界。
+
+**验证**：server + web typecheck 绿、build 绿（双侧各 8 export 对齐），现有业务代码零改动。

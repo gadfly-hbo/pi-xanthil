@@ -49,6 +49,8 @@ interface PiHandlerCtx {
 
 const CONFIG_PATH = process.env.PX_HOOKS_CONFIG ?? "";
 const LOG_PATH = process.env.PX_HOOKS_LOG ?? "";
+const TRAJECTORY_LOG_PATH = process.env.PX_TRAJECTORY_LOG ?? "";
+let trajectorySeq = 0;
 
 // MVP 支持的 pi 事件集。
 const SUPPORTED_EVENTS = [
@@ -86,6 +88,15 @@ function record(rec: Record<string, unknown>): void {
     appendFileSync(LOG_PATH, `${JSON.stringify(rec)}\n`);
   } catch {
     /* best-effort：日志失败不影响 agent */
+  }
+}
+
+function recordTrajectory(rec: Record<string, unknown>): void {
+  if (!TRAJECTORY_LOG_PATH) return;
+  try {
+    appendFileSync(TRAJECTORY_LOG_PATH, `${JSON.stringify({ seq: ++trajectorySeq, ts: Date.now(), ...rec })}\n`);
+  } catch {
+    /* best-effort：审计日志失败不影响 agent */
   }
 }
 
@@ -154,6 +165,14 @@ export default function (pi: PiExtAPI): void {
     const preview = safePreview(safeEvent);
     const sessionId = getSessionId(ctx);
     let blockReason: string | null = null;
+    recordTrajectory({
+      kind: "tool_call",
+      actingRole: typeof safeEvent.role === "string" ? safeEvent.role : "agent",
+      tool: typeof safeEvent.toolName === "string" ? safeEvent.toolName : "",
+      params: { preview },
+      payloadPreview: preview,
+      sessionId,
+    });
 
     if (isWebSearchToolCall(safeEvent, preview) && process.env.PX_ALLOW_WEB !== "1") {
       blockReason = WEB_SEARCH_BLOCK_REASON;

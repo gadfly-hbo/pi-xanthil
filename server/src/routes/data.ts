@@ -57,7 +57,23 @@ import { runPiPrompt } from "../pi-adapter.ts";
 import { buildMemoryPrompt } from "../memory-injection.ts";
 import { judgeSemanticDuplicate, type JudgeFn } from "../memory-dedup.ts";
 import { computeMemoryAgingSignals } from "../memory-aging-signals.ts";
+import {
+  assertSafeInput,
+  collectApiTopologyFromTrace,
+  collectSqlSkeletonsFromTrace,
+  distillProposals,
+  listSafeReportPaths,
+} from "../safe-distiller.ts";
+import {
+  approveSkillProposal,
+  getSkillProposal,
+  listSkillProposals,
+  rejectSkillProposal,
+  upsertSkillProposal,
+  type SkillProposalStatus,
+} from "../db/data.ts";
 import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
+import { PORT } from "../config.ts";
 import type {
   BiAggregationDataset,
   BiAggregationData,
@@ -1701,4 +1717,156 @@ dataRouter.get("/api/workspaces/:id/monitor/imports", (req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }
+});
+
+// ============================================================================
+// 子技能提案 skill_proposals（D-SAFEDISTILL1 · Safe Distiller）
+// ----------------------------------------------------------------------------
+// 流程：① scan 端点扫近 N 天 trace_events + clean_data/report 元数据 → 调
+// safe-distiller 生成提案 → upsert 入 skill_proposals 表（同骨架 dedup）。
+// ② RulesPane 拉 pending 列表 → 人审 → approve/reject。
+// ③ approve 时 HTTP fetch self POST /api/workspaces/:id/skill-registry（E 域端点），
+//    不 import E 域函数（守接缝纪律，复用 D-MONITOR1 范式）。
+// 跨域消费：E-SUBSKILL1/E-SKILLINJECT1 通过 HTTP GET 拉提案，禁止 import D 域。
+// ============================================================================
+
+const SAFE_DISTILLER_SELF_BASE = `http://localhost:${PORT}`;
+const DEFAULT_SCAN_WINDOW_MS = 30 * 24 * 60 * 60 * 1000; // 30 天
+
+dataRouter.post("/api/workspaces/:id/skill-proposals/scan", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const windowDaysRaw = Number(req.body?.windowDays ?? 30);
+  const windowDays = Number.isFinite(windowDaysRaw) && windowDaysRaw > 0 && windowDaysRaw <= 365 ? windowDaysRaw : 30;
+  const sinceMs = Date.now() - windowDays * 24 * 60 * 60 * 1000;
+  const occurrenceThresholdRaw = Number(req.body?.occurrenceThreshold ?? 3);
+  const occurrenceThreshold = Number.isFinite(occurrenceThresholdRaw) && occurrenceThresholdRaw >= 2 && occurrenceThresholdRaw <= 20
+    ? occurrenceThresholdRaw
+    : 3;
+  try {
+    const sqlSkeletons = collectSqlSkeletonsFromTrace(workspaceId, sinceMs);
+    const apiTopology = collectApiTopologyFromTrace(workspaceId, sinceMs);
+    const reports = listSafeReportPaths(workspaceId);
+    const input = { workspaceId, sqlSkeletons, apiTopology, reports };
+    // 红线：再次断言输入安全（冗余防御，源头不含 draw_data 时 no-op）
+    assertSafeInput(input);
+    const proposals = distillProposals(input, { occurrenceThreshold });
+    const summary = { created: 0, refreshed: 0, skipped: 0 };
+    const written = [] as Array<{ kind: "created" | "refreshed" | "skipped"; id: string; signature: string }>;
+    for (const p of proposals) {
+      const result = upsertSkillProposal({
+        workspaceId,
+        signature: p.signature,
+        draftTitle: p.draftTitle,
+        draftBody: p.draftBody,
+        evidence: p.evidence,
+      });
+      summary[result.kind] += 1;
+      written.push({ kind: result.kind, id: result.proposal.id, signature: result.proposal.signature });
+    }
+    addTraceEvent({
+      workspaceId,
+      targetKind: "skill_proposal",
+      targetId: "scan",
+      type: "skill_proposal_scan",
+      target: "safe-distiller",
+      status: "success",
+      detail: `生成 ${proposals.length} 个提案 · 新建 ${summary.created} · 刷新 ${summary.refreshed} · 跳过 ${summary.skipped}`,
+      payload: { windowDays, occurrenceThreshold, summary, generated: proposals.length },
+    });
+    res.json({ generated: proposals.length, summary, items: written });
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/skill-proposals", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const statusQ = typeof req.query.status === "string" ? req.query.status : undefined;
+  const status: SkillProposalStatus | undefined =
+    statusQ === "pending" || statusQ === "approved" || statusQ === "rejected" ? statusQ : undefined;
+  res.json(listSkillProposals(workspaceId, status));
+});
+
+dataRouter.post("/api/workspaces/:id/skill-proposals/:proposalId/approve", async (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const proposal = getSkillProposal(req.params.proposalId);
+  if (!proposal) return res.status(404).json({ error: "proposal not found" });
+  if (proposal.workspaceId !== workspaceId) {
+    return res.status(403).json({ error: "proposal belongs to another workspace" });
+  }
+  if (proposal.status !== "pending") {
+    return res.status(409).json({ error: `proposal already ${proposal.status}` });
+  }
+  // 允许 RulesPane 在采纳前编辑 draft：传入 title/body 覆盖最终落库内容
+  const finalTitle = typeof req.body?.title === "string" && req.body.title.trim()
+    ? req.body.title.trim()
+    : proposal.draftTitle;
+  const finalBody = typeof req.body?.body === "string" && req.body.body.trim()
+    ? req.body.body
+    : proposal.draftBody;
+
+  try {
+    // HTTP fetch self → E 域 skill-registry 端点（不 import E 函数，守接缝纪律）
+    const resp = await fetch(`${SAFE_DISTILLER_SELF_BASE}/api/workspaces/${encodeURIComponent(workspaceId)}/skill-registry`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        name: finalTitle,
+        content: finalBody,
+        source: "derived",
+        status: "draft",
+      }),
+    });
+    if (!resp.ok) {
+      const errText = await resp.text().catch(() => "");
+      return res.status(502).json({ error: `skill-registry POST failed (${resp.status})`, detail: errText.slice(0, 500) });
+    }
+    const created = await resp.json() as { entry?: { id?: string } };
+    const skillId = String(created.entry?.id ?? "");
+    const approved = approveSkillProposal(req.params.proposalId, skillId);
+    if (!approved) return res.status(500).json({ error: "failed to mark proposal approved" });
+    addTraceEvent({
+      workspaceId,
+      targetKind: "skill_proposal",
+      targetId: approved.id,
+      type: "skill_proposal_decision",
+      target: approved.draftTitle,
+      status: "success",
+      detail: `已采纳 · skill=${skillId || "(unknown)"}`,
+      payload: { decision: "approved", skillId },
+    });
+    res.json({ proposal: approved, skill: created });
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.post("/api/workspaces/:id/skill-proposals/:proposalId/reject", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const proposal = getSkillProposal(req.params.proposalId);
+  if (!proposal) return res.status(404).json({ error: "proposal not found" });
+  if (proposal.workspaceId !== workspaceId) {
+    return res.status(403).json({ error: "proposal belongs to another workspace" });
+  }
+  if (proposal.status !== "pending") {
+    return res.status(409).json({ error: `proposal already ${proposal.status}` });
+  }
+  const reason = typeof req.body?.reason === "string" ? req.body.reason : "";
+  const rejected = rejectSkillProposal(req.params.proposalId, reason);
+  if (!rejected) return res.status(500).json({ error: "failed to reject proposal" });
+  addTraceEvent({
+    workspaceId,
+    targetKind: "skill_proposal",
+    targetId: rejected.id,
+    type: "skill_proposal_decision",
+    target: rejected.draftTitle,
+    status: "success",
+    detail: `已拒绝${reason ? ` · ${reason.slice(0, 100)}` : ""}`,
+    payload: { decision: "rejected", reason },
+  });
+  res.json(rejected);
 });

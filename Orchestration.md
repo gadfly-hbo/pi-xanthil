@@ -4,7 +4,8 @@
 > 总控 = Claude（Opus）：负责架构、接缝层、接口契约、db migration 审批、跨域集成、**全部代码终审**。
 > 三个编程 Agent 在各自域的 **slot 文件**内开发，**永不触碰接缝层骨架文件**。
 
-最后更新：2026-06-20 · 状态：**v2.2 发布** ✅ —— **v2.1（P0 收口 + onto-xanthil 数据语义层）已归档** ✅，**2.2 阶段启动 · 派发板待新派发**。v2.2 收纳 2026-06-11→06-20 全部交付：规则记忆模块 clean-slate 重建(11/11)、工作区任务模型 + 专题(AnaX)一级工作台、actions 行动闭环、fork 分支 + 委派子 agent、onto 文档分批抽取、全局记忆池 + 按工作区启用、知识库模块、控制模块重构为 AI 工程基元控制台、汇报版本可视化、数据提取分类/CSV 模板、tool-use/subagents/hooks 运行看板、五大模块 readme 体系；V-agent 停用、前端归 D 承接。完整清单见 `docs/wiki.html` CHANGELOG v2.2。
+最后更新：2026-06-27 · 状态：**v2.3 发布** ✅（「零幻觉·数据可信地基」，2026-06-26）—— **v2.2 已归档** ✅。2.3 阶段启动；2.3 发布后增量（Harness 全专题等）见 §八「2.3 阶段进展」。完整版本清单见 `docs/wiki.html` CHANGELOG。
+> （v2.2 归档明细）v2.2 收纳 2026-06-11→06-20 全部交付：规则记忆模块 clean-slate 重建(11/11)、工作区任务模型 + 专题(AnaX)一级工作台、actions 行动闭环、fork 分支 + 委派子 agent、onto 文档分批抽取、全局记忆池 + 按工作区启用、知识库模块、控制模块重构为 AI 工程基元控制台、汇报版本可视化、数据提取分类/CSV 模板、tool-use/subagents/hooks 运行看板、五大模块 readme 体系；V-agent 停用、前端归 D 承接。完整清单见 `docs/wiki.html` CHANGELOG v2.2。
 
 > 📌 **2.1 → 2.2 归档说明（2026-06-20，总控发布）**：截至 06-12 状态行（第 0 步接缝重构 ✅ + P0 全齐活 ✅ + onto-xanthil 全期 ✅）即 v2.1 里程碑，已落 CHANGELOG。其后所有 done 工作汇总为 v2.2 一条版本记录；wiki 派发板已清 done 卡、仅保留 10 张 2.1 遗留未完成卡待 2.2 重新排期。下方 §八 历史明细保留为里程碑档案，不再增删。
 
@@ -226,15 +227,15 @@ web/src/
 
 ## 八、当前状态 / 待办
 
-> ════ **发布节点 · v2.2（2026-06-20）** ════
-> **v2.1（P0 收口 + onto-xanthil）已归档 ✅；v2.2 已发布 ✅；2.2 阶段启动 · 派发板待新派发。**
-> 下方为 v2.1/v2.0 周期的里程碑明细档案（保留不删，供追溯）。v2.2 收纳的交付清单见 `docs/wiki.html` CHANGELOG v2.2。
+> ════ **发布节点 · v2.3（2026-06-26，「零幻觉·数据可信地基」）** ════
+> **v2.2 已归档 ✅；v2.3 已发布 ✅；2.3 阶段进行中。**
+> 下方为 v2.1/v2.0 周期的里程碑明细档案（保留不删，供追溯）。v2.2/v2.3 收纳的交付清单见 `docs/wiki.html` CHANGELOG。
 > **2.1 遗留待 2.2 重排（已保留在 wiki 派发板，10 张）**：SQL 真实库链路实跑(缺凭据降级)、AnaX archive flywheel UI 实跑、App.tsx 域模块 React.lazy 代码分割、skill 自进化(沙箱安全/链式蒸馏)、红线硬化(数据分析 session 内建工具可达 draw_data 评估)、decision 模块接线、deleteWorkspace 子表补齐、subagents 进阶(博弈/黑板/Save-as-Tool/节点级看板)。
 > ════════════════════════════════
 
-### 2.2 阶段进展（发布后增量，总控持有；明细见 `docs/notes-infra.md §九/§十` + `docs/wiki.html`）
+### 2.3 阶段进展（v2.3 发布后增量，总控持有；明细见 `docs/notes-infra.md §九–§十二` + `docs/wiki.html`）
 
-> 本节记 v2.2 发布后的专题交付（区别于下方 v2.1/v2.0 历史档案）。下一次发版时汇总进 CHANGELOG。
+> 本节记 v2.3（2026-06-26）发布后的专题交付（区别于下方 v2.1/v2.0 历史档案、及已并入 CHANGELOG 的 v2.2/v2.3）。下一次发版时汇总进 CHANGELOG。
 
 - [x] **Harness 自进化专题 P0（2026-06-27，总控自做契约 + E 实装 + 总控终审）** — 把实验场从「凭感觉试错」升级为「有度量、可累积」。三卡全 done：
   - **X-HARNESS0**（契约+回滚预研）：双侧 `types.ts` 定 EFC 度量（`FeedbackEvent`/`EfcScore`/`TaskDemand`）+ AHE 契约（`ChangeManifest`/`EditVerdict`/`HarnessVariant`/`ScopedRevision`/`HarnessComponent`）；`cache.ts` C_raw getter；typed scoped revision 回滚底座审定（§九）。
@@ -245,7 +246,10 @@ web/src/
   - **E-EVOLVE1**（引擎）：finding→脱敏 trajectory→candidate EvalRecord→AHE package（human gate `defer`）+ `agent_trajectories`/`eval_records` 两表（per-workspace + FK CASCADE + 去重）。终审收口脱敏 denylist 脆弱（精确→子串匹配 + `0NN_raw` 路径）。
   - **D-EVOLVE2**（注释入口·红线）：监测/report-review/golden 加「→eval 候选」按钮。终审收口 2 处红线（HealthReportPane 去原值 `evidence`；服务端 ingress `parseAgentTrajectory` 加脱敏兜底）。
 - [x] **fast-follow backlog + 冻结卡治理（2026-06-27）** — `docs/backlog/SkillOpt-fast-follow-*`（防作弊硬隔离 + EFC 真接入，剥离自 E-SKILLOPT1 终审）；**E-SKILLOPT1**（skill 受控回写器：slow-update 守门/严格接受/rejected buffer/沙箱）done；剩余冻结卡（AgingBench P1 / HarnessAudit P2）全解冻为活跃 todo。**wiki 已无冻结卡**。
-- [x] **AgingBench·X-AGING0 契约（2026-06-27，总控自做）** — 记忆老化巡检度量契约（解冻后开做）：双侧 `types.ts` 加 `AgingKind`（压缩/干扰/修订/维护 四类老化）/ `CounterfactualProbe`（P1/P2/P3 反事实探针，util 恒 agent）/ `AgingMetric`（半衰期/衰减斜率/终值 + 按类诊断项）/ `ErrorAttribution`（由 Acc 差算归因写/读/用阶段）；与 EFC M_t 记忆信号互补。typecheck+build 绿、明细见 `notes-infra §十一`。**解锁 E-AGING1（Dream Worker 巡检）/ D-AGING2（memory-injection 老化信号·红线）**，两卡前置已通待派。
+- [x] **AgingBench 全链（2026-06-27）** — 记忆老化巡检：**X-AGING0** 契约（`AgingKind` 四类/`CounterfactualProbe` P1-P3/`AgingMetric`/`ErrorAttribution`，与 EFC M_t 互补）→ **E-AGING1**（Dream Worker 巡检，含脱敏直读裁决）→ **D-AGING2**（memory 老化信号 GET·红线净）→ **X-AGING-DEDUP**（总控抽 `memory-aging-core.ts` 共享核消两套重复算法）+ §二·五 测试隔离收口（3 memory test 文件）。明细 `notes-infra §十一`。
+- [x] **HarnessAudit 链（2026-06-27）** — 轨迹级安全审计：**X-AUDIT0** 契约（Π/Φ/Σ `HarnessPolicy` + 四类违规 V-OT/OR/IC/ID + SAR + YAML 策略规约 schema）→ **E-AUDIT1**（`harness-audit.ts` 确定性 access checker + SAR 报表 + multi-agent `auditLogPath` opt-in + px-hook-runner `PX_TRAJECTORY_LOG`；门控 return 完整、无 execSync/self-HTTP/越权）。明细 `notes-infra §十二`。
+- [x] **技能工程子波 3 卡（2026-06-27）** — **E-SKILLINJECT1**（运行时瘦-context 动态注入：选授权集子集 + utility/diversity，显式 `skillPaths:[]` 守卫绝不自主引入）+ **E-SUBSKILL1**（`skill-distillation` additive 子技能蒸馏 2-5 切片，无重叠）+ **D-SAFEDISTILL1**（红线·`safe-distiller.ts`：assertSafeInput 递归守门 + SQL skeleton 字面量全剥 + topology 零 payload + report 仅路径名；RulesPane「💡提案」人审）。flag：D-SAFEDISTILL1 approve self-HTTP（async fetch 非死锁，smell 待改 GET 消费）。
+- [x] **📌 Harness 全专题完成（2026-06-27）** — 五篇 harness 论文（EFC/AHE/产品自进化/AgingBench/HarnessAudit）接缝契约 + E/D 实装 + 技能工程子波 全部 done 并经总控终审；wiki 已无冻结/待派 harness 卡。多处总控终审收口（EFC 契约漂移/AHE 全局表追认/EVOLVE+SAFEDISTILL 红线/AGING 去重+测试隔离）。
 
 ---
 

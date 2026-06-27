@@ -784,15 +784,15 @@ B. 前端：
 3. RulesPane 展示老化信号(可选)。
 验收：产卡冲突对 + 过期引用清单；数据探索 LLM 隔离 grep 净；typecheck+build 绿。
 约束：守 AGENTS.md 数据安全。跨域依赖：供 E-AGING1 消费。` },
-  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2】X-AUDIT0：harness 形式化(Π/Φ/Σ)+四类违规+YAML 策略规约契约（总控自做）", brief:
-`✅ 已解冻（2026-06-27，用户授意先解冻、暂不开发）。注：原冻结理由是「待多 agent 协作规模上来」（非技术前置）——规模未必已到，捞出前先评估 audit 价值是否随规模显现。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。本卡=接缝契约，总控自做。
+  { dom: "X", status: "done", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2】X-AUDIT0：harness 形式化(Π/Φ/Σ)+四类违规+YAML 策略规约契约（总控自做）", brief:
+`✅ done（2026-06-27，总控自做）：双侧 types.ts 加 HarnessPolicy(Π RolePermission/Φ InfoFlowPolicy/Σ CoordinationPolicy=YAML 策略规约 schema)/ViolationClass(V-OT/OR/IC/ID)/Violation/SafetyAdherence/SAR_WEIGHTS，typecheck+build 绿、详见 notes-infra §十二。**解锁 E-AUDIT1**（P2，规模上来再捞）。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。本卡=接缝契约，总控自做。
 范围(接缝层)：types.ts 双侧：
  · HarnessPolicy{ permissions:Π(role→tools/resources); infoFlow:Φ(allow/deny role pairs); coordination:Σ }
  · type ViolationClass='V-OT'|'V-OR'|'V-IC'|'V-ID'
  · Violation{ class; severity; actingRole; evidence } + SafetyAdherence{ tool;resource;flow }   // SAR=1-min(1, ω_low·V_low+ω_high·V_high), ω_high=.30/ω_low=.15
  · YAML 策略规约 schema(角色工具三层 required/forbidden/unnecessary + 资源参数白名单 + 通信拓扑 + 数据泄露规则)
 验收：types 双侧对齐 + YAML schema 定稿、typecheck+build 绿。约束：仅契约。跨域依赖：解锁 E-AUDIT1。` },
-  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2】E-AUDIT1：轨迹结构化日志(px-hook-runner)+确定性 access checker(Judge)+SAR 报表", brief:
+  { dom: "E", status: "done", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2】E-AUDIT1：轨迹结构化日志(px-hook-runner)+确定性 access checker(Judge)+SAR 报表", brief:
 `✅ 已解冻（2026-06-27，暂不开发待排期）。前置 X-AUDIT0 契约需先做；原 P2·待多 agent 协作规模上来。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。落点=multi-agent/hooks(E：multi-agent-runner.ts、px-hook-runner、health-check-engine.ts)。
 范围(E slot)：
 1. Execution 阶段：px-hook-runner 出结构化轨迹日志(工具调用/资源访问/agent 间消息，append-only JSONL)。
@@ -802,7 +802,7 @@ B. 前端：
 约束：后验起步不在线拦截。跨域依赖：策略来自 X-AUDIT0。` },
   // ── 技能工程子波（Skill Engineering，2026-06-23 总控拆卡；来源=桌面文档《skill技能打磨与动态技能研究》+腾讯 SkillHone 2606.08671 + SkillsInjector 2605.29794 + 技能演化综述 2606.11435）。趋势：Prompt→Flow→Skill Engineering，技能即资产、胖 context→瘦 context 动态注入。
   // ── 重叠处理：SkillHone 3 增量(Creator/Evaluator 防作弊隔离 / 决策史四态+检索 / typed 局部修复)已『增补进 X-HARNESS0 + E-SKILLOPT1』不单独落卡；下列 3 张为动态技能全新能力(运行时注入/子技能蒸馏/Safe Distiller 红线)。执行效用 Δ 软依赖 E-EFC1。
-  { dom: "E", status: "todo", created: "2026-06-23 10:00", title: "【Harness·技能工程·动态注入·Quick Win】E-SKILLINJECT1：运行时瘦-context 动态技能注入(Planner+执行效用排序+自适应预算+set-aware 渲染)", brief:
+  { dom: "E", status: "done", created: "2026-06-23 10:00", title: "【Harness·技能工程·动态注入·Quick Win】E-SKILLINJECT1：运行时瘦-context 动态技能注入(Planner+执行效用排序+自适应预算+set-aware 渲染)", brief:
 `来源：docs/backlog/动态技能注入与子技能蒸馏.md(SkillsInjector 2605.29794) + 桌面文档「动态技能解锁」Phase 2。落点=MultiAgentExecutionPane(E)+skill-retrieval.ts。文档点名『核心发力点/Quick Win』。
 范围(E slot)：
 1. Planner 节点：MultiAgentExecutionPane 执行前解析需求出 Todo List；每步只『解锁』当前最需要的 2-3 个 micro-skill 注入，弃『全量规则注入』(胖 context)。
@@ -812,7 +812,7 @@ B. 前端：
 5. 选技能看 full body(SkillRouter 警示：只用名+描述掉 31-44%)。
 验收：从全量注入改每步 2-3 micro-skill 动态注入，跑通典型任务、context token 下降且不掉成功率；typecheck+build+engine tests 绿。
 约束：先语义检索+固定预算亦可起步验证瘦 context 收益，再上执行效用。软依赖 E-EFC1。不碰接缝层。` },
-  { dom: "E", status: "todo", created: "2026-06-23 10:00", title: "【Harness·技能工程·蒸馏】E-SUBSKILL1：子技能蒸馏(2-5 动作切片)+Trace2Skill 合并+SkillX 去重多样性+关系图", brief:
+  { dom: "E", status: "done", created: "2026-06-23 10:00", title: "【Harness·技能工程·蒸馏】E-SUBSKILL1：子技能蒸馏(2-5 动作切片)+Trace2Skill 合并+SkillX 去重多样性+关系图", brief:
 `来源：docs/backlog/动态技能注入与子技能蒸馏.md(技能演化综述 2606.11435) + 文档「子技能抽取」。落点=skill-distillation.ts(E)。与 SkillOpt(单 skill 优化)互补：本卡做多 skill 切片/合并/去重。
 范围(E slot)：
 1. 子技能切片：从成功轨迹切 2-5 动作高频序列为 micro-skill。
@@ -821,7 +821,7 @@ B. 前端：
 4. 去重优先多样：去重后优先选多样路径，防单一路径依赖。
 验收：从一批成功轨迹产去重后的多样 micro-skill 集+关系图；不重复造现有 skill-distillation；typecheck+build+tests 绿。
 约束：蒸馏输入若涉数据探索轨迹，须走 D-SAFEDISTILL1 脱敏边界(零 draw_data)。产物供 E-SKILLINJECT1 消费。` },
-  { dom: "D", status: "todo", created: "2026-06-23 10:00", title: "【Harness·技能工程·红线】D-SAFEDISTILL1：Safe Distiller(query skeleton/API 拓扑/report，零 draw_data)+RulesPane『💡提案』人审入库", brief:
+  { dom: "D", status: "done", created: "2026-06-23 10:00", title: "【Harness·技能工程·红线】D-SAFEDISTILL1：Safe Distiller(query skeleton/API 拓扑/report，零 draw_data)+RulesPane『💡提案』人审入库", brief:
 `来源：docs/backlog/动态技能注入与子技能蒸馏.md Phase 3 + 文档「安全提炼引擎」。落点=数据域(D)：探索动作序列脱敏 + RulesPane 提案确认。**红线卡**。
 范围(D slot)：
 1. Safe Distiller 输入边界(做死)：仅吃 query skeleton(SQL 结构，剔除 WHERE 敏感值)+API 调用拓扑+最终 report/business_requirements。**绝不碰 draw_data 原始行**。
@@ -2132,6 +2132,13 @@ const CHANGELOG = [
     "C-mini 指标语义层 + 双路径对账：metric_definitions 持久化 displayName/aggregation/periodGrain/filters/denominator/version；MetricSnapshot 绑定 metricId；reconcileMetricSnapshots 按 metricId+period 对账，重复口径/缺口径/单路径缺失均显式告警",
     "可信边界声明：系统验证 LLM 输出是否忠实于已登记数据、来源与计算结果；不保证原始数据、业务口径或因果解释天然正确，重要结论仍需人工复核。GIGO、选择性叙事、实质因果谬误、common-mode failure 仍在边界外",
     "门禁：关键单测 110/110、typecheck、build、数据探索 LLM 隔离 grep 全绿；build 仅既有 echarts/chunk size warnings",
+    "—— 以下为 v2.3 阶段增量（2026-06-27 发布后持续交付，仍属 2.3）——",
+    "Harness 自进化度量地基（EFC + AHE）：X-HARNESS0 双侧契约 + 规则版 EFC 反馈效率度量（κ·I·V·R·M，η=EFC/C_raw）接入 6 测评台 + AHE change-manifest 对照器（fix/reg 精确率召回 + seesaw 无回归门 + 冲突 fork variant）+ typed scoped revision 无-git 回滚底座",
+    "产品 Agent 自进化闭环（EVOLVE）：把『失败→eval→约束修改』纪律从实验场迁到产品 agent；监测复发 finding→脱敏轨迹→candidate eval→复用 AHE bounded change（human gate 不自动应用）；监测行动环/report-review/黄金策加『→eval 候选』红线入口",
+    "记忆老化巡检（AgingBench）：四类老化（压缩/干扰/修订/维护）度量 + P1–P3 反事实探针把错误归因到写/读/用阶段 + Dream Worker 巡检 + memory-injection 老化信号 GET；总控抽共享核消两套重复算法 + 测试隔离收口",
+    "轨迹级安全审计（HarnessAudit）：harness 形式化 Π/Φ/Σ + 四类违规 V-OT/OR/IC/ID + 三通道 SAR 报表 + 确定性 access checker（后验非在线）+ px-hook-runner 结构化轨迹日志（opt-in best-effort，门控护栏零改动）",
+    "技能工程子波：运行时瘦-context 动态技能注入（只选已授权集子集、显式 skillPaths:[] 守卫绝不自主引入）+ 子技能蒸馏（2–5 动作切片 + SkillX 去重多样）+ Safe Distiller（SQL skeleton/API 拓扑/零 draw_data 红线）RulesPane『💡提案』人审入库",
+    "门禁（阶段增量）：14 卡均 server+web typecheck/build + 专项测试全绿（EFC/AHE/EVOLVE/AGING/AUDIT/技能工程）；数据探索 LLM 隔离 + 蒸馏脱敏红线 grep 净；多处总控终审收口（契约漂移/全局表裁决/红线硬化/去重）",
   ]},
   { ver: "2.2", date: "2026-06-20", current: false, title: "记忆重构 + 专题工作台 + 控制台/看板/可视化波次", items: [
     "规则记忆模块 clean-slate 重建(11/11 卡)：统一 MemoryItem 模型 + 多信号检索(relevance/recency/feedback/typePriority) + 治理(时序衰减/supersede/防 poison/dedup) + 自动沉淀闭环(trace 蒸馏→门禁→入库 or 复核队列) + RulesPane 重建 + ChatPane 内联反馈 + KG 关系层/注入检查器/失败诊断。164 测试 + E2E 6/6 烟测",

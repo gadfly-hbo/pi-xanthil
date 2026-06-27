@@ -3099,6 +3099,18 @@ function recordSkillRegistryUsageForPaths(workspaceId: string, workspaceRoot: st
   }
 }
 
+function buildSkillUtilityByPath(workspaceId: string, workspaceRoot: string): Record<string, number> {
+  const out: Record<string, number> = {};
+  for (const entry of listSkillRegistryEntries(workspaceId)) {
+    if (entry.status === "archived") continue;
+    const quality = entry.prodActivationRate ?? entry.activationRate ?? entry.score ?? 0.5;
+    const usageBoost = Math.min(0.15, Math.log1p(Math.max(0, entry.usageCount)) / 40);
+    const regressionPenalty = entry.regressionStatus === "regression" ? 0.25 : 0;
+    out[resolve(registrySkillPath(workspaceRoot, entry.slug))] = Math.max(0, Math.min(1, quality + usageBoost - regressionPenalty));
+  }
+  return out;
+}
+
 function collectWorkflowSkillPaths(workflow: WorkflowLike): string[] {
   const paths = new Set<string>();
   if (Array.isArray(workflow.defaultSkillPaths)) {
@@ -3581,6 +3593,7 @@ export async function handleExecuteMultiAgent(
       resumeFromNodeId: msg.resumeFromNodeId,
       gateThresholds: isAnaxFlow ? (() => { const c = getAnaxGateConfig(flow.workspaceId); return { minConfidence: c.minConfidence, minEvidenceCount: c.minEvidenceCount, minDataQualityScore: c.minDataQualityScore }; })() : undefined,
       runBudget: RUN_BUDGET_LIMITS ? { workspaceId: flow.workspaceId, limits: RUN_BUDGET_LIMITS } : undefined,
+      dynamicSkillUtilityByPath: workspace ? buildSkillUtilityByPath(flow.workspaceId, workspace.rootPath) : undefined,
     });
     if (activeMultiAgentRuns.get(clientRunId) === active) activeMultiAgentRuns.delete(clientRunId);
     finishFlowRun(runRow.id, active.aborted ? "aborted" : result.code === 0 ? "success" : "failed");

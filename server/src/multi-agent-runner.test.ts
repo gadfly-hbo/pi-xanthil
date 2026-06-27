@@ -52,6 +52,22 @@ function fakeExtractionTool(): RegisteredExtractionTool {
   };
 }
 
+function writeSkill(root: string, slug: string, description: string, body: string): string {
+  const dir = join(root, ".pi", "skills", slug);
+  mkdirSync(dir, { recursive: true });
+  const path = join(dir, "SKILL.md");
+  writeFileSync(path, [
+    "---",
+    `name: ${slug}`,
+    `description: ${description}`,
+    "---",
+    "",
+    body,
+    "",
+  ].join("\n"), "utf8");
+  return path;
+}
+
 function verdictText(input: Partial<GateVerdict> & { verdict?: "pass" | "blocked" }): string {
   return [
     "```anax-verdict",
@@ -190,6 +206,24 @@ test("runMultiAgent passes workflow default skills to child agents", async () =>
   ]);
 });
 
+test("runMultiAgent writes optional HarnessAudit trajectory JSONL", async () => {
+  const adapter = makeFakePiAdapter({ first: { text: "first output" } }, "test-run");
+  const runDir = makeRunDir();
+  const auditLogPath = join(runDir, "audit", "trajectory.jsonl");
+  const workflow: WorkflowDef = {
+    nodes: [{ id: "first", role: "E", label: "First", prompt: "Run first" }],
+    edges: [],
+  };
+
+  await runMultiAgent(workflow, { ...makeBaseOptions(runDir, adapter.runTurn), auditLogPath });
+
+  const lines = readFileSync(auditLogPath, "utf8").trim().split("\n").map((line) => JSON.parse(line) as Record<string, unknown>);
+  assert.equal(lines[0]?.seq, 1);
+  assert.equal(lines[0]?.kind, "state_transition");
+  assert.equal(lines[0]?.actingRole, "E");
+  assert.ok(lines.some((line) => line.kind === "agent_message" && line.from === "E" && line.to === "__blackboard__"));
+});
+
 test("runMultiAgent lets node skills override or disable workflow defaults", async () => {
   const adapter = makeFakePiAdapter(
     {
@@ -231,6 +265,38 @@ test("runMultiAgent disables default pi skills when workflow has no explicit ski
   await runMultiAgent(workflow, makeBaseOptions(makeRunDir(), adapter.runTurn));
 
   assert.deepEqual(adapter.calls.map((call) => call.skillPaths), [[]]);
+});
+
+test("runMultiAgent dynamically injects a skinny skill subset per workflow step", async () => {
+  const runDir = makeRunDir();
+  const sqlSkill = writeSkill(runDir, "sql-debug", "Repair SQL joins and query failures", "Use when a task needs SQL join repair, SELECT validation, or database query debugging.");
+  const chartSkill = writeSkill(runDir, "chart-design", "Design chart and dashboard views", "Use when a task needs chart selection, dashboard layout, axis encoding, or visual comparison.");
+  const copySkill = writeSkill(runDir, "copy-review", "Review presentation copy", "Use when a task needs concise wording, executive summary, or slide narrative.");
+  const archiveSkill = writeSkill(runDir, "archive-work", "Archive run artifacts", "Use when a task needs artifact packaging, report archive, or export checklist.");
+  const adapter = makeFakePiAdapter(
+    {
+      sql: { text: "sql fixed" },
+      chart: { text: "chart done" },
+    },
+    "test-run",
+  );
+  const workflow: WorkflowDef = {
+    defaultSkillPaths: [sqlSkill, chartSkill, copySkill, archiveSkill],
+    nodes: [
+      { id: "sql", label: "SQL", prompt: "Fix the failing SQL join and validate SELECT query output" },
+      { id: "chart", label: "Chart", prompt: "Choose a dashboard chart and encode comparison metrics" },
+    ],
+    edges: [{ id: "sql-chart", source: "sql", target: "chart" }],
+  };
+
+  await runMultiAgent(workflow, makeBaseOptions(runDir, adapter.runTurn));
+
+  assert.ok((adapter.calls[0]?.skillPaths ?? []).length < 4);
+  assert.ok(adapter.calls[0]?.skillPaths?.includes(sqlSkill));
+  assert.ok(!adapter.calls[0]?.skillPaths?.includes(chartSkill));
+  assert.ok((adapter.calls[1]?.skillPaths ?? []).length < 4);
+  assert.ok(adapter.calls[1]?.skillPaths?.includes(chartSkill));
+  assert.match(adapter.calls[0]?.systemPrompt ?? "", /运行时只解锁/);
 });
 
 test("runMultiAgent forwards workflow allowWeb only when explicitly enabled", async () => {

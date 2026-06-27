@@ -74,6 +74,114 @@ ${transcript}
 直接输出完整 SKILL.md 内容，第一行必须是 ---（frontmatter 起始），不要任何前后缀文字或代码围栏。`;
 }
 
+export interface TraceAction {
+  id?: string;
+  text: string;
+  kind?: "observe" | "plan" | "tool" | "analyze" | "write" | "verify" | "fix";
+}
+
+export interface SkillTrace {
+  id: string;
+  outcome: "success" | "failure";
+  actions: TraceAction[];
+  failureReason?: string;
+}
+
+export interface MicroSkillCandidate {
+  id: string;
+  name: string;
+  description: string;
+  actions: string[];
+  support: number;
+  successSupport: number;
+  failureSupport: number;
+  diversityKey: string;
+  targetedPatch?: string;
+}
+
+export interface SkillRelation {
+  sourceId: string;
+  targetId: string;
+  similarity: number;
+  decision: "reuse" | "merge" | "keep_diverse";
+}
+
+export interface SubSkillDistillationResult {
+  candidates: MicroSkillCandidate[];
+  relations: SkillRelation[];
+}
+
+export interface SubSkillDistillationOptions {
+  minSupport?: number;
+  maxCandidates?: number;
+}
+
+const MIN_MICRO_SKILL_ACTIONS = 2;
+const MAX_MICRO_SKILL_ACTIONS = 5;
+
+export function distillSubSkillsFromTraces(
+  traces: SkillTrace[],
+  options: SubSkillDistillationOptions = {},
+): SubSkillDistillationResult {
+  const minSupport = Math.max(1, Math.floor(options.minSupport ?? 1));
+  const maxCandidates = Math.max(1, Math.floor(options.maxCandidates ?? 12));
+  const buckets = new Map<string, {
+    actions: string[];
+    traceIds: Set<string>;
+    successTraceIds: Set<string>;
+    failureTraceIds: Set<string>;
+    failureReasons: string[];
+  }>();
+
+  for (const trace of traces) {
+    const normalizedActions = trace.actions.map((action) => normalizeTraceAction(action.text)).filter(Boolean);
+    const seenInTrace = new Set<string>();
+    for (let start = 0; start < normalizedActions.length; start += 1) {
+      for (let length = MIN_MICRO_SKILL_ACTIONS; length <= MAX_MICRO_SKILL_ACTIONS; length += 1) {
+        const slice = normalizedActions.slice(start, start + length);
+        if (slice.length < length) continue;
+        const key = slice.join(" -> ");
+        if (seenInTrace.has(key)) continue;
+        seenInTrace.add(key);
+        const bucket = buckets.get(key) ?? {
+          actions: slice,
+          traceIds: new Set<string>(),
+          successTraceIds: new Set<string>(),
+          failureTraceIds: new Set<string>(),
+          failureReasons: [],
+        };
+        bucket.traceIds.add(trace.id);
+        if (trace.outcome === "success") bucket.successTraceIds.add(trace.id);
+        else {
+          bucket.failureTraceIds.add(trace.id);
+          if (trace.failureReason?.trim()) bucket.failureReasons.push(trace.failureReason.trim());
+        }
+        buckets.set(key, bucket);
+      }
+    }
+  }
+
+  const rawCandidates = [...buckets.entries()]
+    .map(([key, bucket]) => ({
+      id: `micro-${stableHash(key)}`,
+      name: slugifySkillName(bucket.actions.slice(0, 3).join("-")).slice(0, 72),
+      description: buildMicroSkillDescription(bucket.actions, bucket.successTraceIds.size, bucket.failureTraceIds.size),
+      actions: bucket.actions,
+      support: bucket.traceIds.size,
+      successSupport: bucket.successTraceIds.size,
+      failureSupport: bucket.failureTraceIds.size,
+      diversityKey: buildDiversityKey(bucket.actions),
+      targetedPatch: buildTargetedPatch(bucket.actions, bucket.failureReasons),
+    }))
+    .filter((candidate) => candidate.support >= minSupport && candidate.successSupport > 0)
+    .sort(compareMicroSkillCandidates);
+
+  const deduped = dedupeSimilarMicroSkills(rawCandidates);
+  const diverse = pickDiverseMicroSkills(deduped, maxCandidates);
+  const relations = buildSkillRelations(deduped);
+  return { candidates: diverse, relations };
+}
+
 // Strip accidental markdown code fences / preamble the model may add around the
 // SKILL.md body, so the saved file starts cleanly at the YAML frontmatter.
 export function extractSkillMarkdown(raw: string): string {
@@ -129,4 +237,143 @@ export function slugifySkillName(name: string): string {
     .replace(/[^a-z0-9一-龥]+/g, "-")
     .replace(/^-+|-+$/g, "");
   return slug || `skill-${Date.now()}`;
+}
+
+function normalizeTraceAction(text: string): string {
+  return text
+    .trim()
+    .toLowerCase()
+    .replace(/`[^`]+`/g, "{code}")
+    .replace(/"[^"]+"/g, "{value}")
+    .replace(/'[^']+'/g, "{value}")
+    .replace(/\b\d+(?:\.\d+)?%?\b/g, "{number}")
+    .replace(/[a-f0-9]{8}-[a-f0-9-]{13,}/g, "{id}")
+    .replace(/\s+/g, " ")
+    .slice(0, 160);
+}
+
+function buildMicroSkillDescription(actions: string[], successSupport: number, failureSupport: number): string {
+  const summary = actions.join(" -> ");
+  const failureClause = failureSupport > 0 ? `，并吸收 ${failureSupport} 条失败轨迹的修正信号` : "";
+  return `当任务需要执行「${summary}」这类 ${actions.length} 步连续动作时触发；来自 ${successSupport} 条成功轨迹${failureClause}。`;
+}
+
+function buildDiversityKey(actions: string[]): string {
+  return actions
+    .flatMap((action) => tokenizeForSkillX(action))
+    .filter((token) => token.length > 1 && !["the", "and", "with", "from", "this", "that"].includes(token))
+    .slice(0, 6)
+    .join("|");
+}
+
+function buildTargetedPatch(actions: string[], failureReasons: string[]): string | undefined {
+  if (failureReasons.length === 0) return undefined;
+  const uniqueReasons = [...new Set(failureReasons)].slice(0, 3);
+  return [
+    `针对动作序列「${actions.join(" -> ")}」的失败补丁：`,
+    ...uniqueReasons.map((reason) => `- 若出现「${reason}」，先定位失败步骤，再只修正该步骤输入/判断，不重写整条流程。`),
+  ].join("\n");
+}
+
+function compareMicroSkillCandidates(a: MicroSkillCandidate, b: MicroSkillCandidate): number {
+  const scoreA = (a.successSupport * 2) + a.support - a.failureSupport + Math.min(a.actions.length, MAX_MICRO_SKILL_ACTIONS) * 0.1;
+  const scoreB = (b.successSupport * 2) + b.support - b.failureSupport + Math.min(b.actions.length, MAX_MICRO_SKILL_ACTIONS) * 0.1;
+  return scoreB - scoreA;
+}
+
+function dedupeSimilarMicroSkills(candidates: MicroSkillCandidate[]): MicroSkillCandidate[] {
+  const out: MicroSkillCandidate[] = [];
+  for (const candidate of candidates) {
+    const duplicateIndex = out.findIndex((existing) => microSkillSimilarity(existing, candidate) >= 0.82);
+    if (duplicateIndex < 0) {
+      out.push(candidate);
+      continue;
+    }
+    const existing = out[duplicateIndex]!;
+    if (compareMicroSkillCandidates(candidate, existing) < 0) out[duplicateIndex] = mergeMicroSkillCandidates(existing, candidate);
+  }
+  return out;
+}
+
+function mergeMicroSkillCandidates(a: MicroSkillCandidate, b: MicroSkillCandidate): MicroSkillCandidate {
+  const winner = compareMicroSkillCandidates(a, b) <= 0 ? a : b;
+  const support = Math.max(a.support, b.support);
+  const successSupport = Math.max(a.successSupport, b.successSupport);
+  const failureSupport = Math.max(a.failureSupport, b.failureSupport);
+  const targetedPatch = [a.targetedPatch, b.targetedPatch].filter(Boolean).join("\n") || undefined;
+  return { ...winner, support, successSupport, failureSupport, targetedPatch };
+}
+
+function pickDiverseMicroSkills(candidates: MicroSkillCandidate[], maxCandidates: number): MicroSkillCandidate[] {
+  const selected: MicroSkillCandidate[] = [];
+  const remaining = [...candidates];
+  while (remaining.length > 0 && selected.length < maxCandidates) {
+    const usedFamilies = new Set(selected.map(microSkillFamily));
+    const pool = remaining.some((candidate) => !usedFamilies.has(microSkillFamily(candidate)))
+      ? remaining.filter((candidate) => !usedFamilies.has(microSkillFamily(candidate)))
+      : remaining;
+    pool.sort((a, b) => {
+      const diversityA = selected.length === 0 ? 1 : 1 - Math.max(...selected.map((item) => microSkillSimilarity(a, item)));
+      const diversityB = selected.length === 0 ? 1 : 1 - Math.max(...selected.map((item) => microSkillSimilarity(b, item)));
+      const scoreA = a.successSupport + (0.75 * diversityA);
+      const scoreB = b.successSupport + (0.75 * diversityB);
+      return scoreB - scoreA;
+    });
+    const next = pool[0]!;
+    selected.push(next);
+    remaining.splice(remaining.findIndex((candidate) => candidate.id === next.id), 1);
+  }
+  return selected;
+}
+
+function buildSkillRelations(candidates: MicroSkillCandidate[]): SkillRelation[] {
+  const relations: SkillRelation[] = [];
+  for (let i = 0; i < candidates.length; i += 1) {
+    for (let j = i + 1; j < candidates.length; j += 1) {
+      const source = candidates[i]!;
+      const target = candidates[j]!;
+      const similarity = round3(microSkillSimilarity(source, target));
+      if (similarity < 0.2) continue;
+      relations.push({
+        sourceId: source.id,
+        targetId: target.id,
+        similarity,
+        decision: similarity >= 0.82 ? "merge" : similarity >= 0.55 ? "reuse" : "keep_diverse",
+      });
+    }
+  }
+  return relations.sort((a, b) => b.similarity - a.similarity);
+}
+
+function microSkillSimilarity(a: MicroSkillCandidate, b: MicroSkillCandidate): number {
+  return jaccard(new Set(a.actions.flatMap(tokenizeForSkillX)), new Set(b.actions.flatMap(tokenizeForSkillX)));
+}
+
+function microSkillFamily(candidate: MicroSkillCandidate): string {
+  return tokenizeForSkillX(candidate.actions[0] ?? "").slice(0, 2).join("|") || candidate.diversityKey;
+}
+
+function tokenizeForSkillX(text: string): string[] {
+  return text.split(/[^a-z0-9一-鿿{}]+/).filter(Boolean);
+}
+
+function jaccard(a: Set<string>, b: Set<string>): number {
+  const union = new Set([...a, ...b]);
+  if (union.size === 0) return 0;
+  let intersection = 0;
+  for (const item of a) if (b.has(item)) intersection += 1;
+  return intersection / union.size;
+}
+
+function stableHash(text: string): string {
+  let hash = 2166136261;
+  for (let i = 0; i < text.length; i += 1) {
+    hash ^= text.charCodeAt(i);
+    hash = Math.imul(hash, 16777619);
+  }
+  return (hash >>> 0).toString(36);
+}
+
+function round3(value: number): number {
+  return Math.round(value * 1000) / 1000;
 }

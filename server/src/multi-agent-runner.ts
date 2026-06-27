@@ -16,6 +16,8 @@ import { getExtractionTool, validateExtractionInput, type RegisteredExtractionTo
 import { runExtractionToolProcess, type ToolEvalToolRun } from "./tool-evaluation-runner.ts";
 import { executeQuery, getConnection, validateSql } from "./sql-connections.ts";
 import { RUN_SQL_QUERY_TOOL_ID } from "./sql-loop-template.ts";
+import { appendHarnessAuditEvent, type HarnessAuditEvent } from "./harness-audit.ts";
+import { selectDynamicSkillPaths, type DynamicSkillInjectionPlan } from "./skill-retrieval.ts";
 
 /**
  * Pluggable pi-turn launcher. Defaults to the real `runPiTurn` from
@@ -162,6 +164,10 @@ export interface MultiAgentRunOptions {
     start: (node: WorkflowNode) => string | undefined;
     finish: (nodeRunId: string, status: "success" | "failed" | "blocked" | "aborted", outputPath?: string) => void;
   };
+  /** Optional append-only JSONL trajectory log for post-hoc HarnessAudit. */
+  auditLogPath?: string;
+  /** Optional execution-utility proxy per skill path. Higher values are admitted first by dynamic runtime injection. */
+  dynamicSkillUtilityByPath?: Record<string, number>;
 }
 
 export interface MultiAgentRunResult {
@@ -420,10 +426,15 @@ export async function runMultiAgent(
   const blackboard: Record<string, string> = { ...opts.initialBlackboard };
   const inputs = opts.inputs ?? {};
   const order = topoOrder(workflow);
+  const todoList = buildWorkflowTodoList(order);
   const topoIndex = new Map(order.map((n, index) => [n.id, index] as const));
   const gateIterations = new Map<string, number>();
   const fallbackModel = opts.defaultModel || workflow.defaultModel || "";
   const fallbackSkillPaths = workflow.defaultSkillPaths;
+  let auditSeq = 0;
+  const audit = (event: Omit<HarnessAuditEvent, "seq" | "ts">): void => {
+    appendHarnessAuditEvent(opts.auditLogPath, { seq: ++auditSeq, ts: Date.now(), ...event });
+  };
 
   const resumeIdx = opts.resumeFromNodeId
     ? Math.max(0, order.findIndex((n) => n.id === opts.resumeFromNodeId))
@@ -434,6 +445,11 @@ export async function runMultiAgent(
     if (opts.isAborted?.()) return { code: null, blackboard };
     const node = order[cursor]!;
     opts.onStepStart(node.id);
+    audit({
+      kind: "state_transition",
+      actingRole: auditRole(node),
+      payloadPreview: `node_start:${node.id}`,
+    });
     const nodeRunId = opts.nodeRunWriter?.start(node);
 
     const trace = activeLoopTrace(order, cursor, gateIterations);
@@ -443,9 +459,24 @@ export async function runMultiAgent(
     mkdirSync(nodeDir, { recursive: true });
 
     const model = node.model || fallbackModel || undefined;
-    const skillPaths = node.skillPaths ?? fallbackSkillPaths ?? [];
     const nodeSystemPrompt = buildSystemPrompt(node);
-    const systemPrompt = [opts.systemPromptPrefix, nodeSystemPrompt].filter(Boolean).join("\n\n") || undefined;
+    const authorizedSkillPaths = node.skillPaths ?? fallbackSkillPaths ?? [];
+    const dynamicSkills = selectRuntimeSkillsForNode({
+      node,
+      order,
+      todoList,
+      cursor,
+      blackboard,
+      inputs,
+      skillPaths: authorizedSkillPaths,
+      utilityByPath: opts.dynamicSkillUtilityByPath,
+    });
+    const skillPaths = dynamicSkills.skillPaths;
+    const systemPrompt = [
+      opts.systemPromptPrefix,
+      nodeSystemPrompt,
+      dynamicSkills.plan?.renderHint,
+    ].filter(Boolean).join("\n\n") || undefined;
     const turnBase = { model, skillPaths, systemPrompt, allowWeb: workflow.allowWeb === true };
 
     // Fan-out only when the node opts in AND the upstream output actually
@@ -457,6 +488,13 @@ export async function runMultiAgent(
     let code: number | null;
     let assistantText: string;
     if (node.kind === "tool") {
+      audit({
+        kind: "tool_call",
+        actingRole: auditRole(node),
+        tool: String(node.toolId ?? ""),
+        params: { inputPath: node.inputPath ?? "", outputDir: node.outputDir ?? "" },
+        payloadPreview: `tool_node:${node.id}`,
+      });
       ({ code, text: assistantText } = await executeToolNode(node, blackboard, inputs, nodeDir, opts));
     } else if (isDeterministicSqlGateNode(node)) {
       const verdict = evaluateSqlGate(blackboard);
@@ -470,10 +508,22 @@ export async function runMultiAgent(
       ({ code, text: assistantText } = await executeTurn(node, { prompt, piSessionId, nodeDir, ...turnBase }, opts));
     }
     opts.onStepEnd(node.id, code, assistantText);
+    audit({
+      kind: "state_transition",
+      actingRole: auditRole(node),
+      payloadPreview: `node_end:${node.id}:code=${String(code)}`,
+    });
 
     if (assistantText) {
       blackboard[node.id] = assistantText;
       opts.onBlackboardUpdate(node.id, assistantText);
+      audit({
+        kind: "agent_message",
+        actingRole: auditRole(node),
+        from: auditRole(node),
+        to: "__blackboard__",
+        payloadPreview: previewText(assistantText),
+      });
 
       // AnaX: persist the node's deliverable under specs/ so downstream gate
       // nodes (and humans) can reference it as a named artifact.
@@ -606,6 +656,51 @@ function recordRunBudgetStop(
   const text = status.reason ?? "run budget exceeded";
   blackboard[RUN_BUDGET_BLACKBOARD_KEY] = text;
   opts.onBlackboardUpdate(RUN_BUDGET_BLACKBOARD_KEY, text);
+}
+
+interface RuntimeSkillSelectionInput {
+  node: WorkflowNode;
+  order: WorkflowNode[];
+  todoList: string[];
+  cursor: number;
+  blackboard: Record<string, string>;
+  inputs: Record<string, string>;
+  skillPaths: string[];
+  utilityByPath?: Record<string, number>;
+}
+
+function selectRuntimeSkillsForNode(input: RuntimeSkillSelectionInput): { skillPaths: string[]; plan: DynamicSkillInjectionPlan | null } {
+  if (input.skillPaths.length === 0) return { skillPaths: [], plan: null };
+  const query = buildRuntimeSkillQuery(input);
+  return selectDynamicSkillPaths(query, input.skillPaths, { maxSkills: 3, minNormalizedScore: 0.55, utilityByPath: input.utilityByPath });
+}
+
+function buildWorkflowTodoList(order: WorkflowNode[]): string[] {
+  return order.map((node, index) => `${index + 1}. ${node.label || node.id}: ${previewText(node.prompt || node.label || node.id)}`);
+}
+
+function buildRuntimeSkillQuery(input: RuntimeSkillSelectionInput): string {
+  const renderedPrompt = renderPrompt(input.node.prompt || input.node.label, input.blackboard, input.inputs);
+  const currentTodo = input.todoList[input.cursor] ?? `${input.cursor + 1}. ${input.node.label || input.node.id}`;
+  const nearbyTodos = input.todoList.slice(Math.max(0, input.cursor - 1), Math.min(input.order.length, input.cursor + 2));
+  return [
+    "Planner Todo List:",
+    ...nearbyTodos,
+    "",
+    `Current step: ${currentTodo}`,
+    "",
+    "Current prompt:",
+    renderedPrompt,
+    "",
+    "Available upstream context:",
+    previewBlackboard(input.blackboard),
+  ].join("\n");
+}
+
+function previewBlackboard(blackboard: Record<string, string>): string {
+  const entries = Object.entries(blackboard).slice(-4);
+  if (entries.length === 0) return "(none)";
+  return entries.map(([key, value]) => `${key}: ${previewText(value)}`).join("\n");
 }
 
 function feedbackVarForGate(node: WorkflowNode): string {
@@ -963,6 +1058,15 @@ function serializeToolOutput(output: WorkflowToolOutput): string {
 
 function sanitizeId(id: string): string {
   return id.replace(/[^a-zA-Z0-9_\-\u4e00-\u9fff]/g, "_").slice(0, 80) || "node";
+}
+
+function auditRole(node: WorkflowNode): string {
+  return node.role?.trim() || node.id;
+}
+
+function previewText(text: string): string {
+  const compact = text.replace(/\s+/g, " ").trim();
+  return compact.length > 240 ? `${compact.slice(0, 240)}...` : compact;
 }
 
 function buildSystemPrompt(node: WorkflowNode): string | undefined {

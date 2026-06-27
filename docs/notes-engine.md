@@ -7,54 +7,45 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-> 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
+> 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-27 · **E-SKILLOPT1 skill 受控回写器 MVP 完成**（验证门+严格接受+slow-update 守门+rejected buffer+Creator/Evaluator 隔离）
+- 最近更新：2026-06-27 · **E-SKILLINJECT1 + E-SUBSKILL1 完成**（运行时瘦 context 动态技能注入 + 子技能蒸馏/关系图纯函数）
 - 进度：
-  - **A · 验证门 + 严格接受**（`skill-rewrite-gate.ts`）：
-    - `evaluateStrictGate()`：候选分数必须**严格大于**当前分数才接受，平手也拒。
-    - `runRewriteCandidateEvaluation()`：对候选 skill 内容跑 held-out 评测，复用 `skillRegistryMetricsFromEvaluation` 算分，经严格门裁决。
-    - 评分默认走 evaluation 分数，预留 `scoreMetric:"efc"` 切换 flag。
-  - **B · slow-update 受保护字段守门**（`skill-rewrite-gate.ts`）：
-    - SKILL.md 用 `<!-- @slow-update -->...<!-- /@slow-update -->` 块标记受保护字段。
-    - `guardSlowUpdateWrite()` 纯函数校验，不调 LLM；`applySkillCurationProposals` 已集成守门，修改受保护块则拒写。
-    - 新增 `applySkillCurationProposalsGated()`：守门拒绝时自动写入 `skill_rejected_edits` buffer。
-  - **C · rejected-edit buffer**（`skill-rejected-buffer.ts` + `db/engine.ts` `skill_rejected_edits` 表）：
-    - `insertRejectedEdit()` / `listRejectedEdits()` / `deleteRejectedEdit()` CRUD。
-    - `buildRejectedFeedbackPrompt()` 取最近 5 条被拒编辑注入 curator prompt 作负反馈。
-    - `skill-curator.ts` `curateSkillEvaluation` 已接线：对每个 active registry entry 查被拒编辑并拼入 prompt。
-  - **D · Creator/Evaluator 权限隔离**（`skill-sandbox.ts`）：
-    - `createSkillSandbox()` 按 role 创建独立 cwd + systemPrompt 后缀。
-    - Creator 红线：禁访 `golden_strategy/validator/execution_traces/trace`。
-    - Evaluator 红线：禁写 `.pi/skills/`。
-    - `verifyCreatorIsolation()` / `verifyEvaluatorIsolation()` 纯函数校验。
-  - **E · 路由**（`routes/engine.ts`）：
-    - `POST /api/workspaces/:id/skill-rewrite/evaluate`：跑 held-out 评测 + 严格门裁决。
-    - `POST /api/workspaces/:id/skill-rewrite/accept`：接受候选，经 gated apply 写盘。
-    - `POST /api/workspaces/:id/skill-rewrite/reject`：拒绝候选，写入 rejected buffer。
-    - `GET /api/workspaces/:id/skill-rewrite/rejected`：列出被拒编辑。
-    - `DELETE /api/skill-rewrite/rejected/:id`：删除被拒编辑。
-    - `POST /api/workspaces/:id/skill-sandbox/verify`：验证隔离。
-  - **F · 前端**（`web/src/lib/api/engine.ts` + `SkillManagementPane.tsx`）：
-    - E 域内部类型（`SkillRewriteEdit/Candidate/GateResult/RejectedEdit`）放 `api/engine.ts`，不扩双侧 types.ts。
-    - `engineApi` 新增 6 个方法；`SkillManagementPane` 工具栏新增「被拒编辑」按钮 + 弹窗列表。
+  - **A · 运行时瘦 context 动态技能注入**（`skill-retrieval.ts` + `multi-agent-runner.ts`）：
+    - 新增 `planDynamicSkillInjection()` / `selectDynamicSkillPaths()`：读取 SKILL.md **full body**（路由上限 12k chars），按 `utility proxy + semantic + diversity` 排序，不再只看 name/description。
+    - 自适应预算：默认 `maxSkills=3`、`minNormalizedScore=0.55`，候选不足/低分则可少于固定预算；候选数 ≤ 3 时保持原白名单，不额外路由。
+    - set-aware 渲染：被选 skill 生成 scope 子句并拼入 node system prompt，提示 pi 只用各 skill 独有判断点，减少重叠展开。
+    - `runMultiAgent()` 每个 node 执行前根据 topo Todo List + 当前 prompt + 最近 blackboard 构造 query，动态选择 `workflow.defaultSkillPaths` / `node.skillPaths` 的子集；`node.skillPaths=[]` 仍是显式禁用。
+  - **B · 执行效用 Δ proxy 接线**（`routes/engine.ts`）：
+    - 不扩 schema，生产入口 `handleExecuteMultiAgent` 用现有 skill registry 指标构造 `dynamicSkillUtilityByPath`。
+    - utility 口径：优先 `prodActivationRate`，其次 `activationRate` / `score` / 中性 0.5；`usageCount` 小幅加权；`regressionStatus==="regression"` 降权。
+    - 该 proxy 是 EFC/反馈质量的轻量替代；后续若 EFC per-skill 历史可查询，再替换或加权，不改 runner 接口。
+  - **C · 子技能蒸馏纯函数**（`skill-distillation.ts`）：
+    - 新增 `distillSubSkillsFromTraces()`：从成功/失败轨迹切 2-5 动作序列，生成 `MicroSkillCandidate`。
+    - Trace2Skill 口径：失败轨迹不直接产候选，但会形成 `targetedPatch`，把冗余失败原因合并为单一补丁说明。
+    - SkillX 口径：基于动作 token Jaccard 生成 `SkillRelation`（`merge/reuse/keep_diverse`），去重后按动作 family 优先多样路径，防单一路径依赖。
+    - 当前是 E 域纯函数能力，不新增 LLM 路由/DB/UI；后续要写入 `.pi/skills` 仍必须走既有 candidate + 人审门。
   - **前序状态仍有效**：
+    - E-SKILLOPT1 MVP 已完成但未跑真实 pi/browser smoke。
     - subagents 进阶浏览器/API smoke 仍待跑。
     - flow_node_runs smoke、E-QEVAL2、SkillLab candidate、E-COLLECT2 浏览器验收仍待执行。
 - 校验：
   - `npm run typecheck` ✅（server + web）
-  - `npm run build` ✅
-  - `node --experimental-strip-types --test server/src/skill-rewrite-gate.test.ts` ✅（13/13）
-  - `node --experimental-strip-types --test server/src/skill-sandbox.test.ts` ✅（7/7）
-  - `node --experimental-strip-types --test server/src/multi-agent-runner.test.ts` ✅（35/35）
-  - `node --experimental-strip-types --test server/src/memory-to-skill.test.ts` ✅（8/8）
-  - `node --experimental-strip-types --test server/src/skill-regression.test.ts` ✅
+  - `npm run build` ✅（仅既有 Vite chunk warning）
+  - `node --experimental-strip-types --test server/src/multi-agent-runner.test.ts server/src/*skill*.test.ts` ✅（111/111）
 - 下一步：
+  - **E-SKILLINJECT1 真实 workflow smoke**：准备 4+ active/project skills 的 workflow → 运行典型多节点任务 → 观察每步 `--skill` 从全量降到 2-3 个、SQL/图表等节点选择不同 skill、成功率不低于原 workflow。
+  - **动态注入可观测化（P1）**：当前 selection plan 只进入内存 systemPrompt，不落 trace；后续可在 flow trace 或 node run metadata 记录 selected/rejected/estimatedTokenChars，便于验收 context token 下降。
+  - **E-SUBSKILL1 落库/人审闭环（P1）**：当前只提供轨迹→micro-skill 候选/关系图纯函数；下一步需接成功轨迹来源、脱敏边界（若含数据探索走 D-SAFEDISTILL1）、candidate 写入和 SkillManagement UI 人审。
   - **E-SKILLOPT1 浏览器 smoke**：起 server → 在 SkillLab 跑一次 skill evaluation → 触发 curator 生成 proposal → 调 evaluate 端点跑 held-out 评测 → 观察严格门裁决 → accept/reject → 查被拒编辑列表。
   - **有界 L_t 余弦衰减**（P2 优化）：当前未实现，`skill-rewrite-gate.ts` 预留接口。
   - 前序 smoke 队列：subagents 进阶、flow_node_runs、E-QEVAL2、SkillLab candidate、E-COLLECT2。
-- 阻塞：无硬阻塞；E-SKILLOPT1 未跑真实 pi/browser smoke。
+- 阻塞：无硬阻塞；E-SKILLINJECT1 未跑真实 pi/browser smoke，E-SUBSKILL1 未接真实轨迹来源/人审写入链路。
 - 开放问题（需总控）：
+  - 动态注入的 selection plan 是否需要持久化到 `flow_node_runs` / trace（若要 UI 验收 token 下降，需总控定接缝位置）。
+  - EFC per-skill 执行效用是否要形成正式历史表/查询接口；当前只用生产激活率/评测分/usage/regression 作 Δ proxy。
+  - micro-skill 关系图是否需要入库，以及归属 `db/engine.ts` 还是共享 skill graph 表；当前仅纯函数返回。
+  - 子技能蒸馏若输入包含数据探索轨迹，需等待/遵守 D-SAFEDISTILL1 脱敏边界，禁止 draw_data 原始行进入蒸馏。
   - `skill_rejected_edits` 表是否纳入接缝层 `db/shared.ts`（当前在 `db/engine.ts`）。
   - held-out 评测当前每次跑完整 evaluation，是否后续加缓存/增量。
   - Creator/Evaluator 隔离当前是软隔离（systemPrompt + 路径校验），pi 进程仍可读绝对路径；是否后续加 OS 级沙箱。
@@ -93,6 +84,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **AnaX 数据安全适配**：data-curator 不读原始数据，改为基于已登记 `clean_data` 聚合数据做 6 维评分（与 `BLOCK_SAFETY` 一致）。
 - **skill 落盘项目级** `<workspace>/.pi/skills/<slug>/SKILL.md`（被 `listSkills` 识别为 project skill），不落全局。
 - **skill progressive disclosure（2026-06-15）**：支持目录形态 `<skill>/SKILL.md + scripts/ references/ resources/`。`listSkills()` 只发现每个目录的 `SKILL.md`，命中后不展开子目录；`retrieveSkills()` 的 BM25 文档只允许使用 `name + description + SKILL.md` 首屏摘要（当前正文摘要上限 2400 chars），禁止把子资源或整篇长正文纳入检索。命中后注入给 pi 的仍是 `SKILL.md` 路径，由 pi 按文内相对路径懒加载子资源。
+- **运行时动态 skill 注入（E-SKILLINJECT1，2026-06-27）**：MultiAgent workflow 执行期不再把 workflow/node 授权的 skill 全量注入每个节点；`runMultiAgent()` 会把 topo order 视作 Planner Todo List，用当前 node prompt + 最近 blackboard 作为 task query，对授权 `skillPaths` 做瘦选择。关键边界：① 不扩 `WorkflowDef` schema、不新增前端配置，仍复用 `defaultSkillPaths` / `node.skillPaths` 三态契约；② `node.skillPaths === []` 继续表示显式禁用 skill，不能被动态注入覆盖；③ 候选 skill 路由必须读取 SKILL.md full body（当前 `ROUTING_BODY_MAX_CHARS=12000`），普通 `retrieveSkills()` 仍保持 progressive disclosure 的首屏摘要上限；④ 排序用执行效用 proxy 优先（生产激活率 > 评测激活率/score > 中性 0.5，usage 小幅加权，regression 降权），语义相似度和多样性只做辅助；⑤ set-aware scope 只进入本 node 的 systemPrompt，提示各 skill 分工，避免重复展开。否决方案：不新增 Planner 节点写入 workflow.json、不扩双侧 types、不把 selection plan 暂存 DB；真实可观测化留给后续接缝卡。
+- **子技能蒸馏纯函数边界（E-SUBSKILL1，2026-06-27）**：`distillSubSkillsFromTraces()` 是轨迹动作 → micro-skill 候选/关系图的纯函数，不调用 LLM、不写 `.pi/skills`、不绕过 skill registry 人审门。算法口径：从每条轨迹切 2-5 个动作的连续序列；成功轨迹提供候选 support，失败轨迹只形成 targeted patch 负反馈；SkillX 关系图用动作 token Jaccard 判 `merge/reuse/keep_diverse`；去重后按动作 family 优先多样路径，防止高 support 的单一路径挤掉低 support 但互补的 micro-skill。后续若要把 micro-skill 写盘，必须复用 candidate/draft/active 流程和 `confirmed=true` 人审门；若输入来自数据探索，必须先经 D-SAFEDISTILL1 脱敏边界，禁止 draw_data 原始行/字段值进入蒸馏。
 - **skill registry 生命周期（2026-06-14）**：内容真源仍是 `<workspace>/.pi/skills/<slug>/SKILL.md`，`skill_registry` 只存元数据/生命周期态。`status` 为 `draft|candidate|active|archived`；归档只更新 status 并关闭当前 workspace 的 enablement，**不删除文件**。版本链用 `version + supersedesId`，沿用 RuleMemory 的“留档可回滚”范式。
 - **skill package 跨端搬运（2026-06-16）**：MVP 采用 server 内部 JSON 包 `format:"pi-xanthil.skill-package"` / `formatVersion:1`，不先扩双侧 `types.ts` 接缝。导出端点 `POST /api/skill-registry/:id/export` 只导出非 archived skill 的 `<workspace>/.pi/skills/<slug>/` 普通文件（含 `SKILL.md` 与子资源，跳过隐藏文件/目录和 symlink）。导入端点 `POST /api/workspaces/:id/skill-registry/import` 校验 slug 与每个相对路径，写入 `<workspace>/.pi/skills/<slug>/...`，创建 `source:"imported"`、`status:"candidate"` registry entry 并写 version snapshot；**不自动 active、不覆盖既有 skill**，slug 冲突时自动分配唯一 slug。所有路径必须经 `sanitizeSkillSlug` + `resolve`/`startsWith` 围栏；后续 marketplace/订阅/签名/审计是 P2+。
 - **skill package 前端类型裁决（2026-06-16 缺口2-D）**：`SkillPackage` 与 `SkillImportResult` 类型保留在 `web/src/lib/api/engine.ts` 作为 E 域内部类型，不扩双侧 `types.ts` 接缝。理由：包格式是 E 域内部契约，不应污染全局类型空间。前端 UI 通过 `api.exportSkill`/`api.importSkill` 消费，组件内用 `Parameters<typeof api.importSkill>[1]` 做运行时 cast 即可。

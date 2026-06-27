@@ -8,30 +8,31 @@
 
 ## 0. 当前状态（session 收尾覆盖此区，不堆叠历史）
 
-> **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
+> **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-06-27 · **D-AGING2 memory-injection 老化信号**（卡冲突检测 + 事实更新回扫 + RulesPane 展示）
+- 最近更新：2026-06-27 · **D-SAFEDISTILL1 Safe Distiller + 子技能提案人审入库**（红线卡，零 draw_data 零 LLM）
 - 进度：
-  - **D-AGING2（2026-06-27 完成）**：D 域自有老化信号真源，纯算法零 LLM，GET 端点供 E-AGING1 跨域 HTTP 消费（不被 E import，守接缝纪律）。
-    - **`server/src/memory-aging-signals.ts`** 新文件：`computeMemoryAgingSignals(options)` 扫两类信号 ① `AgingConflictPair`（同 type、非 supersede 链、similarity ≥ 0.35 的可混淆对，severity= warn/info；reasons ∈ high-similarity/confidence-divergence/signal-divergence）② `AgingStaleReference`（supersede 链中 older 仍 active 或仍被下游 active item 引用，severity= critical/warn）。算法独立于 E `memory-aging-inspector.ts`（思路相近但参数 / 输出结构独立），方便后续 D 域单独演化。
-    - **`server/src/memory-aging-signals.test.ts`** 8 测试：高相似冲突命中（pairId 字典序 + 三类 reason 同现）/ 低相似过滤 / supersede 链跳过冲突 / 修订仍激活=critical / 修订已退役但被引=warn / 修订已退役且无引用=跳过 / 超 600 条 truncated=true / type 不匹配跳过。
-    - **`server/src/routes/data.ts`** 加 `GET /api/workspaces/:id/memory/aging-signals` read-only 端点（薄壳调 compute）。
-    - **`web/src/lib/api/data.ts`** 加 `fetchMemoryAgingSignals(workspaceId)` + 配套类型（`AgingSignalSeverity` / `AgingConflictReason` / `AgingConflictPair` / `AgingStaleReference` / `MemoryAgingSignalsResult`，本域消费 + 跨域 HTTP 暴露故不上提接缝层 `types.ts`）。
-    - **`web/src/components/RulesPane.tsx`** 加「查看老化信号」按钮（`Activity` 图标）+ 折叠展示区，含两个子组件 `ConflictRow` / `StaleRefRow` + `severityTone` 着色。前端最多展示 50 对 / 50 条。
-    - **跨域消费契约**：E-AGING1 的 `memory-aging-inspector.ts` 不动；后续若 E 巡检 worker 要拿 D 域信号，**走 HTTP fetch 本端点**，禁止 import D 域文件（守 §五 接缝纪律）。
-  - 上次 D-EVOLVE2 + D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 仍等待用户 review 后手动提交。
+  - **D-SAFEDISTILL1（2026-06-27 完成）**：把"用户多次执行某类关联查询"提炼为子技能提案，人审通过后写入 skill-registry。**纯模板渲染，零 LLM 调用**；输入仅 SQL 骨架 + trace 元数据 + 衍生文件名，**绝不接触 draw_data**。
+    - **`server/src/safe-distiller.ts`** 新文件 316 行：`assertSafeInput`（含 draw_data 字面 / `rows`/`values`/`row`/`records` 字段名即抛错的冗余防御）+ `normalizeSqlSkeleton`（字符串/数字/IN(...) → ?）+ `skeletonSignature`（sha1 前缀 16）+ `distillProposals`（阈值默认 3 次，sort desc by occurrences，body 仅含 frontmatter+骨架+目标+拓扑+报告路径）+ `collectSqlSkeletonsFromTrace` / `collectApiTopologyFromTrace`（trace_events 元数据，不读 payload.rowCount 之外字段）+ `listSafeReportPaths`（workspace_paths folder ∈ {report, clean_data, business_requirements}，显式排除 draw_data）。
+    - **`server/src/db/data.ts`**：新增 `skill_proposals` 表（UNIQUE(workspace_id, signature) + status enum + decided_skill_id + JSON evidence）+ `upsertSkillProposal` / `listSkillProposals` / `getSkillProposal` / `approveSkillProposal` / `rejectSkillProposal` CRUD。upsert 三态：created/refreshed/skipped（同骨架已 approved/rejected 不被自动扫描覆盖）。
+    - **`server/src/routes/data.ts`**：4 端点 `POST .../skill-proposals/scan`（手动触发 + window 1-365 天 / threshold 2-20 边界）/ `GET .../skill-proposals?status=` / `POST .../approve` / `POST .../reject`。approve 路径**HTTP fetch self** `POST /api/workspaces/:id/skill-registry`（E 域），不 import E 域函数（守接缝纪律 + 复用 D-MONITOR1 范式）。三阶段都写 trace_events（skill_proposal_scan / skill_proposal_decision）。
+    - **`server/src/safe-distiller.test.ts`** 12 测试：5 normalize + 3 assertSafeInput（draw_data 字面 / rows 字段 / 合法输入）+ 4 distill（阈值聚合 / 阈值以下不出 / signature 稳定 / body 不含 draw_data）。
+    - **`web/src/lib/api/data.ts`**：`SkillProposal`/`SkillProposalEvidence`/`SkillProposalStatus`/`SkillProposalScanResult` 4 类型 + `scanSkillProposals` / `listSkillProposals` / `approveSkillProposal` / `rejectSkillProposal` 4 方法（不上提 `types.ts`，跨域 E-SUBSKILL1 走 HTTP）。
+    - **`web/src/components/RulesPane.tsx`**：新增「💡 提案」tab（与 review 同级）+ 扫描按钮 + 可编辑 draft（title/body 二次审阅）+ 证据折叠展示（骨架/拓扑/报告路径/signature）+ 采纳/拒绝双按钮。
+    - **跨域消费契约**：E-SUBSKILL1 / E-SKILLINJECT1 通过 HTTP `GET /api/workspaces/:id/skill-proposals` 拉提案，**禁止 import** `safe-distiller.ts` / `db/data.ts:SkillProposal`（守 §五 接缝纪律）。
+  - 上次 D-AGING2 + D-EVOLVE2 + D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 仍等待用户 review 后手动提交。
 - 校验：
-  - `node --experimental-strip-types --test memory-aging-signals.test.ts`：✅ 8/8 绿
-  - `node --experimental-strip-types --test memory-aging-inspector.test.ts`：✅ 4/4 绿（未回归 E 既有信号）
+  - `node --experimental-strip-types --test safe-distiller.test.ts`：✅ 12/12 绿
+  - `node --experimental-strip-types --test memory-aging-signals.test.ts`：✅ 8/8 绿（未回归 D-AGING2）
   - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
   - `npm -w web run build`：✅ 仅既有 chunk size warning
-  - 数据探索红线 grep：✅ 无匹配
+  - 数据探索红线 grep（DataExplorationPane.tsx + data-exploration/）：✅ 0 匹配
 - 下一步（接续优先级）：
-  - ① 用户 review 后手动提交（D-AGING2 + 历史 D-EVOLVE2 / D-QEVAL3 / D-QEVAL1 / MEM-MAINTAIN/PROMOTE-UI 一并）。
-  - ② **持久化向后兼容**（开放问题①，待总控决议）：`db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底。
-  - ③ **archive MD 渲染补硬断言摘要**（开放问题②）。
-  - ④ 实跑验证：D-QEVAL1 mall 报告 md → combined_score；D-QEVAL3 硬断言 → pass@k 区分度；D-EVOLVE2 入口 → eval 候选落库；D-AGING2 在含 supersede 链的真实工作区跑 GET 端点检验噪声。
+  - ① 用户 review 后手动提交（D-SAFEDISTILL1 + D-AGING2 + 历史 D-EVOLVE2 / D-QEVAL3 / D-QEVAL1 / MEM-MAINTAIN/PROMOTE-UI 一并）。
+  - ② 实跑验证：在含 ≥3 次同骨架查询的工作区跑 `/skill-proposals/scan` → 检验 evidence 完整性 + approve 后 skill-registry 出现 draft 条目 + RulesPane 提案消失。
+  - ③ **持久化向后兼容**（开放问题①，待总控决议）：`db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底。
+  - ④ **archive MD 渲染补硬断言摘要**（开放问题②）。
   - ⑤ D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
 - 阻塞 / 待确认：
   - 无硬阻塞。
@@ -42,8 +43,10 @@
   - **④ "总控卡委派" 终审加重**：需总控逐行核 D-QEVAL3 的双侧 types.ts 改动。
   - **⑤ D-QEVAL1 R01-R15 关键词包待校准**。
   - **⑥ D-QEVAL1 DocumentSessionMetrics 来源**。
-  - **⑦ D-EVOLVE2 eval 候选 UI 无批量操作**：当前每个 finding/annotation 独立提交，无「全选→批量提为候选」按钮。ponytail: 单次 finding 量小（通常 <20），手动逐个提交可接受；若后续 finding 量 >50 或用户反馈操作繁琐再加批量。
-  - **⑧ D-AGING2 与 E-AGING1 算法重叠**：E `memory-aging-inspector.ts` 同样实现了 detectInterferenceFindings / detectRevisionFindings（且 import D 域 `listMemoryItems`），违反"D 真源 + E HTTP 消费"契约。本卡按 brief 走"D 独立路径"未碰 E，两套并存。后续若总控要剥离 E inspector 中的干扰/修订段（让 E 完全走 HTTP 消费 D），需另派卡（涉及 E 域文件）。
+  - **⑦ D-EVOLVE2 eval 候选 UI 无批量操作**：当前每个 finding/annotation 独立提交，无「全选→批量提为候选」按钮。
+  - **⑧ D-AGING2 与 E-AGING1 算法重叠**：E `memory-aging-inspector.ts` 同样实现了 detectInterferenceFindings / detectRevisionFindings（且 import D 域 `listMemoryItems`），违反"D 真源 + E HTTP 消费"契约。
+  - **⑨ D-SAFEDISTILL1 scan 触发方式**：当前仅手动按钮，无后台定时扫描。若 backlog Phase 3「后台轻量提炼」要全自动，需总控审定 cron 频率 + 用户感知策略（推送/badge）。
+  - **⑩ D-SAFEDISTILL1 skill body 模板可读性**：当前纯模板拼接（无 LLM 包装），用户审阅时 body 偏机械。若总控认可"输入仍是脱敏骨架 → 调 LLM 包装 body 文笔"不违反红线，可后续升级为方案 B（pi-adapter 调用，输入零 draw_data 字面量）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -460,3 +463,16 @@ python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print
 - **`useState` 折叠按需 fetch + busy lock**：RulesPane「查看老化信号」按钮**不**在 `refreshData` 里自动拉取——避免每次切 workspace 都触发 O(N²) 扫描。点按钮才 fetch，再点折叠。`agingBusy` 防双击。**通用范式**：read-only 但计算量较大（>100ms 或 O(N²)）的诊断端点都用此「按需触发 + 折叠收起」模式，区别于每秒自动刷新的实时监控。
 - **`pairId` 字典序保证去重**：A↔B 与 B↔A 实际是同一对干扰；`const [first, second] = a.id < b.id ? [a, b] : [b, a]; pairId = first.id + ":" + second.id` 保证唯一稳定 key，前端不用额外 dedup。该范式适用任何"无序对"集合的稳定 id 生成。
 - **MAX_ITEMS=600 截断防 O(N²) 退化**：双层 for 干扰检测在 600 条以上工作区会到 360k 次比较 + jaccard token 化，浏览器要 hold 几百 ms。按 `updated_at desc` 取前 600，丢最旧的——最旧条目最不可能与当前活跃集互相干扰，丢弃损失最小。`truncated` flag 暴露给前端提示用户。**升级路径**：若用户工作区稳定 >600 条，应加分桶（按 type/tag 前缀 buckets）只在桶内做 O(k²)，但本期 ponytail YAGNI 不做。
+
+---
+
+**Safe Distiller 子技能提案（D-SAFEDISTILL1，2026-06-27）**
+- **红线卡的"冗余防御"范式**：`assertSafeInput` 不信任调用方——即便路由层只投喂 trace 元数据 + 衍生文件名（这些**理论上**已不含 draw_data），仍递归遍历整个输入对象，发现 ①任何字符串含 `draw_data` ②任何字段名是 `rows`/`values`/`row`/`records` 即抛错。**通用范式**：红线模块在公共入口处一定要冗余兜底，单点失守 = 数据泄漏，比假设上游永远正确划算太多。守门函数应抛而非返回 null，让错误**显式**炸到调用栈而非静默丢弃数据。
+- **元数据消费而非内容消费**：`collectSqlSkeletonsFromTrace` 只读 trace_events 的 `target/payload.sql/created_at` 三字段，`collectApiTopologyFromTrace` 只读 `type/target/status/created_at` 四字段，**不**读 `payload.rowCount/executionMs/...` 其他字段（即便它们也无原始行）。原则：**最小读取面**——按需消费，从源头收窄风险面，未来 trace schema 长出敏感字段也不会"被动暴露"。`listSafeReportPaths` 同理：只取 `folder/path`，文件名当 summary 占位，**不读文件内容**——若上层需内容摘要，得在路由层另起一步显式读 + 显式校验 folder 非 draw_data。
+- **HTTP fetch self 跨域写**：`approve` 端点不 import E 域 `createSkillRegistryEntry`，而是 `fetch('http://localhost:${PORT}/api/workspaces/:id/skill-registry', {method:'POST'})`。这是 §五.3「跨域走 HTTP，不直接 import 他域 db 函数」的写路径范式（之前 D-MONITOR1 是读路径同款 `fetch SELF_BASE/api/bi/aggregations`）。**关键收益**：D 不依赖 E 域的实现细节（参数 schema、内部副作用），E 重构 skill-registry POST body 只需保持 HTTP 契约稳定，D 零改动。**关键代价**：网络层有 ~10ms 自调延迟、需 PORT 配置在 server config 暴露、错误处理多一层（resp.ok 校验）。本地单机 server 可接受；若改 microservice 需重新评估。
+- **SQL skeleton normalize 是 dedup 关键**：把"用户多次重复查询"折叠为同提案的能力完全靠 `normalizeSqlSkeleton`——字符串/数字/IN(...) → ?，空白折叠。**故意不引 SQL AST 解析器**（sql-parser-cst / node-sql-parser 等）：① 体积大跨方言兼容差；② 本期只做 pattern dedup 不追求语义保真；③ 字面量替换 + 空白折叠对 90% 真实查询足够稳定。**升级触发点**：若用户报告"两条语义相同但格式不同的查询没被聚合"（如 `JOIN` 换序、列名 alias 改写），再上轻量 AST。当前 SHA1 前缀 16 位 = 64bit 碰撞 → 单工作区 1k 提案碰撞概率约 2.7e-15，完全够用。
+- **upsert 三态保护人审决议**：`upsertSkillProposal` 区分 `created`/`refreshed`/`skipped`——同 (workspace_id, signature) 已 pending 时刷新 draft（拿到更新的 occurrence/targets），已 approved/rejected 时**不动**。即：用户决议过的提案不会被后续 scan 覆盖回 pending。**通用范式**：自动扫描 + 人审循环的产物，autom 应**严格**不动 human 决议过的状态——否则用户反复决议同一对象会丧失信任感。三态返回值让 scan 端点能向用户报告 "新建 N 条、刷新 M 条、跳过 K 条已决议"。
+- **零 LLM 模板渲染**（方案 A）：`renderSkillBody` 拼接 frontmatter + 触发场景 + 骨架 + 报告路径 + 「使用建议（人审填写）」占位。**故意不调 LLM** 让 body 更自然——红线卡先求"输入边界永远可证"，宁可 body 机械也别 LLM 出错把骨架字面量泄漏到 body 里。若总控认可"输入是脱敏骨架 → LLM 包装 body 文笔不违反红线"再升 B 方案，把 `runPiPrompt` 接进来。当前用户审阅时可在 UI 编辑器直接改 title/body 再采纳，弥补文笔机械问题。
+- **types.ts 不上提**：5 个新类型（`SkillProposalStatus` / `SkillProposalEvidence` / `SkillProposal` / `SkillProposalScanResult`）仅在 D 域消费 + 跨域走 HTTP，与 D-AGING2 同范式。**判定标准**：跨域 HTTP/网络边界传播 + 单域消费时类型私有；只在 multi-pane 直接 import 共享时才上提。
+- **trace_events 写入审计两阶段**：scan 写 `skill_proposal_scan` 一条（payload 含 summary + generated），decision 写 `skill_proposal_decision` 一条（payload 含 decision/skillId/reason）。后续 RulesPane 若要做"提案历史"视图，从 `target_kind='skill_proposal'` 拉即可，无需新表。这也是后续 E-SUBSKILL1 想观测"自动蒸馏 → 人审采纳率"指标的真源（按 status 聚合 trace_events）。
+

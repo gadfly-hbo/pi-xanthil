@@ -99,6 +99,37 @@ export interface MemoryAgingSignalsResult {
   staleRefs: AgingStaleReference[];
 }
 
+// 子技能提案（D-SAFEDISTILL1 · 2026-06-27）—— 与 server db/data.ts SkillProposal 同形态。
+// 红线：本类型只承载已脱敏的骨架/元数据；evidence 内容不应含 draw_data 原始行。
+// 跨域消费走 HTTP（E-SUBSKILL1/E-SKILLINJECT1），故不上提接缝层 types.ts。
+export type SkillProposalStatus = "pending" | "approved" | "rejected";
+export interface SkillProposalEvidence {
+  occurrences: number;
+  skeleton: string;
+  targets: string[];
+  reportPaths: string[];
+  topologyKinds: Record<string, number>;
+}
+export interface SkillProposal {
+  id: string;
+  workspaceId: string;
+  signature: string;
+  draftTitle: string;
+  draftBody: string;
+  evidence: SkillProposalEvidence;
+  status: SkillProposalStatus;
+  decidedSkillId: string | null;
+  decidedReason: string;
+  createdAt: number;
+  updatedAt: number;
+}
+export interface SkillProposalScanResult {
+  generated: number;
+  summary: { created: number; refreshed: number; skipped: number };
+  items: Array<{ kind: "created" | "refreshed" | "skipped"; id: string; signature: string }>;
+}
+
+
 export const dataApi = {
   getBiAggregations: (workspaceId: string) =>
     fetch(`/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`).then(json<BiAggregationDataset[]>),
@@ -310,6 +341,46 @@ export const dataApi = {
   fetchMemoryAgingSignals: (workspaceId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/memory/aging-signals`)
       .then(json<MemoryAgingSignalsResult>),
+
+  // ---- 子技能提案 skill_proposals（D-SAFEDISTILL1 · Safe Distiller，2026-06-27） ----
+  // 红线卡：输入永远是 SQL 骨架 + trace 元数据 + 报告文件名（零 draw_data 原始行）。
+  // 跨域消费走 HTTP（E-SUBSKILL1/E-SKILLINJECT1 GET 同一端点），故类型不上提接缝层。
+  scanSkillProposals: (workspaceId: string, options: { windowDays?: number; occurrenceThreshold?: number } = {}) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/skill-proposals/scan`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(options),
+    }).then(json<SkillProposalScanResult>),
+
+  listSkillProposals: (workspaceId: string, status?: SkillProposalStatus) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/skill-proposals${status ? `?status=${status}` : ""}`,
+    ).then(json<SkillProposal[]>),
+
+  approveSkillProposal: (
+    workspaceId: string,
+    proposalId: string,
+    body: { title?: string; body?: string } = {},
+  ) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/skill-proposals/${encodeURIComponent(proposalId)}/approve`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(body),
+      },
+    ).then(json<{ proposal: SkillProposal; skill: { entry?: { id?: string } } }>),
+
+  rejectSkillProposal: (workspaceId: string, proposalId: string, reason = "") =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/skill-proposals/${encodeURIComponent(proposalId)}/reject`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ reason }),
+      },
+    ).then(json<SkillProposal>),
+
 
   // ---- 知识库 knowledge_docs/chunks（D-DATA + D-RETRIEVAL · 2026-06-19） ----
   // 文档=用户上传/登记的非结构化资料（folder kind 'knowledge'），与 draw_data 严格隔离。

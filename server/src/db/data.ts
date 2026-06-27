@@ -171,6 +171,30 @@ export function initDataTables(): void {
       db.exec(`ALTER TABLE ${tableName} ADD COLUMN tags TEXT NOT NULL DEFAULT '[]'`);
     }
   }
+
+  // skill_proposals（D-SAFEDISTILL1 · 子技能提案脱敏蒸馏）：
+  // - 由 safe-distiller.ts 聚合 trace_events 元数据 + 衍生报告路径生成，零 draw_data。
+  // - 状态机：pending(待审) → approved(已采纳, decided_skill_id 指向 skill-registry entry)
+  //         / rejected(已拒绝, decided_reason 写理由)。
+  // - signature = SQL 骨架 sha1 前缀；唯一索引防同骨架重复入库；二次扫到已 pending
+  //   则更新 occurrence 计数与 updated_at（acceptance 不重复创建）。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_proposals (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL REFERENCES workspaces(id),
+      signature         TEXT NOT NULL,
+      draft_title       TEXT NOT NULL,
+      draft_body        TEXT NOT NULL,
+      evidence          TEXT NOT NULL DEFAULT '{}',
+      status            TEXT NOT NULL DEFAULT 'pending',
+      decided_skill_id  TEXT,
+      decided_reason    TEXT NOT NULL DEFAULT '',
+      created_at        INTEGER NOT NULL,
+      updated_at        INTEGER NOT NULL,
+      UNIQUE(workspace_id, signature)
+    );
+    CREATE INDEX IF NOT EXISTS idx_skill_proposals_ws_status ON skill_proposals(workspace_id, status, updated_at DESC);
+  `);
 }
 
 // ============================================================================
@@ -1318,4 +1342,180 @@ export function updatePromptTemplate(id: string, patch: PromptTemplatePatch): Pr
 export function deletePromptTemplate(id: string): boolean {
   const info = db.prepare("DELETE FROM prompt_templates WHERE id = ?").run(id);
   return info.changes > 0;
+}
+
+// ============================================================================
+// skill_proposals CRUD（D-SAFEDISTILL1 · 子技能提案）
+// ----------------------------------------------------------------------------
+// 行 → 对外 SkillProposal 结构。types.ts 不上提（D 域内部 + 跨域走 HTTP，按 D-AGING2 范式）。
+// ============================================================================
+
+export type SkillProposalStatus = "pending" | "approved" | "rejected";
+
+export interface SkillProposalEvidence {
+  occurrences: number;
+  skeleton: string;
+  targets: string[];
+  reportPaths: string[];
+  topologyKinds: Record<string, number>;
+}
+
+export interface SkillProposal {
+  id: string;
+  workspaceId: string;
+  signature: string;
+  draftTitle: string;
+  draftBody: string;
+  evidence: SkillProposalEvidence;
+  status: SkillProposalStatus;
+  decidedSkillId: string | null;
+  decidedReason: string;
+  createdAt: number;
+  updatedAt: number;
+}
+
+interface SkillProposalRow {
+  id: string;
+  workspace_id: string;
+  signature: string;
+  draft_title: string;
+  draft_body: string;
+  evidence: string;
+  status: string;
+  decided_skill_id: string | null;
+  decided_reason: string;
+  created_at: number;
+  updated_at: number;
+}
+
+function rowToSkillProposal(r: SkillProposalRow): SkillProposal {
+  let evidence: SkillProposalEvidence = {
+    occurrences: 0,
+    skeleton: "",
+    targets: [],
+    reportPaths: [],
+    topologyKinds: {},
+  };
+  try {
+    const parsed = JSON.parse(r.evidence) as Partial<SkillProposalEvidence>;
+    evidence = {
+      occurrences: Number(parsed.occurrences ?? 0),
+      skeleton: String(parsed.skeleton ?? ""),
+      targets: Array.isArray(parsed.targets) ? parsed.targets.map(String) : [],
+      reportPaths: Array.isArray(parsed.reportPaths) ? parsed.reportPaths.map(String) : [],
+      topologyKinds: parsed.topologyKinds && typeof parsed.topologyKinds === "object"
+        ? Object.fromEntries(
+            Object.entries(parsed.topologyKinds).map(([k, v]) => [String(k), Number(v ?? 0)]),
+          )
+        : {},
+    };
+  } catch {
+    // benign：旧/坏 evidence 行返回默认值，不阻断 list
+  }
+  const status: SkillProposalStatus =
+    r.status === "approved" || r.status === "rejected" ? r.status : "pending";
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    signature: r.signature,
+    draftTitle: r.draft_title,
+    draftBody: r.draft_body,
+    evidence,
+    status,
+    decidedSkillId: r.decided_skill_id,
+    decidedReason: r.decided_reason,
+    createdAt: r.created_at,
+    updatedAt: r.updated_at,
+  };
+}
+
+/**
+ * upsert：同 (workspace_id, signature) 已存在 pending 则覆盖 draft + evidence + bump
+ * updated_at；已 approved/rejected 则不动（人审决议不被自动扫描覆盖）。
+ *
+ * 返回结果：新建 → kind:"created"；已存在 pending 被刷新 → kind:"refreshed"；
+ *           已 approved/rejected → kind:"skipped"。
+ */
+export function upsertSkillProposal(input: {
+  workspaceId: string;
+  signature: string;
+  draftTitle: string;
+  draftBody: string;
+  evidence: SkillProposalEvidence;
+}): { kind: "created" | "refreshed" | "skipped"; proposal: SkillProposal } {
+  const existing = db
+    .prepare("SELECT * FROM skill_proposals WHERE workspace_id = ? AND signature = ?")
+    .get(input.workspaceId, input.signature) as unknown as SkillProposalRow | undefined;
+  const now = Date.now();
+  if (existing) {
+    if (existing.status === "pending") {
+      db.prepare(
+        `UPDATE skill_proposals SET draft_title = ?, draft_body = ?, evidence = ?, updated_at = ? WHERE id = ?`,
+      ).run(input.draftTitle, input.draftBody, JSON.stringify(input.evidence), now, existing.id);
+      const refreshed = db
+        .prepare("SELECT * FROM skill_proposals WHERE id = ?")
+        .get(existing.id) as unknown as SkillProposalRow;
+      return { kind: "refreshed", proposal: rowToSkillProposal(refreshed) };
+    }
+    return { kind: "skipped", proposal: rowToSkillProposal(existing) };
+  }
+  const id = randomUUID();
+  db.prepare(
+    `INSERT INTO skill_proposals (id, workspace_id, signature, draft_title, draft_body, evidence, status, decided_skill_id, decided_reason, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 'pending', NULL, '', ?, ?)`,
+  ).run(
+    id,
+    input.workspaceId,
+    input.signature,
+    input.draftTitle,
+    input.draftBody,
+    JSON.stringify(input.evidence),
+    now,
+    now,
+  );
+  const row = db.prepare("SELECT * FROM skill_proposals WHERE id = ?").get(id) as unknown as SkillProposalRow;
+  return { kind: "created", proposal: rowToSkillProposal(row) };
+}
+
+export function listSkillProposals(
+  workspaceId: string,
+  status?: SkillProposalStatus,
+): SkillProposal[] {
+  const rows = (status
+    ? db.prepare(
+        "SELECT * FROM skill_proposals WHERE workspace_id = ? AND status = ? ORDER BY updated_at DESC",
+      ).all(workspaceId, status)
+    : db.prepare(
+        "SELECT * FROM skill_proposals WHERE workspace_id = ? ORDER BY updated_at DESC",
+      ).all(workspaceId)) as unknown as SkillProposalRow[];
+  return rows.map(rowToSkillProposal);
+}
+
+export function getSkillProposal(id: string): SkillProposal | null {
+  const row = db.prepare("SELECT * FROM skill_proposals WHERE id = ?").get(id) as unknown as SkillProposalRow | undefined;
+  return row ? rowToSkillProposal(row) : null;
+}
+
+export function approveSkillProposal(id: string, decidedSkillId: string): SkillProposal | null {
+  const now = Date.now();
+  const info = db
+    .prepare(
+      `UPDATE skill_proposals SET status = 'approved', decided_skill_id = ?, decided_reason = '', updated_at = ?
+       WHERE id = ? AND status = 'pending'`,
+    )
+    .run(decidedSkillId, now, id);
+  if (info.changes === 0) return null;
+  return getSkillProposal(id);
+}
+
+export function rejectSkillProposal(id: string, reason: string): SkillProposal | null {
+  const now = Date.now();
+  const info = db
+    .prepare(
+      `UPDATE skill_proposals SET status = 'rejected', decided_reason = ?, updated_at = ?
+       WHERE id = ? AND status = 'pending'`,
+    )
+    .run(reason ?? "", now, id);
+  if (info.changes === 0) return null;
+  return getSkillProposal(id);
 }

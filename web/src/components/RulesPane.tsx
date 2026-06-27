@@ -12,6 +12,7 @@ import {
   Brain,
   Eye,
   Inbox,
+  Lightbulb,
   Pencil,
   Plus,
   RefreshCw,
@@ -31,6 +32,7 @@ import type {
   AgingSignalSeverity,
   AgingStaleReference,
   MemoryAgingSignalsResult,
+  SkillProposal,
 } from "@/lib/api/data";
 import type {
   MemoryItem,
@@ -42,7 +44,7 @@ import type {
 } from "@/types";
 
 type Scope = MemoryItem["scope"];
-type TabKey = MemoryItemType | "fact" | "review";
+type TabKey = MemoryItemType | "fact" | "review" | "proposal";
 
 interface CreateDraft {
   type: MemoryItemType;
@@ -65,6 +67,7 @@ const TYPE_TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "episode", label: "episode", hint: "事件 / 一次性情境" },
   { key: "fact", label: "fact (投影)", hint: "business_context / metric / reference 投影，只读" },
   { key: "review", label: "review", hint: "D-INGEST 候选复核队列" },
+  { key: "proposal", label: "💡 提案", hint: "Safe Distiller 蒸馏的子技能提案（零 draw_data，人审入库）" },
 ];
 
 const DEFAULT_DRAFT: CreateDraft = { type: "experience", title: "", body: "", scope: "global", tags: "" };
@@ -150,18 +153,28 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
   const [agingBusy, setAgingBusy] = useState(false);
   const [agingShow, setAgingShow] = useState(false);
 
+  // D-SAFEDISTILL1 子技能提案：Safe Distiller 蒸馏 → 人审入库。
+  // 红线：仅消费已脱敏的 SQL 骨架 + trace 元数据，绝不接触 draw_data。
+  const [proposals, setProposals] = useState<SkillProposal[]>([]);
+  const [proposalBusyId, setProposalBusyId] = useState<string | null>(null);
+  const [scanBusy, setScanBusy] = useState(false);
+  const [scanNote, setScanNote] = useState("");
+  const [proposalEdits, setProposalEdits] = useState<Record<string, { title: string; body: string }>>({});
+
   const refreshData = useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
     setError("");
     try {
-      const [list, reviewList] = await Promise.all([
+      const [list, reviewList, proposalList] = await Promise.all([
         api.listMemoryItems(workspaceId, { includeFacts: true }),
         api.listMemoryReviews(workspaceId, "pending"),
+        api.listSkillProposals(workspaceId, "pending"),
       ]);
       setItems(list.items);
       setFacts(list.facts);
       setReviews(reviewList);
+      setProposals(proposalList);
     } catch (err) {
       setError(String(err instanceof Error ? err.message : err));
     } finally {
@@ -376,6 +389,71 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
       setBusyId(null);
     }
   };
+
+  // D-SAFEDISTILL1 Safe Distiller 扫描：纯算法聚合 trace_events 元数据 → 提案 upsert。
+  // 不走 LLM，输入仅 SQL 骨架 + API 拓扑（type/target/status）+ clean_data/report 文件名。
+  const runScan = async () => {
+    if (!workspaceId || scanBusy) return;
+    setScanBusy(true);
+    setScanNote("");
+    setError("");
+    try {
+      const out = await api.scanSkillProposals(workspaceId, { windowDays: 30, occurrenceThreshold: 3 });
+      setScanNote(
+        out.generated === 0
+          ? "扫描完成：近 30 天未发现重复执行 ≥3 次的查询骨架。"
+          : `扫描完成：生成 ${out.generated} 个提案 · 新建 ${out.summary.created} · 刷新 ${out.summary.refreshed} · 跳过 ${out.summary.skipped}。`,
+      );
+      // 刷新提案列表
+      const list = await api.listSkillProposals(workspaceId, "pending");
+      setProposals(list);
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setScanBusy(false);
+    }
+  };
+
+  const approveProposal = async (p: SkillProposal) => {
+    if (!workspaceId || proposalBusyId) return;
+    const edit = proposalEdits[p.id];
+    const body: { title?: string; body?: string } = {};
+    if (edit?.title && edit.title.trim() && edit.title !== p.draftTitle) body.title = edit.title.trim();
+    if (edit?.body && edit.body.trim() && edit.body !== p.draftBody) body.body = edit.body;
+    if (!window.confirm(`采纳提案「${edit?.title || p.draftTitle}」？\n将写入 skill-registry（draft 状态），可在「计算工具 · skill 管理」继续完善。`)) {
+      return;
+    }
+    setProposalBusyId(p.id);
+    try {
+      await api.approveSkillProposal(workspaceId, p.id, body);
+      setProposals((prev) => prev.filter((it) => it.id !== p.id));
+      setProposalEdits((prev) => {
+        const next = { ...prev };
+        delete next[p.id];
+        return next;
+      });
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setProposalBusyId(null);
+    }
+  };
+
+  const rejectProposal = async (p: SkillProposal) => {
+    if (!workspaceId || proposalBusyId) return;
+    const reason = window.prompt("拒绝理由（可选）", "");
+    if (reason === null) return;
+    setProposalBusyId(p.id);
+    try {
+      await api.rejectSkillProposal(workspaceId, p.id, reason);
+      setProposals((prev) => prev.filter((it) => it.id !== p.id));
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setProposalBusyId(null);
+    }
+  };
+
 
   // 缺口3：dryRun 拉拟调整明细（升/降/退役 + before/after + reason），不落库。
   const runMaintainDryRun = async () => {
@@ -682,7 +760,13 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
 
         <div className="flex flex-wrap gap-2">
           {TYPE_TABS.map((t) => {
-            const count = t.key === "fact" ? facts.filter((f) => f.enabled).length : t.key === "review" ? reviews.length : grouped.get(t.key as MemoryItemType)?.length ?? 0;
+            const count = t.key === "fact"
+              ? facts.filter((f) => f.enabled).length
+              : t.key === "review"
+                ? reviews.length
+                : t.key === "proposal"
+                  ? proposals.length
+                  : grouped.get(t.key as MemoryItemType)?.length ?? 0;
             const active = activeTab === t.key;
             return (
               <button key={t.key} onClick={() => setActiveTab(t.key)} title={t.hint} className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] ${active ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900" : "border-neutral-200 bg-white text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"}`}>
@@ -815,6 +899,77 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
                 </div>
               </div>
             )))}
+          </div>
+        )}
+
+        {activeTab === "proposal" && (
+          <div className="space-y-3">
+            <div className="rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-[12px] text-violet-700 dark:border-violet-900 dark:bg-violet-950/30 dark:text-violet-300">
+              <div className="flex items-center gap-2">
+                <Lightbulb className="h-3.5 w-3.5" />
+                <span>Safe Distiller 子技能提案 · 输入仅 SQL 骨架 + API 拓扑 + 报告文件名（零 draw_data 原始行）</span>
+              </div>
+              <p className="mt-1 text-[11.5px] text-violet-600 dark:text-violet-400">
+                采纳后写入 skill-registry（draft 状态），可在「计算工具 · skill 管理」继续完善。零 LLM 调用、纯模板渲染。
+              </p>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => void runScan()} disabled={scanBusy || !workspaceId} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-300 bg-white px-3 py-1.5 text-[12px] hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:hover:bg-neutral-800">
+                <RefreshCw className={`h-3.5 w-3.5 ${scanBusy ? "animate-spin" : ""}`} /> {scanBusy ? "扫描中..." : "扫描近 30 天 trace 生成提案"}
+              </button>
+              {scanNote && <span className="text-[11.5px] text-neutral-500">{scanNote}</span>}
+            </div>
+            {proposals.length === 0 ? (
+              <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-12 text-center text-[13px] text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900/40">
+                暂无 pending 提案。点击上方「扫描」从近期 trace 蒸馏，或先在「计算工具」中执行更多查询积累信号。
+              </div>
+            ) : (proposals.map((p) => {
+              const edit = proposalEdits[p.id] ?? { title: p.draftTitle, body: p.draftBody };
+              return (
+                <div key={p.id} className="rounded-xl border border-violet-200 bg-white p-4 shadow-sm dark:border-violet-900 dark:bg-neutral-900">
+                  <div className="flex flex-wrap items-center gap-2">
+                    <Lightbulb className="h-3.5 w-3.5 text-violet-600 dark:text-violet-400" />
+                    <input
+                      type="text"
+                      value={edit.title}
+                      onChange={(e) => setProposalEdits((prev) => ({ ...prev, [p.id]: { title: e.target.value, body: edit.body } }))}
+                      className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[13px] font-semibold text-neutral-900 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-100"
+                    />
+                    <span className="rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:border-neutral-700">出现 {p.evidence.occurrences} 次</span>
+                  </div>
+                  {p.evidence.targets.length > 0 && (
+                    <div className="mt-2 flex flex-wrap gap-1">
+                      {p.evidence.targets.map((t) => (
+                        <span key={t} className="rounded border border-neutral-200 bg-neutral-50 px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">{t}</span>
+                      ))}
+                    </div>
+                  )}
+                  <details className="mt-2">
+                    <summary className="cursor-pointer text-[11.5px] text-neutral-500 hover:text-neutral-700 dark:hover:text-neutral-300">查看 skill markdown 草稿 / 证据元数据</summary>
+                    <textarea
+                      value={edit.body}
+                      onChange={(e) => setProposalEdits((prev) => ({ ...prev, [p.id]: { title: edit.title, body: e.target.value } }))}
+                      rows={12}
+                      className="mt-2 w-full rounded-md border border-neutral-200 bg-neutral-50 p-2 font-mono text-[11.5px] dark:border-neutral-700 dark:bg-neutral-950"
+                    />
+                    <div className="mt-2 text-[11px] text-neutral-500 dark:text-neutral-400">
+                      <p>骨架：<code className="break-all">{p.evidence.skeleton}</code></p>
+                      <p className="mt-1">关联报告：{p.evidence.reportPaths.length} 份{p.evidence.reportPaths.length > 0 ? ` · 例：${p.evidence.reportPaths.slice(0, 2).join(", ")}` : ""}</p>
+                      <p className="mt-1">调用拓扑：{Object.entries(p.evidence.topologyKinds).map(([k, v]) => `${k}×${v}`).join("、") || "无"}</p>
+                      <p className="mt-1 font-mono text-[10.5px] text-neutral-400">signature {p.signature} · created {fmtTs(p.createdAt)}</p>
+                    </div>
+                  </details>
+                  <div className="mt-3 flex items-center gap-2">
+                    <button onClick={() => void approveProposal(p)} disabled={proposalBusyId === p.id} className="inline-flex items-center gap-1 rounded-md bg-violet-600 px-2.5 py-1.5 text-[12px] text-white disabled:opacity-50">
+                      <Save className="h-3.5 w-3.5" /> 采纳入库
+                    </button>
+                    <button onClick={() => void rejectProposal(p)} disabled={proposalBusyId === p.id} className="inline-flex items-center gap-1 rounded-md border border-red-200 px-2.5 py-1.5 text-[12px] text-red-600 disabled:opacity-50 dark:border-red-900 dark:text-red-400">
+                      <X className="h-3.5 w-3.5" /> 拒绝
+                    </button>
+                  </div>
+                </div>
+              );
+            }))}
           </div>
         )}
       </div>
