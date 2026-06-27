@@ -76,6 +76,14 @@ import {
   saveSkillEvaluation,
   listSkillEvaluations,
   getSkillEvaluation,
+  saveChangeManifest,
+  getChangeManifest,
+  listChangeManifests,
+  saveScopedRevision,
+  getScopedRevision,
+  listScopedRevisions,
+  saveHarnessVariant,
+  listHarnessVariants,
   listCollectFolders,
   getCollectFolder,
   createCollectFolder,
@@ -114,7 +122,7 @@ import { buildSkillDistillationPrompt, buildSkillRevisionPrompt, extractSkillMar
 import { parseSkillEvaluationRunRequest } from "../skill-evaluation-api.ts";
 import { buildLabTimelines } from "../lab-timeline.ts";
 import { evaluateRegressionGate, parseRegressionGateThresholds } from "../regression-gate.ts";
-import type { LabKind } from "../types.ts";
+import type { ChangeOutcome, HarnessComponent, LabKind } from "../types.ts";
 import { parsePromptEvaluationRunRequest } from "../prompt-evaluation-api.ts";
 import { runPromptEvaluation } from "../prompt-evaluation-runner.ts";
 import { archivePromptEvaluation } from "../evaluation-archive.ts";
@@ -137,6 +145,7 @@ import { type DocumentEvalResult, type Hook } from "../types.ts";
 import { autoTriggerCuration } from "../skill-curator.ts";
 import { retrieveSkills, rankSkillSimilarity } from "../skill-retrieval.ts";
 import { analyzeSkillCoverageGaps, type SkillCoverageGapCluster, type SkillCoverageTask } from "../skill-coverage-gap.ts";
+import { attributeHarnessEdit } from "../ahe-attribute.ts";
 import { expandCommand } from "../command-expand.ts";
 import { COMMANDS_CONFIG_PATH, FAVORITES_ROOT, HOOKS_CONFIG_PATH, PORT, RUN_BUDGET_LIMITS, UPLOAD_TMP_ROOT } from "../config.ts";
 import { listSystemPromptOverviews } from "../system-prompts.ts";
@@ -599,6 +608,127 @@ const LAB_KINDS: LabKind[] = ["skill", "tool", "prompt", "command", "subagent", 
 function parseLabKind(value: unknown): LabKind | undefined {
   return LAB_KINDS.includes(value as LabKind) ? (value as LabKind) : undefined;
 }
+
+const HARNESS_COMPONENTS: HarnessComponent[] = ["prompt", "command", "subagent", "hook", "skill", "memory", "tool"];
+const CHANGE_OUTCOMES: ChangeOutcome[] = ["accept", "revise", "reject", "defer"];
+
+function parseHarnessComponent(value: unknown): HarnessComponent | undefined {
+  return HARNESS_COMPONENTS.includes(value as HarnessComponent) ? (value as HarnessComponent) : undefined;
+}
+
+function parseChangeOutcome(value: unknown): ChangeOutcome | undefined {
+  return CHANGE_OUTCOMES.includes(value as ChangeOutcome) ? (value as ChangeOutcome) : undefined;
+}
+
+function parseStringList(value: unknown): string[] {
+  if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
+  if (typeof value === "string") {
+    return value.split(/[\n,]/).map((item) => item.trim()).filter(Boolean);
+  }
+  return [];
+}
+
+function getLabEvaluation(lab: LabKind, evaluationId: string): unknown {
+  if (!evaluationId.trim()) return null;
+  if (lab === "skill") return getSkillEvaluation(evaluationId);
+  if (lab === "tool") return getToolEvaluation(evaluationId);
+  if (lab === "prompt") return getPromptEvaluation(evaluationId);
+  if (lab === "command") return getCommandEvaluation(evaluationId);
+  if (lab === "subagent") return getSubAgentEvaluation(evaluationId);
+  if (lab === "hook") return getHookEvaluation(evaluationId);
+  return null;
+}
+
+engineRouter.get("/api/harness/change-manifests", (req, res) => {
+  const component = typeof req.query.component === "string" ? parseHarnessComponent(req.query.component) : undefined;
+  const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+  res.json(listChangeManifests({ component, limit }));
+});
+
+engineRouter.post("/api/harness/change-manifests", (req, res) => {
+  const component = parseHarnessComponent(req.body?.component);
+  const outcome = parseChangeOutcome(req.body?.outcome ?? "defer");
+  if (!component) return res.status(400).json({ error: "component required" });
+  if (!outcome) return res.status(400).json({ error: "invalid outcome" });
+  const predictedFix = parseStringList(req.body?.predictedFix);
+  const predictedRegression = parseStringList(req.body?.predictedRegression);
+  if (predictedFix.length === 0 && predictedRegression.length === 0) {
+    return res.status(400).json({ error: "predictedFix or predictedRegression required" });
+  }
+  res.json(saveChangeManifest({
+    editId: typeof req.body?.editId === "string" && req.body.editId.trim() ? req.body.editId.trim() : undefined,
+    component,
+    failureEvidence: String(req.body?.failureEvidence ?? "").trim(),
+    rootCause: String(req.body?.rootCause ?? "").trim(),
+    targetedFix: String(req.body?.targetedFix ?? "").trim(),
+    predictedFix,
+    predictedRegression,
+    outcome,
+    outcomeReason: typeof req.body?.outcomeReason === "string" ? req.body.outcomeReason.trim() || undefined : undefined,
+  }));
+});
+
+engineRouter.get("/api/harness/change-manifests/:editId", (req, res) => {
+  const manifest = getChangeManifest(req.params.editId);
+  if (!manifest) return res.status(404).json({ error: "change manifest not found" });
+  res.json(manifest);
+});
+
+engineRouter.get("/api/harness/change-manifests/:editId/revisions", (req, res) => {
+  res.json(listScopedRevisions(req.params.editId));
+});
+
+engineRouter.post("/api/harness/scoped-revisions", (req, res) => {
+  const component = parseHarnessComponent(req.body?.component);
+  if (!component) return res.status(400).json({ error: "component required" });
+  const manifestEditId = String(req.body?.manifestEditId ?? "").trim();
+  if (!manifestEditId || !getChangeManifest(manifestEditId)) return res.status(400).json({ error: "valid manifestEditId required" });
+  const resourceId = String(req.body?.resourceId ?? "").trim();
+  const scope = String(req.body?.scope ?? "").trim();
+  if (!resourceId || !scope) return res.status(400).json({ error: "resourceId and scope required" });
+  res.json(saveScopedRevision({
+    component,
+    resourceId,
+    scope,
+    beforeSnapshot: String(req.body?.beforeSnapshot ?? ""),
+    afterSnapshot: String(req.body?.afterSnapshot ?? ""),
+    manifestEditId,
+  }));
+});
+
+engineRouter.post("/api/harness/scoped-revisions/:editId/rollback", (req, res) => {
+  const revision = getScopedRevision(req.params.editId);
+  if (!revision) return res.status(404).json({ error: "scoped revision not found" });
+  res.json({
+    revision,
+    rollback: {
+      component: revision.component,
+      resourceId: revision.resourceId,
+      scope: revision.scope,
+      restoredSnapshot: revision.beforeSnapshot,
+      applied: false,
+      reason: "typed scoped revision resolved; component-specific writeback must be applied by the owning editor",
+    },
+  });
+});
+
+engineRouter.post("/api/harness/change-manifests/:editId/attribute", (req, res) => {
+  const manifest = getChangeManifest(req.params.editId);
+  if (!manifest) return res.status(404).json({ error: "change manifest not found" });
+  const lab = parseLabKind(req.body?.lab);
+  if (!lab) return res.status(400).json({ error: "valid lab required" });
+  const before = getLabEvaluation(lab, String(req.body?.beforeEvaluationId ?? ""));
+  const after = getLabEvaluation(lab, String(req.body?.afterEvaluationId ?? ""));
+  if (!before || !after) return res.status(404).json({ error: "before/after evaluation not found" });
+  const result = attributeHarnessEdit({ manifest, lab, beforeEvaluation: before, afterEvaluation: after });
+  if (result.variant) saveHarnessVariant(result.variant);
+  res.json(result);
+});
+
+engineRouter.get("/api/harness/variants", (req, res) => {
+  const baseEditId = typeof req.query.baseEditId === "string" && req.query.baseEditId.trim() ? req.query.baseEditId.trim() : undefined;
+  res.json(listHarnessVariants(baseEditId));
+});
 
 // 跨 lab 回归看板：聚合六类评测历史为统一时间线（只读，不重算/不触发评测）
 engineRouter.get("/api/workspaces/:id/lab-timelines", (req, res) => {

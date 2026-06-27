@@ -5,6 +5,7 @@ import { buildOutputPathInstructions } from "./output-paths.ts";
 import { runPiTurn, type PiRun, type RunPiOptions } from "./pi-adapter.ts";
 import { collectEvent, emptyMetrics, extractText, messageOf, runJudge } from "./evaluation-common.ts";
 import { evaluationError, unknownEvaluationError } from "./evaluation-errors.ts";
+import { coerceEfcDifficulty, scoreEfcRuns, type EfcScoreDetail } from "./efc-scoring.ts";
 import type {
   CommandCaseSummary,
   CommandEvalCase,
@@ -15,6 +16,7 @@ import type {
 } from "./types.ts";
 
 export type CommandEvalRunTurn = (opts: RunPiOptions) => PiRun;
+export type CommandCaseSummaryWithEfc = CommandCaseSummary & { efc?: EfcScoreDetail };
 export interface CommandEvalJudgeOutputOptions {
   judgeDir: string;
   workspaceId: string;
@@ -52,7 +54,7 @@ export interface CommandEvaluationRunSummary {
   durationSec: number;
   cases: CommandEvalCase[];
   results: CommandEvaluationRunResult[];
-  caseSummaries: CommandCaseSummary[];
+  caseSummaries: CommandCaseSummaryWithEfc[];
 }
 
 export async function runCommandEvaluation(options: CommandEvaluationRunnerOptions): Promise<CommandEvaluationRunSummary> {
@@ -83,11 +85,11 @@ export async function runCommandEvaluation(options: CommandEvaluationRunnerOptio
     durationSec: (endedAt - startedAt) / 1000,
     cases: options.cases,
     results,
-    caseSummaries: summarizeCommandCases(results),
+    caseSummaries: summarizeCommandCases(results, options.cases),
   };
 }
 
-export function summarizeCommandCases(results: CommandEvaluationRunResult[]): CommandCaseSummary[] {
+export function summarizeCommandCases(results: CommandEvaluationRunResult[], cases: CommandEvalCase[] = []): CommandCaseSummaryWithEfc[] {
   const byCase = new Map<string, CommandEvaluationRunResult[]>();
   for (const result of results) {
     byCase.set(result.caseId, [...(byCase.get(result.caseId) ?? []), result]);
@@ -102,6 +104,17 @@ export function summarizeCommandCases(results: CommandEvaluationRunResult[]): Co
       success: successful.length,
       failed: rows.length - successful.length,
       avgDurationSec: successful.reduce((acc, row) => acc + row.durationSec, 0) / divisor,
+      efc: scoreEfcRuns(rows.map((row) => ({
+        status: row.status,
+        validity: row.status === "success" ? "passing" : "assertion",
+        hasOutput: Boolean(row.output || row.expandedText),
+        totalTokens: 0,
+        toolCalls: row.expectation.kind.startsWith("run-") ? 1 : 0,
+        memorySignal: row.skillSlugs.length > 0 ? "changed_plan" : "unknown",
+        signature: `${row.caseId}:${row.status}:${row.error?.message ?? row.expandedText.slice(0, 80)}`,
+      })), {
+        difficulty: coerceEfcDifficulty((cases.find((testCase) => testCase.id === caseId) as unknown as { efcDifficulty?: unknown } | undefined)?.efcDifficulty),
+      }),
     };
   });
 }

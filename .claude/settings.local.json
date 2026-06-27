@@ -256,7 +256,8 @@
       "Bash(node --experimental-strip-types --test server/src/memory-injection.test.ts)",
       "Bash(node --experimental-strip-types --test server/src/document-evaluation-runner.test.ts)",
       "Read(//Users/huangbo/.pi-xanthil/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/.pi/skills/xanthil-extraction-tools/**)",
-      "Bash(git *)"
+      "Bash(git *)",
+      "Bash(node --experimental-strip-types --test server/src/ahe-attribute.test.ts)"
     ]
   }
 }

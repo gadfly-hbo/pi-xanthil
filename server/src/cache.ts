@@ -178,3 +178,28 @@ export function evaluateRunBudget(workspaceId: string, runId: string, limits: Ru
   }
   return { totalTokens, totalCost, exceeded: reason !== null, reason };
 }
+
+// ---- C_raw 只读 getter（X-HARNESS0 · 服务 EFC η=EFC/C_raw，总控持有签名）----
+// EFC 反馈效率度量需要原始算力分母 C_raw = token + 工具调用计数。token 取自既有统计；
+// 工具调用计数 cache 模块不采集（避免新起采集管线、保最小改动），由调用方(E)从 trace 传入回填。
+// 本 getter 纯读既有 token 统计、不改任何累计口径；η 的标量合成权重归 E-EFC1 打分逻辑。
+
+export interface RawComputeUsage {
+  /** input+output+cacheRead+cacheWrite，来自既有 token 统计。 */
+  totalTokens: number;
+  /** 工具调用次数；cache 不采集，由 E 从 trace 传入（缺省 0）。 */
+  toolCalls: number;
+}
+
+/** 单个 session 的 C_raw（token 部分取自 session_token_stats）。 */
+export function getRawComputeForSession(sessionId: string, toolCalls = 0): RawComputeUsage {
+  const s = getSessionTokenStats(sessionId);
+  const totalTokens = s ? s.inputTokens + s.outputTokens + s.cacheReadTokens + s.cacheWriteTokens : 0;
+  return { totalTokens, toolCalls };
+}
+
+/** 单个 flow run 的 C_raw（复用 getRunTokenUsage，targetKind:"flow_run"）。 */
+export function getRawComputeForRun(workspaceId: string, runId: string, toolCalls = 0): RawComputeUsage {
+  const { totalTokens } = getRunTokenUsage(workspaceId, runId);
+  return { totalTokens, toolCalls };
+}

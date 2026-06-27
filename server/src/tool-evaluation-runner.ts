@@ -4,6 +4,7 @@ import { existsSync, mkdirSync, readFileSync, readdirSync, statSync } from "node
 import { basename, extname, join, relative, resolve, sep } from "node:path";
 import { runJudge } from "./evaluation-common.ts";
 import { evaluationError, unknownEvaluationError } from "./evaluation-errors.ts";
+import { coerceEfcDifficulty, scoreEfcRuns, type EfcScoreDetail } from "./efc-scoring.ts";
 import { validateExtractionInput, type RegisteredExtractionTool } from "../tools/registry.ts";
 import type { EvaluationError } from "./types.ts";
 
@@ -103,6 +104,7 @@ export interface ToolCaseSummary {
   success: number;
   failed: number;
   avgDurationSec: number;
+  efc?: EfcScoreDetail;
 }
 
 export interface ToolRunSummary {
@@ -141,11 +143,11 @@ export async function runToolEvaluation(options: ToolEvaluationRunnerOptions): P
     durationSec: (endedAt - startedAt) / 1000,
     cases: options.cases,
     results,
-    caseSummaries: summarizeToolCases(results),
+    caseSummaries: summarizeToolCases(results, options.cases),
   };
 }
 
-export function summarizeToolCases(results: ToolEvaluationRunResult[]): ToolCaseSummary[] {
+export function summarizeToolCases(results: ToolEvaluationRunResult[], cases: ToolEvalCase[] = []): ToolCaseSummary[] {
   const byCase = new Map<string, ToolEvaluationRunResult[]>();
   for (const result of results) {
     byCase.set(result.caseId, [...(byCase.get(result.caseId) ?? []), result]);
@@ -160,8 +162,25 @@ export function summarizeToolCases(results: ToolEvaluationRunResult[]): ToolCase
       success: successful.length,
       failed: rows.length - successful.length,
       avgDurationSec: successful.reduce((acc, row) => acc + row.durationSec, 0) / divisor,
+      efc: scoreEfcRuns(rows.map((row) => ({
+        status: row.status,
+        validity: row.status === "success" ? "passing" : classifyFailure(row.error?.message),
+        hasOutput: Boolean(row.stdout || row.stderr || row.summary),
+        totalTokens: 0,
+        toolCalls: 1,
+        memorySignal: "unknown",
+        signature: `${row.caseId}:${row.status}:${row.error?.message ?? row.stdout.slice(0, 80)}`,
+      })), {
+        difficulty: coerceEfcDifficulty((cases.find((testCase) => testCase.id === caseId) as unknown as { efcDifficulty?: unknown } | undefined)?.efcDifficulty),
+      }),
     };
   });
+}
+
+function classifyFailure(message: string | undefined): "assertion" | "runtime" | "timeout" {
+  if (message && /timeout|timed out/i.test(message)) return "timeout";
+  if (message && /mismatch|expected|schema|presence|judge score/i.test(message)) return "assertion";
+  return "runtime";
 }
 
 async function runToolCase(

@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Loader2, Play, Plus, Save, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatEfc, formatEta } from "@/lib/efc";
 import { EvalHistoryList, ExportActions, ResultCard, SummaryTable } from "@/components/eval-shared";
+import { AheManifestPanel } from "@/components/AheManifestPanel";
 import type {
   CommandEvalCase,
   CommandEvalSet,
@@ -401,6 +403,7 @@ function ResultPanel({ result, onArchive }: ResultPanelProps) {
   }
   return (
     <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <AheManifestPanel component="command" lab="command" currentEvaluationId={result.evaluationId} />
       <div className="flex items-center justify-between">
         <div className="text-sm">
           <span className={result.status === "success" ? "text-emerald-600" : "text-red-600"}>{result.status}</span>
@@ -410,7 +413,7 @@ function ResultPanel({ result, onArchive }: ResultPanelProps) {
       </div>
 
       <SummaryTable rows={result.caseSummaries} rowKey={(item) => item.caseId} columns={[
-        { key: "case", label: "Case", render: (item) => item.caseName }, { key: "success", label: "Success", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "Failed", render: (item) => item.failed }, { key: "time", label: "Avg s", render: (item) => item.avgDurationSec.toFixed(2) },
+        { key: "case", label: "Case", render: (item) => item.caseName }, { key: "success", label: "Success", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "Failed", render: (item) => item.failed }, { key: "EFC", label: "EFC", render: (item) => formatEfc(item) }, { key: "eta", label: "η", render: (item) => formatEta(item) }, { key: "time", label: "Avg s", render: (item) => item.avgDurationSec.toFixed(2) },
       ]} />
 
       <div className="space-y-3">

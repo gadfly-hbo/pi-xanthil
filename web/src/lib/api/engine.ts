@@ -3,6 +3,7 @@
 //   复用请求工具 `import { json } from "./_http"`; 类型从 "@/types" 引入。
 import type {
   CollectFolder,
+  ChangeManifest,
   CompositeSubAgentRun,
   ForkBranch,
   SubAgentBlackboardEntry,
@@ -21,6 +22,8 @@ import type {
   HookEvalSet,
   HookEvaluation,
   HookEvaluationDetail,
+  HarnessComponent,
+  HarnessVariant,
   LabKind,
   LabTimeline,
   RegressionGateThresholds,
@@ -45,6 +48,8 @@ import type {
   SkillRegistryRetestActiveResult,
   SkillVersionContent,
   SkillStatus,
+  ScopedRevision,
+  EditVerdict,
   SubAgentEvalCase,
   SubAgentEvalSet,
   SubAgentEvaluation,
@@ -77,6 +82,16 @@ export interface SkillImportResult {
   skillPath: string;
   requestedSlug: string;
   writtenFiles: string[];
+}
+
+export interface HarnessAttributeResult {
+  verdict: EditVerdict;
+  improvedTasks: string[];
+  regressedTasks: string[];
+  solvedBeforeTasks: string[];
+  seesawPassed: boolean;
+  shouldForkVariant: boolean;
+  variant?: HarnessVariant;
 }
 
 // 记忆 v2.0 缺口3 · Dream Worker 维护结果（响应结构对齐 server/src/memory-maintenance.ts:44）。
@@ -286,6 +301,30 @@ export const engineApi = {
     }).then(json<{ resultId: string }>),
   getDocumentEvaluationResult: (workspaceId: string, resultId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/document-eval/results/${encodeURIComponent(resultId)}`).then(json<DocumentEvalResult[]>),
+  listChangeManifests: (component?: HarnessComponent) => {
+    const qs = component ? `?component=${encodeURIComponent(component)}` : "";
+    return fetch(`/api/harness/change-manifests${qs}`).then(json<ChangeManifest[]>);
+  },
+  createChangeManifest: (input: Omit<ChangeManifest, "editId" | "createdAt"> & { editId?: string }) =>
+    fetch(`/api/harness/change-manifests`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then(json<ChangeManifest>),
+  createScopedRevision: (input: Omit<ScopedRevision, "editId" | "createdAt"> & { editId?: string }) =>
+    fetch(`/api/harness/scoped-revisions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then(json<ScopedRevision>),
+  attributeChangeManifest: (editId: string, input: { lab: LabKind; beforeEvaluationId: string; afterEvaluationId: string }) =>
+    fetch(`/api/harness/change-manifests/${encodeURIComponent(editId)}/attribute`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(input),
+    }).then(json<HarnessAttributeResult>),
+  rollbackScopedRevision: (editId: string) =>
+    fetch(`/api/harness/scoped-revisions/${encodeURIComponent(editId)}/rollback`, { method: "POST" }).then(json<{ revision: ScopedRevision; rollback: { component: HarnessComponent; resourceId: string; scope: string; restoredSnapshot: string; applied: boolean; reason: string } }>),
   consolidateSessionTrace: (workspaceId: string, sessionId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidate-trace`, {
       method: "POST",

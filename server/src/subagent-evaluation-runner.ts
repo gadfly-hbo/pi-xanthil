@@ -11,10 +11,12 @@ import {
   runSubAgentTurn,
   type SubAgentTurnInput,
 } from "./subagent-core.ts";
+import { coerceEfcDifficulty, scoreEfcRuns, type EfcScoreDetail } from "./efc-scoring.ts";
 import type { PiRun } from "./pi-adapter.ts";
 import type { EvaluationError, HardRuleCheckResult, PiEvent, SubAgentCaseSummary, SubAgentEvalCase, SubAgentEvaluationRunResult } from "./types.ts";
 
 export type SubAgentEvalRunTurn = (input: SubAgentTurnInput) => PiRun;
+export type SubAgentCaseSummaryWithEfc = SubAgentCaseSummary & { efc?: EfcScoreDetail };
 export interface SubAgentJudgeOptions {
   judgeDir: string;
   workspaceId: string;
@@ -50,7 +52,7 @@ export interface SubAgentEvaluationRunSummary {
   durationSec: number;
   cases: SubAgentEvalCase[];
   results: SubAgentEvaluationRunResult[];
-  caseSummaries: SubAgentCaseSummary[];
+  caseSummaries: SubAgentCaseSummaryWithEfc[];
 }
 
 export async function runSubAgentEvaluation(options: SubAgentEvaluationRunnerOptions): Promise<SubAgentEvaluationRunSummary> {
@@ -79,11 +81,11 @@ export async function runSubAgentEvaluation(options: SubAgentEvaluationRunnerOpt
     durationSec: (endedAt - startedAt) / 1000,
     cases: options.cases,
     results,
-    caseSummaries: summarizeSubAgentCases(results),
+    caseSummaries: summarizeSubAgentCases(results, options.cases),
   };
 }
 
-export function summarizeSubAgentCases(results: SubAgentEvaluationRunResult[]): SubAgentCaseSummary[] {
+export function summarizeSubAgentCases(results: SubAgentEvaluationRunResult[], cases: SubAgentEvalCase[] = []): SubAgentCaseSummaryWithEfc[] {
   const groups = new Map<string, SubAgentEvaluationRunResult[]>();
   for (const item of results) groups.set(item.caseId, [...(groups.get(item.caseId) ?? []), item]);
   return Array.from(groups.entries()).map(([caseId, rows]) => {
@@ -125,6 +127,17 @@ export function summarizeSubAgentCases(results: SubAgentEvaluationRunResult[]): 
       ruleCheckDetails,
       passAtK,
       outputVariance,
+      efc: scoreEfcRuns(rows.map((row) => ({
+        status: row.status,
+        validity: row.status === "success" && !row.ruleFailed ? "passing" : row.ruleFailed ? "assertion" : "runtime",
+        hasOutput: row.output.length > 0 || row.reportPath !== null,
+        totalTokens: row.totalTokens,
+        toolCalls: row.toolCalls,
+        memorySignal: row.reportPath ? "changed_plan" : "unknown",
+        signature: `${row.caseId}:${row.status}:${row.error?.message ?? row.toolTrajectory.join(">")}:${row.output.slice(0, 80)}`,
+      })), {
+        difficulty: coerceEfcDifficulty((cases.find((testCase) => testCase.id === caseId) as unknown as { efcDifficulty?: unknown } | undefined)?.efcDifficulty),
+      }),
     };
   });
 }

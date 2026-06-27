@@ -2019,6 +2019,132 @@ export interface EvaluationArchiveResult {
   jsonPath: string;
 }
 
+// ════ Harness 自进化接缝契约（X-HARNESS0，总控自做）════
+// 来源 docs/backlog/{EFC-反馈效率度量,AHE-可证伪编辑契约}.md。本块仅定契约单一真源；
+// 打分/估计器/对照器/回滚执行均归 E（E-EFC1 / E-AHE1）实装，总控不在此实装逻辑。
+// 详见 docs/notes-infra.md §九。
+
+/** AHE 七类可独立编辑的 harness 组件（组件可观测：每次编辑定位到单组件，给干净 action space）。
+ *  ⚠ 与 LabKind 区分：LabKind=6 个测评台；HarnessComponent=组件动作空间，含 memory（非 lab）。*/
+export type HarnessComponent =
+  | "prompt"
+  | "command"
+  | "subagent"
+  | "hook"
+  | "skill"
+  | "memory"
+  | "tool";
+
+/** EFC 固定尺度常数 κ=10（论文事件级与轨迹级共用）。 */
+export const EFC_KAPPA = 10 as const;
+
+/** 单个反馈事件的四因子（各 ∈[0,1]，乘积结构：任一项低则整体低）。EFC_t = κ·I·V·R·M。 */
+export interface FeedbackEvent {
+  /** I_t 信息量：揭示任务相关信息（新约束/降不确定/诊断失败模式/子目标进展）。 */
+  I: number;
+  /** V_t 有效性：有可靠证据支撑（确定性 checker/执行结果/单测/一致工具观测）。 */
+  V: number;
+  /** R_t 非冗余相关：命中当前子目标且信息超出轨迹已有。 */
+  R: number;
+  /** M_t 记忆更新：改变了 plan/state/memory，能影响后续动作（直接对接记忆模块信号）。 */
+  M: number;
+  /** 原始可观测载荷（工具返回/hook 传感器/报错诊断等），供估计器特征 φ(e_t) 提取。 */
+  raw: string;
+}
+
+/** 任务难度归一化输入：D_task = L·H_tool·S_state·(1+N_obs)·(1−V_oracle)。 */
+export interface TaskDemand {
+  /** L 最小步数。 */
+  L: number;
+  /** H_tool 选工具的歧义度。 */
+  H_tool: number;
+  /** S_state 状态跟踪需求。 */
+  S_state: number;
+  /** N_obs 观测噪声。 */
+  N_obs: number;
+  /** V_oracle 验证信号可见度 ∈[0,1]。 */
+  V_oracle: number;
+}
+
+/** 一条轨迹的 EFC 度量三视角。 */
+export interface EfcScore {
+  /** 轨迹级 EFC(τ) = κ·Σ_t I·V·R·M（原始，未归一化）。 */
+  efc: number;
+  /** 归一化 EFC = EFC / D_task，跨任务可比口径。 */
+  normalized: number;
+  /** harness 效率 η = EFC / C_raw（C_raw=原始算力，来自 cache.ts getRawCompute*）。 */
+  eta: number;
+}
+
+/** 编辑结局四态（SkillHone 增补 2606.08671：原 AHE 只有 verdict 对照，此处升级为可累积决策史口径）。
+ *  accept=采纳留下；revise=带诊断上下文重做 offending part；reject=弃用回滚；defer=暂缓。 */
+export type ChangeOutcome = "accept" | "revise" | "reject" | "defer";
+
+/** 变更清单（AHE 决策可观测）：每次 harness 编辑配一份，把改动变成对下一轮评测可证伪的契约。
+ *  持久化后构成跨轮经验库 ℋ：新失败来时检索 ℋ_{<createdAt} 判「失败是否新/类似修复是否已试过/上个方案为何被拒」。 */
+export interface ChangeManifest {
+  editId: string;
+  /** 命中的单一组件类。 */
+  component: HarnessComponent;
+  /** 失败证据：哪些任务 + 症状。 */
+  failureEvidence: string;
+  /** 推断根因。 */
+  rootCause: string;
+  /** 目标修复：组件内的具体改动描述。 */
+  targetedFix: string;
+  /** 预期修好的任务集（predicted-fix），下轮与实测任务级 delta 取交集出 verdict。 */
+  predictedFix: string[];
+  /** 预期回归风险的任务集（predicted-regression）。 */
+  predictedRegression: string[];
+  /** 编辑结局四态。 */
+  outcome: ChangeOutcome;
+  /** 结局理由（尤其 reject/revise「为何被拒」），供决策史检索复用。 */
+  outcomeReason?: string;
+  /** 创建时刻（ms）；决策史 ℋ_{<t} 检索按此排序，新失败只比更早的 manifest。 */
+  createdAt: number;
+}
+
+/** 编辑裁决：predicted 与实测任务级 delta 取交集后的四率（论文 fix/regression 各精确率/召回）。
+ *  ⚠ 别迷信预测精度（论文 fix precision 33.7%/regression 11.8%），价值在「强制预测 + 事后对照累积因果」。 */
+export interface EditVerdict {
+  editId: string;
+  fixPrecision: number;
+  fixRecall: number;
+  regPrecision: number;
+  regRecall: number;
+  /** HarnessX seesaw 无回归门（2606.14249）：候选回归的「已解任务」集；非空即未过门（比纯回滚严）。 */
+  regressedSolvedTasks: string[];
+}
+
+/** HarnessX 增补（2606.14249）：冲突编辑 fork 成变体并行隔离，按任务路由到不同变体后再合并。
+ *  接受准则补「确定性 seesaw 无回归门」（候选不得回归任何已解任务，见 EditVerdict.regressedSolvedTasks）。 */
+export interface HarnessVariant {
+  variantId: string;
+  /** 该变体所基于的编辑（ChangeManifest.editId）。 */
+  baseEditId: string;
+  /** 按任务路由：taskId → 该任务采用的 variantId。 */
+  perTaskRouting: Record<string, string>;
+}
+
+/** typed scoped revision（SkillHone 增补）：编辑回滚的最小底座。无 git，故以结构化修订记录替代 commit；
+ *  回退时按 scope 定位 offending part 精准还原，而非整体回滚，保留同次编辑里其他 useful edits。
+ *  持久化口径（db 表 harness_edits，落 db/engine.ts 由 E 实装）见 docs/notes-infra.md §九；本卡不建表/不执行回滚。 */
+export interface ScopedRevision {
+  editId: string;
+  component: HarnessComponent;
+  /** 被编辑资源标识：promptId/commandId/subagentId/hookId/skillId(variant)/memoryItemId/toolId。 */
+  resourceId: string;
+  /** 修订作用域：组件内被改的具体部分（如 skill 的某 section、prompt 的某 block），回退按此粒度。 */
+  scope: string;
+  /** 编辑前快照（该 scope 原内容），用于精准还原。 */
+  beforeSnapshot: string;
+  /** 编辑后内容（该 scope）。 */
+  afterSnapshot: string;
+  /** 诊断上下文：关联的 ChangeManifest.editId，让回退带因果可解释。 */
+  manifestEditId: string;
+  createdAt: number;
+}
+
 // ---- 跨 lab 回归看板 + CI gate (Phase5 P5-2) ----
 
 export type LabKind = "skill" | "tool" | "prompt" | "command" | "subagent" | "hook";

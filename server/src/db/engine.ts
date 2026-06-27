@@ -4,7 +4,7 @@ import { db } from "../db.ts";
 import { enableForOrigin, setMemoryEnablement, disableItemEverywhere } from "./shared.ts";
 import { detectSkillActivation } from "../skill-activation.ts";
 import { parseEvaluationError, serializeEvaluationError } from "../evaluation-errors.ts";
-import type { CollectFolder, CommandCaseSummary, CommandEvalCase, CommandEvalSet, CommandEvaluation, CommandEvaluationDetail, CommandEvaluationRunResult, HookCaseSummary, HookEvalCase, HookEvalSet, HookEvaluation, HookEvaluationDetail, HookEvaluationRunResult, PromptEvalSet, PromptEvalTask, PromptEvaluation, PromptEvaluationDetail, PromptEvaluationRunResult, PromptPairwiseResult, PromptPairwiseSummary, PromptTaskSummary, PromptVariant, PromptVariantSummary, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus, SubAgentCaseSummary, SubAgentEvalCase, SubAgentEvalSet, SubAgentEvaluation, SubAgentEvaluationDetail, SubAgentEvaluationRunResult, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult } from "../types.ts";
+import type { ChangeManifest, CollectFolder, CommandCaseSummary, CommandEvalCase, CommandEvalSet, CommandEvaluation, CommandEvaluationDetail, CommandEvaluationRunResult, HarnessComponent, HarnessVariant, HookCaseSummary, HookEvalCase, HookEvalSet, HookEvaluation, HookEvaluationDetail, HookEvaluationRunResult, PromptEvalSet, PromptEvalTask, PromptEvaluation, PromptEvaluationDetail, PromptEvaluationRunResult, PromptPairwiseResult, PromptPairwiseSummary, PromptTaskSummary, PromptVariant, PromptVariantSummary, ScopedRevision, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus, SubAgentCaseSummary, SubAgentEvalCase, SubAgentEvalSet, SubAgentEvaluation, SubAgentEvaluationDetail, SubAgentEvaluationRunResult, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult } from "../types.ts";
 
 /**
  * 【Agent-E · 智能引擎域】db 表 slot —— owner: codex(GPT-5.5)
@@ -12,6 +12,41 @@ import type { CollectFolder, CommandCaseSummary, CommandEvalCase, CommandEvalSet
  * 约定: 新表 CREATE TABLE IF NOT EXISTS; 配套 CRUD 写本文件, 由 routes/engine.ts 调用。
  */
 export function initEngineTables(): void {
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS change_manifests (
+      edit_id TEXT PRIMARY KEY,
+      component TEXT NOT NULL,
+      failure_evidence TEXT NOT NULL DEFAULT '',
+      root_cause TEXT NOT NULL DEFAULT '',
+      targeted_fix TEXT NOT NULL DEFAULT '',
+      predicted_fix TEXT NOT NULL DEFAULT '[]',
+      predicted_regression TEXT NOT NULL DEFAULT '[]',
+      outcome TEXT NOT NULL,
+      outcome_reason TEXT,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_change_manifests_created ON change_manifests(created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_change_manifests_component ON change_manifests(component, created_at DESC);
+    CREATE TABLE IF NOT EXISTS harness_edits (
+      edit_id TEXT PRIMARY KEY,
+      component TEXT NOT NULL,
+      resource_id TEXT NOT NULL,
+      scope TEXT NOT NULL,
+      before_snapshot TEXT NOT NULL,
+      after_snapshot TEXT NOT NULL,
+      manifest_edit_id TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_harness_edits_component_resource ON harness_edits(component, resource_id);
+    CREATE INDEX IF NOT EXISTS idx_harness_edits_manifest ON harness_edits(manifest_edit_id);
+    CREATE TABLE IF NOT EXISTS harness_variants (
+      variant_id TEXT PRIMARY KEY,
+      base_edit_id TEXT NOT NULL,
+      per_task_routing TEXT NOT NULL,
+      created_at INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_harness_variants_edit ON harness_variants(base_edit_id);
+  `);
   db.exec(`
     CREATE TABLE IF NOT EXISTS skill_registry_eval_history (
       id                         TEXT PRIMARY KEY,
@@ -344,6 +379,130 @@ export function initEngineTables(): void {
     CREATE INDEX IF NOT EXISTS idx_monitor_findings_run ON monitor_findings(run_id);
     CREATE INDEX IF NOT EXISTS idx_monitor_findings_sig ON monitor_findings(signature);
   `);
+}
+
+type ChangeManifestRow = Omit<ChangeManifest, "predictedFix" | "predictedRegression"> & {
+  predictedFix: string;
+  predictedRegression: string;
+};
+type ScopedRevisionRow = ScopedRevision;
+type HarnessVariantRow = Omit<HarnessVariant, "perTaskRouting"> & { perTaskRouting: string; createdAt: number };
+
+export function saveChangeManifest(input: Omit<ChangeManifest, "editId" | "createdAt"> & { editId?: string; createdAt?: number }): ChangeManifest {
+  const manifest: ChangeManifest = {
+    editId: input.editId ?? randomUUID(),
+    component: input.component,
+    failureEvidence: input.failureEvidence,
+    rootCause: input.rootCause,
+    targetedFix: input.targetedFix,
+    predictedFix: input.predictedFix,
+    predictedRegression: input.predictedRegression,
+    outcome: input.outcome,
+    outcomeReason: input.outcomeReason,
+    createdAt: input.createdAt ?? Date.now(),
+  };
+  db.prepare(`
+    INSERT INTO change_manifests
+      (edit_id, component, failure_evidence, root_cause, targeted_fix, predicted_fix, predicted_regression, outcome, outcome_reason, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    manifest.editId,
+    manifest.component,
+    manifest.failureEvidence,
+    manifest.rootCause,
+    manifest.targetedFix,
+    JSON.stringify(manifest.predictedFix),
+    JSON.stringify(manifest.predictedRegression),
+    manifest.outcome,
+    manifest.outcomeReason ?? null,
+    manifest.createdAt,
+  );
+  return manifest;
+}
+
+export function getChangeManifest(editId: string): ChangeManifest | undefined {
+  const row = db.prepare(`
+    SELECT edit_id AS editId, component, failure_evidence AS failureEvidence, root_cause AS rootCause,
+      targeted_fix AS targetedFix, predicted_fix AS predictedFix, predicted_regression AS predictedRegression,
+      outcome, outcome_reason AS outcomeReason, created_at AS createdAt
+    FROM change_manifests WHERE edit_id = ?
+  `).get(editId) as unknown as ChangeManifestRow | undefined;
+  return row ? parseChangeManifestRow(row) : undefined;
+}
+
+export function listChangeManifests(filter: { component?: HarnessComponent; limit?: number } = {}): ChangeManifest[] {
+  const limit = Math.max(1, Math.min(200, filter.limit ?? 50));
+  const rows = filter.component
+    ? db.prepare(`
+      SELECT edit_id AS editId, component, failure_evidence AS failureEvidence, root_cause AS rootCause,
+        targeted_fix AS targetedFix, predicted_fix AS predictedFix, predicted_regression AS predictedRegression,
+        outcome, outcome_reason AS outcomeReason, created_at AS createdAt
+      FROM change_manifests WHERE component = ? ORDER BY created_at DESC LIMIT ?
+    `).all(filter.component, limit) as unknown as ChangeManifestRow[]
+    : db.prepare(`
+      SELECT edit_id AS editId, component, failure_evidence AS failureEvidence, root_cause AS rootCause,
+        targeted_fix AS targetedFix, predicted_fix AS predictedFix, predicted_regression AS predictedRegression,
+        outcome, outcome_reason AS outcomeReason, created_at AS createdAt
+      FROM change_manifests ORDER BY created_at DESC LIMIT ?
+    `).all(limit) as unknown as ChangeManifestRow[];
+  return rows.map(parseChangeManifestRow);
+}
+
+export function saveScopedRevision(input: Omit<ScopedRevision, "editId" | "createdAt"> & { editId?: string; createdAt?: number }): ScopedRevision {
+  const revision: ScopedRevision = {
+    editId: input.editId ?? randomUUID(),
+    component: input.component,
+    resourceId: input.resourceId,
+    scope: input.scope,
+    beforeSnapshot: input.beforeSnapshot,
+    afterSnapshot: input.afterSnapshot,
+    manifestEditId: input.manifestEditId,
+    createdAt: input.createdAt ?? Date.now(),
+  };
+  db.prepare(`
+    INSERT INTO harness_edits
+      (edit_id, component, resource_id, scope, before_snapshot, after_snapshot, manifest_edit_id, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(revision.editId, revision.component, revision.resourceId, revision.scope, revision.beforeSnapshot, revision.afterSnapshot, revision.manifestEditId, revision.createdAt);
+  return revision;
+}
+
+export function getScopedRevision(editId: string): ScopedRevision | undefined {
+  return db.prepare(`
+    SELECT edit_id AS editId, component, resource_id AS resourceId, scope, before_snapshot AS beforeSnapshot,
+      after_snapshot AS afterSnapshot, manifest_edit_id AS manifestEditId, created_at AS createdAt
+    FROM harness_edits WHERE edit_id = ?
+  `).get(editId) as unknown as ScopedRevisionRow | undefined;
+}
+
+export function listScopedRevisions(manifestEditId: string): ScopedRevision[] {
+  return db.prepare(`
+    SELECT edit_id AS editId, component, resource_id AS resourceId, scope, before_snapshot AS beforeSnapshot,
+      after_snapshot AS afterSnapshot, manifest_edit_id AS manifestEditId, created_at AS createdAt
+    FROM harness_edits WHERE manifest_edit_id = ? ORDER BY created_at DESC
+  `).all(manifestEditId) as unknown as ScopedRevision[];
+}
+
+export function saveHarnessVariant(input: HarnessVariant): HarnessVariant {
+  db.prepare("INSERT OR REPLACE INTO harness_variants (variant_id, base_edit_id, per_task_routing, created_at) VALUES (?, ?, ?, ?)")
+    .run(input.variantId, input.baseEditId, JSON.stringify(input.perTaskRouting), Date.now());
+  return input;
+}
+
+export function listHarnessVariants(baseEditId?: string): HarnessVariant[] {
+  const rows = baseEditId
+    ? db.prepare("SELECT variant_id AS variantId, base_edit_id AS baseEditId, per_task_routing AS perTaskRouting, created_at AS createdAt FROM harness_variants WHERE base_edit_id = ? ORDER BY created_at DESC").all(baseEditId) as unknown as HarnessVariantRow[]
+    : db.prepare("SELECT variant_id AS variantId, base_edit_id AS baseEditId, per_task_routing AS perTaskRouting, created_at AS createdAt FROM harness_variants ORDER BY created_at DESC").all() as unknown as HarnessVariantRow[];
+  return rows.map((row) => ({ variantId: row.variantId, baseEditId: row.baseEditId, perTaskRouting: parseJsonObject<Record<string, string>>(row.perTaskRouting, {}) }));
+}
+
+function parseChangeManifestRow(row: ChangeManifestRow): ChangeManifest {
+  return {
+    ...row,
+    component: row.component as HarnessComponent,
+    predictedFix: parseJsonArray<string>(row.predictedFix),
+    predictedRegression: parseJsonArray<string>(row.predictedRegression),
+  };
 }
 
 // ---- collect folders (E-COLLECT4) ----

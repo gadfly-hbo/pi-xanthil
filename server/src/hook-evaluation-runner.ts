@@ -1,4 +1,5 @@
 import { evaluateHookFixture, type Hook, type HookVerdict } from "../../pi-extensions/px-hook-runner/hook-eval-core.ts";
+import { coerceEfcDifficulty, scoreEfcRuns, type EfcScoreDetail } from "./efc-scoring.ts";
 import { evaluationError, unknownEvaluationError } from "./evaluation-errors.ts";
 import type {
   EvaluationError,
@@ -11,6 +12,7 @@ import type {
 
 // hooks lab 是护栏单测：纯判定，零 spawn / 零 fs / 零 record。verdict 一律走 evaluateHookFixture（D.4 唯一真源）。
 export type HookEvaluateFixture = (hooks: Hook[], eventName: string, payload: Record<string, unknown>) => HookVerdict;
+export type HookCaseSummaryWithEfc = HookCaseSummary & { efc?: EfcScoreDetail };
 
 export interface HookEvaluationRunnerOptions {
   evaluationId: string;
@@ -32,7 +34,7 @@ export interface HookEvaluationRunSummary {
   durationSec: number;
   cases: HookEvalCase[];
   results: HookEvaluationRunResult[];
-  caseSummaries: HookCaseSummary[];
+  caseSummaries: HookCaseSummaryWithEfc[];
 }
 
 export function runHookEvaluation(options: HookEvaluationRunnerOptions): HookEvaluationRunSummary {
@@ -62,7 +64,7 @@ export function runHookEvaluation(options: HookEvaluationRunnerOptions): HookEva
     durationSec: (endedAt - startedAt) / 1000,
     cases: options.cases,
     results,
-    caseSummaries: summarizeHookCases(results),
+    caseSummaries: summarizeHookCases(results, options.cases),
   };
 }
 
@@ -160,7 +162,7 @@ function evaluateExpectation(expectation: HookExpectation, verdict: HookVerdict)
   return evaluationError("unknown", "unsupported hook expectation");
 }
 
-export function summarizeHookCases(results: HookEvaluationRunResult[]): HookCaseSummary[] {
+export function summarizeHookCases(results: HookEvaluationRunResult[], cases: HookEvalCase[] = []): HookCaseSummaryWithEfc[] {
   const byCase = new Map<string, HookEvaluationRunResult[]>();
   for (const result of results) {
     byCase.set(result.caseId, [...(byCase.get(result.caseId) ?? []), result]);
@@ -175,6 +177,17 @@ export function summarizeHookCases(results: HookEvaluationRunResult[]): HookCase
       success: successful.length,
       failed: rows.length - successful.length,
       avgDurationSec: successful.reduce((acc, row) => acc + row.durationSec, 0) / divisor,
+      efc: scoreEfcRuns(rows.map((row) => ({
+        status: row.status,
+        validity: row.status === "success" ? "passing" : "assertion",
+        hasOutput: row.matchedHookIds.length > 0 || Boolean(row.blockReason) || row.mutatedInput !== null,
+        totalTokens: 0,
+        toolCalls: row.triggerCount,
+        memorySignal: row.mutatedInput !== null ? "changed_plan" : "unknown",
+        signature: `${row.caseId}:${row.status}:${row.blockReason ?? ""}:${row.matchedHookIds.join(",")}`,
+      })), {
+        difficulty: coerceEfcDifficulty((cases.find((testCase) => testCase.id === caseId) as unknown as { efcDifficulty?: unknown } | undefined)?.efcDifficulty),
+      }),
     };
   });
 }

@@ -5,6 +5,7 @@ import { runPiTurn, type PiRun, type RunPiOptions } from "./pi-adapter.ts";
 import { buildDataContextBlock } from "./prompt-blocks.ts";
 import { collectEvent, emptyMetrics, extractText, type EvaluationMetrics } from "./evaluation-common.ts";
 import { evaluationError, unknownEvaluationError } from "./evaluation-errors.ts";
+import { coerceEfcDifficulty, scoreEfcRuns, type EfcScoreDetail } from "./efc-scoring.ts";
 import type { EvaluationError, PiEvent, PromptAttackKind } from "./types.ts";
 
 export type PromptEvalRunTurn = (opts: RunPiOptions) => PiRun;
@@ -126,6 +127,7 @@ export interface PromptVariantSummary {
   avgTotalCost: number;
   avgToolCalls: number;
   avgOutputChars: number;
+  efc?: EfcScoreDetail;
 }
 
 export interface PromptTaskSummary {
@@ -169,13 +171,13 @@ export async function runPromptEvaluation(options: PromptEvaluationRunnerOptions
     endedAt,
     durationSec: (endedAt - startedAt) / 1000,
     results,
-    ...summarizePromptEvaluationResults(results),
+    ...summarizePromptEvaluationResults(results, options.tasks),
   };
 }
 
-export function summarizePromptEvaluationResults(results: PromptEvaluationRunResult[]): PromptEvaluationResultSummaries {
+export function summarizePromptEvaluationResults(results: PromptEvaluationRunResult[], tasks: PromptEvalTask[] = []): PromptEvaluationResultSummaries {
   return {
-    variantSummaries: summarizeVariants(results),
+    variantSummaries: summarizeVariants(results, tasks),
     taskSummaries: summarizeTasks(results),
     pairwiseSummaries: summarizePairwise(results),
   };
@@ -602,7 +604,7 @@ function validatePromptEvaluationOptions(options: PromptEvaluationRunnerOptions)
   }
 }
 
-function summarizeVariants(results: PromptEvaluationRunResult[]): PromptVariantSummary[] {
+function summarizeVariants(results: PromptEvaluationRunResult[], tasks: PromptEvalTask[]): PromptVariantSummary[] {
   const grouped = new Map<string, PromptEvaluationRunResult[]>();
   for (const result of results) grouped.set(result.variantId, [...(grouped.get(result.variantId) ?? []), result]);
   return Array.from(grouped.entries()).map(([variantId, rows]) => {
@@ -619,6 +621,17 @@ function summarizeVariants(results: PromptEvaluationRunResult[]): PromptVariantS
       avgTotalCost: sum(successful, "totalCost") / divisor,
       avgToolCalls: sum(successful, "toolCalls") / divisor,
       avgOutputChars: sum(successful, "outputChars") / divisor,
+      efc: scoreEfcRuns(rows.map((row) => ({
+        status: row.status,
+        validity: row.status === "success" ? "passing" : "runtime",
+        hasOutput: row.output.length > 0,
+        totalTokens: row.totalTokens,
+        toolCalls: row.toolCalls,
+        memorySignal: "unknown",
+        signature: `${row.taskId}:${row.status}:${row.error?.message ?? row.output.slice(0, 80)}`,
+      })), {
+        difficulty: coerceEfcDifficulty((tasks.find((task) => task.id === rows[0]?.taskId) as unknown as { efcDifficulty?: unknown } | undefined)?.efcDifficulty),
+      }),
     };
   });
 }

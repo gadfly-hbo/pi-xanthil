@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Loader2, Play, Plus, Save, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatEfc, formatEta } from "@/lib/efc";
 import { EvalHistoryList, ExportActions, ResultCard, SummaryTable } from "@/components/eval-shared";
+import { AheManifestPanel } from "@/components/AheManifestPanel";
 import type { Hook, HookEvalCase, HookEvalSet, HookEvaluation, HookEvaluationDetail, HookEvent, HookExpectation } from "@/types";
 
 interface Props {
@@ -200,8 +202,9 @@ function CaseEditor({ item, hooks, canDelete, onChange, onDelete }: { item: Draf
 function ResultPanel({ result, onArchive }: { result: HookEvaluationDetail | null; onArchive: () => Promise<void> }) {
   if (!result) return <main className="flex flex-1 items-center justify-center text-sm text-muted-foreground">运行后展示每个 case 的 verdict 与断言结果。</main>;
   return <main className="min-w-0 flex-1 space-y-4 overflow-y-auto p-4">
+    <AheManifestPanel component="hook" lab="hook" currentEvaluationId={result.evaluationId} />
     <div className="flex items-center justify-between"><div className="text-sm"><span className={result.status === "success" ? "text-emerald-600" : "text-red-600"}>{result.status}</span><span className="ml-2 text-muted-foreground">repeat {result.repeat} · {result.durationSec.toFixed(2)}s</span></div><ExportActions actions={[{ key: "archive", label: <><Archive className="h-3.5 w-3.5" />归档</>, onClick: () => void onArchive() }]} /></div>
-    <SummaryTable rows={result.caseSummaries} rowKey={(item) => item.caseId} columns={[{ key: "case", label: "Case", className: "font-medium", render: (item) => item.caseName }, { key: "success", label: "Success", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "Failed", render: (item) => item.failed }, { key: "duration", label: "Avg s", render: (item) => item.avgDurationSec.toFixed(2) }]} />
+    <SummaryTable rows={result.caseSummaries} rowKey={(item) => item.caseId} columns={[{ key: "case", label: "Case", className: "font-medium", render: (item) => item.caseName }, { key: "success", label: "Success", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "Failed", render: (item) => item.failed }, { key: "efc", label: "EFC", render: (item) => formatEfc(item) }, { key: "eta", label: "η", render: (item) => formatEta(item) }, { key: "duration", label: "Avg s", render: (item) => item.avgDurationSec.toFixed(2) }]} />
     <div className="grid gap-2 md:grid-cols-2">{result.results.map((item) => <ResultCard key={item.id} title={`${item.caseName} · #${item.attempt}`} status={item.status} meta={<>期望 {item.expectation.kind} · 触发 {item.triggerCount} · {item.blocked ? "已拦截" : "放行"}</>}>{item.blockReason && <div>拦截原因：{item.blockReason}</div>}<div><div className="mb-1 text-muted-foreground">命中 hook</div><div className="flex flex-wrap gap-1">{item.matchedHookIds.length ? item.matchedHookIds.map((hookId) => <span key={hookId} className="rounded bg-sky-100 px-2 py-1 text-sky-800 dark:bg-sky-950 dark:text-sky-200">{hookId}</span>) : <span className="text-muted-foreground">无</span>}</div></div>{item.sideEffectKinds.length > 0 && <div className="text-muted-foreground">旁路动作（仅枚举，未执行）：{item.sideEffectKinds.join(", ")}</div>}{item.mutatedInput && <div><div className="mb-1 text-muted-foreground">mutate 后 input</div><pre className="whitespace-pre-wrap rounded bg-muted p-2">{JSON.stringify(item.mutatedInput, null, 2)}</pre></div>}{item.error && <div className="rounded bg-red-50 p-2 text-red-700">{item.error.message}{item.error.hint ? ` · ${item.error.hint}` : ""}</div>}</ResultCard>)}</div>
   </main>;
 }

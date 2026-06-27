@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, ChevronDown, ChevronRight, Loader2, Play, Plus, Save, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatEfc, formatEta } from "@/lib/efc";
 import { EvalHistoryList, ExportActions, ResultCard, SummaryTable } from "@/components/eval-shared";
+import { AheManifestPanel } from "@/components/AheManifestPanel";
 import type { PiModel, SubAgentEvalCase, SubAgentEvalSet, SubAgentEvaluation, SubAgentEvaluationDetail, SubAgentExpectation, SubAgentTemplate } from "@/types";
 
 interface Props {
@@ -248,11 +250,14 @@ function CaseEditor({ item, templates, canDelete, onChange, onDelete }: { item: 
 function ResultPanel({ result, onArchive }: { result: SubAgentEvaluationDetail | null; onArchive: () => Promise<void> }) {
   if (!result) return <main className="flex flex-1 items-center justify-center text-sm text-muted-foreground">运行后展示轨迹与预算结果。</main>;
   return <main className="min-w-0 flex-1 space-y-4 overflow-y-auto p-4">
+    <AheManifestPanel component="subagent" lab="subagent" currentEvaluationId={result.evaluationId} />
     <div className="flex items-center justify-between"><div className="text-sm"><span className={result.status === "success" ? "text-emerald-600" : "text-red-600"}>{result.status}</span><span className="ml-2 text-muted-foreground">repeat {result.repeat} · {result.durationSec.toFixed(2)}s</span></div><ExportActions actions={[{ key: "archive", label: <><Archive className="h-3.5 w-3.5" />归档</>, onClick: () => void onArchive() }]} /></div>
     <SummaryTable rows={result.caseSummaries} rowKey={(item) => item.caseId} columns={[
       { key: "case", label: "Case", className: "font-medium", render: (item) => item.caseName },
       { key: "success", label: "Success", render: (item) => `${item.success}/${item.total}` },
       { key: "failed", label: "Failed", render: (item) => item.failed },
+      { key: "efc", label: "EFC", render: (item) => formatEfc(item) },
+      { key: "eta", label: "η", render: (item) => formatEta(item) },
       { key: "duration", label: "Avg s", render: (item) => item.avgDurationSec.toFixed(2) },
       { key: "passAtK", label: "pass@k", render: (item) => <span className={item.passAtK >= 1 ? "text-emerald-600" : item.passAtK > 0 ? "text-amber-600" : "text-red-600"}>{(item.passAtK * 100).toFixed(0)}%</span> },
       { key: "ruleCheck", label: "硬断言", render: (item) => item.ruleCheckDetails.length === 0 ? <span className="text-muted-foreground">—</span> : <span className={item.ruleCheckPassed ? "text-emerald-600" : "text-red-600"}>{item.ruleCheckPassed ? "✓" : "✗"} {item.ruleCheckDetails.length}</span> },

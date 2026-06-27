@@ -1,8 +1,10 @@
 import { useEffect, useMemo, useState } from "react";
 import { Archive, Download, Loader2, Play, Plus, Save, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatEfc, formatEta } from "@/lib/efc";
 import { downloadEvaluationJson, downloadPromptEvaluationMarkdown } from "@/lib/evaluation-export";
 import { EvalHistoryList, ExportActions, ResultCard, SummaryTable } from "@/components/eval-shared";
+import { AheManifestPanel } from "@/components/AheManifestPanel";
 import type { PiModel, PromptEvalSet, PromptEvalTask, PromptEvaluation, PromptEvaluationDetail, PromptTemplate, PromptVariant } from "@/types";
 
 interface Props {
@@ -267,9 +269,10 @@ export function PromptLabPane(p: Props) {
 
 function ResultView({ result }: { result: PromptEvaluationDetail }) {
   return <div className="space-y-4">
+    <AheManifestPanel component="prompt" lab="prompt" currentEvaluationId={result.evaluationId} />
     <div className="grid grid-cols-4 gap-3">{[["状态", result.status], ["运行数", String(result.results.length)], ["耗时", `${result.durationSec.toFixed(2)}s`], ["模型", result.model]].map(([label, value]) => <div key={label} className="rounded-lg border bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900"><div className="text-[11px] text-neutral-500">{label}</div><div className="mt-1 truncate text-[14px] font-semibold">{value}</div></div>)}</div>
     <Panel title="Variant 汇总"><SummaryTable rows={result.variantSummaries} rowKey={(item) => item.variantId} columns={[
-      { key: "variant", label: "Variant", render: (item) => item.variantLabel }, { key: "success", label: "成功", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "失败", render: (item) => item.failed }, { key: "tokens", label: "Avg Tokens", render: (item) => Math.round(item.avgTotalTokens) }, { key: "cost", label: "Avg Cost", render: (item) => item.avgTotalCost.toFixed(5) }, { key: "time", label: "Avg Time", render: (item) => `${item.avgDurationSec.toFixed(2)}s` },
+      { key: "variant", label: "Variant", render: (item) => item.variantLabel }, { key: "success", label: "成功", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "失败", render: (item) => item.failed }, { key: "efc", label: "EFC", render: (item) => formatEfc(item) }, { key: "eta", label: "η", render: (item) => formatEta(item) }, { key: "tokens", label: "Avg Tokens", render: (item) => Math.round(item.avgTotalTokens) }, { key: "cost", label: "Avg Cost", render: (item) => item.avgTotalCost.toFixed(5) }, { key: "time", label: "Avg Time", render: (item) => `${item.avgDurationSec.toFixed(2)}s` },
     ]} /></Panel>
     <Panel title="Pairwise（相对 baseline）"><SummaryTable rows={result.pairwiseSummaries} rowKey={(item) => item.variantId} columns={[
       { key: "variant", label: "Variant", render: (item) => item.variantLabel }, { key: "judged", label: "Judged", render: (item) => item.judged }, { key: "win", label: "Win", render: (item) => item.win }, { key: "tie", label: "Tie", render: (item) => item.tie }, { key: "loss", label: "Loss", render: (item) => item.loss }, { key: "delta", label: "Δ Score", render: (item) => item.avgScoreDelta.toFixed(1) }, { key: "confidence", label: "Confidence", render: (item) => item.avgConfidence === null ? "-" : `${Math.round(item.avgConfidence * 100)}%` },

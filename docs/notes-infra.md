@@ -300,3 +300,32 @@
 4. 路由落 `routes/`（engine 域），前端 api 方法落 `api/engine.ts`（E slot）——本契约卡均**未碰**，留给下游。
 
 **验证**：server + web typecheck 绿、build 绿，现有业务代码零改动。
+
+---
+
+## 九、Harness 自进化接缝契约（X-HARNESS0，2026-06-27 总控自做）
+
+**背景**：harness 论文集精读两条 backlog —— `EFC-反馈效率度量.md`（arxiv 2605.29682）+ `AHE-可证伪编辑契约.md`（2604.25850）—— 落地。本卡=**接缝契约 + 无-git 回滚预研**，仅定单一真源 + 定签名 + 审定口径，**不实装打分/对照/回滚逻辑**（归 E）。解锁两张 E 卡：**E-EFC1**（EFC 打分器）/ **E-AHE1**（manifest 对照器 + 组件级回滚）。
+
+**已交付（仅加法，零业务改动）**：
+- **双侧 `types.ts`**（镜像，插在 `EvaluationArchiveResult` 后、跨 lab 回归看板前，字面一致）：
+  - `HarnessComponent`（7 类组件 prompt/command/subagent/hook/skill/memory/tool）—— **刻意独立于既有 `LabKind`**：LabKind=6 个测评台；HarnessComponent=AHE 组件动作空间，**含 memory（非 lab）**，语义不同，禁合并复用。
+  - **EFC 侧**：`FeedbackEvent{I,V,R,M∈[0,1],raw}` + `EFC_KAPPA=10`（值导出）+ `TaskDemand{L,H_tool,S_state,N_obs,V_oracle}`（D_task 归一化输入）+ `EfcScore{efc,normalized,eta}`（三视角：原始/EFC÷D_task/EFC÷C_raw）。
+  - **AHE 侧**：`ChangeOutcome`（accept/revise/reject/defer，SkillHone 四态升级，原 AHE 只有 verdict）+ `ChangeManifest`（含 `outcomeReason?`/`createdAt`——决策史 ℋ_{<t} 检索需「为何被拒」+ 时序排序）+ `EditVerdict`（四率 + `regressedSolvedTasks`——HarnessX seesaw 无回归门可校验字段）+ `HarnessVariant{variantId,baseEditId,perTaskRouting}`（冲突编辑 fork 变体）+ `ScopedRevision`（typed scoped revision 回滚底座）。
+- **`cache.ts` C_raw 只读 getter（总控持有签名）**：`RawComputeUsage{totalTokens,toolCalls}` + `getRawComputeForSession()` / `getRawComputeForRun()`。**纯读既有 token 统计、不改累计口径**；`toolCalls` cache 不采集，由 E 从 trace 传入回填（缺省 0），避免新起采集管线。`prompt-blocks.ts` 本卡未碰（无 block 内容改动 → `PROMPT_SCHEMA_VERSION` 不 bump）。
+
+**对原 brief 字段的两处增补（总控自审，已写死供 E 施工）**：
+1. `ChangeManifest` 加 `createdAt:number` + `outcomeReason?:string` —— 把单轮对照升级为可检索经验库（按 createdAt 排序取 ℋ_{<t}，按 outcomeReason 复用「上个方案为何被拒」）。
+2. `EditVerdict` 加 `regressedSolvedTasks:string[]` —— HarnessX「确定性 seesaw 无回归门」做成可校验字段（非空=候选回归了已解任务=未过门，比纯回滚严）。
+
+**回滚底座审定（无-git 难点结论，E-AHE1 必守）**：
+- **不用 git**：实验场编辑流程无 git（见 px-hotfix/px-wrapup），AHE 的「组件级回滚 / 可证伪提交」缺底座。
+- **方案 = typed scoped revision（SkillHone 取向）**，非整体快照回滚：每次编辑落一条 `ScopedRevision`，回退时按 `scope` 定位 offending part 精准还原，**保留同次编辑里其他 useful edits**。`beforeSnapshot/afterSnapshot` 提供精准还原内容，`manifestEditId` 关联根因。
+- **持久化落点 = `db/engine.ts`（E slot），schema 实装如下**（按 §四/§五：engine 域表、总控审 schema、注册进 `initEngineTables`）：
+  - `harness_edits`（存 `ScopedRevision`）：`edit_id TEXT PK · component TEXT NOT NULL · resource_id TEXT NOT NULL · scope TEXT NOT NULL · before_snapshot TEXT NOT NULL · after_snapshot TEXT NOT NULL · manifest_edit_id TEXT NOT NULL · created_at INTEGER NOT NULL`。索引 `(component, resource_id)` 便于按组件回退、`(manifest_edit_id)`。
+  - `change_manifests`（存 `ChangeManifest`，决策史经验库）：`edit_id TEXT PK · component TEXT NOT NULL · failure_evidence/root_cause/targeted_fix TEXT NOT NULL DEFAULT '' · predicted_fix/predicted_regression TEXT NOT NULL DEFAULT '[]'(JSON) · outcome TEXT NOT NULL · outcome_reason TEXT · created_at INTEGER NOT NULL`。索引 `created_at DESC` + `(component, created_at DESC)` 供 ℋ_{<t} 时序/按组件检索。
+  - `harness_variants`（存 `HarnessVariant`，E-AHE1 新增）：`variant_id TEXT PK · base_edit_id TEXT NOT NULL · per_task_routing TEXT NOT NULL(JSON) · created_at INTEGER NOT NULL`。索引 `(base_edit_id)`。
+  - **⚠ 总控订正审定（2026-06-27，E-AHE1 终审）：三表落地为「全局」表（无 `workspace_id`/无硬 FK），而非我原审定的 per-workspace。** 裁决采纳 E 的全局设计——harness（prompt/skill/tool/hook/subagent/memory 组件）是**项目级资产**（AHE「harness 资产模型无关」本意），change manifest 的 verdict 跨整个测评套件聚合、决策史 ℋ 要跨轮跨任务，绑工作区会割裂经验库。路由亦端到端无 `workspaceId`，设计自洽。原「记得登记 `deleteWorkspace`」**作废**：① 三表无 `workspace_id` 无需删；② 物理删除已于 2026-06-27 放弃改用归档（见 §二·五 开头）。**流程提醒：E 偏离总控审定 schema（per-workspace→全局）未在回报中显式标注，下次改审定 schema 须先报总控复核（§五.1）——本次因纠偏正确予以追认。**
+- **E-AHE1 边界**：建表 + manifest 对照器 + scoped 回滚执行；**不碰接缝层骨架**（types/cache 已由本卡定死，引用即可）。**E-EFC1 边界**：四因子打分 + 估计器 ÊFC + η 标量合成；C_raw 经 `getRawCompute*` 取数。
+
+**验证**：server + web typecheck 绿、build 绿，现有业务代码零改动。

@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, BarChart3, BookOpen, CheckCircle2, ChevronDown, ChevronRight, Download, FileDown, Loader2, Pencil, Play, Plus, Save, Search, Sparkles, Trash2, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { formatEfc, formatEta } from "@/lib/efc";
 import { downloadArchiveTextFile, downloadArchivesZip, downloadEvaluationArchiveManifest, downloadEvaluationJson, downloadSkillEvaluationMarkdown } from "@/lib/evaluation-export";
 import { ArchiveList, EvalHistoryList, ExportActions, ResultCard as SharedResultCard, SummaryTable as SharedSummaryTable } from "@/components/eval-shared";
+import { AheManifestPanel } from "@/components/AheManifestPanel";
 import type { AutonomousRunResult, EvaluationArchiveIndexItem, EvaluationError, PiModel, PiSkill, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseSummary, SkillRegistryEntry, SkillVariant, SkillVariantSummary } from "@/types";
 
 interface Props {
@@ -918,6 +920,9 @@ export function SkillLabPane(p: Props) {
             )}
             {curating && <p className="mt-2 flex items-center gap-2 rounded-md bg-violet-50 px-3 py-2 text-xs text-violet-700 dark:bg-violet-950/20 dark:text-violet-300"><Loader2 className="h-3.5 w-3.5 animate-spin" />正在分析 skill 改进方向，请稍候…</p>}
             {curation && <CurationPanel curation={curation} approvals={approvals} expanded={expandedProposals} applying={applying} applyResult={applyResult} onToggleApproval={(i) => setApprovals((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; })} onToggleExpand={(i) => setExpandedProposals((s) => { const n = new Set(s); n.has(i) ? n.delete(i) : n.add(i); return n; })} onApply={() => void applyApprovedProposals()} />}
+            <div className="mt-4">
+              <AheManifestPanel component="skill" lab="skill" currentEvaluationId={result.evaluationId} />
+            </div>
             <SummaryTable summaries={result.variantSummaries} />
             <PairwiseSummaryTable summaries={result.pairwiseSummaries} />
             <TaskSummaryTable result={result} />
@@ -934,7 +939,7 @@ export function SkillLabPane(p: Props) {
 
 function SummaryTable({ summaries }: { summaries: SkillVariantSummary[] }) {
   return <SharedSummaryTable rows={summaries} rowKey={(item) => item.variantId} columns={[
-    { key: "variant", label: "Variant", className: "font-medium", render: (item) => item.variantLabel }, { key: "success", label: "成功", render: (item) => `${item.success}/${item.total}` }, { key: "activation", label: "激活率", render: (item) => `${Math.round(item.activationRate * 100)}%` }, { key: "duration", label: "平均耗时", render: (item) => `${item.avgDurationSec.toFixed(2)}s` }, { key: "tokens", label: "平均 token", render: (item) => Math.round(item.avgTotalTokens) }, { key: "cost", label: "平均成本", render: (item) => `$${item.avgTotalCost.toFixed(5)}` }, { key: "chars", label: "输出字符", render: (item) => Math.round(item.avgOutputChars) },
+    { key: "variant", label: "Variant", className: "font-medium", render: (item) => item.variantLabel }, { key: "success", label: "成功", render: (item) => `${item.success}/${item.total}` }, { key: "activation", label: "激活率", render: (item) => `${Math.round(item.activationRate * 100)}%` }, { key: "efc", label: "EFC", render: (item) => formatEfc(item) }, { key: "eta", label: "η", render: (item) => formatEta(item) }, { key: "duration", label: "平均耗时", render: (item) => `${item.avgDurationSec.toFixed(2)}s` }, { key: "tokens", label: "平均 token", render: (item) => Math.round(item.avgTotalTokens) }, { key: "cost", label: "平均成本", render: (item) => `$${item.avgTotalCost.toFixed(5)}` }, { key: "chars", label: "输出字符", render: (item) => Math.round(item.avgOutputChars) },
   ]} />;
 }
 

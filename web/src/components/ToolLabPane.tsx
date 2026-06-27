@@ -2,8 +2,10 @@ import { useEffect, useMemo, useState } from "react";
 import { Archive, BarChart3, CheckCircle2, Download, FileDown, FolderOpen, Loader2, Pencil, Play, Plus, Save, Trash2, Wrench, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { formatEfc, formatEta } from "@/lib/efc";
 import { downloadArchiveTextFile, downloadEvaluationArchiveManifest, downloadEvaluationJson, downloadToolEvaluationMarkdown } from "@/lib/evaluation-export";
 import { ArchiveList, EvalHistoryList, ExportActions, ResultCard as SharedResultCard, SummaryTable as SharedSummaryTable } from "@/components/eval-shared";
+import { AheManifestPanel } from "@/components/AheManifestPanel";
 import type { EvaluationArchiveIndexItem, EvaluationError, ExtractionTool, PiModel, ToolCaseSet, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, ToolExpectation } from "@/types";
 
 interface Props {
@@ -430,6 +432,7 @@ export function ToolLabPane(p: Props) {
               ]} trailing={<StatusIcon status={result.status} />} />
             </div>
             {archiveMessage && <p className="mt-2 break-all rounded-md bg-emerald-50 px-3 py-2 text-xs text-emerald-700 dark:bg-emerald-950/20 dark:text-emerald-300">{archiveMessage}</p>}
+            <div className="mt-4"><AheManifestPanel component="tool" lab="tool" currentEvaluationId={result.evaluationId} /></div>
             <SummaryTable result={result} />
             <div className="mt-6 text-sm font-semibold">运行明细</div>
             <div className="mt-2 space-y-2">
@@ -550,7 +553,7 @@ function CaseEditor(p: {
 
 function SummaryTable({ result }: { result: ToolEvaluationDetail }) {
   return <SharedSummaryTable rows={result.caseSummaries} rowKey={(item) => item.caseId} columns={[
-    { key: "case", label: "Case", className: "font-medium", render: (item) => item.caseName }, { key: "success", label: "成功", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "失败", render: (item) => item.failed }, { key: "duration", label: "平均耗时", render: (item) => `${item.avgDurationSec.toFixed(2)}s` },
+    { key: "case", label: "Case", className: "font-medium", render: (item) => item.caseName }, { key: "success", label: "成功", render: (item) => `${item.success}/${item.total}` }, { key: "failed", label: "失败", render: (item) => item.failed }, { key: "efc", label: "EFC", render: (item) => formatEfc(item) }, { key: "eta", label: "η", render: (item) => formatEta(item) }, { key: "duration", label: "平均耗时", render: (item) => `${item.avgDurationSec.toFixed(2)}s` },
   ]} />;
 }
 

@@ -712,7 +712,7 @@ B. 前端：
   // ════ 【Harness 自进化专题·研究驱动】（总控拆卡 2026-06-22；来源=harness 论文集精读 docs/backlog/{EFC,AHE,SkillOpt,AgingBench,HarnessAudit}-*.md + 记忆 harness-papers-2026）。命题：把 harness(测评/skill/记忆/编排)当可进化的一等工程对象——Life-Harness「改接口不改模型」为整条路线背书。
   // ── 波次与依赖（必读）── P0=EFC 度量底座(其余三项皆插它)→AHE 可证伪编辑契约；P1=SkillOpt 受控回写器 / AgingBench 记忆老化巡检(可并行)；P2=HarnessAudit 轨迹审计(待多 agent 规模)。前 4 项共用同一套实验场测评台证据，串成专题逐步捞。
   // ── 落点：主域=E(codex；实验室/Eval/Harness/skill/multi-agent 全归 E)、跨域契约=X(总控；types.ts/cache 契约)、记忆 store 信号=D。冻结卡(P1/P2)待 P0 跑通『同分不同 EFC』验证后由总控解冻。════
-  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·契约+接缝·P0】X-HARNESS0：EFC 度量 + AHE change-manifest 双契约(types.ts) + cache-harness 对接 + 无-git 组件回滚预研（总控自做）", brief:
+  { dom: "X", status: "done", created: "2026-06-22 18:30", title: "【Harness·契约+接缝·P0】X-HARNESS0：EFC 度量 + AHE change-manifest 双契约(types.ts) + cache-harness 对接 + 无-git 组件回滚预研（总控自做）", brief:
 `来源：docs/backlog/EFC-反馈效率度量.md + AHE-可证伪编辑契约.md。本卡=接缝契约+预研，总控自做，解锁 P0 两张 E 卡。
 范围(接缝层·总控自做)：
 1. types.ts 双侧(单一真源 server+web 镜像，禁本地重声明)：
@@ -726,7 +726,7 @@ B. 前端：
 3. 预研(无 git 难点)：实验场编辑无 git → AHE『组件级回滚』缺底座。本卡给出回滚方案口径(编辑快照/版本表 or 复用既有持久化)写死供 E-AHE1 施工；若需 db 新表在此审定 migration。【SkillHone 增补】采 typed scoped revision——修订带诊断上下文的结构化类型，回退时按类型定位 offending part 而非整体回滚(保留 useful edits)。
 验收：types 双侧对齐、typecheck+build 绿、C_raw getter 与回滚方案口径写死可被 E 直接施工。
 约束：仅接缝层，不实装打分逻辑(归 E)。跨域依赖：解锁 E-EFC1 / E-AHE1。` },
-  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·EFC·P0】E-EFC1：EFC 反馈效率度量实现 + 实验场测评台集成 + η 接 cache-harness", brief:
+  { dom: "E", status: "done", created: "2026-06-22 18:30", title: "【Harness·EFC·P0】E-EFC1：EFC 反馈效率度量实现 + 实验场测评台集成 + η 接 cache-harness", brief:
 `来源：docs/backlog/EFC-反馈效率度量.md。落点=实验室/测评台(E)。前置=X-HARNESS0 契约。
 范围(E slot)：
 1. EFC 打分器(server slot 新文件 efc-scoring.ts 或并入既有 *-evaluation-*.ts)：事件级 EFC_t=κ·I·V·R·M(κ=10) + 轨迹级 Σ。先做规则版四因子(不学 θ)：V_t 读 typecheck/build/health-check-engine 结果 + 状态质量门(passing1.0/assert0.42/runtime0.12/timeout0.06)；M_t 读记忆写入信号(跨域 HTTP 读 D)；I/R 先二值/启发式。
@@ -735,7 +735,7 @@ B. 前端：
 4. D_task 归一化：实验场任务先人工标 5 量，算 normalized EFC 供跨任务比。
 验收：跑通≥1 个测评台，呈现『同分不同 EFC』真实样例(分数同 η 不同)；server typecheck+build+engine tests 绿。
 约束：先规则版排序正确即可，不追 R²=0.99 估计器(后续优化批)。types 引用 X，不碰接缝层。跨域依赖：M_t 读 D /api(memory)。` },
-  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AHE·P0】E-AHE1：change-manifest 记录 + attribute 对照器(用 EFC) + 实验场编辑接入", brief:
+  { dom: "E", status: "done", created: "2026-06-22 18:30", title: "【Harness·AHE·P0】E-AHE1：change-manifest 记录 + attribute 对照器(用 EFC) + 实验场编辑接入", brief:
 `来源：docs/backlog/AHE-可证伪编辑契约.md。落点=实验室(E)。前置=X-HARNESS0(manifest 契约+回滚方案)、E-EFC1(attribute 用 EFC 分)。
 范围(E slot)：
 1. manifest 记录：实验场每次 harness 编辑(prompt/command/subagent/hook/skill)产一份 ChangeManifest(失败证据/根因/目标修复/预期修好+预期回归任务集)，落库(db/engine.ts，表名经 X 审)。先做『人改+手填 manifest』半自动，不做自动 Evolve Agent。

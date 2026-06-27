@@ -5,6 +5,7 @@ import { runPiTurn, type PiRun, type RunPiOptions } from "./pi-adapter.ts";
 import { buildDataContextBlock } from "./prompt-blocks.ts";
 import { collectEvent, emptyMetrics, extractText, type EvaluationMetrics } from "./evaluation-common.ts";
 import { evaluationError, unknownEvaluationError } from "./evaluation-errors.ts";
+import { coerceEfcDifficulty, scoreEfcRuns, type EfcScoreDetail } from "./efc-scoring.ts";
 import type { EvaluationError, PiEvent } from "./types.ts";
 import { detectSkillActivation, type SkillActivationResult } from "./skill-activation.ts";
 import { retrieveSkills } from "./skill-retrieval.ts";
@@ -130,6 +131,7 @@ export interface SkillVariantSummary {
   avgTotalCost: number;
   avgToolCalls: number;
   avgOutputChars: number;
+  efc?: EfcScoreDetail;
 }
 
 export interface SkillTaskSummary {
@@ -174,13 +176,13 @@ export async function runSkillEvaluation(options: SkillEvaluationRunnerOptions):
     endedAt,
     durationSec: (endedAt - startedAt) / 1000,
     results,
-    ...summarizeSkillEvaluationResults(results),
+    ...summarizeSkillEvaluationResults(results, options.tasks),
   };
 }
 
-export function summarizeSkillEvaluationResults(results: SkillEvaluationRunResult[]): SkillEvaluationResultSummaries {
+export function summarizeSkillEvaluationResults(results: SkillEvaluationRunResult[], tasks: SkillEvalTask[] = []): SkillEvaluationResultSummaries {
   return {
-    variantSummaries: summarizeVariants(results),
+    variantSummaries: summarizeVariants(results, tasks),
     taskSummaries: summarizeTasks(results),
     pairwiseSummaries: summarizePairwise(results),
   };
@@ -569,7 +571,7 @@ function validateSkillEvaluationOptions(options: SkillEvaluationRunnerOptions): 
   }
 }
 
-function summarizeVariants(results: SkillEvaluationRunResult[]): SkillVariantSummary[] {
+function summarizeVariants(results: SkillEvaluationRunResult[], tasks: SkillEvalTask[]): SkillVariantSummary[] {
   const grouped = new Map<string, SkillEvaluationRunResult[]>();
   for (const result of results) grouped.set(result.variantId, [...(grouped.get(result.variantId) ?? []), result]);
   return Array.from(grouped.entries()).map(([variantId, rows]) => {
@@ -587,6 +589,17 @@ function summarizeVariants(results: SkillEvaluationRunResult[]): SkillVariantSum
       avgTotalCost: sum(successful, "totalCost") / divisor,
       avgToolCalls: sum(successful, "toolCalls") / divisor,
       avgOutputChars: sum(successful, "outputChars") / divisor,
+      efc: scoreEfcRuns(rows.map((row) => ({
+        status: row.status,
+        validity: row.status === "success" ? "passing" : "runtime",
+        hasOutput: row.output.length > 0,
+        totalTokens: row.totalTokens,
+        toolCalls: row.toolCalls,
+        memorySignal: row.activation.activated ? "changed_plan" : "unknown",
+        signature: `${row.taskId}:${row.status}:${row.error?.message ?? row.output.slice(0, 80)}`,
+      })), {
+        difficulty: coerceEfcDifficulty((tasks.find((task) => task.id === rows[0]?.taskId) as unknown as { efcDifficulty?: unknown } | undefined)?.efcDifficulty),
+      }),
     };
   });
 }
