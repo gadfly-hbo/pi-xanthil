@@ -18,6 +18,12 @@ import {
   listAllSubAgentTasks,
   getSubAgentTask,
   finishSubAgentTask,
+  createCompositeSubAgentRun,
+  listCompositeSubAgentRuns,
+  updateCompositeSubAgentRun,
+  createSubAgentBlackboardEntry,
+  listSubAgentBlackboardEntries,
+  listFlowNodeRuns,
 } from "./db/shared.ts";
 import { moveManagedDirToTrash } from "./trash.ts";
 import { registerDomainRoutes } from "./routes/index.ts";
@@ -167,7 +173,7 @@ import { withWorkspacePathStatuses } from "./workspace-path-status.ts";
 import { traceFlowEvent } from "./flow-trace.ts";
 import { getActiveChatRun, abortChatRun } from "./runtime.ts";
 import { flowMessageText } from "./message-text.ts";
-import { handleSendFlow, handleExecuteMultiAgent, handleAnaxPrecheck, abortAnaxPrecheck, readCommandsFile } from "./routes/engine.ts";
+import { handleSendFlow, handleExecuteMultiAgent, handleAnaxPrecheck, abortAnaxPrecheck, readCommandsFile, distillSkillCandidate } from "./routes/engine.ts";
 
 import { buildModelLabPrompt, SUPPORTED_MODELS, type ModelLabId } from "./model-lab.ts";
 import { buildRegisteredPathContext, resolveOutputTarget } from "./output-paths.ts";
@@ -181,7 +187,7 @@ import { deleteKgEdge, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHi
 import { buildMemoryInjectionSnapshot, withRulesPrompt } from "./memory-injection.ts";
 import { withKnowledgePrompt } from "./knowledge-injection.ts";
 import { expandCommand } from "./command-expand.ts";
-import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, MetricSnapshot, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentTemplate, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
+import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, MetricSnapshot, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentBlackboardEntry, SubAgentBlackboardKind, SubAgentTemplate, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
 import type { WorkflowAgentEntry, WorkflowRunView } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
@@ -1689,6 +1695,38 @@ app.get("/api/subagent-tasks/:id", (req, res) => {
   res.json(task);
 });
 
+app.post("/api/subagent-tasks/:id/save-skill", async (req, res) => {
+  const task = getSubAgentTask(req.params.id);
+  if (!task) return res.status(404).json({ error: "task not found" });
+  if (task.status !== "success") return res.status(400).json({ error: "only successful subagent tasks can be saved as skill" });
+  const session = getSession(task.parentSessionId);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  const workspace = getWorkspace(session.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const model = req.body?.model ? String(req.body.model) : task.model;
+  const reportText = latestTaskReportText(workspace.rootPath, task.parentSessionId, task);
+  const transcript = [
+    `Subagent brief:\n${task.brief}`,
+    task.dataFiles.length ? `Authorized clean_data files:\n${task.dataFiles.join("\n")}` : "",
+    task.summary ? `Successful summary:\n${task.summary}` : "",
+    reportText ? `Successful report excerpt:\n${reportText}` : "",
+  ].filter(Boolean).join("\n\n");
+  if (transcript.trim().length < 80) return res.status(400).json({ error: "not enough successful task context to distill a skill" });
+  const result = await distillSkillCandidate({
+    workspaceId: workspace.id,
+    workspaceRoot: workspace.rootPath,
+    transcript,
+    model,
+    timeoutMs: 120_000,
+    duplicateThreshold: 0.82,
+    dryRun: false,
+    originSessionId: task.parentSessionId,
+    usageTargetId: task.parentSessionId,
+    usageTitle: "Save subagent task as skill",
+  });
+  res.json(result);
+});
+
 // 工作流 agent 看板（只读）：遍历工作区各 flow 的 workflow.json 取 agent/gate/tool 节点（花名册），
 // 并投影 flow_runs 为流水线级运行明细。纯读、不触运行路径、不回灌 LLM、不读数据行内容。
 app.get("/api/workflow-agents", (req, res) => {
@@ -1696,6 +1734,7 @@ app.get("/api/workflow-agents", (req, res) => {
   const workspaceIds = wsFilter ? [wsFilter] : listWorkspaces().map((w) => w.id);
   const agents: WorkflowAgentEntry[] = [];
   const runs: WorkflowRunView[] = [];
+  const nodeRuns = listFlowNodeRuns({ workspaceId: wsFilter, limit: 500 });
   for (const wsId of workspaceIds) {
     for (const flow of listFlows(wsId)) {
       const def = readWorkflow(flow.folderPath);
@@ -1710,7 +1749,7 @@ app.get("/api/workflow-agents", (req, res) => {
     }
   }
   runs.sort((a, b) => b.startedAt - a.startedAt);
-  res.json({ agents, runs });
+  res.json({ agents, runs, nodeRuns });
 });
 
 app.post("/api/subagent-tasks/:id/abort", (req, res) => {
@@ -1814,6 +1853,209 @@ app.post("/api/sessions/:id/delegate", (req, res) => {
   res.json(task);
 });
 
+app.post("/api/sessions/:id/delegate-composite", (req, res) => {
+  const session = getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  const workspace = getWorkspace(session.workspaceId);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const brief = String(req.body?.brief ?? "").trim();
+  if (!brief) return res.status(400).json({ error: "brief required" });
+  const dataFiles = Array.isArray(req.body?.dataFiles) ? (req.body.dataFiles as unknown[]).map(String) : [];
+  const model = req.body?.model ? String(req.body.model) : undefined;
+  const maxReviewRoundsRaw = Number(req.body?.maxReviewRounds);
+  const maxReviewRounds = Number.isFinite(maxReviewRoundsRaw) ? Math.max(1, Math.min(5, Math.trunc(maxReviewRoundsRaw))) : 2;
+  const run = createCompositeSubAgentRun({ parentSessionId: session.id, brief, dataFiles, model, maxReviewRounds });
+  void runCompositeSubAgentUnit(run.id, session.id, workspace.id, workspace.rootPath, brief, dataFiles, model, maxReviewRounds);
+  res.json(run);
+});
+
+app.get("/api/sessions/:id/composite-subagent-runs", (req, res) => {
+  if (!getSession(req.params.id)) return res.status(404).json({ error: "session not found" });
+  res.json(listCompositeSubAgentRuns(req.params.id));
+});
+
+app.get("/api/sessions/:id/subagent-blackboard", (req, res) => {
+  if (!getSession(req.params.id)) return res.status(404).json({ error: "session not found" });
+  res.json(listSubAgentBlackboardEntries(req.params.id));
+});
+
+app.post("/api/sessions/:id/subagent-blackboard", (req, res) => {
+  const session = getSession(req.params.id);
+  if (!session) return res.status(404).json({ error: "session not found" });
+  const title = String(req.body?.title ?? "").trim();
+  const content = String(req.body?.content ?? "").trim();
+  const kind = parseSubAgentBlackboardKind(req.body?.kind);
+  const sourceTaskId = req.body?.sourceTaskId ? String(req.body.sourceTaskId) : undefined;
+  if (!title) return res.status(400).json({ error: "title required" });
+  if (!content) return res.status(400).json({ error: "content required" });
+  const guard = validateBlackboardContent(content);
+  if (!guard.ok) return res.status(400).json({ error: guard.error });
+  res.json(createSubAgentBlackboardEntry({ workspaceId: session.workspaceId, parentSessionId: session.id, sourceTaskId, kind, title, content }));
+});
+
+function parseSubAgentBlackboardKind(value: unknown): SubAgentBlackboardKind {
+  return value === "metric_definition"
+    || value === "business_rule"
+    || value === "finding"
+    || value === "assumption"
+    || value === "note"
+    ? value
+    : "note";
+}
+
+function validateBlackboardContent(content: string): { ok: true } | { ok: false; error: string } {
+  if (content.length > 4000) return { ok: false, error: "blackboard content too long; store only aggregate definitions or derived conclusions" };
+  const tableLines = content.split(/\r?\n/).filter((line) => line.includes("|") && line.split("|").length >= 4);
+  if (tableLines.length > 8) return { ok: false, error: "blackboard content looks like row-level table output; store only aggregate definitions or derived conclusions" };
+  try {
+    const parsed = JSON.parse(content) as unknown;
+    if (Array.isArray(parsed) && parsed.length > 5) return { ok: false, error: "blackboard JSON arrays must be small aggregate notes, not rows" };
+    if (Array.isArray(parsed) && parsed.some((item) => typeof item === "object" && item !== null && Object.keys(item).length > 6)) {
+      return { ok: false, error: "blackboard JSON looks like detailed records; store a summarized conclusion instead" };
+    }
+    if (typeof parsed === "object" && parsed !== null) {
+      for (const [key, value] of Object.entries(parsed)) {
+        if (/^(rows|records|data|items)$/i.test(key) && Array.isArray(value) && value.length > 3) {
+          return { ok: false, error: "blackboard content includes row-like arrays; store only aggregate definitions or derived conclusions" };
+        }
+      }
+    }
+  } catch {
+    // Plain text is allowed after heuristic checks.
+  }
+  if (/(^|\n)\s*(row|record)\s*\d+\s*[:：]/i.test(content)) return { ok: false, error: "blackboard content looks like row-level records" };
+  return { ok: true };
+}
+
+function formatBlackboardForPrompt(entries: SubAgentBlackboardEntry[]): string {
+  if (entries.length === 0) return "";
+  const body = entries
+    .slice(0, 12)
+    .map((entry) => `- [${entry.kind}] ${entry.title}: ${entry.content}`)
+    .join("\n");
+  return `[共享黑板：只读聚合口径/衍生结论]\n${body}\n使用时请保留其限制条件；禁止把黑板扩写为原始明细。`;
+}
+
+function subAgentSystemPromptWithBlackboard(persona: string, allowed: string[], reportDir: string, parentSessionId: string): string {
+  const base = buildSubAgentSystemPrompt(persona, allowed, reportDir);
+  const blackboard = formatBlackboardForPrompt(listSubAgentBlackboardEntries(parentSessionId));
+  return blackboard ? `${base}\n\n${blackboard}` : base;
+}
+
+function latestTaskReportText(workspaceRoot: string, parentSessionId: string, task: { reportPath?: string }): string {
+  if (!task.reportPath) return "";
+  try {
+    const reportDir = standardDirIn(sessionDir(workspaceRoot, parentSessionId), "report");
+    const path = resolve(reportDir, basename(task.reportPath));
+    if (!path.startsWith(reportDir + sep) && path !== reportDir) return "";
+    if (!statSync(path).isFile()) return "";
+    return readFileSync(path, "utf8").slice(0, 6000);
+  } catch {
+    return "";
+  }
+}
+
+function reviewerPassed(text: string): boolean {
+  return /REVIEW_DECISION\s*:\s*pass/i.test(text) || /审查结论\s*[:：]\s*通过/.test(text);
+}
+
+function taskDigest(workspaceRoot: string, parentSessionId: string, taskId?: string): string {
+  if (!taskId) return "";
+  const task = getSubAgentTask(taskId);
+  if (!task) return "";
+  const report = latestTaskReportText(workspaceRoot, parentSessionId, task);
+  return [
+    task.summary ? `summary:\n${task.summary}` : "",
+    report ? `report:\n${report}` : "",
+    task.error ? `error:\n${task.error}` : "",
+  ].filter(Boolean).join("\n\n").trim();
+}
+
+async function runCompositeRoleTask(input: {
+  parentSessionId: string;
+  workspaceId: string;
+  workspaceRoot: string;
+  brief: string;
+  dataFiles: string[];
+  model?: string;
+  templateId: string;
+}): Promise<string> {
+  const task = createSubAgentTask(input.parentSessionId, input.brief, input.dataFiles, input.model, input.templateId);
+  await runDelegatedSubAgent(task.id, input.parentSessionId, input.workspaceId, input.workspaceRoot, input.brief, input.dataFiles, input.model, input.templateId, []);
+  return task.id;
+}
+
+async function runCompositeSubAgentUnit(
+  runId: string,
+  parentSessionId: string,
+  workspaceId: string,
+  workspaceRoot: string,
+  brief: string,
+  dataFiles: string[],
+  model: string | undefined,
+  maxReviewRounds: number,
+): Promise<void> {
+  try {
+    updateCompositeSubAgentRun(runId, { currentRole: "planner" });
+    const plannerTaskId = await runCompositeRoleTask({
+      parentSessionId,
+      workspaceId,
+      workspaceRoot,
+      brief: `用户 brief:\n${brief}\n\n请拆解为 Coder 可执行的分析计划。`,
+      dataFiles,
+      model,
+      templateId: "builtin-composite-planner",
+    });
+    updateCompositeSubAgentRun(runId, { plannerTaskId });
+    const plannerOutput = taskDigest(workspaceRoot, parentSessionId, plannerTaskId);
+    const coderTaskIds: string[] = [];
+    const reviewerTaskIds: string[] = [];
+    let lastReview = "";
+    for (let round = 1; round <= maxReviewRounds; round += 1) {
+      updateCompositeSubAgentRun(runId, { currentRole: "coder", reviewRounds: round });
+      const coderBrief = [
+        `用户 brief:\n${brief}`,
+        `Planner 计划:\n${plannerOutput || "（无 Planner 输出）"}`,
+        lastReview ? `Reviewer 打回意见:\n${lastReview}` : "",
+        "请执行计算/分析并产出可审查报告。",
+      ].filter(Boolean).join("\n\n");
+      const coderTaskId = await runCompositeRoleTask({ parentSessionId, workspaceId, workspaceRoot, brief: coderBrief, dataFiles, model, templateId: "builtin-composite-coder" });
+      coderTaskIds.push(coderTaskId);
+      updateCompositeSubAgentRun(runId, { coderTaskIds: [...coderTaskIds] });
+      const coderOutput = taskDigest(workspaceRoot, parentSessionId, coderTaskId);
+      updateCompositeSubAgentRun(runId, { currentRole: "reviewer" });
+      const reviewerBrief = [
+        `用户 brief:\n${brief}`,
+        `Planner 计划:\n${plannerOutput || "（无 Planner 输出）"}`,
+        `Coder 输出:\n${coderOutput || "（无 Coder 输出）"}`,
+        "请审查。最后必须写 REVIEW_DECISION: pass 或 REVIEW_DECISION: revise。",
+      ].join("\n\n");
+      const reviewerTaskId = await runCompositeRoleTask({ parentSessionId, workspaceId, workspaceRoot, brief: reviewerBrief, dataFiles, model, templateId: "builtin-composite-reviewer" });
+      reviewerTaskIds.push(reviewerTaskId);
+      updateCompositeSubAgentRun(runId, { reviewerTaskIds: [...reviewerTaskIds] });
+      lastReview = taskDigest(workspaceRoot, parentSessionId, reviewerTaskId);
+      if (reviewerPassed(lastReview)) {
+        const finalCoder = getSubAgentTask(coderTaskId);
+        updateCompositeSubAgentRun(runId, {
+          status: "success",
+          currentRole: null,
+          summary: finalCoder?.summary ?? "复合 subagent 已通过 Reviewer 审查。",
+          ended: true,
+        });
+        return;
+      }
+    }
+    updateCompositeSubAgentRun(runId, {
+      status: "waiting_for_help",
+      currentRole: null,
+      error: `Reviewer 未通过，已耗尽 ${maxReviewRounds} 轮打回预算。`,
+      ended: true,
+    });
+  } catch (err) {
+    updateCompositeSubAgentRun(runId, { status: "failed", currentRole: null, error: String(err), ended: true });
+  }
+}
+
 // 后台跑子 agent：全新聚焦 session（无主历史），读 020_clean 指定数据、写 060_reports，末条结论作摘要。
 async function runDelegatedSubAgent(
   taskId: string,
@@ -1834,7 +2076,7 @@ async function runDelegatedSubAgent(
   const allowed = resolveAllowedSubAgentDataFiles(cleanDir, dataFiles);
   const template = resolveSubAgentTemplate(templateId);
   const persona = template?.persona.trim() || resolveSubAgentPersona(undefined);
-  const systemPrompt = buildSubAgentSystemPrompt(persona, allowed, reportDir);
+  const systemPrompt = subAgentSystemPromptWithBlackboard(persona, allowed, reportDir, parentSessionId);
   let summaryText = "";
   const subAgentCwd = resolveSubAgentCwd(workspaceRoot, workspaceId, taskId, parentSessionId, template ? template.toolIds : undefined);
   const maxRetries = template ? template.maxRetries : 0;
@@ -1972,7 +2214,7 @@ async function resumeDelegatedSubAgent(
   const allowed = resolveAllowedSubAgentDataFiles(cleanDir, dataFiles);
   const template = resolveSubAgentTemplate(templateId);
   const persona = template?.persona.trim() || resolveSubAgentPersona(undefined);
-  const systemPrompt = buildSubAgentSystemPrompt(persona, allowed, reportDir);
+  const systemPrompt = subAgentSystemPromptWithBlackboard(persona, allowed, reportDir, parentSessionId);
   const subAgentCwd = resolveSubAgentCwd(workspaceRoot, workspaceId, taskId, parentSessionId, template ? template.toolIds : undefined);
   let summaryText = "";
   let lastErrorContext = "";

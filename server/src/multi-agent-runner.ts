@@ -157,6 +157,11 @@ export interface MultiAgentRunOptions {
   getTool?: WorkflowGetToolFn;
   /** Optional run-level budget guard. When absent, budget checks are disabled. */
   runBudget?: { workspaceId: string; limits: RunBudgetLimits };
+  /** Optional persistence hook for per-node run observability. */
+  nodeRunWriter?: {
+    start: (node: WorkflowNode) => string | undefined;
+    finish: (nodeRunId: string, status: "success" | "failed" | "blocked" | "aborted", outputPath?: string) => void;
+  };
 }
 
 export interface MultiAgentRunResult {
@@ -429,6 +434,7 @@ export async function runMultiAgent(
     if (opts.isAborted?.()) return { code: null, blackboard };
     const node = order[cursor]!;
     opts.onStepStart(node.id);
+    const nodeRunId = opts.nodeRunWriter?.start(node);
 
     const trace = activeLoopTrace(order, cursor, gateIterations);
     const nodeDir = trace
@@ -479,6 +485,7 @@ export async function runMultiAgent(
     }
 
     if (code !== 0) {
+      if (nodeRunId) opts.nodeRunWriter?.finish(nodeRunId, opts.isAborted?.() ? "aborted" : "failed", nodeDir);
       return { code, blackboard };
     }
 
@@ -486,8 +493,10 @@ export async function runMultiAgent(
       const budgetStatus = evaluateRunBudgetForRun(opts);
       if (budgetStatus.exceeded) {
         recordRunBudgetStop(blackboard, opts, budgetStatus);
+        if (nodeRunId) opts.nodeRunWriter?.finish(nodeRunId, "failed", nodeDir);
         return { code: 1, blackboard };
       }
+      if (nodeRunId) opts.nodeRunWriter?.finish(nodeRunId, "success", nodeDir);
     }
 
     // AnaX: a gate node re-derives a pass/block decision from its structured
@@ -537,6 +546,7 @@ export async function runMultiAgent(
       writeFileSync(join(gatesDir, `${sanitizeId(node.id)}.json`), JSON.stringify(verdict, null, 2), "utf8");
       opts.onStepGate?.(node.id, verdict);
       if (verdict.verdict === "blocked") {
+        if (nodeRunId) opts.nodeRunWriter?.finish(nodeRunId, "blocked", nodeDir);
         if (extraReasons.length > 0) {
           return { code: 1, blackboard };
         }
@@ -555,6 +565,7 @@ export async function runMultiAgent(
         }
         return { code: 1, blackboard };
       }
+      if (nodeRunId) opts.nodeRunWriter?.finish(nodeRunId, "success", nodeDir);
     }
     cursor += 1;
   }

@@ -1230,6 +1230,44 @@ export interface SubAgentTaskInput {
   skillPaths?: string[]; // 省略/[]=禁用；非空=指定子集
 }
 
+export type CompositeSubAgentRole = "planner" | "coder" | "reviewer";
+export type CompositeSubAgentRunStatus = "running" | "success" | "failed" | "aborted" | "waiting_for_help";
+
+export interface CompositeSubAgentRun {
+  id: string;
+  parentSessionId: string;
+  workspaceId?: string;
+  brief: string;
+  dataFiles: string[];
+  model?: string;
+  status: CompositeSubAgentRunStatus;
+  plannerTaskId?: string;
+  coderTaskIds: string[];
+  reviewerTaskIds: string[];
+  currentRole?: CompositeSubAgentRole;
+  reviewRounds: number;
+  maxReviewRounds: number;
+  summary?: string;
+  error?: string;
+  createdAt: number;
+  endedAt?: number;
+}
+
+export type SubAgentBlackboardScope = "parent_session";
+export type SubAgentBlackboardKind = "metric_definition" | "business_rule" | "finding" | "assumption" | "note";
+
+export interface SubAgentBlackboardEntry {
+  id: string;
+  workspaceId: string;
+  parentSessionId: string;
+  sourceTaskId?: string;
+  scope: SubAgentBlackboardScope;
+  kind: SubAgentBlackboardKind;
+  title: string;
+  content: string;
+  createdAt: number;
+}
+
 // 子 agent 模板：剥离 runner 硬编码 systemPrompt 的图形化配置（subagents.json）。
 // dataScope 锁死 "clean_data" 字面量 —— **不得放开 draw_data**（AGENTS.md §一红线，编译期堵死）。
 export interface SubAgentTemplate {
@@ -1240,7 +1278,7 @@ export interface SubAgentTemplate {
   toolIds: string[]; // 挂载的 ExtractionTool id 白名单子集（细粒度装配；空=不挂计算工具）
   dataScope: "clean_data"; // 数据域沙箱，恒为 clean_data
   maxRetries: number; // 自愈重试上限（P3），耗尽转 waiting_for_help
-  source: "custom";
+  source: "custom" | "builtin";
 }
 
 // ---- 工作流 agent 看板（只读投影：从各 flow 的 workflow.json nodes + flow_runs 聚合，供 SubAgentBoard 展示；不落库、不触运行路径） ----
@@ -1264,9 +1302,27 @@ export interface WorkflowRunView {
   outputDir: string;
 }
 
+export type FlowNodeRunStatus = "running" | "success" | "failed" | "blocked" | "aborted";
+
+export interface FlowNodeRun {
+  id: string;
+  flowRunId: string;
+  flowId: string;
+  flowName?: string;
+  workspaceId?: string;
+  nodeId: string;
+  role?: string;
+  kind: "agent" | "gate" | "tool";
+  status: FlowNodeRunStatus;
+  startedAt: number;
+  endedAt?: number;
+  outputPath?: string;
+}
+
 export interface WorkflowAgentsBoard {
   agents: WorkflowAgentEntry[];
   runs: WorkflowRunView[];
+  nodeRuns: FlowNodeRun[];
 }
 
 export type FlowRunStatus = "running" | "success" | "failed" | "aborted";

@@ -3,6 +3,7 @@ import { Bot, Plus, Save, Trash2, AlertTriangle, Lock, RefreshCw } from "lucide-
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { SubAgentBoard } from "@/components/SubAgentBoard";
+import { SubAgentsReadmePane } from "@/components/SubAgentsReadmePane";
 import type {
   ExtractionTool,
   ExtractionToolCategory,
@@ -117,7 +118,7 @@ export function SubAgentManagementPane() {
   const [saving, setSaving] = useState(false);
   const [dirty, setDirty] = useState(false);
   const [toolsLoading, setToolsLoading] = useState(false);
-  const [view, setView] = useState<"board" | "templates">("board");
+  const [view, setView] = useState<"board" | "templates" | "readme">("board");
 
   const reload = useCallback(() => {
     setLoading(true);
@@ -221,7 +222,7 @@ export function SubAgentManagementPane() {
           计算工具 · subagents 管理
         </h2>
         <span className="ml-2 rounded-full bg-neutral-100 px-2 py-0.5 text-[10.5px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
-          {view === "board" ? "全局运行看板" : "子 agent 模板（subagents.json）"}
+          {view === "board" ? "全局运行看板" : view === "readme" ? "体系说明" : "子 agent 模板（subagents.json）"}
         </span>
         <span className="ml-1 flex items-center gap-1 rounded-full bg-emerald-100 px-2 py-0.5 text-[10.5px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">
           <Lock className="h-3 w-3" />
@@ -242,12 +243,21 @@ export function SubAgentManagementPane() {
           >
             模板管理
           </button>
+          <button
+            type="button"
+            onClick={() => setView("readme")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "readme" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            说明
+          </button>
         </div>
       </div>
 
-      <div className="flex-1 overflow-auto bg-neutral-50 dark:bg-neutral-900">
+      <div className="flex min-h-0 flex-1 overflow-auto bg-neutral-50 dark:bg-neutral-900">
         {view === "board" ? (
           <SubAgentBoard templates={templates} />
+        ) : view === "readme" ? (
+          <SubAgentsReadmePane />
         ) : (
           <div className="grid h-full grid-cols-[minmax(280px,360px)_1fr] gap-3 p-4">
             <TemplateList

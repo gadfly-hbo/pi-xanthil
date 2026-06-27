@@ -83,6 +83,7 @@ import {
   reorderCollectFolder,
   deleteCollectFolder,
 } from "../db/engine.ts";
+import { finishFlowNodeRun, startFlowNodeRun } from "../db/shared.ts";
 import { readTree, readFlowFile, writeFlowFile, copyLocalFolderIntoFlow, copyFlowSnapshot, inferWorkflow, moveAllFiles } from "../flow-fs.ts";
 import { normalizeWorkflowModels, normalizeWorkflowSkills, type WorkflowLike } from "../workflow-config.ts";
 import { withWorkspacePathStatuses } from "../workspace-path-status.ts";
@@ -3267,6 +3268,18 @@ export async function handleExecuteMultiAgent(
       onStepGate: (nodeId, verdict) => {
         traceFlowEvent(flow.id, "agent_gate", verdict.verdict === "pass" ? "success" : "failed", nodeId, { nodeId, verdict }, runRow.id);
         send(ws, { type: "agent_gate", flowId: flow.id, runId: clientRunId, nodeId, verdict });
+      },
+      nodeRunWriter: {
+        start: (node) => startFlowNodeRun({
+          flowRunId: runRow.id,
+          flowId: flow.id,
+          nodeId: node.id,
+          role: node.role,
+          kind: node.kind ?? "agent",
+        }).id,
+        finish: (nodeRunId, status, outputPath) => {
+          finishFlowNodeRun(nodeRunId, { status, outputPath });
+        },
       },
       isAborted: () => active.aborted,
       initialBlackboard,

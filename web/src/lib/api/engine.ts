@@ -3,7 +3,10 @@
 //   复用请求工具 `import { json } from "./_http"`; 类型从 "@/types" 引入。
 import type {
   CollectFolder,
+  CompositeSubAgentRun,
   ForkBranch,
+  SubAgentBlackboardEntry,
+  SubAgentBlackboardKind,
   MemoryInjectionRecord,
   MemoryItem,
   MemoryItemListResponse,
@@ -346,8 +349,24 @@ export const engineApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     }).then(json<SubAgentTask>),
+  delegateCompositeSubAgent: (sessionId: string, input: SubAgentTaskInput & { maxReviewRounds?: number }) =>
+    fetch(`/api/sessions/${sessionId}/delegate-composite`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then(json<CompositeSubAgentRun>),
   listSubAgentTasks: (sessionId: string) =>
     fetch(`/api/sessions/${sessionId}/subagent-tasks`).then(json<SubAgentTask[]>),
+  listCompositeSubAgentRuns: (sessionId: string) =>
+    fetch(`/api/sessions/${sessionId}/composite-subagent-runs`).then(json<CompositeSubAgentRun[]>),
+  listSubAgentBlackboard: (sessionId: string) =>
+    fetch(`/api/sessions/${sessionId}/subagent-blackboard`).then(json<SubAgentBlackboardEntry[]>),
+  createSubAgentBlackboardEntry: (sessionId: string, input: { kind: SubAgentBlackboardKind; title: string; content: string; sourceTaskId?: string }) =>
+    fetch(`/api/sessions/${sessionId}/subagent-blackboard`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then(json<SubAgentBlackboardEntry>),
   listAllSubAgentTasks: (params?: { limit?: number; workspaceId?: string; status?: SubAgentTask["status"] }) => {
     const q = new URLSearchParams();
     if (params?.limit !== undefined) q.set("limit", String(params.limit));
@@ -370,6 +389,12 @@ export const engineApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify(input),
     }).then(json<{ ok: true; task: SubAgentTask }>),
+  saveSubAgentTaskAsSkill: (taskId: string, input: { model?: string }) =>
+    fetch(`/api/subagent-tasks/${taskId}/save-skill`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(input),
+    }).then(json<unknown>),
 
   // ---- Skill Registry（D 域 SkillManagementPane 跨域调 E 端点；端点以卡2 为契约） ----
   listSkillRegistry: (workspaceId: string, status?: SkillStatus) => {

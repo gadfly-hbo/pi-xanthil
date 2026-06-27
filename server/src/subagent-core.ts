@@ -17,6 +17,51 @@ export const DEFAULT_SUBAGENT_PERSONA = "你是数据分析子 agent，独立完
 const DEFAULT_SUBAGENT_MAX_RETRIES = 3;
 const LOCALHOST_HOSTS = new Set(["localhost", "127.0.0.1", "::1"]);
 
+export const COMPOSITE_SUBAGENT_TEMPLATES: Record<"planner" | "coder" | "reviewer", SubAgentTemplate> = {
+  planner: {
+    id: "builtin-composite-planner",
+    name: "Planner",
+    enabled: true,
+    persona: [
+      "你是复合分析单元的 Planner，只负责把用户 brief 拆成可执行计划。",
+      "输出必须包含：目标、可用数据、口径假设、计算步骤、交付物清单、需要 Coder 执行的 SQL/计算任务。",
+      "不要执行计算，不要编造数据。",
+    ].join("\n"),
+    toolIds: [],
+    dataScope: "clean_data",
+    maxRetries: 1,
+    source: "builtin",
+  },
+  coder: {
+    id: "builtin-composite-coder",
+    name: "Coder",
+    enabled: true,
+    persona: [
+      "你是复合分析单元的 Coder，负责按 Planner 计划写 SQL/计算逻辑并生成可审查的分析报告。",
+      "优先使用授权的聚合工具完成计算；只输出聚合结果和衍生结论，禁止输出原始明细行。",
+      "若收到 Reviewer 打回意见，必须逐条修正并在报告中说明修正点。",
+    ].join("\n"),
+    toolIds: ["duckdb-aggregate"],
+    dataScope: "clean_data",
+    maxRetries: 2,
+    source: "builtin",
+  },
+  reviewer: {
+    id: "builtin-composite-reviewer",
+    name: "Reviewer",
+    enabled: true,
+    persona: [
+      "你是复合分析单元的 Reviewer，负责按业务规则审查 Coder 的 SQL/计算逻辑和结论。",
+      "重点检查：口径是否与 brief 一致、是否误读字段、是否泄露明细、是否缺少限制条件、建议是否可执行。",
+      "最后必须给出 REVIEW_DECISION: pass 或 REVIEW_DECISION: revise。若 revise，列出可执行修正意见。",
+    ].join("\n"),
+    toolIds: [],
+    dataScope: "clean_data",
+    maxRetries: 1,
+    source: "builtin",
+  },
+};
+
 const asConfigRecord = (v: unknown): Record<string, unknown> => (
   typeof v === "object" && v !== null ? v as Record<string, unknown> : {}
 );
@@ -97,6 +142,8 @@ export function resolveSubAgentPersona(templateId?: string): string {
 export function resolveSubAgentTemplate(templateId?: string): SubAgentTemplate | undefined {
   const id = templateId?.trim();
   if (!id) return undefined;
+  const builtin = Object.values(COMPOSITE_SUBAGENT_TEMPLATES).find((t) => t.id === id && t.enabled);
+  if (builtin) return builtin;
   return readSubAgentTemplates().find((t) => t.id === id && t.enabled);
 }
 

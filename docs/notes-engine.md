@@ -9,34 +9,52 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-26 · **E-QEVAL2 文档评测 lab 前端入口与结果视图完成**（实验场新增第 7 个测评台「文档评测」）
+- 最近更新：2026-06-27 · **subagents 管理进阶 A/B/C + 看板方案 C 完成**（复合单元 / 共享黑板 / Save as Skill / flow_node_runs 节点级运行落库）
 - 进度：
-  - **实验场「文档评测」入口**：
-    - `LAB_SUB_TABS` 新增 `document_eval`，`EngineTabs.tsx` 接入 `DocumentEvalPane`，与现有 skill/tool/hooks/command/subagents/prompts 六类 lab 并列。
-    - `DocumentEvalPane.tsx` 提供 domain 选择（`mall` / `return_profile`）、`reportPath` 填写、rubrics（criterion / weight / anchors）编辑、model 选择与「运行评测」按钮。
-    - 前端只提交 `reportPath` 和 rubrics，不直接读取报告文件；文档内容仍由 server runner 在 workspaceRoot 内按红线读取。
-  - **DocumentEvalResult 可视化**：
-    - 展示 `ruleTotalScore` / `judgeScore` / `combinedScore` 三条总分条。
-    - 展示规则明细表（ruleName / passed / score / detail，failed 标红）、LLM judge 维度分与 reason、一致性告警（橙色人工复核）、`sessionMetrics` 小卡（若有）。
-  - **最小后端 route 补齐**：
-    - `routes/engine.ts` 新增 `POST /api/workspaces/:id/document-eval/run` 与 `GET /api/workspaces/:id/document-eval/results/:resultId`，复用 X-QEVAL0 `parseDocumentEvaluationRunRequest()` 与 D-QEVAL1 `runDocumentEvaluation()`。
-    - 结果仅保存在 server 进程内存 `Map`，不新增 DB / schema / archive；符合 D-QEVAL1“零新表、不落库”的 P0 口径。
-  - **未做范围**：
-    - AnaX workflow run 详情页「触发文档评测」快捷入口为 P1 follow-up，本次未做。
-    - 文档评测暂不并入 LabOverview / regression timeline，因为当前无持久化历史列表 API，避免在总览里伪造历史。
-  - **前序状态仍有效**：SkillLab registry candidate 评测闭环代码仍待真实浏览器 smoke；E-COLLECT2 浏览器验收仍待执行。
+  - **A · 多 agent 博弈/协作复合单元**：
+    - 新增 `POST /api/sessions/:id/delegate-composite` 与 `GET /api/sessions/:id/composite-subagent-runs`，编排 `Planner → Coder → Reviewer`；Reviewer `revise` 时按 `maxReviewRounds` 打回 Coder，耗尽转 `waiting_for_help`。
+    - 三角色以内置 `SubAgentTemplate` 实现，不写入 `subagents.json`：Planner/Reviewer 不挂工具，Coder 仅挂 `duckdb-aggregate`，继续复用 `runDelegatedSubAgent` / `runSubAgentTurn` / 模板最小权限 cwd。
+    - `DelegateSubAgentCard` 增加「单 agent / 复合单元」模式切换与复合运行状态展示。
+  - **B · Shared Context Blackboard**：
+    - 新增 `subagent_blackboard_entries` 表 + `GET/POST /api/sessions/:id/subagent-blackboard`；scope 固定 `parent_session`，条目类型为 `metric_definition/business_rule/finding/assumption/note`。
+    - 子 agent systemPrompt 会读取同 parent session 最近黑板条目作为只读聚合口径/衍生结论；写入端有长度、表格、JSON rows/records/data/items 明细风险校验，禁止把原始明细或大表格放进 LLM 上下文。
+    - 成功 subagent 任务可在前端编辑后「写入黑板」，避免自动保存未复核内容。
+  - **C · Save as Skill**：
+    - 新增 `POST /api/subagent-tasks/:id/save-skill`，仅允许 `success` 任务；输入只取 brief、授权 clean_data 文件名、summary、报告 excerpt 等衍生产物。
+    - 复用既有 `distillSkillCandidate()`，产物固定 `source:"distilled"` / `status:"candidate"`，不自动 active、不绕过 Skill Registry 人审门。
+    - 前端成功任务新增 `Skill` 按钮；用户需到实验场 Skill Registry 评测后再采纳。
+  - **D · 工作流节点级运行落库**：
+    - 新增 `flow_node_runs` 表 + `FlowNodeRun` 双侧类型；`multi-agent-runner` 增加可选 `nodeRunWriter` DI hook，runner 不直接 import DB。
+    - `handleExecuteMultiAgent` 接线 writer：node start 插入 running，普通节点/gate/budget/blocked/abort 更新终态，`outputPath` 记录节点运行目录。
+    - `GET /api/workflow-agents` 返回 `nodeRuns`；`SubAgentBoard` 工作流 agent 卡优先显示新节点级统计，老历史无 nodeRuns 时保留流水线级统计。
+  - **接缝/共享层改动已按用户确认执行**：
+    - 双侧 `types.ts` 新增 `CompositeSubAgentRun` / `SubAgentBlackboardEntry` / `FlowNodeRun`；`SubAgentTemplate.source` 扩为 `"custom" | "builtin"`。
+    - `db/shared.ts` 新增三张共享表及 CRUD；legacy `index.ts` 新增 subagent 相关 API，因现有 delegate runner 仍在该文件附近。
+  - **前序状态仍有效**：
+    - E-QEVAL2 文档评测浏览器/API smoke 仍待跑。
+    - SkillLab registry candidate 浏览器 smoke、E-COLLECT2 浏览器验收仍待执行。
 - 校验：
   - `npm run typecheck` ✅（server + web）
   - `npm run build` ✅（仅既有 echarts dynamic import / chunk size warnings）
-  - `node --experimental-strip-types --test server/src/document-evaluation-runner.test.ts` ✅（13/13）
+  - `node --experimental-strip-types --test server/src/multi-agent-runner.test.ts` ✅（35/35）
+  - `node --experimental-strip-types --test server/src/memory-to-skill.test.ts` ✅（8/8）
 - 下一步：
+  - **subagents 进阶浏览器/API smoke**：
+    - 用真实 session + clean_data 文件跑「复合单元」，确认 Planner/Coder/Reviewer 子任务顺序、Reviewer pass/revise、轮次耗尽状态与前端刷新。
+    - 成功任务写入黑板后再启动新 subagent，确认黑板只读注入、生效且不包含明细。
+    - 成功任务点 `Skill`，确认产出 registry candidate，并在 SkillLab baseline 对照后采纳/弃用。
+  - **flow_node_runs smoke**：新跑一个 multi-agent workflow，确认 `flow_node_runs` 有 per-node 记录，看板「工作流 agent」出现节点级统计；老 flow_run 无节点记录属预期，不回填。
   - **E-QEVAL2 浏览器/API smoke**：用真实 workspace 的 `report/*.md` 或 `060_reports/*.md` 路径跑「实验场 → 文档评测」，确认 run→GET→结果视图闭环；若使用 Vite dev，需确保 proxy 指向已包含新 route 的 server 进程。
-  - **总控终审接缝**：确认 `document_eval` 加入 `SubTab` / `LAB_SUB_TABS` 的接缝改动，以及 P0 进程内存结果口径是否可接受。
   - **SkillLab registry candidate 浏览器 smoke**：制造/保留一个 `skill_registry.status="candidate"`，跑 baseline 对照，确认报告页可采纳/弃用并刷新候选列表。
   - **E-COLLECT2 浏览器验收**：知识库→收集 tab 实跑。
   - **可选真实 smoke**：带 analysis 工具真实工作区跑 chat/flow chat，确认数字锁段注入与 metric_verification 告警 UI。
-- 阻塞：无硬阻塞；浏览器按钮直连新 route 需要运行包含本次代码的 server（当前 Vite proxy 默认仍指向 8787）。
+- 阻塞：无硬阻塞；本次 subagents 进阶未跑真实 pi/browser smoke，需运行包含新 API 的 server。
 - 开放问题（需总控）：
+  - 本次新增的 `CompositeSubAgentRun` / `SubAgentBlackboardEntry` / `FlowNodeRun` 双侧类型、`SubAgentTemplate.source="builtin"`、`db/shared.ts` 三表是否正式纳入接缝层。
+  - 复合单元目前是自编排而非复用 `multi-agent-runner.ts`，总控是否接受该分层；若未来要可视化/可配置，是否升级为 workflow 模板。
+  - Shared Blackboard 当前 scope 固定 `parent_session`，workspace 级共享和互改/删除权限暂未实现；是否进入后续接缝设计。
+  - Save as Skill 当前只固化为 Skill candidate，不固化为 ExtractionTool；若要 Save as Tool，需要另做工具目录写入、安全审计和评测口径。
+  - `flow_node_runs` 仅记录新运行，历史 flow_run 不回填；总控是否需要归档/trace 下钻的正式 UI 契约。
   - `document_eval` 是否正式纳入接缝层 `SubTab` / `LAB_SUB_TABS`，还是后续改成字符串 escape 方案。
   - 文档评测 P0 是否保持“进程内存结果、不入 LabOverview/回归”，或升级为持久化 evaluation history / archive。
   - AnaX workflow run 详情页的「触发文档评测」快捷入口是否进入 P1，并由谁扩 run 详情接缝。
@@ -269,6 +287,10 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - ExtractionTool 结果产物预览**复用现有工具预览端点** `/api/extraction-tools/preview`，不新增 ChatPane 专属 artifact API。结果卡从 `results[].outputs` 提取产物路径；若工具 summary 不含该字段，只展示原始 JSON。
 - **subagent 全局运行看板（2026-06-17 D·看板）**：`listAllSubAgentTasks` JOIN sessions 派生 `workspace_id`，不补 `subagent_tasks` 列、零迁移。`SubAgentTask.workspaceId` 是只读派生字段（JOIN 产出），不是持久化列——workspaceId 是 session 固有属性（单一真源），存进 task 冗余且可能与 session 不一致。看板 ws trace 复用 `subagent_event` 全局广播，按 `workspaceId` 过滤；`subagent_run_start`/`subagent_run_end` 触发全量刷新。前端筛选（工作区/状态/模板）优先走 server 端 status 参数减少传输量，模板筛选纯前端（`templateId` 不在 server 筛选参数中）。
 - **subagent skill 子集绑定（2026-06-17，skill 自进化 F；2026-06-18 收尾修订；X-ZH10 收口 2026-06-26）**：委派子 agent 不再继承 pi 默认 skill 策略。双侧 `SubAgentTaskInput.skillPaths?: string[]` 在请求层仍可省略，但执行层 `runSubAgentTurn` 会把 `undefined` 兜底为 `[]`，即默认 `--no-skills`；显式 `[]` 表示禁用 skill，非空数组表示仅注入指定 skill 子集。后端 delegate 入口必须用 `validateSkillPaths(workspace.rootPath, value, { mode:"strict" })` 校验，禁止 slug 直传或路径绕过；校验后的值透传到 `runSubAgentTurn`，由 pi-adapter 生成 `--no-skills --skill <path>` 或空数组禁用。前端 `DelegateSubAgentCard` 用三态按钮表达语义，指定模式复用 `SkillSelector`；**指定模式必须非空才能提交**，不能把“指定但未选择”发送成 `[]`，否则会与“禁用 skill”的协议语义冲突。当前 `skillPaths` 仅为运行时输入，不写 `subagent_tasks`，因此历史看板不展示、resume 不恢复；若要审计/复用需另扩 schema/provenance。
+- **subagent 复合单元编排（2026-06-27 进阶 A）**：Planner/Coder/Reviewer 采用 E 侧自编排而不是复用 `multi-agent-runner.ts`。原因：它复用的是 `SubAgentTemplate` persona/toolIds 最小权限和 `runDelegatedSubAgent` 的 HITL/报告/trace 语义，Reviewer 打回 Coder 是 task orchestration，不是通用 workflow 节点执行。内置模板不写 `subagents.json`，避免污染用户模板；Planner/Reviewer `toolIds=[]`，Coder 仅挂 `duckdb-aggregate`。若后续要可视化配置或用户自定义角色链，再考虑升级为 workflow 模板或正式编排 schema。
+- **subagent 共享黑板安全边界（2026-06-27 进阶 B）**：黑板内容会进入 LLM systemPrompt，因此只能保存聚合口径、业务规则、假设或衍生结论。scope 当前固定 `parent_session`，禁止 workspace 级默认共享；写入端必须做聚合度校验（长度、大表格、JSON rows/records/data/items 等明细风险），前端必须让用户编辑确认后再保存。黑板不是数据湖、不是报告归档，也不承担原始明细传递；任何自动写入黑板的需求都要先定义更强的明细拦截和审计口径。
+- **subagent Save as Skill 边界（2026-06-27 进阶 C）**：成功 subagent 任务可以一键蒸馏为 Skill candidate，但只能复用 `distillSkillCandidate()`，产物固定 `source:"distilled"` / `status:"candidate"`，不自动 active、不绕过 Skill Registry 人审门。蒸馏输入只取 brief、授权 clean_data 文件名、summary、报告 excerpt 等衍生产物；不读取 draw_data、不把子 agent trace 中的明细表格当作稳定资产。当前明确否决“同时 Save as ExtractionTool”——工具固化涉及 `server/tools/` 写入、manifest、参数 schema、评测与安全审计，必须另开卡。
+- **workflow 节点级运行落库（2026-06-27 看板方案 C）**：`flow_node_runs` 是新运行的 per-node observability 表，不回填历史 flow_run。`multi-agent-runner` 只能通过可选 `nodeRunWriter` DI 写节点状态，runner 不直连 DB，避免评测 runner / 单测 / 其他调用被迫引入持久化副作用。生产接线点放在 `handleExecuteMultiAgent`，由 routes 层知道 flow/run/workspace 语境后写入。看板优先展示 nodeRuns，老历史缺 nodeRuns 时保留流水线级统计。
 
 ### Phase5 runner 范式收敛评估（2026-06-21）
 
@@ -341,6 +363,13 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 ---
 
 ## 五、已接入缝变更（时间倒序）
+
+### 2026-06-27：subagents 进阶接缝（复合单元 / 黑板 / 节点级运行）
+- 用户确认后由 E 执行接缝增量：双侧 `types.ts` 新增 `CompositeSubAgentRun`、`SubAgentBlackboardEntry`、`FlowNodeRun`，并把 `SubAgentTemplate.source` 扩为 `"custom" | "builtin"`。
+- `server/src/db/shared.ts` 新增 `composite_subagent_runs`、`subagent_blackboard_entries`、`flow_node_runs` 三张表与 CRUD；`flow_node_runs` 仅记录新运行，历史不回填。
+- `multi-agent-runner.ts` 只新增可选 `nodeRunWriter` DI hook，默认无副作用；生产落库在 `routes/engine.ts handleExecuteMultiAgent` 接线，保持 runner 可测试。
+- legacy `index.ts` 新增 subagent API（delegate-composite / composite-subagent-runs / subagent-blackboard / save-skill），原因是现有 prod delegate runner 仍在 legacy 附近；后续是否迁到 `routes/engine.ts` 待总控统一裁决。
+- 验收：`npm run typecheck` ✅、`npm run build` ✅、`multi-agent-runner.test.ts` ✅、`memory-to-skill.test.ts` ✅；无 git 操作。
 
 ### 2026-06-11：工作流与任务栏正式分离（A 方案）
 - **总控主导**。`server/src/db.ts:859` — `listSessions` SQL 加 `AND workflow_id IS NULL`，任务栏不再返回带 workflowId 的 session。

@@ -18,7 +18,7 @@
 | 需求 | 方案文件 | 入池日期 | 状态 | 一句话 |
 |---|---|---|---|---|
 | onto-xanthil 全局本体扩展 | [onto-xanthil-全局本体扩展.md](onto-xanthil-全局本体扩展.md) | 2026-06-11 | 暂缓 | 把分析运行时制品（任务/洞察/报告/run/action/eval）对象化并串成 Search Around 血缘 + Action 治理 + 对象级 Trace/Eval 的全局对象图 |
-| 安全红线·skill 沙箱 + session 敞口 | [安全红线-skill沙箱与session敞口.md](安全红线-skill沙箱与session敞口.md) | 2026-06-27 | 暂缓 | 两项安全红线沉淀：① 代码执行类 skill 的沙箱（A 禁用脚本/B 进程隔离+网络禁用+白名单，须在 skill「可执行」落地前先定红线）；② 数据分析 pi session 内建 bash/read 可达 draw_data 的既有敞口（行为性不披露→评估是否升级硬沙箱）。均不阻塞当前功能，重启触发条件见文档 |
+| 安全红线·skill 沙箱 + session 敞口 + pandas 工具 | [安全红线-skill沙箱与session敞口.md](安全红线-skill沙箱与session敞口.md) | 2026-06-27 | 暂缓 | 三项安全红线沉淀：① 代码执行类 skill 的沙箱（A 禁用脚本/B 进程隔离+网络禁用+白名单，须在 skill「可执行」落地前先定红线）；② 数据分析 pi session 内建 bash/read 可达 draw_data 的既有敞口（行为性不披露→评估是否升级硬沙箱）；③ pandas-sandbox 受限 Python 计算工具（攻击面大于 duckdb，待 duckdb-aggregate 落地后判断、前置=run 端点硬锁 clean_data）。三项强收敛=给 pi 执行环境装统一单点守卫；均不阻塞当前功能，重启触发条件见文档 |
 | 模拟决策 | （方案待迁入本池） | 2026-06-11 | 暂缓 | 模拟推演 / 决策智能模块（曾设想一级 tab「决策」下 决策看板/工作台/助手/复盘 + `sim/` 推演引擎），已从产品剥离；**2026-06-27 删除 wiki 最后一张「导航/渲染接线」派发卡，代码侧骨架与接缝字面量已无残留（`DecisionTabs.tsx`/Tab `"decision"`/SubTab `decision_board` 等均已移除，仅余无关的 `decision_tree`）**；原方案散见会话与 `decision-intelligence` 记忆，捞出前需补齐方案文件 |
 | agent-loop 工作流闭环 | [agent-loop-工作流闭环.md](agent-loop-工作流闭环.md) | 2026-06-13 | 暂缓 | 给工作流 runner 加"gate 失败→带证据回跳上游重跑+预算约束"的反馈闭环，让 DAG 单向流升级为 agent-loop；植入工作流而非另开模块，MVP=SQL 修复 loop。**2026-06-23 增补 §3.5**(Affordance Harness 2605.00663)：诊断式定向纠正(按缺陷类别路由)+benefit/cost 预算路由 |
 | subagents 看板 · 节点级运行落库 | [subagents看板-节点级运行落库.md](subagents看板-节点级运行落库.md) | 2026-06-20 | 暂缓 | 工作流节点运行态不落库（只流式广播），新建 `flow_node_runs` 表 + runner 落库，让看板到真 agent 粒度统计；方案 A（流水线级聚合）先做，本条为治本增强排后续 |

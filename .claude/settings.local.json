@@ -254,7 +254,9 @@
       "Bash(ps -Eww -p 5306)",
       "Bash(pi -p --mode json --no-skills --no-context-files --tools web_search,subagent,bash \"不要调用任何工具。仅以一行逗号分隔列出你当前实际可用的工具名称。\")",
       "Bash(node --experimental-strip-types --test server/src/memory-injection.test.ts)",
-      "Bash(node --experimental-strip-types --test server/src/document-evaluation-runner.test.ts)"
+      "Bash(node --experimental-strip-types --test server/src/document-evaluation-runner.test.ts)",
+      "Read(//Users/huangbo/.pi-xanthil/workspaces/76bc1a51-5278-4144-9c3a-b643ca786643/.pi/skills/xanthil-extraction-tools/**)",
+      "Bash(git *)"
     ]
   }
 }

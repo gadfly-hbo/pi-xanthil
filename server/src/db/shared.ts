@@ -1,6 +1,19 @@
 import { randomUUID } from "node:crypto";
 import { db } from "../db.ts";
-import type { MemoryItemKind, WorkspaceMemoryEnablement, ForkBranch, SubAgentTask, SubAgentTaskStatus } from "../types.ts";
+import type {
+  CompositeSubAgentRole,
+  CompositeSubAgentRun,
+  CompositeSubAgentRunStatus,
+  FlowNodeRun,
+  FlowNodeRunStatus,
+  MemoryItemKind,
+  SubAgentBlackboardEntry,
+  SubAgentBlackboardKind,
+  SubAgentTask,
+  SubAgentTaskStatus,
+  WorkspaceMemoryEnablement,
+  ForkBranch,
+} from "../types.ts";
 
 /**
  * 【总控 · 共享域】db 表 slot —— owner: Claude(总控)
@@ -48,10 +61,56 @@ export function initSharedTables(): void {
       created_at        INTEGER NOT NULL,
       ended_at          INTEGER
     );
+    CREATE TABLE IF NOT EXISTS composite_subagent_runs (
+      id                  TEXT PRIMARY KEY,
+      parent_session_id   TEXT NOT NULL,
+      brief               TEXT NOT NULL,
+      data_files          TEXT NOT NULL DEFAULT '[]',
+      model               TEXT,
+      status              TEXT NOT NULL DEFAULT 'running',
+      planner_task_id     TEXT,
+      coder_task_ids      TEXT NOT NULL DEFAULT '[]',
+      reviewer_task_ids   TEXT NOT NULL DEFAULT '[]',
+      current_role        TEXT,
+      review_rounds       INTEGER NOT NULL DEFAULT 0,
+      max_review_rounds   INTEGER NOT NULL DEFAULT 2,
+      summary             TEXT,
+      error               TEXT,
+      created_at          INTEGER NOT NULL,
+      ended_at            INTEGER
+    );
+    CREATE TABLE IF NOT EXISTS subagent_blackboard_entries (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL,
+      parent_session_id TEXT NOT NULL,
+      source_task_id    TEXT,
+      scope             TEXT NOT NULL DEFAULT 'parent_session',
+      kind              TEXT NOT NULL,
+      title             TEXT NOT NULL,
+      content           TEXT NOT NULL,
+      created_at        INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS flow_node_runs (
+      id           TEXT PRIMARY KEY,
+      flow_run_id  TEXT NOT NULL,
+      flow_id      TEXT NOT NULL,
+      node_id      TEXT NOT NULL,
+      role         TEXT,
+      kind         TEXT NOT NULL,
+      status       TEXT NOT NULL DEFAULT 'running',
+      started_at   INTEGER NOT NULL,
+      ended_at     INTEGER,
+      output_path  TEXT
+    );
   `);
   db.exec("CREATE INDEX IF NOT EXISTS idx_fork_branches_parent ON fork_branches(parent_session_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_fork_branches_branch ON fork_branches(branch_session_id)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_subagent_tasks_parent ON subagent_tasks(parent_session_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_composite_subagent_runs_parent ON composite_subagent_runs(parent_session_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_subagent_blackboard_parent ON subagent_blackboard_entries(parent_session_id, created_at DESC)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_subagent_blackboard_workspace ON subagent_blackboard_entries(workspace_id, created_at DESC)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_flow_node_runs_flow_node ON flow_node_runs(flow_id, node_id)");
+  db.exec("CREATE INDEX IF NOT EXISTS idx_flow_node_runs_run ON flow_node_runs(flow_run_id)");
 
   // 计算工具·skill 管理：项目级 skill 生命周期注册表（卡1/3 交付）。
   // 内容真源 = <workspace>/.pi/skills/<slug>/SKILL.md；本表存元数据/生命周期态。
@@ -234,6 +293,213 @@ export function finishSubAgentTask(
   db.prepare(
     "UPDATE subagent_tasks SET status = ?, summary = ?, report_path = ?, error = ?, ended_at = ? WHERE id = ?",
   ).run(patch.status, patch.summary ?? null, patch.reportPath ?? null, patch.error ?? null, Date.now(), id);
+}
+
+// ---- 复合 subagent 编排 CRUD ----
+
+interface CompositeSubAgentRunRow {
+  id: string; parent_session_id: string; workspace_id?: string; brief: string; data_files: string; model: string | null;
+  status: string; planner_task_id: string | null; coder_task_ids: string; reviewer_task_ids: string; current_role: string | null;
+  review_rounds: number; max_review_rounds: number; summary: string | null; error: string | null; created_at: number; ended_at: number | null;
+}
+
+function parseJsonStringArray(value: string): string[] {
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return Array.isArray(parsed) ? parsed.map(String) : [];
+  } catch {
+    return [];
+  }
+}
+
+function parseCompositeSubAgentRun(r: CompositeSubAgentRunRow): CompositeSubAgentRun {
+  return {
+    id: r.id,
+    parentSessionId: r.parent_session_id,
+    workspaceId: r.workspace_id,
+    brief: r.brief,
+    dataFiles: parseJsonStringArray(r.data_files),
+    model: r.model ?? undefined,
+    status: r.status as CompositeSubAgentRunStatus,
+    plannerTaskId: r.planner_task_id ?? undefined,
+    coderTaskIds: parseJsonStringArray(r.coder_task_ids),
+    reviewerTaskIds: parseJsonStringArray(r.reviewer_task_ids),
+    currentRole: (r.current_role ?? undefined) as CompositeSubAgentRole | undefined,
+    reviewRounds: r.review_rounds,
+    maxReviewRounds: r.max_review_rounds,
+    summary: r.summary ?? undefined,
+    error: r.error ?? undefined,
+    createdAt: r.created_at,
+    endedAt: r.ended_at ?? undefined,
+  };
+}
+
+export function createCompositeSubAgentRun(input: { parentSessionId: string; brief: string; dataFiles: string[]; model?: string; maxReviewRounds?: number }): CompositeSubAgentRun {
+  const id = randomUUID();
+  const now = Date.now();
+  const maxReviewRounds = Math.max(1, Math.min(5, Math.trunc(input.maxReviewRounds ?? 2)));
+  db.prepare(
+    `INSERT INTO composite_subagent_runs (
+      id, parent_session_id, brief, data_files, model, status, coder_task_ids, reviewer_task_ids,
+      review_rounds, max_review_rounds, created_at
+    ) VALUES (?, ?, ?, ?, ?, 'running', '[]', '[]', 0, ?, ?)`,
+  ).run(id, input.parentSessionId, input.brief, JSON.stringify(input.dataFiles), input.model ?? null, maxReviewRounds, now);
+  return {
+    id,
+    parentSessionId: input.parentSessionId,
+    brief: input.brief,
+    dataFiles: input.dataFiles,
+    model: input.model,
+    status: "running",
+    coderTaskIds: [],
+    reviewerTaskIds: [],
+    reviewRounds: 0,
+    maxReviewRounds,
+    createdAt: now,
+  };
+}
+
+export function getCompositeSubAgentRun(id: string): CompositeSubAgentRun | undefined {
+  const r = db.prepare("SELECT * FROM composite_subagent_runs WHERE id = ?").get(id) as unknown as CompositeSubAgentRunRow | undefined;
+  return r ? parseCompositeSubAgentRun(r) : undefined;
+}
+
+export function listCompositeSubAgentRuns(parentSessionId: string): CompositeSubAgentRun[] {
+  return (db.prepare("SELECT * FROM composite_subagent_runs WHERE parent_session_id = ? ORDER BY created_at DESC").all(parentSessionId) as unknown as CompositeSubAgentRunRow[]).map(parseCompositeSubAgentRun);
+}
+
+export function updateCompositeSubAgentRun(id: string, patch: {
+  status?: CompositeSubAgentRunStatus;
+  plannerTaskId?: string;
+  coderTaskIds?: string[];
+  reviewerTaskIds?: string[];
+  currentRole?: CompositeSubAgentRole | null;
+  reviewRounds?: number;
+  summary?: string;
+  error?: string;
+  ended?: boolean;
+}): void {
+  const current = getCompositeSubAgentRun(id);
+  if (!current) return;
+  db.prepare(
+    `UPDATE composite_subagent_runs SET
+      status = ?, planner_task_id = ?, coder_task_ids = ?, reviewer_task_ids = ?, current_role = ?,
+      review_rounds = ?, summary = ?, error = ?, ended_at = ?
+     WHERE id = ?`,
+  ).run(
+    patch.status ?? current.status,
+    patch.plannerTaskId ?? current.plannerTaskId ?? null,
+    JSON.stringify(patch.coderTaskIds ?? current.coderTaskIds),
+    JSON.stringify(patch.reviewerTaskIds ?? current.reviewerTaskIds),
+    patch.currentRole === null ? null : patch.currentRole ?? current.currentRole ?? null,
+    patch.reviewRounds ?? current.reviewRounds,
+    patch.summary ?? current.summary ?? null,
+    patch.error ?? current.error ?? null,
+    patch.ended ? Date.now() : current.endedAt ?? null,
+    id,
+  );
+}
+
+// ---- subagent 共享黑板 CRUD ----
+
+interface SubAgentBlackboardEntryRow {
+  id: string; workspace_id: string; parent_session_id: string; source_task_id: string | null;
+  scope: string; kind: string; title: string; content: string; created_at: number;
+}
+
+function parseSubAgentBlackboardEntry(r: SubAgentBlackboardEntryRow): SubAgentBlackboardEntry {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    parentSessionId: r.parent_session_id,
+    sourceTaskId: r.source_task_id ?? undefined,
+    scope: "parent_session",
+    kind: r.kind as SubAgentBlackboardKind,
+    title: r.title,
+    content: r.content,
+    createdAt: r.created_at,
+  };
+}
+
+export function createSubAgentBlackboardEntry(input: {
+  workspaceId: string;
+  parentSessionId: string;
+  sourceTaskId?: string;
+  kind: SubAgentBlackboardKind;
+  title: string;
+  content: string;
+}): SubAgentBlackboardEntry {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO subagent_blackboard_entries (
+      id, workspace_id, parent_session_id, source_task_id, scope, kind, title, content, created_at
+    ) VALUES (?, ?, ?, ?, 'parent_session', ?, ?, ?, ?)`,
+  ).run(id, input.workspaceId, input.parentSessionId, input.sourceTaskId ?? null, input.kind, input.title, input.content, now);
+  return { id, workspaceId: input.workspaceId, parentSessionId: input.parentSessionId, sourceTaskId: input.sourceTaskId, scope: "parent_session", kind: input.kind, title: input.title, content: input.content, createdAt: now };
+}
+
+export function listSubAgentBlackboardEntries(parentSessionId: string): SubAgentBlackboardEntry[] {
+  return (db.prepare("SELECT * FROM subagent_blackboard_entries WHERE parent_session_id = ? ORDER BY created_at DESC").all(parentSessionId) as unknown as SubAgentBlackboardEntryRow[]).map(parseSubAgentBlackboardEntry);
+}
+
+// ---- workflow 节点运行 CRUD ----
+
+interface FlowNodeRunRow {
+  id: string; flow_run_id: string; flow_id: string; flow_name?: string; workspace_id?: string; node_id: string;
+  role: string | null; kind: string; status: string; started_at: number; ended_at: number | null; output_path: string | null;
+}
+
+function parseFlowNodeRun(r: FlowNodeRunRow): FlowNodeRun {
+  return {
+    id: r.id,
+    flowRunId: r.flow_run_id,
+    flowId: r.flow_id,
+    flowName: r.flow_name,
+    workspaceId: r.workspace_id,
+    nodeId: r.node_id,
+    role: r.role ?? undefined,
+    kind: r.kind as FlowNodeRun["kind"],
+    status: r.status as FlowNodeRunStatus,
+    startedAt: r.started_at,
+    endedAt: r.ended_at ?? undefined,
+    outputPath: r.output_path ?? undefined,
+  };
+}
+
+export function startFlowNodeRun(input: { flowRunId: string; flowId: string; nodeId: string; role?: string; kind: FlowNodeRun["kind"] }): FlowNodeRun {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    "INSERT INTO flow_node_runs (id, flow_run_id, flow_id, node_id, role, kind, status, started_at) VALUES (?, ?, ?, ?, ?, ?, 'running', ?)",
+  ).run(id, input.flowRunId, input.flowId, input.nodeId, input.role ?? null, input.kind, now);
+  return { id, flowRunId: input.flowRunId, flowId: input.flowId, nodeId: input.nodeId, role: input.role, kind: input.kind, status: "running", startedAt: now };
+}
+
+export function finishFlowNodeRun(id: string, patch: { status: FlowNodeRunStatus; outputPath?: string }): void {
+  db.prepare("UPDATE flow_node_runs SET status = ?, ended_at = ?, output_path = ? WHERE id = ?").run(patch.status, Date.now(), patch.outputPath ?? null, id);
+}
+
+export function listFlowNodeRuns(filter: { workspaceId?: string; flowId?: string; limit?: number } = {}): FlowNodeRun[] {
+  const limit = Math.min(Math.max(Math.floor(filter.limit ?? 500), 1), 1000);
+  const where: string[] = [];
+  const params: Array<string | number> = [];
+  if (filter.workspaceId) {
+    where.push("f.workspace_id = ?");
+    params.push(filter.workspaceId);
+  }
+  if (filter.flowId) {
+    where.push("n.flow_id = ?");
+    params.push(filter.flowId);
+  }
+  params.push(limit);
+  const sql = `SELECT n.*, f.workspace_id, f.name AS flow_name
+    FROM flow_node_runs n
+    JOIN flows f ON f.id = n.flow_id
+    ${where.length ? `WHERE ${where.join(" AND ")}` : ""}
+    ORDER BY n.started_at DESC
+    LIMIT ?`;
+  return (db.prepare(sql).all(...params) as unknown as FlowNodeRunRow[]).map(parseFlowNodeRun);
 }
 
 /**

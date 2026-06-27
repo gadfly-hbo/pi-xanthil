@@ -30,9 +30,10 @@ export interface ValidateSkillPathOptions {
 
 export function listSkills(workspaceRoot: string): PiSkill[] {
   ensureExtractionToolSkill(workspaceRoot);
+  // 只扫 pi 自家 skill 根（pi 全局 + 各级项目 .pi/skills）。
+  // 不扫 ~/.agents/skills —— 那是 arkcli connect 等外部工具的安装位，不应混进 pi-xanthil skill 选择器。
   const roots: SkillRoot[] = [
     { path: join(homedir(), ".pi", "agent", "skills"), source: "global" },
-    { path: join(homedir(), ".agents", "skills"), source: "global" },
     ...projectSkillRoots(workspaceRoot),
   ];
   const seen = new Set<string>();
@@ -144,7 +145,6 @@ function projectSkillRoots(workspaceRoot: string): SkillRoot[] {
   let current = resolve(workspaceRoot);
   while (true) {
     roots.push({ path: join(current, ".pi", "skills"), source: "project" });
-    roots.push({ path: join(current, ".agents", "skills"), source: "project" });
     const parent = dirname(current);
     if (parent === current) break;
     current = parent;

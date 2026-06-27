@@ -3,7 +3,7 @@ import { Bot, ChevronDown, ChevronRight, ExternalLink, FileText, HelpCircle, Loa
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { gateway } from "@/lib/ws";
-import type { ServerMessage, SubAgentTask, SubAgentTaskStatus, SubAgentTemplate, Workspace, WorkflowAgentEntry, WorkflowRunView } from "@/types";
+import type { FlowNodeRun, ServerMessage, SubAgentTask, SubAgentTaskStatus, SubAgentTemplate, Workspace, WorkflowAgentEntry, WorkflowRunView } from "@/types";
 
 const flowStatuses: SubAgentTaskStatus[] = ["running", "success", "failed", "aborted"];
 
@@ -82,6 +82,7 @@ export function SubAgentBoard({ templates }: { templates: SubAgentTemplate[] }) 
   const [error, setError] = useState("");
   const [wfAgents, setWfAgents] = useState<WorkflowAgentEntry[]>([]);
   const [wfRuns, setWfRuns] = useState<WorkflowRunView[]>([]);
+  const [wfNodeRuns, setWfNodeRuns] = useState<FlowNodeRun[]>([]);
   const [flowFilter, setFlowFilter] = useState("all");
 
   const templateName = useMemo(() => new Map(templates.map((t) => [t.id, t.name])), [templates]);
@@ -92,7 +93,7 @@ export function SubAgentBoard({ templates }: { templates: SubAgentTemplate[] }) 
     setError("");
     Promise.all([
       api.listAllSubAgentTasks({ limit: 200, workspaceId: workspaceId || undefined, status: status !== "all" ? status : undefined }).then(setTasks),
-      api.listWorkflowAgents(workspaceId || undefined).then((b) => { setWfAgents(b.agents); setWfRuns(b.runs); }),
+      api.listWorkflowAgents(workspaceId || undefined).then((b) => { setWfAgents(b.agents); setWfRuns(b.runs); setWfNodeRuns(b.nodeRuns ?? []); }),
     ])
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
@@ -155,13 +156,23 @@ export function SubAgentBoard({ templates }: { templates: SubAgentTemplate[] }) 
     return Array.from(byKey.values()).sort((a, b) => ((b.last?.createdAt ?? 0) - (a.last?.createdAt ?? 0)) || a.name.localeCompare(b.name));
   }, [templates, tasks, templateName, taskTemplateKey]);
 
-  // 工作流 agent 花名册：按 flow 分组其 workflow.json 节点 + 聚合 flow_runs 流水线级运行统计（节点级运行态未落库，见需求池）。
+  // 工作流 agent 花名册：按 flow 分组其 workflow.json 节点 + 新增 nodeRuns 粒度统计；老历史无 nodeRuns 时保留流水线级统计。
   const workflowRoster = useMemo(() => {
-    type Group = { flowId: string; flowName: string; nodes: WorkflowAgentEntry[]; total: number; byStatus: Record<string, number>; last?: WorkflowRunView };
+    type Group = {
+      flowId: string;
+      flowName: string;
+      nodes: WorkflowAgentEntry[];
+      total: number;
+      byStatus: Record<string, number>;
+      nodeTotal: number;
+      nodeByStatus: Record<string, number>;
+      nodeLast?: FlowNodeRun;
+      last?: WorkflowRunView;
+    };
     const byFlow = new Map<string, Group>();
     const ensure = (flowId: string, flowName: string): Group => {
       let g = byFlow.get(flowId);
-      if (!g) { g = { flowId, flowName, nodes: [], total: 0, byStatus: {}, last: undefined }; byFlow.set(flowId, g); }
+      if (!g) { g = { flowId, flowName, nodes: [], total: 0, byStatus: {}, nodeTotal: 0, nodeByStatus: {}, nodeLast: undefined, last: undefined }; byFlow.set(flowId, g); }
       return g;
     };
     for (const a of wfAgents) ensure(a.flowId, a.flowName).nodes.push(a);
@@ -171,8 +182,14 @@ export function SubAgentBoard({ templates }: { templates: SubAgentTemplate[] }) 
       g.byStatus[r.status] = (g.byStatus[r.status] ?? 0) + 1;
       if (!g.last || r.startedAt > g.last.startedAt) g.last = r;
     }
-    return Array.from(byFlow.values()).sort((a, b) => ((b.last?.startedAt ?? 0) - (a.last?.startedAt ?? 0)) || a.flowName.localeCompare(b.flowName));
-  }, [wfAgents, wfRuns]);
+    for (const n of wfNodeRuns) {
+      const g = ensure(n.flowId, n.flowName ?? n.flowId);
+      g.nodeTotal++;
+      g.nodeByStatus[n.status] = (g.nodeByStatus[n.status] ?? 0) + 1;
+      if (!g.nodeLast || n.startedAt > g.nodeLast.startedAt) g.nodeLast = n;
+    }
+    return Array.from(byFlow.values()).sort((a, b) => ((b.nodeLast?.startedAt ?? b.last?.startedAt ?? 0) - (a.nodeLast?.startedAt ?? a.last?.startedAt ?? 0)) || a.flowName.localeCompare(b.flowName));
+  }, [wfAgents, wfRuns, wfNodeRuns]);
 
   const wfRunsFiltered = useMemo(() => flowFilter === "all" ? wfRuns : wfRuns.filter((r) => r.flowId === flowFilter), [wfRuns, flowFilter]);
   const wfAgentNodeCount = useMemo(() => wfAgents.filter((a) => a.kind === "agent").length, [wfAgents]);
@@ -253,12 +270,16 @@ export function SubAgentBoard({ templates }: { templates: SubAgentTemplate[] }) 
         const gateN = g.nodes.filter((n) => n.kind === "gate").length;
         const toolN = g.nodes.filter((n) => n.kind === "tool").length;
         return <button key={g.flowId} type="button" onClick={() => setFlowFilter(activeFilter ? "all" : g.flowId)} className={cn("rounded-md border p-2.5 text-left transition", activeFilter ? "border-neutral-900 bg-neutral-50 dark:border-neutral-100 dark:bg-neutral-800" : "border-neutral-200 bg-neutral-50/50 hover:bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/40 dark:hover:bg-neutral-800/50")}>
-          <div className="flex items-center gap-1.5"><Workflow className="h-3.5 w-3.5 shrink-0 text-neutral-400" /><span className="truncate text-[12.5px] font-medium text-neutral-800 dark:text-neutral-100">{g.flowName}</span><span className="ml-auto shrink-0 text-[11px] tabular-nums text-neutral-400">{g.total} 次</span></div>
+          <div className="flex items-center gap-1.5"><Workflow className="h-3.5 w-3.5 shrink-0 text-neutral-400" /><span className="truncate text-[12.5px] font-medium text-neutral-800 dark:text-neutral-100">{g.flowName}</span><span className="ml-auto shrink-0 text-[11px] tabular-nums text-neutral-400">{g.nodeTotal > 0 ? `${g.nodeTotal} 节点` : `${g.total} 次`}</span></div>
           {g.nodes.length > 0 && <div className="mt-0.5 truncate text-[10.5px] text-neutral-400">{g.nodes.map((n) => n.label).join(" · ")}</div>}
-          <div className="mt-1.5 flex flex-wrap gap-1 text-[10px]">{flowStatuses.map((s) => g.byStatus[s] ? <span key={s} className={cn("rounded px-1 py-0.5", statusClass[s])}>{statusLabel[s]} {g.byStatus[s]}</span> : null)}{g.total === 0 && <span className="rounded bg-neutral-100 px-1 py-0.5 text-neutral-400 dark:bg-neutral-800">未运行</span>}</div>
-          <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] text-neutral-400"><span>{agentN} agent</span>{gateN > 0 && <span>· {gateN} gate</span>}{toolN > 0 && <span>· {toolN} tool</span>}{g.last && <span>· 最近 {fmtTime(g.last.startedAt)}</span>}</div>
+          <div className="mt-1.5 flex flex-wrap gap-1 text-[10px]">{flowStatuses.map((s) => (g.nodeTotal > 0 ? g.nodeByStatus[s] : g.byStatus[s]) ? <span key={s} className={cn("rounded px-1 py-0.5", statusClass[s])}>{statusLabel[s]} {g.nodeTotal > 0 ? g.nodeByStatus[s] : g.byStatus[s]}</span> : null)}{g.total === 0 && g.nodeTotal === 0 && <span className="rounded bg-neutral-100 px-1 py-0.5 text-neutral-400 dark:bg-neutral-800">未运行</span>}</div>
+          <div className="mt-1 flex flex-wrap gap-x-2 text-[10px] text-neutral-400"><span>{agentN} agent</span>{gateN > 0 && <span>· {gateN} gate</span>}{toolN > 0 && <span>· {toolN} tool</span>}{g.nodeLast && <span>· 节点最近 {fmtTime(g.nodeLast.startedAt)}</span>}{!g.nodeLast && g.last && <span>· 最近 {fmtTime(g.last.startedAt)}</span>}</div>
         </button>;
       })}</div>}
+      {wfNodeRuns.length > 0 && <div className="mt-3 border-t border-neutral-100 pt-2.5 dark:border-neutral-800">
+        <div className="mb-1.5 flex items-center gap-2 text-[12px] font-medium text-neutral-700 dark:text-neutral-200"><FileText className="h-3.5 w-3.5 text-neutral-400" />节点运行<span className="text-[11px] font-normal text-neutral-400">{wfNodeRuns.filter((n) => flowFilter === "all" || n.flowId === flowFilter).length} 条新记录</span></div>
+        <div className="space-y-1.5">{wfNodeRuns.filter((n) => flowFilter === "all" || n.flowId === flowFilter).slice(0, 50).map((n) => <div key={n.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border border-neutral-200 bg-neutral-50/50 px-2.5 py-1.5 dark:border-neutral-800 dark:bg-neutral-950/40"><span className={cn("rounded px-1.5 py-0.5 text-[10px]", statusClass[n.status as SubAgentTaskStatus] ?? "bg-neutral-100 text-neutral-600 dark:bg-neutral-800")}>{statusLabel[n.status as SubAgentTaskStatus] ?? n.status}</span><span className="truncate text-[11.5px] font-medium text-neutral-800 dark:text-neutral-100">{n.flowName ?? n.flowId} · {n.nodeId}</span>{n.role && <span className="text-[10px] text-neutral-400">{n.role}</span>}<span className="ml-auto shrink-0 text-[10px] text-neutral-400">{fmtTime(n.startedAt)} → {fmtTime(n.endedAt)}</span>{n.outputPath && <span className="w-full truncate text-[10px] text-neutral-400">{n.outputPath}</span>}</div>)}</div>
+      </div>}
       {wfRuns.length > 0 && <div className="mt-3 border-t border-neutral-100 pt-2.5 dark:border-neutral-800">
         <div className="mb-1.5 flex items-center gap-2 text-[12px] font-medium text-neutral-700 dark:text-neutral-200"><FileText className="h-3.5 w-3.5 text-neutral-400" />工作流运行<span className="text-[11px] font-normal text-neutral-400">{wfRunsFiltered.length} 条{flowFilter !== "all" ? `（${workflowRoster.find((g) => g.flowId === flowFilter)?.flowName ?? flowFilter}）` : ""}</span></div>
         <div className="space-y-1.5">{wfRunsFiltered.slice(0, 50).map((r) => <div key={r.id} className="flex flex-wrap items-center gap-x-2 gap-y-0.5 rounded-md border border-neutral-200 bg-neutral-50/50 px-2.5 py-1.5 dark:border-neutral-800 dark:bg-neutral-950/40"><span className={cn("rounded px-1.5 py-0.5 text-[10px]", statusClass[r.status as SubAgentTaskStatus] ?? "bg-neutral-100 text-neutral-600 dark:bg-neutral-800")}>{statusLabel[r.status as SubAgentTaskStatus] ?? r.status}</span><span className="truncate text-[11.5px] font-medium text-neutral-800 dark:text-neutral-100">{r.flowName}</span><span className="ml-auto shrink-0 text-[10px] text-neutral-400">{fmtTime(r.startedAt)} → {fmtTime(r.endedAt)}</span><span className="w-full truncate text-[10px] text-neutral-400">{r.outputDir}</span></div>)}</div>

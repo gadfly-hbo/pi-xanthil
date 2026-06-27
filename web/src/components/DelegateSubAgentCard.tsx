@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { gateway } from "@/lib/ws";
 import { SkillSelector } from "@/components/SkillSelector";
-import type { PiEvent, PiModel, ServerMessage, SubAgentTask, SubAgentTemplate, SubAgentTraceKind, WorkspacePath } from "@/types";
+import type { CompositeSubAgentRun, PiEvent, PiModel, ServerMessage, SubAgentBlackboardEntry, SubAgentBlackboardKind, SubAgentTask, SubAgentTemplate, SubAgentTraceKind, WorkspacePath } from "@/types";
 
 function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (value: string) => void }) {
   const groups = models.reduce<Record<string, PiModel[]>>((acc, model) => {
@@ -150,6 +150,7 @@ interface Props {
 
 export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, onBackflow, embedded = false }: Props) {
   const [brief, setBrief] = useState("");
+  const [dispatchMode, setDispatchMode] = useState<"single" | "composite">("single");
   const [selectedModel, setSelectedModel] = useState(model);
   const [templates, setTemplates] = useState<SubAgentTemplate[]>([]);
   const [selectedTemplateId, setSelectedTemplateId] = useState("");
@@ -159,6 +160,8 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   const [cleanFiles, setCleanFiles] = useState<WorkspacePath[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [tasks, setTasks] = useState<SubAgentTask[]>([]);
+  const [compositeRuns, setCompositeRuns] = useState<CompositeSubAgentRun[]>([]);
+  const [blackboard, setBlackboard] = useState<SubAgentBlackboardEntry[]>([]);
   const [submitting, setSubmitting] = useState(false);
   const [loadingFiles, setLoadingFiles] = useState(false);
   const [error, setError] = useState("");
@@ -170,8 +173,13 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   const [traceRows, setTraceRows] = useState<Record<string, TraceRow[]>>({});
   const [resumeDrafts, setResumeDrafts] = useState<Record<string, { correction: string; correctedResult: string }>>({});
   const [resumingTaskId, setResumingTaskId] = useState("");
+  const [savingSkillId, setSavingSkillId] = useState("");
+  const [blackboardDraft, setBlackboardDraft] = useState<{ sourceTaskId?: string; kind: SubAgentBlackboardKind; title: string; content: string } | null>(null);
 
-  const running = useMemo(() => tasks.some((task) => task.status === "running"), [tasks]);
+  const running = useMemo(
+    () => tasks.some((task) => task.status === "running") || compositeRuns.some((run) => run.status === "running"),
+    [tasks, compositeRuns],
+  );
   const selectedTemplate = useMemo(
     () => templates.find((template) => template.id === selectedTemplateId) ?? null,
     [selectedTemplateId, templates],
@@ -181,6 +189,20 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   async function refreshTasks() {
     const next = await api.listSubAgentTasks(sessionId);
     setTasks(next);
+  }
+
+  async function refreshCompositeRuns() {
+    const next = await api.listCompositeSubAgentRuns(sessionId);
+    setCompositeRuns(next);
+  }
+
+  async function refreshBlackboard() {
+    const next = await api.listSubAgentBlackboard(sessionId);
+    setBlackboard(next);
+  }
+
+  async function refreshAll() {
+    await Promise.all([refreshTasks(), refreshCompositeRuns(), refreshBlackboard()]);
   }
 
   useEffect(() => {
@@ -212,6 +234,8 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
     setSpecifiedSkillPaths([]);
     setSelectedFiles([]);
     setTasks([]);
+    setCompositeRuns([]);
+    setBlackboard([]);
     setError("");
     setPreview(null);
     setBackflowTask(null);
@@ -219,7 +243,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
     setTraceRows({});
     setResumeDrafts({});
     setResumingTaskId("");
-    void refreshTasks().catch((err) => setError(String(err)));
+    void refreshAll().catch((err) => setError(String(err)));
   }, [sessionId]);
 
   useEffect(() => {
@@ -247,7 +271,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   useEffect(() => {
     if (!running) return;
     const timer = window.setInterval(() => {
-      void refreshTasks().catch((err) => setError(String(err)));
+      void refreshAll().catch((err) => setError(String(err)));
     }, 3000);
     return () => window.clearInterval(timer);
   }, [running, sessionId]);
@@ -267,7 +291,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
           .then((next) => {
             setTasks((current) => current.map((task) => task.id === next.id ? next : task));
           })
-          .catch(() => refreshTasks().catch((err) => setError(String(err))));
+          .catch(() => refreshAll().catch((err) => setError(String(err))));
       }
     });
   }, [sessionId]);
@@ -292,14 +316,20 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
     setSubmitting(true);
     setError("");
     try {
-      const task = await api.delegateSubAgent(sessionId, {
+      const input = {
         brief: text,
         dataFiles: selectedFiles,
         model: selectedModel || undefined,
         templateId: selectedTemplateId || undefined,
         skillPaths: skillMode === "default" ? undefined : specifiedSkillPaths,
-      });
-      setTasks((current) => [task, ...current.filter((item) => item.id !== task.id)]);
+      };
+      if (dispatchMode === "composite") {
+        const run = await api.delegateCompositeSubAgent(sessionId, { ...input, maxReviewRounds: 2 });
+        setCompositeRuns((current) => [run, ...current.filter((item) => item.id !== run.id)]);
+      } else {
+        const task = await api.delegateSubAgent(sessionId, input);
+        setTasks((current) => [task, ...current.filter((item) => item.id !== task.id)]);
+      }
       setBrief("");
     } catch (err) {
       setError(String(err));
@@ -312,7 +342,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
     setError("");
     try {
       await api.abortSubAgent(taskId);
-      await refreshTasks();
+      await refreshAll();
     } catch (err) {
       setError(String(err));
     }
@@ -380,6 +410,36 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
     setBackflowText(`${task.summary ?? ""}${reportLine}`.trim());
   }
 
+  async function saveAsSkill(task: SubAgentTask) {
+    setSavingSkillId(task.id);
+    setError("");
+    try {
+      await api.saveSubAgentTaskAsSkill(task.id, { model: selectedModel || task.model });
+      setError("已生成 Skill candidate，请到实验场 Skill Registry 评测后再采纳。");
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setSavingSkillId("");
+    }
+  }
+
+  async function saveBlackboardDraft() {
+    if (!blackboardDraft) return;
+    setError("");
+    try {
+      await api.createSubAgentBlackboardEntry(sessionId, {
+        kind: blackboardDraft.kind,
+        title: blackboardDraft.title.trim(),
+        content: blackboardDraft.content.trim(),
+        sourceTaskId: blackboardDraft.sourceTaskId,
+      });
+      setBlackboardDraft(null);
+      await refreshBlackboard();
+    } catch (err) {
+      setError(String(err));
+    }
+  }
+
   function submitBackflow() {
     const text = backflowText.trim();
     if (!text) return;
@@ -393,7 +453,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
     )}>
       <div className="flex items-center justify-end gap-2">
         <button
-          onClick={() => void refreshTasks()}
+          onClick={() => void refreshAll()}
           title="刷新任务"
           className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-200 dark:hover:bg-neutral-800"
         >
@@ -406,6 +466,23 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
         embedded ? "grid-cols-[minmax(0,1fr)]" : "md:grid-cols-[minmax(0,1fr)_220px]",
       )}>
         <div className="min-w-0">
+          <div className="mb-2 inline-flex rounded-md border border-neutral-200 bg-white p-0.5 dark:border-neutral-800 dark:bg-neutral-900">
+            <button
+              type="button"
+              onClick={() => setDispatchMode("single")}
+              className={cn("h-7 rounded px-2.5 text-[12px]", dispatchMode === "single" ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900" : "text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800")}
+            >
+              单 agent
+            </button>
+            <button
+              type="button"
+              onClick={() => setDispatchMode("composite")}
+              className={cn("h-7 rounded px-2.5 text-[12px]", dispatchMode === "composite" ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900" : "text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800")}
+              title="Planner → Coder → Reviewer，Reviewer 可打回 Coder"
+            >
+              复合单元
+            </button>
+          </div>
           <textarea
             value={brief}
             onChange={(event) => setBrief(event.target.value)}
@@ -420,7 +497,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
               className="inline-flex h-8 items-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12px] text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900"
             >
               {submitting ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Bot className="h-3.5 w-3.5" />}
-              开始委派
+              {dispatchMode === "composite" ? "启动复合单元" : "开始委派"}
             </button>
           </div>
         </div>
@@ -541,6 +618,42 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
 
       {error && <div className="mt-3 rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</div>}
 
+      {blackboard.length > 0 && (
+        <div className="mt-3 rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="mb-2 text-[12px] font-medium text-neutral-700 dark:text-neutral-200">共享黑板</div>
+          <div className="space-y-1.5">
+            {blackboard.slice(0, 5).map((entry) => (
+              <div key={entry.id} className="rounded-md bg-neutral-50 px-2.5 py-2 text-[12px] dark:bg-neutral-950/50">
+                <div className="flex items-center gap-2 text-neutral-700 dark:text-neutral-200">
+                  <span className="rounded bg-neutral-200 px-1.5 py-0.5 text-[10px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{entry.kind}</span>
+                  <span className="font-medium">{entry.title}</span>
+                </div>
+                <div className="mt-1 line-clamp-2 text-neutral-500 dark:text-neutral-400">{entry.content}</div>
+              </div>
+            ))}
+          </div>
+        </div>
+      )}
+
+      {compositeRuns.length > 0 && (
+        <div className="mt-3 space-y-2">
+          <div className="text-[12px] font-medium text-neutral-700 dark:text-neutral-200">复合单元运行</div>
+          {compositeRuns.map((run) => (
+            <div key={run.id} className="rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="flex flex-wrap items-center gap-2">
+                <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">{run.status}</span>
+                {run.currentRole && <span className="rounded bg-blue-100 px-1.5 py-0.5 text-[10.5px] text-blue-700 dark:bg-blue-950/60 dark:text-blue-300">{run.currentRole}</span>}
+                <span className="text-[12px] text-neutral-500">review {run.reviewRounds}/{run.maxReviewRounds}</span>
+              </div>
+              <div className="mt-1 line-clamp-2 text-[12px] text-neutral-700 dark:text-neutral-200">{run.brief}</div>
+              <div className="mt-1 text-[11px] text-neutral-400">Planner {run.plannerTaskId ?? "-"} · Coder {run.coderTaskIds.length} · Reviewer {run.reviewerTaskIds.length}</div>
+              {run.summary && <div className="mt-2 whitespace-pre-wrap text-[12px] text-neutral-700 dark:text-neutral-200">{run.summary}</div>}
+              {run.error && <div className="mt-2 text-[12px] text-amber-600 dark:text-amber-300">{run.error}</div>}
+            </div>
+          ))}
+        </div>
+      )}
+
       {tasks.length > 0 && (
         <div className="mt-3 space-y-2">
           {tasks.map((task) => (
@@ -644,13 +757,30 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
                     </button>
                   )}
                   {task.status === "success" && (
-                    <button
-                      onClick={() => openBackflow(task)}
-                      className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2 text-[12px] text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-                    >
-                      <ArrowLeftRight className="h-3.5 w-3.5" />
-                      回流
-                    </button>
+                    <>
+                      <button
+                        onClick={() => setBlackboardDraft({ sourceTaskId: task.id, kind: "finding", title: task.brief.slice(0, 40), content: task.summary ?? "" })}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2 text-[12px] text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                      >
+                        <NotebookPen className="h-3.5 w-3.5" />
+                        黑板
+                      </button>
+                      <button
+                        onClick={() => void saveAsSkill(task)}
+                        disabled={savingSkillId === task.id}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2 text-[12px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                      >
+                        {savingSkillId === task.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Hammer className="h-3.5 w-3.5" />}
+                        Skill
+                      </button>
+                      <button
+                        onClick={() => openBackflow(task)}
+                        className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2 text-[12px] text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                      >
+                        <ArrowLeftRight className="h-3.5 w-3.5" />
+                        回流
+                      </button>
+                    </>
                   )}
                 </div>
               </div>
@@ -668,6 +798,41 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
             </button>
           </div>
           <pre className="max-h-72 overflow-auto whitespace-pre-wrap px-3 py-2 text-[12px] leading-5 text-neutral-700 dark:text-neutral-200">{preview.content}</pre>
+        </div>
+      )}
+
+      {blackboardDraft && (
+        <div className="mt-3 rounded-md border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="text-[12px] font-medium text-neutral-700 dark:text-neutral-200">写入共享黑板</div>
+          <div className="mt-2 grid gap-2 sm:grid-cols-[160px_minmax(0,1fr)]">
+            <select
+              value={blackboardDraft.kind}
+              onChange={(event) => setBlackboardDraft((current) => current ? { ...current, kind: event.target.value as SubAgentBlackboardKind } : current)}
+              className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] outline-none dark:border-neutral-700"
+            >
+              <option value="finding">finding</option>
+              <option value="metric_definition">metric_definition</option>
+              <option value="business_rule">business_rule</option>
+              <option value="assumption">assumption</option>
+              <option value="note">note</option>
+            </select>
+            <input
+              value={blackboardDraft.title}
+              onChange={(event) => setBlackboardDraft((current) => current ? { ...current, title: event.target.value } : current)}
+              className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] outline-none dark:border-neutral-700"
+            />
+          </div>
+          <textarea
+            value={blackboardDraft.content}
+            onChange={(event) => setBlackboardDraft((current) => current ? { ...current, content: event.target.value } : current)}
+            rows={5}
+            className="mt-2 w-full resize-y rounded-md border border-neutral-200 bg-transparent px-3 py-2 text-[12px] leading-5 outline-none dark:border-neutral-700"
+          />
+          <div className="mt-1 text-[11px] text-neutral-400">只保存聚合口径、业务规则或衍生结论；不要保存明细行或大表格。</div>
+          <div className="mt-2 flex justify-end gap-2">
+            <button onClick={() => setBlackboardDraft(null)} className="rounded-md px-3 py-1.5 text-[12px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">取消</button>
+            <button onClick={() => void saveBlackboardDraft()} disabled={!blackboardDraft.title.trim() || !blackboardDraft.content.trim()} className="rounded-md bg-neutral-900 px-3 py-1.5 text-[12px] text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900">保存</button>
+          </div>
         </div>
       )}
 
