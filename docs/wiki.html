@@ -755,40 +755,40 @@ B. 前端：
 5. 【SkillHone 增补 2606.08671·防作弊隔离·核心】Creator/Evaluator 权限隔离(复用 subagent-core 权限边界)：优化队(Creator)只读脱敏报告+决策史、可写 skill 库、**看不到** golden_strategy/validator/执行 trace；评估队(Evaluator)能看 oracle/validator、**不能写** skill 库、只产脱敏问题报告。评估用 golden_strategy 盲测、证据脱敏后回写 successRate/pitfalls。防『测试集过拟合/自证自演』作弊。决策史检索『类似修复是否试过』走 X-HARNESS0 增补口径。
 验收：先做『验证门+严格接受』堵 skill 漂移即可交付 MVP；端到端 skill 自动迭代不退化；Creator 实测无法访问 validator/golden。typecheck+build+tests 绿。
 约束：不绑 paradigm A MVP。跨域依赖：打分复用 E-EFC1；隔离复用 subagent-core。` },
-  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1·冻结】X-AGING0：记忆老化探针/度量契约(types.ts)（总控自做）", brief:
-`【冻结】待总控解冻。来源：docs/backlog/AgingBench-记忆老化巡检.md。本卡=接缝契约，总控自做，解锁 E-AGING1/D-AGING2。
+  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】X-AGING0：记忆老化探针/度量契约(types.ts)（总控自做）", brief:
+`✅ 已解冻（2026-06-27，用户授意先解冻、暂不开发，待排期捞出）。来源：docs/backlog/AgingBench-记忆老化巡检.md。本卡=接缝契约，总控自做，解锁 E-AGING1/D-AGING2。
 范围(接缝层)：types.ts 双侧：
  · type AgingKind='compression'|'interference'|'revision'|'maintenance'   // 写W/读R/用U/存S
  · CounterfactualProbe{ id; write:'agent'|'oracle'; read:'agent'|'oracle' }   // P1/P2/P3
  · AgingMetric{ halfLife; decaySlope; finalScore; accumulatorError?; interferenceResistance?; forgetAccuracy?; shockDelta? }
  · ErrorAttribution{ writeErr; readErr; utilErr }   // 由 P1/P2/P3 Acc 差算
 验收：types 双侧对齐、typecheck+build 绿。约束：仅契约。跨域依赖：解锁 E/D 两卡。` },
-  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1·冻结】E-AGING1：Dream Worker 记忆老化夜间巡检 + 反事实探针 + 定向修复建议", brief:
-`【冻结】待 X-AGING0 契约 + 总控解冻。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 eval/Dream Worker(E：memory-evaluation-*.ts，E-MEM2-DREAM 同源)。
+  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】E-AGING1：Dream Worker 记忆老化夜间巡检 + 反事实探针 + 定向修复建议", brief:
+`✅ 已解冻（2026-06-27，暂不开发待排期）。前置 X-AGING0 契约需先做。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 eval/Dream Worker(E：memory-evaluation-*.ts，E-MEM2-DREAM 同源)。
 范围(E slot)：
 1. Dream Worker 夜间任务：先做最痛两类——干扰(相近记忆卡冲突告警)+修订(事实更新后回扫引用它的卡)。
 2. 反事实探针 P1/P2/P3(oracle write/read)：错误归因到写/读/用阶段(同错不同修)，轻量版先小验证集人工标 oracle。
 3. 老化曲线度量(半衰期/衰减斜率/accumulator_error/shock_delta) + 按 profile 出定向修复建议。
 验收：夜间巡检产『干扰/修订』老化清单 + 阶段归因；典型样例验证『行为测试过但事实已错』。typecheck+build+tests 绿。
 约束：不堆模型规模治修订(表征问题，靠显式状态维护)。跨域依赖：记忆 store 信号读 D-AGING2。` },
-  { dom: "D", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1·冻结】D-AGING2：memory-injection 老化信号(卡冲突检测 + 事实更新回扫)", brief:
-`【冻结】待 X-AGING0 契约 + 总控解冻。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 store/注入(D：memory-injection.ts、规则记忆 db/data.ts、RulesPane)。
+  { dom: "D", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】D-AGING2：memory-injection 老化信号(卡冲突检测 + 事实更新回扫)", brief:
+`✅ 已解冻（2026-06-27，暂不开发待排期）。前置 X-AGING0 契约需先做。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 store/注入(D：memory-injection.ts、规则记忆 db/data.ts、RulesPane)。
 范围(D slot)：
 1. 卡冲突检测：相近/可混淆记忆条目识别，暴露 GET 供 E 巡检消费(跨域 HTTP，不被 E import)。
 2. 事实更新回扫：某条记忆被 supersede/更新后，标记引用它的下游卡待校验(对接『验证 file/flag 仍存在』理念)。
 3. RulesPane 展示老化信号(可选)。
 验收：产卡冲突对 + 过期引用清单；数据探索 LLM 隔离 grep 净；typecheck+build 绿。
 约束：守 AGENTS.md 数据安全。跨域依赖：供 E-AGING1 消费。` },
-  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2·冻结】X-AUDIT0：harness 形式化(Π/Φ/Σ)+四类违规+YAML 策略规约契约（总控自做）", brief:
-`【冻结·P2】待多 agent 协作规模上来 + 总控解冻。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。本卡=接缝契约，总控自做。
+  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2】X-AUDIT0：harness 形式化(Π/Φ/Σ)+四类违规+YAML 策略规约契约（总控自做）", brief:
+`✅ 已解冻（2026-06-27，用户授意先解冻、暂不开发）。注：原冻结理由是「待多 agent 协作规模上来」（非技术前置）——规模未必已到，捞出前先评估 audit 价值是否随规模显现。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。本卡=接缝契约，总控自做。
 范围(接缝层)：types.ts 双侧：
  · HarnessPolicy{ permissions:Π(role→tools/resources); infoFlow:Φ(allow/deny role pairs); coordination:Σ }
  · type ViolationClass='V-OT'|'V-OR'|'V-IC'|'V-ID'
  · Violation{ class; severity; actingRole; evidence } + SafetyAdherence{ tool;resource;flow }   // SAR=1-min(1, ω_low·V_low+ω_high·V_high), ω_high=.30/ω_low=.15
  · YAML 策略规约 schema(角色工具三层 required/forbidden/unnecessary + 资源参数白名单 + 通信拓扑 + 数据泄露规则)
 验收：types 双侧对齐 + YAML schema 定稿、typecheck+build 绿。约束：仅契约。跨域依赖：解锁 E-AUDIT1。` },
-  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2·冻结】E-AUDIT1：轨迹结构化日志(px-hook-runner)+确定性 access checker(Judge)+SAR 报表", brief:
-`【冻结·P2】待 X-AUDIT0 契约 + 总控解冻。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。落点=multi-agent/hooks(E：multi-agent-runner.ts、px-hook-runner、health-check-engine.ts)。
+  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·HarnessAudit·P2】E-AUDIT1：轨迹结构化日志(px-hook-runner)+确定性 access checker(Judge)+SAR 报表", brief:
+`✅ 已解冻（2026-06-27，暂不开发待排期）。前置 X-AUDIT0 契约需先做；原 P2·待多 agent 协作规模上来。来源：docs/backlog/HarnessAudit-轨迹级安全审计.md。落点=multi-agent/hooks(E：multi-agent-runner.ts、px-hook-runner、health-check-engine.ts)。
 范围(E slot)：
 1. Execution 阶段：px-hook-runner 出结构化轨迹日志(工具调用/资源访问/agent 间消息，append-only JSONL)。
 2. Judge 阶段：health-check-engine 扩 trajectory-audit——确定性 access checker 判四类违规(V-OT/OR/IC/ID)，后验非在线拦截。
