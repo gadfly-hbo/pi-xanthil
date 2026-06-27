@@ -53,6 +53,10 @@ import type {
   ChangeManifest,
   CompositeSubAgentRun,
   ForkBranch,
+  AgingKind,
+  AgingMetric,
+  ErrorAttribution,
+  CounterfactualProbe,
   SubAgentBlackboardEntry,
   SubAgentBlackboardKind,
   MemoryInjectionRecord,
@@ -157,6 +161,33 @@ export interface MemoryMaintenanceResult {
   scanned: number;
   changes: MemoryMaintenanceChange[];
   applied: number;
+}
+
+// AgingBench · E-AGING1：Dream Worker 记忆老化巡检（只读即时诊断，零 LLM/零写库）。
+export interface CounterfactualProbeRun extends CounterfactualProbe {
+  accuracy: number;
+}
+export type MemoryAgingSeverity = "info" | "warn" | "critical";
+export type MemoryAgingStage = "write" | "read" | "util";
+export interface MemoryAgingFinding {
+  id: string;
+  kind: AgingKind;
+  severity: MemoryAgingSeverity;
+  title: string;
+  evidence: string[];
+  itemIds: string[];
+  metric: AgingMetric;
+  attribution: ErrorAttribution | null;
+  likelyStage: MemoryAgingStage | null;
+  suggestions: string[];
+}
+export interface MemoryAgingInspectionResult {
+  workspaceId: string;
+  scanned: number;
+  generatedAt: number;
+  findings: MemoryAgingFinding[];
+  attribution: ErrorAttribution | null;
+  recommendations: string[];
 }
 
 // 记忆 v2.0 缺口4 · 从记忆升级 Skill 候选（响应结构对齐 server/src/memory-to-skill.ts:32）。
@@ -649,6 +680,16 @@ export const engineApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
     }).then(json<MemoryMaintenanceResult>),
+
+  inspectMemoryAging: (
+    workspaceId: string,
+    body?: { probes?: CounterfactualProbeRun[]; scoreSeries?: number[] },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/memory/aging-inspect`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body ?? {}),
+    }).then(json<MemoryAgingInspectionResult>),
 
   // 记忆 v2.0 缺口4 · 把高频 experience 簇升级为 Skill 候选（status=candidate，不自动启用）。
   // dryRun=true 仅列 eligible 簇 + 升级依据；dryRun=false 真实蒸馏候选入 registry。

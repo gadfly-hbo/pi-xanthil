@@ -10,27 +10,28 @@
 
 > **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
 
-- 最近更新：2026-06-27 · **D-EVOLVE2 产品Agent自进化 eval 候选入口**（红线卡，监测行动环/report-review/golden_strategy 加「提为 eval 候选」按钮）
+- 最近更新：2026-06-27 · **D-AGING2 memory-injection 老化信号**（卡冲突检测 + 事实更新回扫 + RulesPane 展示）
 - 进度：
-  - **D-EVOLVE2（2026-06-27 完成）**：监测行动环/report-review/golden_strategy 加「采纳/标注失败环节→eval 候选」入口。
-    - **`web/src/lib/api/engine.ts`**：新增 `engineApi.createEvalRecord(workspaceId, body)`，调 E 域 `POST /api/workspaces/:id/evolve/eval-records`。
-    - **`HealthReportPane.tsx`**：每个 finding 行新增「提为 eval 候选」按钮（FlaskConical 图标），构造脱敏轨迹（仅 finding 元数据：ruleId/category/severity/lifecycle/signature/title/suggestion/evidence/comparisons/diagnosis，**零 draw_data 原值**），提交后显示紫色「已提为候选」标签。
-    - **`ReportReviewPane.tsx`**：每条批注卡片新增「提为 eval 候选」按钮，轨迹含 quote/issue/suggestion/severity（脱敏后的评审元数据），不存报告原文。
-    - **`GoldenStrategyPane.tsx`**：业务洞见侧边栏新增「纠正并提为 eval 候选」按钮，轨迹含 analysisModel + 前 5 个节点摘要（title/kind），不存完整节点 body。
-    - **脱敏设计**：eval 候选只存 finding 衍生字段(kind/severity/comparisons/suggestion)+期望输出，**绝不存 draw_data 原值**。前端构造 trajectory 时仅序列化聚合元数据，与 `evolve-engine.ts` 的 `sanitizeTrajectoryText` 同口径。
-    - **跨域调用**：前端 D slot 调 E 域 `/evolve/eval-records` 端点（已有），eval 候选供 E-EVOLVE1 消费。`engineApi.createEvalRecord` 是 D→E 跨域调用的第二个实例（继 skill 管理之后）。
-  - 上次 D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 仍等待用户 review 后手动提交。
+  - **D-AGING2（2026-06-27 完成）**：D 域自有老化信号真源，纯算法零 LLM，GET 端点供 E-AGING1 跨域 HTTP 消费（不被 E import，守接缝纪律）。
+    - **`server/src/memory-aging-signals.ts`** 新文件：`computeMemoryAgingSignals(options)` 扫两类信号 ① `AgingConflictPair`（同 type、非 supersede 链、similarity ≥ 0.35 的可混淆对，severity= warn/info；reasons ∈ high-similarity/confidence-divergence/signal-divergence）② `AgingStaleReference`（supersede 链中 older 仍 active 或仍被下游 active item 引用，severity= critical/warn）。算法独立于 E `memory-aging-inspector.ts`（思路相近但参数 / 输出结构独立），方便后续 D 域单独演化。
+    - **`server/src/memory-aging-signals.test.ts`** 8 测试：高相似冲突命中（pairId 字典序 + 三类 reason 同现）/ 低相似过滤 / supersede 链跳过冲突 / 修订仍激活=critical / 修订已退役但被引=warn / 修订已退役且无引用=跳过 / 超 600 条 truncated=true / type 不匹配跳过。
+    - **`server/src/routes/data.ts`** 加 `GET /api/workspaces/:id/memory/aging-signals` read-only 端点（薄壳调 compute）。
+    - **`web/src/lib/api/data.ts`** 加 `fetchMemoryAgingSignals(workspaceId)` + 配套类型（`AgingSignalSeverity` / `AgingConflictReason` / `AgingConflictPair` / `AgingStaleReference` / `MemoryAgingSignalsResult`，本域消费 + 跨域 HTTP 暴露故不上提接缝层 `types.ts`）。
+    - **`web/src/components/RulesPane.tsx`** 加「查看老化信号」按钮（`Activity` 图标）+ 折叠展示区，含两个子组件 `ConflictRow` / `StaleRefRow` + `severityTone` 着色。前端最多展示 50 对 / 50 条。
+    - **跨域消费契约**：E-AGING1 的 `memory-aging-inspector.ts` 不动；后续若 E 巡检 worker 要拿 D 域信号，**走 HTTP fetch 本端点**，禁止 import D 域文件（守 §五 接缝纪律）。
+  - 上次 D-EVOLVE2 + D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 仍等待用户 review 后手动提交。
 - 校验：
+  - `node --experimental-strip-types --test memory-aging-signals.test.ts`：✅ 8/8 绿
+  - `node --experimental-strip-types --test memory-aging-inspector.test.ts`：✅ 4/4 绿（未回归 E 既有信号）
   - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
   - `npm -w web run build`：✅ 仅既有 chunk size warning
   - 数据探索红线 grep：✅ 无匹配
-  - eval 候选代码中无 draw_data/原始数据引用：✅ 仅注释说明 "zero raw data"
 - 下一步（接续优先级）：
-  - ① 用户 review 后手动提交（D-EVOLVE2 + D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 一并）。
+  - ① 用户 review 后手动提交（D-AGING2 + 历史 D-EVOLVE2 / D-QEVAL3 / D-QEVAL1 / MEM-MAINTAIN/PROMOTE-UI 一并）。
   - ② **持久化向后兼容**（开放问题①，待总控决议）：`db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底。
   - ③ **archive MD 渲染补硬断言摘要**（开放问题②）。
-  - ④ 实跑验证：D-QEVAL1 mall 报告 md → combined_score；D-QEVAL3 硬断言 → pass@k 区分度；D-EVOLVE2 入口 → eval 候选落库。
+  - ④ 实跑验证：D-QEVAL1 mall 报告 md → combined_score；D-QEVAL3 硬断言 → pass@k 区分度；D-EVOLVE2 入口 → eval 候选落库；D-AGING2 在含 supersede 链的真实工作区跑 GET 端点检验噪声。
   - ⑤ D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
 - 阻塞 / 待确认：
   - 无硬阻塞。
@@ -42,6 +43,7 @@
   - **⑤ D-QEVAL1 R01-R15 关键词包待校准**。
   - **⑥ D-QEVAL1 DocumentSessionMetrics 来源**。
   - **⑦ D-EVOLVE2 eval 候选 UI 无批量操作**：当前每个 finding/annotation 独立提交，无「全选→批量提为候选」按钮。ponytail: 单次 finding 量小（通常 <20），手动逐个提交可接受；若后续 finding 量 >50 或用户反馈操作繁琐再加批量。
+  - **⑧ D-AGING2 与 E-AGING1 算法重叠**：E `memory-aging-inspector.ts` 同样实现了 detectInterferenceFindings / detectRevisionFindings（且 import D 域 `listMemoryItems`），违反"D 真源 + E HTTP 消费"契约。本卡按 brief 走"D 独立路径"未碰 E，两套并存。后续若总控要剥离 E inspector 中的干扰/修订段（让 E 完全走 HTTP 消费 D），需另派卡（涉及 E 域文件）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -447,3 +449,14 @@ python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print
 - **D→E 跨域调用模式**：`engineApi.createEvalRecord` 是 D 域前端调 E 域端点的第二个实例（继 skill 管理 `SkillManagementPane` 调 `engineApi` 之后）。与 `dataApi` 的 D 域自闭环不同——eval-records 端点归 E 域（`routes/engine.ts`），D 只做消费方。**不**在 `routes/data.ts` 或 `db/data.ts` 加 eval 相关代码。
 - **UI 状态独立管理**：每个入口的 eval 提交状态（submitting/submitted）用组件本地 `useState<Set<string>>` 管理，不跨组件共享。提交后显示紫色「已提为候选」标签（`FlaskConical` + `Check` 图标），不可重复提交（按钮变只读标签）。**ponytail: 无批量操作**——单次 finding 量小（<20），逐个提交可接受；若 >50 再加「全选→批量提为候选」。
 - **golden_strategy 目录不存在**：AGENTS.md 提到 `golden_strategy/` 但文件系统中无此目录。GoldenStrategyPane 的 eval 入口落在业务洞见侧边栏（已有 UI），不依赖目录结构。
+
+
+---
+
+**记忆老化信号 D 真源（D-AGING2，2026-06-27）**
+- **"D 真源 + E HTTP 消费"接缝契约**：D-AGING2 brief 明确"暴露 GET 供 E 巡检消费（跨域 HTTP，不被 E import）"。本卡按此走 A 路径——D 域写独立模块 `memory-aging-signals.ts` + GET 端点，E `memory-aging-inspector.ts` 不动。**未走 B（剥离 E 让其只走 HTTP）的原因**：E inspector 文件不在 D slot，按 §三 接缝纪律不能擅碰；剥离要总控派卡。**未走 C（仅补 UI）的原因**：会留接缝违规债务（前端绕过 D 端点直接消费 E 端点 = 跨域路径混乱）。两套算法暂时并存，是接缝纪律的代价；待总控决议是否剥离 E 重叠段。
+- **算法独立而非复用**：D `memory-aging-signals.ts` 与 E `memory-aging-inspector.ts` 的 detectInterference/detectRevision 思路相近但实现独立——参数、输出 schema、内部 helper 都不共享。**故意不抽公共库**：① 两侧各管各的演化节奏（D 服务 RulesPane 实时展示，E 服务巡检流水/反事实探针，关注点不同）；② 抽公共库要碰接缝层（types.ts 或新建 shared 文件），违反 §三。**通用范式**：D/E 共享算法但各自演化时，宁可代码重复也别强行抽离——重复代码是接缝纪律的可接受成本。
+- **不上提接缝层 types.ts**：5 个新类型（`AgingSignalSeverity` / `AgingConflictReason` / `AgingConflictPair` / `AgingStaleReference` / `MemoryAgingSignalsResult`）只在 D 域消费 + 跨域 HTTP 暴露（E 通过 fetch 拿 JSON 自行 typecast），故 server 一份 + web 一份各自定义。**判定标准**：类型只在一域消费 + 外部走 HTTP/网络边界传播时不上提；只有跨域 import / multi-pane 共享时才上提 types.ts。沿用 D-PANEL "PluginInfo/McpServerInfo 不上提" 同范式。
+- **`useState` 折叠按需 fetch + busy lock**：RulesPane「查看老化信号」按钮**不**在 `refreshData` 里自动拉取——避免每次切 workspace 都触发 O(N²) 扫描。点按钮才 fetch，再点折叠。`agingBusy` 防双击。**通用范式**：read-only 但计算量较大（>100ms 或 O(N²)）的诊断端点都用此「按需触发 + 折叠收起」模式，区别于每秒自动刷新的实时监控。
+- **`pairId` 字典序保证去重**：A↔B 与 B↔A 实际是同一对干扰；`const [first, second] = a.id < b.id ? [a, b] : [b, a]; pairId = first.id + ":" + second.id` 保证唯一稳定 key，前端不用额外 dedup。该范式适用任何"无序对"集合的稳定 id 生成。
+- **MAX_ITEMS=600 截断防 O(N²) 退化**：双层 for 干扰检测在 600 条以上工作区会到 360k 次比较 + jaccard token 化，浏览器要 hold 几百 ms。按 `updated_at desc` 取前 600，丢最旧的——最旧条目最不可能与当前活跃集互相干扰，丢弃损失最小。`truncated` flag 暴露给前端提示用户。**升级路径**：若用户工作区稳定 >600 条，应加分桶（按 type/tag 前缀 buckets）只在桶内做 O(k²)，但本期 ponytail YAGNI 不做。

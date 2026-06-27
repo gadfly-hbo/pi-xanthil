@@ -232,6 +232,23 @@ web/src/
 > **2.1 遗留待 2.2 重排（已保留在 wiki 派发板，10 张）**：SQL 真实库链路实跑(缺凭据降级)、AnaX archive flywheel UI 实跑、App.tsx 域模块 React.lazy 代码分割、skill 自进化(沙箱安全/链式蒸馏)、红线硬化(数据分析 session 内建工具可达 draw_data 评估)、decision 模块接线、deleteWorkspace 子表补齐、subagents 进阶(博弈/黑板/Save-as-Tool/节点级看板)。
 > ════════════════════════════════
 
+### 2.2 阶段进展（发布后增量，总控持有；明细见 `docs/notes-infra.md §九/§十` + `docs/wiki.html`）
+
+> 本节记 v2.2 发布后的专题交付（区别于下方 v2.1/v2.0 历史档案）。下一次发版时汇总进 CHANGELOG。
+
+- [x] **Harness 自进化专题 P0（2026-06-27，总控自做契约 + E 实装 + 总控终审）** — 把实验场从「凭感觉试错」升级为「有度量、可累积」。三卡全 done：
+  - **X-HARNESS0**（契约+回滚预研）：双侧 `types.ts` 定 EFC 度量（`FeedbackEvent`/`EfcScore`/`TaskDemand`）+ AHE 契约（`ChangeManifest`/`EditVerdict`/`HarnessVariant`/`ScopedRevision`/`HarnessComponent`）；`cache.ts` C_raw getter；typed scoped revision 回滚底座审定（§九）。
+  - **E-EFC1**：规则版 EFC scorer（κ·I·V·R·M + η=EFC/C_raw）接 6 测评台 + EFC/η 列。终审收口 E 本地重声明 `EfcScore`/`EFC_KAPPA` 的契约漂移（→`EfcScoreDetail extends` 契约，9 文件）。
+  - **E-AHE1**：manifest 对照器（fix/reg 精确召回 + seesaw 无回归门 + 冲突 fork variant，quality 用 EFC）+ 3 全局表 + `AheManifestPanel` 接 6 lab。裁决：三表设计为全局（harness=项目级资产）追认、§九 订正。
+- [x] **产品 Agent 自进化 EVOLVE 链（2026-06-27，闭环）** — 把「真实失败→eval→约束修改」纪律从实验场迁到产品 agent（监测/AnaX/工作流）。三卡全 done：
+  - **X-EVOLVE0**（契约）：双侧 `types.ts` 定 `AgentTrajectory`/`EvalRecord`/`EvalAnnotationStatus`（脱敏轨迹→eval 沉淀）；bounded-change 复用 AHE `ChangeManifest` 不新造（§十）。
+  - **E-EVOLVE1**（引擎）：finding→脱敏 trajectory→candidate EvalRecord→AHE package（human gate `defer`）+ `agent_trajectories`/`eval_records` 两表（per-workspace + FK CASCADE + 去重）。终审收口脱敏 denylist 脆弱（精确→子串匹配 + `0NN_raw` 路径）。
+  - **D-EVOLVE2**（注释入口·红线）：监测/report-review/golden 加「→eval 候选」按钮。终审收口 2 处红线（HealthReportPane 去原值 `evidence`；服务端 ingress `parseAgentTrajectory` 加脱敏兜底）。
+- [x] **fast-follow backlog + 冻结卡治理（2026-06-27）** — `docs/backlog/SkillOpt-fast-follow-*`（防作弊硬隔离 + EFC 真接入，剥离自 E-SKILLOPT1 终审）；**E-SKILLOPT1**（skill 受控回写器：slow-update 守门/严格接受/rejected buffer/沙箱）done；剩余冻结卡（AgingBench P1 / HarnessAudit P2）全解冻为活跃 todo。**wiki 已无冻结卡**。
+- [x] **AgingBench·X-AGING0 契约（2026-06-27，总控自做）** — 记忆老化巡检度量契约（解冻后开做）：双侧 `types.ts` 加 `AgingKind`（压缩/干扰/修订/维护 四类老化）/ `CounterfactualProbe`（P1/P2/P3 反事实探针，util 恒 agent）/ `AgingMetric`（半衰期/衰减斜率/终值 + 按类诊断项）/ `ErrorAttribution`（由 Acc 差算归因写/读/用阶段）；与 EFC M_t 记忆信号互补。typecheck+build 绿、明细见 `notes-infra §十一`。**解锁 E-AGING1（Dream Worker 巡检）/ D-AGING2（memory-injection 老化信号·红线）**，两卡前置已通待派。
+
+---
+
 - [x] **批1 server routes slot** — `routes/{data,engine,viz,shared}.ts` + `registerDomainRoutes`，index.ts 一行挂载；server typecheck 零新增错误
 - [x] **批2a web api slot** — `lib/api/{_http,data,engine,viz,shared}.ts`；api.ts 改为 legacyApi + 域片段 spread 合并；web typecheck + build 绿
 - [x] **批2b App.tsx 域渲染模块** — `tabs/types.ts`(TabContext 契约) + `tabs/{DataTabs,EngineTabs,VizTabs}.tsx`；App.tsx render 块缩为 3 行 + 装配 tabCtx，删 32 个 pane import；全部 subtab 1:1 等价；web typecheck + build 绿。（lazy 代码分割延后做优化批）

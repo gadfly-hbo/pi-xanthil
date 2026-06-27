@@ -6,6 +6,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import {
+  Activity,
   AlertTriangle,
   ArrowUpCircle,
   Brain,
@@ -25,6 +26,12 @@ import {
 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { MemoryMaintenanceResult, MemoryToSkillResult } from "@/lib/api/engine";
+import type {
+  AgingConflictPair,
+  AgingSignalSeverity,
+  AgingStaleReference,
+  MemoryAgingSignalsResult,
+} from "@/lib/api/data";
 import type {
   MemoryItem,
   MemoryItemType,
@@ -137,6 +144,11 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
   const [promotePreview, setPromotePreview] = useState<MemoryToSkillResult | null>(null);
   const [promoteBusy, setPromoteBusy] = useState(false);
   const [promoteNote, setPromoteNote] = useState("");
+
+  // D-AGING2 老化信号展示：纯本地算法扫干扰对 + 修订回扫；read-only 不写库不发 LLM。
+  const [aging, setAging] = useState<MemoryAgingSignalsResult | null>(null);
+  const [agingBusy, setAgingBusy] = useState(false);
+  const [agingShow, setAgingShow] = useState(false);
 
   const refreshData = useCallback(async () => {
     if (!workspaceId) return;
@@ -442,6 +454,23 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
     }
   };
 
+  // D-AGING2 老化信号：read-only fetch；点按钮按需触发 + 同步切显示。
+  const loadAgingSignals = async () => {
+    if (!workspaceId || agingBusy) return;
+    if (agingShow) { setAgingShow(false); return; }
+    setAgingBusy(true);
+    setError("");
+    try {
+      const out = await api.fetchMemoryAgingSignals(workspaceId);
+      setAging(out);
+      setAgingShow(true);
+    } catch (err) {
+      setError(String(err instanceof Error ? err.message : err));
+    } finally {
+      setAgingBusy(false);
+    }
+  };
+
   return (
     <div className="flex min-h-0 flex-1 overflow-auto bg-neutral-50/60 p-5 dark:bg-neutral-950">
       <div className="mx-auto flex w-full max-w-5xl flex-col gap-4">
@@ -453,6 +482,7 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
           <div className="flex flex-wrap gap-2">
             <button onClick={() => void runMaintainDryRun()} disabled={!workspaceId || maintainBusy} title="Dream Worker 纯算术维护：升/降 confidence + 老化退役（先预览再应用）" className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] disabled:opacity-50 dark:border-neutral-700"><Wrench className={`h-3.5 w-3.5 ${maintainBusy ? "animate-spin" : ""}`} /> 立即维护</button>
             <button onClick={() => void runPromoteDryRun()} disabled={!workspaceId || promoteBusy} title="把高频 experience 簇升级为 Skill 候选（status=candidate，不自动启用）" className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] disabled:opacity-50 dark:border-neutral-700"><ArrowUpCircle className={`h-3.5 w-3.5 ${promoteBusy ? "animate-spin" : ""}`} /> 升级 Skill</button>
+            <button onClick={() => void loadAgingSignals()} disabled={!workspaceId || agingBusy} title="D-AGING2 记忆老化巡检：扫卡冲突 + 修订回扫，纯本地零 LLM" className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] disabled:opacity-50 dark:border-neutral-700"><Activity className={`h-3.5 w-3.5 ${agingBusy ? "animate-spin" : ""}`} /> {agingShow ? "隐藏" : "查看"}老化信号</button>
             <button onClick={() => setShowPreview((v) => !v)} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] dark:border-neutral-700"><Eye className="h-3.5 w-3.5" /> {showPreview ? "隐藏" : "预览"}注入</button>
             <button onClick={() => setCreating((v) => !v)} disabled={!workspaceId} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-2 text-[12px] text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900"><Plus className="h-3.5 w-3.5" /> 新建</button>
             <button onClick={() => void refreshData()} disabled={!workspaceId || loading} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 px-3 py-2 text-[12px] disabled:opacity-50 dark:border-neutral-700"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新</button>
@@ -460,6 +490,41 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
         </div>
 
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30">{error}</div>}
+
+        {agingShow && aging && (
+          <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+            <div className="flex flex-wrap items-center justify-between gap-2">
+              <h2 className="inline-flex items-center gap-1.5 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><Activity className="h-3.5 w-3.5" /> 记忆老化信号（D-AGING2 · 纯本地 / 零 LLM）</h2>
+              <button onClick={() => setAgingShow(false)} className="inline-flex items-center gap-1 rounded-md border border-neutral-200 px-2 py-1.5 text-[12px] dark:border-neutral-700"><X className="h-3.5 w-3.5" /> 关闭</button>
+            </div>
+            <p className="mt-1 text-[11.5px] text-neutral-500">扫描 {aging.scanned} 条{aging.truncated && "（已截断到 600）"} · 卡冲突 {aging.conflicts.length} 对 · 修订回扫 {aging.staleRefs.length} 条 · {fmtTs(aging.generatedAt)}</p>
+            {aging.conflicts.length === 0 && aging.staleRefs.length === 0 && (
+              <p className="mt-3 text-[12px] text-neutral-500">未发现卡冲突或事实修订引用残留，记忆健康。</p>
+            )}
+            {aging.conflicts.length > 0 && (
+              <div className="mt-3">
+                <h3 className="text-[12px] font-semibold text-neutral-700 dark:text-neutral-200">卡冲突（相近条目可能在检索时互相挤占）</h3>
+                <div className="mt-1.5 max-h-72 space-y-1.5 overflow-auto">
+                  {aging.conflicts.slice(0, 50).map((c) => <ConflictRow key={c.pairId} c={c} />)}
+                </div>
+                {aging.conflicts.length > 50 && (
+                  <p className="mt-1 text-[11px] text-neutral-500">仅显示前 50 对，共 {aging.conflicts.length} 对。</p>
+                )}
+              </div>
+            )}
+            {aging.staleRefs.length > 0 && (
+              <div className="mt-4">
+                <h3 className="text-[12px] font-semibold text-neutral-700 dark:text-neutral-200">事实修订回扫（supersede 链上仍被引用 / 未失效）</h3>
+                <div className="mt-1.5 max-h-72 space-y-1.5 overflow-auto">
+                  {aging.staleRefs.slice(0, 50).map((r) => <StaleRefRow key={`${r.newerId}:${r.olderId}`} r={r} />)}
+                </div>
+                {aging.staleRefs.length > 50 && (
+                  <p className="mt-1 text-[11px] text-neutral-500">仅显示前 50 条，共 {aging.staleRefs.length} 条。</p>
+                )}
+              </div>
+            )}
+          </div>
+        )}
 
         {(maintainPreview || maintainNote) && (
           <div className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -753,6 +818,71 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
           </div>
         )}
       </div>
+    </div>
+  );
+}
+// ── D-AGING2 老化信号渲染子组件 ──────────────────────────────────────────────
+
+function severityTone(s: AgingSignalSeverity): string {
+  if (s === "critical") return "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-800 dark:bg-rose-950/30 dark:text-rose-300";
+  if (s === "warn") return "border-amber-300 bg-amber-50 text-amber-700 dark:border-amber-800 dark:bg-amber-950/30 dark:text-amber-300";
+  return "border-neutral-200 bg-neutral-50 text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300";
+}
+
+function conflictReasonLabel(r: AgingConflictPair["reasons"][number]): string {
+  switch (r) {
+    case "high-similarity": return "相似度高";
+    case "confidence-divergence": return "置信度分歧";
+    case "signal-divergence": return "正负反馈相反";
+  }
+}
+
+function ConflictRow({ c }: { c: AgingConflictPair }) {
+  return (
+    <div className="rounded-md border border-neutral-200 bg-neutral-50/60 px-3 py-2 text-[12px] dark:border-neutral-800 dark:bg-neutral-950/40">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded border px-1.5 py-0.5 text-[10.5px] uppercase ${severityTone(c.severity)}`}>{c.severity}</span>
+        <span className="rounded border border-neutral-300 bg-white px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:border-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">{c.type}</span>
+        <span className="text-[11px] text-neutral-500">similarity {c.similarity}</span>
+        {c.reasons.map((r) => (
+          <span key={r} className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">{conflictReasonLabel(r)}</span>
+        ))}
+      </div>
+      <p className="mt-1.5 text-[12px] text-neutral-700 dark:text-neutral-200">A · {c.itemATitle}</p>
+      <p className="mt-0.5 text-[12px] text-neutral-700 dark:text-neutral-200">B · {c.itemBTitle}</p>
+      {c.sharedTags.length > 0 && (
+        <div className="mt-1.5 flex flex-wrap gap-1">
+          {c.sharedTags.map((t) => <TagChip key={t} tag={t} />)}
+        </div>
+      )}
+      <p className="mt-1 font-mono text-[10.5px] text-neutral-400">{c.itemAId} ↔ {c.itemBId}</p>
+    </div>
+  );
+}
+
+function StaleRefRow({ r }: { r: AgingStaleReference }) {
+  return (
+    <div className="rounded-md border border-neutral-200 bg-neutral-50/60 px-3 py-2 text-[12px] dark:border-neutral-800 dark:bg-neutral-950/40">
+      <div className="flex flex-wrap items-center gap-2">
+        <span className={`rounded border px-1.5 py-0.5 text-[10.5px] uppercase ${severityTone(r.severity)}`}>{r.severity}</span>
+        <span className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+          {r.olderStillActive ? "旧记忆仍激活" : "旧记忆已退役"}
+        </span>
+        <span className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10.5px] text-neutral-600 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300">
+          下游引用 {r.referencerIds.length}
+        </span>
+      </div>
+      <p className="mt-1.5 text-[12px] text-neutral-700 dark:text-neutral-200">新 · {r.newerTitle}</p>
+      <p className="mt-0.5 text-[12px] text-neutral-500 line-through">旧 · {r.olderTitle}</p>
+      {r.referencerTitles.length > 0 && (
+        <div className="mt-1.5">
+          <p className="text-[11px] text-neutral-500">引用旧记忆的下游卡：</p>
+          <ul className="mt-0.5 list-disc pl-4 text-[12px] text-neutral-600 dark:text-neutral-300">
+            {r.referencerTitles.map((t, i) => <li key={`${r.referencerIds[i]}:${i}`}>{t}</li>)}
+          </ul>
+        </div>
+      )}
+      <p className="mt-1 font-mono text-[10.5px] text-neutral-400">{r.newerId} ⇐ {r.olderId}</p>
     </div>
   );
 }

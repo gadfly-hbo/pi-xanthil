@@ -64,6 +64,41 @@ export interface McpServerInfo {
   enabled: boolean;
 }
 
+// 记忆老化信号（D-AGING2 · 2026-06-27）—— 与 server memory-aging-signals.ts 同形态。
+// 仅在本域消费 + 跨域 HTTP 暴露，故不上提接缝层 types.ts。
+export type AgingSignalSeverity = "info" | "warn" | "critical";
+export type AgingConflictReason = "high-similarity" | "confidence-divergence" | "signal-divergence";
+export interface AgingConflictPair {
+  pairId: string;
+  itemAId: string;
+  itemBId: string;
+  itemATitle: string;
+  itemBTitle: string;
+  type: MemoryItemType;
+  similarity: number;
+  sharedTags: string[];
+  reasons: AgingConflictReason[];
+  severity: AgingSignalSeverity;
+}
+export interface AgingStaleReference {
+  newerId: string;
+  newerTitle: string;
+  olderId: string;
+  olderTitle: string;
+  olderStillActive: boolean;
+  referencerIds: string[];
+  referencerTitles: string[];
+  severity: AgingSignalSeverity;
+}
+export interface MemoryAgingSignalsResult {
+  workspaceId: string;
+  generatedAt: number;
+  scanned: number;
+  truncated: boolean;
+  conflicts: AgingConflictPair[];
+  staleRefs: AgingStaleReference[];
+}
+
 export const dataApi = {
   getBiAggregations: (workspaceId: string) =>
     fetch(`/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`).then(json<BiAggregationDataset[]>),
@@ -270,6 +305,11 @@ export const dataApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ reason }),
     }).then(json<MemoryReview>),
+
+  // D-AGING2 老化信号 GET（read-only）。RulesPane 展示 + E-AGING1 巡检 HTTP 消费同一端点。
+  fetchMemoryAgingSignals: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/memory/aging-signals`)
+      .then(json<MemoryAgingSignalsResult>),
 
   // ---- 知识库 knowledge_docs/chunks（D-DATA + D-RETRIEVAL · 2026-06-19） ----
   // 文档=用户上传/登记的非结构化资料（folder kind 'knowledge'），与 draw_data 严格隔离。

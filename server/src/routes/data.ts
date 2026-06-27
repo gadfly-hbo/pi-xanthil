@@ -56,6 +56,7 @@ import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { buildMemoryPrompt } from "../memory-injection.ts";
 import { judgeSemanticDuplicate, type JudgeFn } from "../memory-dedup.ts";
+import { computeMemoryAgingSignals } from "../memory-aging-signals.ts";
 import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
 import type {
   BiAggregationDataset,
@@ -931,6 +932,20 @@ dataRouter.get("/api/workspaces/:id/memory/preview", (req, res) => {
     itemCount: matched.length,
     factCount: facts.filter((f) => f.enabled).length,
   });
+});
+
+// /memory/aging-signals —— D-AGING2 老化信号 GET 端点（read-only）。
+// 真源：computeMemoryAgingSignals（D 域自有，不依赖 E inspector）。
+// 消费方：① RulesPane 展示老化提示区；② E-AGING1 巡检（通过 HTTP fetch，不允许 import）。
+// 安全：仅扫 memory_items 衍生字段；零 LLM；零 draw_data。
+dataRouter.get("/api/workspaces/:id/memory/aging-signals", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const result = computeMemoryAgingSignals({ workspaceId: req.params.id });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
 });
 
 

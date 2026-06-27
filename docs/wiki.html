@@ -755,15 +755,15 @@ B. 前端：
 5. 【SkillHone 增补 2606.08671·防作弊隔离·核心】Creator/Evaluator 权限隔离(复用 subagent-core 权限边界)：优化队(Creator)只读脱敏报告+决策史、可写 skill 库、**看不到** golden_strategy/validator/执行 trace；评估队(Evaluator)能看 oracle/validator、**不能写** skill 库、只产脱敏问题报告。评估用 golden_strategy 盲测、证据脱敏后回写 successRate/pitfalls。防『测试集过拟合/自证自演』作弊。决策史检索『类似修复是否试过』走 X-HARNESS0 增补口径。
 验收：先做『验证门+严格接受』堵 skill 漂移即可交付 MVP；端到端 skill 自动迭代不退化；Creator 实测无法访问 validator/golden。typecheck+build+tests 绿。
 约束：不绑 paradigm A MVP。跨域依赖：打分复用 E-EFC1；隔离复用 subagent-core。` },
-  { dom: "X", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】X-AGING0：记忆老化探针/度量契约(types.ts)（总控自做）", brief:
-`✅ 已解冻（2026-06-27，用户授意先解冻、暂不开发，待排期捞出）。来源：docs/backlog/AgingBench-记忆老化巡检.md。本卡=接缝契约，总控自做，解锁 E-AGING1/D-AGING2。
+  { dom: "X", status: "done", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】X-AGING0：记忆老化探针/度量契约(types.ts)（总控自做）", brief:
+`✅ done（2026-06-27，总控自做）：双侧 types.ts 加 AgingKind/CounterfactualProbe/AgingMetric/ErrorAttribution，typecheck+build 绿、详见 notes-infra §十一。来源：docs/backlog/AgingBench-记忆老化巡检.md。本卡=接缝契约，总控自做，解锁 E-AGING1/D-AGING2。
 范围(接缝层)：types.ts 双侧：
  · type AgingKind='compression'|'interference'|'revision'|'maintenance'   // 写W/读R/用U/存S
  · CounterfactualProbe{ id; write:'agent'|'oracle'; read:'agent'|'oracle' }   // P1/P2/P3
  · AgingMetric{ halfLife; decaySlope; finalScore; accumulatorError?; interferenceResistance?; forgetAccuracy?; shockDelta? }
  · ErrorAttribution{ writeErr; readErr; utilErr }   // 由 P1/P2/P3 Acc 差算
 验收：types 双侧对齐、typecheck+build 绿。约束：仅契约。跨域依赖：解锁 E/D 两卡。` },
-  { dom: "E", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】E-AGING1：Dream Worker 记忆老化夜间巡检 + 反事实探针 + 定向修复建议", brief:
+  { dom: "E", status: "done", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】E-AGING1：Dream Worker 记忆老化夜间巡检 + 反事实探针 + 定向修复建议", brief:
 `✅ 已解冻（2026-06-27，暂不开发待排期）。前置 X-AGING0 契约需先做。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 eval/Dream Worker(E：memory-evaluation-*.ts，E-MEM2-DREAM 同源)。
 范围(E slot)：
 1. Dream Worker 夜间任务：先做最痛两类——干扰(相近记忆卡冲突告警)+修订(事实更新后回扫引用它的卡)。
@@ -771,8 +771,13 @@ B. 前端：
 3. 老化曲线度量(半衰期/衰减斜率/accumulator_error/shock_delta) + 按 profile 出定向修复建议。
 验收：夜间巡检产『干扰/修订』老化清单 + 阶段归因；典型样例验证『行为测试过但事实已错』。typecheck+build+tests 绿。
 约束：不堆模型规模治修订(表征问题，靠显式状态维护)。跨域依赖：记忆 store 信号读 D-AGING2。` },
-  { dom: "D", status: "todo", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】D-AGING2：memory-injection 老化信号(卡冲突检测 + 事实更新回扫)", brief:
-`✅ 已解冻（2026-06-27，暂不开发待排期）。前置 X-AGING0 契约需先做。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 store/注入(D：memory-injection.ts、规则记忆 db/data.ts、RulesPane)。
+  { dom: "X", status: "done", created: "2026-06-27 12:00", title: "【Harness·AgingBench·收敛】X-AGING-DEDUP：抽共享老化检测核，消 E-AGING1/D-AGING2 算法重复（总控自做）", brief:
+`来源：D-AGING2 终审开放问题⑧（总控裁决）。E-AGING1 \`memory-aging-inspector.ts\` 与 D-AGING2 \`memory-aging-signals.ts\` 各自实现了一套干扰/修订检测算法（similarity/referencesMemory/isActive/conflict/staleRef ~100 行重复），违反单一真源。
+裁决：D 的检测算法是正源（X-AGING0 §十一「D 真源」设计），但检测原语应抽到**总控持有的共享模块**，D-signals + E-inspector 同 import，各自只加域层（E 加反事实归因/老化曲线/建议；D 加 pairId/MAX_ITEMS 截断/reason enum）。
+范围(总控 seam)：新建 \`server/src/memory-aging-core.ts\`（导出 similarity/referencesMemory/isActive/jaccard/tokens/sharedTags + 可选 detectConflictPairs/detectStaleRefs 原语）；E-inspector + D-signals 改 import 共享核、删本地副本；两侧测试不回归。
+验收：单一真源（grep 无重复实现）、aging 两套测试全绿、typecheck+build 绿、红线净。约束：纯重构不改行为/不改端点签名/不改输出形状。` },
+  { dom: "D", status: "done", created: "2026-06-22 18:30", title: "【Harness·AgingBench·P1】D-AGING2：memory-injection 老化信号(卡冲突检测 + 事实更新回扫)", brief:
+`✅ done（2026-06-27，总控终审通过·8/8 测试）。注：检测算法与 E-AGING1 重叠，收敛归 X-AGING-DEDUP（总控抽共享核）。来源：docs/backlog/AgingBench-记忆老化巡检.md。落点=记忆 store/注入(D：memory-injection.ts、规则记忆 db/data.ts、RulesPane)。
 范围(D slot)：
 1. 卡冲突检测：相近/可混淆记忆条目识别，暴露 GET 供 E 巡检消费(跨域 HTTP，不被 E import)。
 2. 事实更新回扫：某条记忆被 supersede/更新后，标记引用它的下游卡待校验(对接『验证 file/flag 仍存在』理念)。

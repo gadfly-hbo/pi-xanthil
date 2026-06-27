@@ -115,6 +115,7 @@ import { readWorkflow, runMultiAgent, topoOrder } from "../multi-agent-runner.ts
 import { runPiPrompt, runPiTurn } from "../pi-adapter.ts";
 import { fireMemoryConsolidation, postMemoryCandidateToDIngest, runMemoryConsolidation, type MemoryConsolidationTargetKind } from "../memory-consolidation.ts";
 import { runMemoryMaintenance } from "../memory-maintenance.ts";
+import { runMemoryAgingInspection, type CounterfactualProbeRun } from "../memory-aging-inspector.ts";
 import { DEFAULT_MEMORY_SKILL_THRESHOLDS, fetchMemoryExperiences, runMemoryToSkillPromotion, type MemorySkillThresholds } from "../memory-to-skill.ts";
 import { runPromptDistillation } from "../prompt-distillation.ts";
 import { validateSkillPaths } from "../skills.ts";
@@ -1837,6 +1838,49 @@ engineRouter.post("/api/workspaces/:id/memory/maintain", (req, res) => {
   const dryRun = (req.body as { dryRun?: unknown } | null)?.dryRun === true;
   try {
     res.json(runMemoryMaintenance({ workspaceId: workspace.id, dryRun }));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+function parseCounterfactualProbeRuns(value: unknown): CounterfactualProbeRun[] {
+  if (!Array.isArray(value)) return [];
+  const out: CounterfactualProbeRun[] = [];
+  for (const item of value) {
+    if (!item || typeof item !== "object") continue;
+    const record = item as Record<string, unknown>;
+    const write = record.write === "agent" || record.write === "oracle" ? record.write : null;
+    const read = record.read === "agent" || record.read === "oracle" ? record.read : null;
+    const accuracy = typeof record.accuracy === "number" && Number.isFinite(record.accuracy) ? record.accuracy : null;
+    if (!write || !read || accuracy === null) continue;
+    out.push({
+      id: typeof record.id === "string" && record.id.trim() ? record.id.trim() : `${write}-${read}`,
+      write,
+      read,
+      accuracy: Math.max(0, Math.min(1, accuracy)),
+    });
+  }
+  return out;
+}
+
+function parseScoreSeries(value: unknown): number[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  return value.filter((item): item is number => typeof item === "number" && Number.isFinite(item))
+    .map((item) => Math.max(0, Math.min(1, item)));
+}
+
+// AgingBench · E-AGING1：Dream Worker 记忆老化巡检（干扰/修订 + 反事实归因）。
+// 只读即时诊断，不落库、不调 LLM；probes/scoreSeries 可由人工 oracle 小验证集传入。
+engineRouter.post("/api/workspaces/:id/memory/aging-inspect", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const body = (req.body ?? {}) as Record<string, unknown>;
+  try {
+    res.json(runMemoryAgingInspection({
+      workspaceId: workspace.id,
+      probes: parseCounterfactualProbeRuns(body.probes),
+      scoreSeries: parseScoreSeries(body.scoreSeries),
+    }));
   } catch (err) {
     res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }

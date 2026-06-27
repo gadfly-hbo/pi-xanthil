@@ -21,6 +21,7 @@
   - ✅ **D-EVOLVE2 终审通过（含总控两处红线收口）·EVOLVE 链闭环**：3 入口（`HealthReportPane`/`ReportReviewPane`/`GoldenStrategyPane`）加「提为 eval 候选」按钮 + `engineApi.createEvalRecord`（跨域调 E 端点 HTTP）。**收口 2 处红线**：① **D 偏离自卡脱敏 spec**——`HealthReportPane` output 含 `evidence: finding.evidence` 原值（卡只允许 kind/severity/comparisons/suggestion）→ 去原值改发衍生字段；② **服务端 ingress 不脱敏**——`POST /evolve/eval-records` 的 `parseAgentTrajectory` 只校验形状、手动路径绕过 `sanitizeTrajectoryText` → 入站 input/output 一律再脱敏（抓 draw_data/`0NN_raw` + 2400 截断），不信任客户端、与自动路径同口径。验证 evolve 7/7、typecheck/build 绿、数据探索隔离 grep 净。
   - ✅ **解冻链推进**：X-EVOLVE0/E-SKILLOPT1（前置满足）→ E-EVOLVE1/D-EVOLVE2 解冻并**全部 done**。**产品 Agent 自进化 EVOLVE 链全闭环**（X-EVOLVE0 契约 → E-EVOLVE1 引擎沉淀 ↔ D-EVOLVE2 注释入口；D 标注→eval 候选→E 持久化/AHE bounded change·human gate）。AgingBench(P1)/HarnessAudit(P2) 维持冻结。
   - ✅ **wiki 7 卡转 done**：X-HARNESS0 / E-EFC1 / E-AHE1 / X-EVOLVE0 / E-SKILLOPT1 / E-EVOLVE1 / D-EVOLVE2。
+  - ✅ **剩余冻结卡全解冻（用户授意·暂不开发）**：AgingBench P1（X-AGING0/E-AGING1/D-AGING2）+ HarnessAudit P2（X-AUDIT0/E-AUDIT1）去【冻结】标记、状态保持 `todo`，待排期捞出。**wiki 已无任何冻结卡**。卡面留语境提示：AGING 前置=X-AGING0 契约先行；AUDIT 原冻结理由=「待多 agent 协作规模上来」（非技术前置，捞出前先评估价值）。注：line 560/714 两处分组 `//` 注释含历史「冻结」语境，已 stale 但属注释非卡状态，未动。
   - ✅ **fast-follow backlog 开卡**（§十一 零残留）：`docs/backlog/SkillOpt-fast-follow-防作弊硬隔离与EFC接入.md`（#1 防作弊硬隔离=接 pi-sandbox/真实 access log；#2 EFC 真接 `resolveSkillScore`）+ README 登记。捞出建议先 EFC（小独立）后硬隔离（随「安全红线·统一单点守卫」立项）。
   - ✅ **验证**：每卡 server+web `typecheck`/`build` 绿；EFC 2/2、6 runner 45/45、AHE 2/2、SkillOpt 新 20/20；红线 grep（draw_data/data-exploration 隔离）全净；双侧 types 镜像对齐、无本地重声明（E-EFC1 收口后）。
   - 待用户提交：`server/src/{types,cache,efc-scoring(.test),ahe-attribute(.test),evolve-engine(.test),skill-rewrite-gate(.test),skill-rejected-buffer,skill-sandbox(.test)}`、6 `*-evaluation-runner`、`db/engine`、`skill-curator`、`routes/engine`、`web/src/{types,lib/api/engine,lib/efc,components/{6×LabPane,AheManifestPanel,SkillManagementPane,HealthReportPane,ReportReviewPane,GoldenStrategyPane}}`、`docs/{notes-infra §九/§十,wiki(7 卡 done+4 卡解冻),backlog 2 文件}`（+ E 自维护 `notes-engine`）。
@@ -364,3 +365,33 @@
 - 路由落 `routes/engine.ts`，前端 api 落 `api/engine.ts`；本契约卡均未碰，留下游。
 
 **验证**：server + web typecheck 绿、build 绿（双侧各 9 处类型引用对齐），现有业务代码零改动。
+
+---
+
+## 十一、记忆老化度量接缝契约（X-AGING0，2026-06-27 总控自做）
+
+**背景**：backlog `AgingBench-记忆老化巡检.md`（arxiv 2605.26302）落地。AgingBench 结论：**即使权重冻结，记忆运营态会随时间退化**，且「行为测试通过≠事实准确」（老化对常规行为测试不可见）。本卡=接缝契约，仅定单一真源，**不实装**探针执行/度量/修复。解锁 **E-AGING1**（Dream Worker 夜间巡检：干扰卡冲突 + 修订回扫 + 反事实探针 + 定向修复建议）/ **D-AGING2**（memory-injection 老化信号：卡冲突检测 + 事实更新回扫）。
+
+**已交付（双侧 `types.ts` 镜像，接在 X-EVOLVE0 块后、跨 lab 回归看板前，字面一致）**：
+- `AgingKind`（compression/interference/revision/maintenance = 写 W/读 R/用 U/存 S 四阶段老化）。
+- `CounterfactualProbe{id,write,read}`——oracle 替换探针；**论文三档 util 恒 agent，仅 write/read 在 agent↔oracle 间变**（P1=agent/agent · P2=agent/oracle · P3=oracle/oracle），故契约无 util 字段。
+- `AgingMetric{halfLife,decaySlope,finalScore + accumulatorError?/interferenceResistance?/forgetAccuracy?/shockDelta?}`——曲线三项必填、按类诊断项可选（仅对应老化类填）。
+- `ErrorAttribution{writeErr,readErr,utilErr}`——由 P1/P2/P3 的 Acc 差算（util=1−Acc_P3 · write=Acc_P3−Acc_P2 · read=Acc_P2−Acc_P1）。
+
+**接缝审定（E-AGING1/D-AGING2 必守）**：
+- 与 **EFC M_t 记忆信号互补**（X-HARNESS0 §九）：老化巡检可反哺 EFC 的记忆更新质量信号。
+- E-AGING1 落记忆 eval/Dream Worker（新建 `memory-aging-inspector.ts`，E-MEM2-DREAM 同源）；D-AGING2 落记忆 store/注入（`memory-injection.ts`、`db/data.ts`、`RulesPane`）。
+- **红线（D-AGING2）**：守 AGENTS.md 数据安全，老化信号产出走数据探索隔离 grep。
+- **方法论锚点**：修订老化是**表征问题非容量问题**——靠显式状态维护（Typed-State Overlay）而非堆模型规模；先做最痛的「干扰 + 修订」巡检即有价值，反事实探针初期可小验证集人工标 oracle。
+
+**✅ E-AGING1 终审通过（2026-06-27）**：`memory-aging-inspector.ts`（纯函数：干扰检测 similarity≥0.35 / 修订检测 supersedes 链 + 旧引用回扫 / P1-P3 反事实归因 / 老化曲线 halfLife·OLS decaySlope）+ 只读端点 `POST /memory/aging-inspect`（不落库、不调 LLM）+ 前端 `inspectMemoryAging()`。归因公式精确（util=1−Acc_P3 等）、`CounterfactualProbeRun extends CounterfactualProbe`（E 域扩展非重声明）、纯函数无 LLM/draw_data/self-HTTP。测试 18/18（aging 4 + maintenance 11 + eval 3）、typecheck/build 绿。
+- **⚠ 总控订正审定**：原写「卡冲突走 D 的 GET、不被 E import」过于理想化。实际 E-AGING1 直接 `import { listMemoryItems } from "./db/data.ts"`，**裁决追认**——① 与既有 `memory-maintenance.ts:12` 同款先例一致（记忆治理 E 侧本就直读 store）；② **老化巡检语义上必须读完整 store（含已退役/superseded 条目）**，走 `memory-injection.ts` 检索过滤反而隐藏巡检要查的失效卡，故直读比走检索 facade 更正确（区别于 notes-engine.md:264「评测走 memory-injection」——那是检索保真口径，不适用老化扫描）。D-AGING2 的 GET 用于前端/跨进程消费，非服务端内巡检。
+
+**✅ D-AGING2 终审通过（2026-06-27）**：`memory-aging-signals.ts`（纯算法：干扰对检测 similarity≥0.35 + reason enum + pairId 稳定排序 + MAX_ITEMS=600 防 O(N²) / 修订回扫 supersedes 链 + 旧引用）+ 只读 GET `/api/workspaces/:id/memory/aging-signals`（routes/data.ts·D slot）+ `RulesPane`「查看老化信号」面板。零 LLM、显式数据安全文档（只读 memory_items 衍生字段、不碰 draw_data/clean_data）、本域消费类型不上提接缝、未碰 E 域。测试 8/8、数据探索隔离 grep 净、typecheck/build 绿。
+
+**⚠ 重叠裁决（D 开放问题⑧ → 总控，2026-06-27）**：E-AGING1 `memory-aging-inspector.ts` 与 D-AGING2 `memory-aging-signals.ts` **各自实现了一套干扰/修订检测算法**（similarity/referencesMemory/isActive/conflict/staleRef ~100 行重复），违反单一真源。**根因**=总控先终审 E-AGING1 时 D-AGING2 未回流，追认了 E 自实现+直读，没预见与 D 本职重叠。**裁决**：D 的检测算法是正源（X-AGING0「D 真源」设计），收敛方案=**总控抽共享核 `memory-aging-core.ts`**（§四 shared helper 归总控），D-signals + E-inspector 同 import、删本地副本、各自只加域层。
+
+**✅ X-AGING-DEDUP done（2026-06-27，总控自做·纯重构）**：新建 `server/src/memory-aging-core.ts`（总控持有，type-only 依赖 `MemoryItem`、零 runtime 副作用），导出 6 原语 `isMemoryActive`/`memorySimilarity`/`sharedMemoryTags`/`memoryReferences`/`memoryTokens`/`jaccard`。E-inspector + D-signals 删各自本地副本、改 import 共享核；E 保留 `hasConflictingSignals`/反事实/曲线/建议，D 保留 `severityRank`/reason enum/截断（域层各自留）。`similarity` 共享版返回未 round（D 口径，E 失去内部 round3 但展示处仍 round3、检测阈值碰撞≈0 行为等价）。**验证**：去重 grep（原语只在 core）、各 test 文件单独全绿（signals 8/8 · inspector 4/4 · maintenance 11/11）、server+web typecheck/build 绿。AgingBench 全链干净收口。
+- **✅ 顺带收口预存测试隔离缺陷（§二·五 铁律，2026-06-27）**：`memory-aging-signals.test.ts` / `memory-aging-inspector.test.ts` 原未在 import 前设临时 `XANTHIL_DATA_DIR`——两文件用注入 `items`（纯函数、runtime 不查 DB），但 import 链触发 `db.ts` boot 开真实 `~/.pi-xanthil` 库，**多文件同进程合并跑时 `initSharedTables` 报 `database is locked`**（单文件跑无碍）。已按 `collect-db.test.ts` 范式修：`import type` 保留静态（编译期擦除不触发 runtime）+ `process.env.XANTHIL_DATA_DIR=mkdtempSync(tmpdir/...)` 后 `await import` 被测模块。验证：合并跑 23/23（signals 8+inspector 4+maintenance 11）+ 12/12 稳定无 locked、typecheck/build 绿。同款修 `memory-maintenance.test.ts`（原同样未自设隔离），三个 memory test 文件现各自独立隔离、不靠加载顺序兜底，任意组合合并跑均无 locked（复验 23/23）。
+
+**验证**：server + web typecheck 绿、build 绿（双侧各 4 处 export 对齐）。

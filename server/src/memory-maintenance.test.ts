@@ -1,16 +1,23 @@
 import { test } from "node:test";
 import assert from "node:assert/strict";
-import {
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+import type { MemoryMaintenanceConfig } from "./memory-maintenance.ts";
+import type { MemoryItem } from "./types.ts";
+import type { MemoryItemPatch } from "./db/data.ts";
+
+// §二·五 铁律：被测模块 import 链触发 db.ts boot（import 期即 open DB_PATH）。
+// 必须先设临时 XANTHIL_DATA_DIR + 动态 import，否则多文件同进程合并跑 `database is locked` 且污染真实库。
+process.env.XANTHIL_DATA_DIR = mkdtempSync(join(tmpdir(), "memory-maintenance-test-"));
+const {
   computeMaintenancePlan,
   runMemoryMaintenance,
   fireMemoryMaintenance,
   resetMaintenanceThrottle,
   DEFAULT_MAINTENANCE_CONFIG,
   DEFAULT_MAINTENANCE_THROTTLE_MS,
-  type MemoryMaintenanceConfig,
-} from "./memory-maintenance.ts";
-import type { MemoryItem } from "./types.ts";
-import type { MemoryItemPatch } from "./db/data.ts";
+} = await import("./memory-maintenance.ts");
 
 const NOW = 1_700_000_000_000;
 const DAY = 24 * 60 * 60 * 1000;

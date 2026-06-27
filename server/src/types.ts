@@ -1334,6 +1334,52 @@ export interface EvalRecord {
   createdAt: number;
 }
 
+// ════ 记忆老化度量接缝契约（X-AGING0，总控自做）════
+// 来源 docs/backlog/AgingBench-记忆老化巡检.md（arxiv 2605.26302）。本块仅定契约单一真源；
+// 反事实探针执行器 / 老化度量 / 定向修复建议均归 E-AGING1（Dream Worker 夜间巡检）/
+// D-AGING2（memory-injection 老化信号）实装。与 EFC 的 M_t 记忆信号互补（见 X-HARNESS0）。
+
+/** 四类记忆老化，各发生在记忆循环数据流的不同阶段：
+ *  History →[写 W] 记忆S →[读 R] Context →[用 U] Answer。 */
+export type AgingKind =
+  | "compression"   // 写 W：写时摘要丢信息（低频细节/精确值丢失）
+  | "interference"  // 读 R：相似/冗余条目挤掉目标事实
+  | "revision"      // 用 U：变更/派生态未正确更新（如累加值过期）
+  | "maintenance";  // 存 S：重压缩/prompt 改版/日志清理悄改行为（性能悬崖）
+
+/** 反事实探针：用 oracle 替换 write/read 环节，按 P1/P2/P3 对照把错误归因到阶段。
+ *  论文三档 util 恒 agent，仅 write/read 在 agent↔oracle 间变（P1=agent/agent · P2=agent/oracle · P3=oracle/oracle）。 */
+export interface CounterfactualProbe {
+  id: string;
+  write: "agent" | "oracle";
+  read: "agent" | "oracle";
+}
+
+/** 老化曲线 + 按类度量。曲线三项必填；按类诊断项可选（仅对应老化类填）。 */
+export interface AgingMetric {
+  /** 半衰期：首个 m(t) ≤ 0.5·m(0) 的 session 数。 */
+  halfLife: number;
+  /** 衰减斜率（OLS 拟合）。 */
+  decaySlope: number;
+  /** 终值 m_F。 */
+  finalScore: number;
+  /** 修订老化：accumulator_error(t) = |v_agent − v_gold|。 */
+  accumulatorError?: number;
+  /** 干扰老化：抗干扰度。 */
+  interferenceResistance?: number;
+  /** 修订老化：过期事实遗忘准确度。 */
+  forgetAccuracy?: number;
+  /** 维护老化：shock_delta(e) = m_F(shock) − m_F(control)。 */
+  shockDelta?: number;
+}
+
+/** 阶段错误归因：由 P1/P2/P3 的 Acc 差算（util=1−Acc_P3 · write=Acc_P3−Acc_P2 · read=Acc_P2−Acc_P1）。 */
+export interface ErrorAttribution {
+  writeErr: number;
+  readErr: number;
+  utilErr: number;
+}
+
 // ---- 跨 lab 回归看板 + CI gate (Phase5 P5-2) ----
 
 export type LabKind = "skill" | "tool" | "prompt" | "command" | "subagent" | "hook";
