@@ -6,3 +6,4 @@ server/.pi-sessions/
 .DS_Store
 .env
 .env.local
+docs/
