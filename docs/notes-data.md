@@ -10,37 +10,38 @@
 
 > **v2.2 已发布（2026-06-20，总控）**：v2.1 关闭、2.2 阶段启动。
 
-- 最近更新：2026-06-26 · **D-QEVAL3 SubAgent eval 硬断言扩展 + pass@k 聚合**（X-QEVAL0 P1 卡，"总控卡委派" 模式 = 按图代笔）
+- 最近更新：2026-06-27 · **D-EVOLVE2 产品Agent自进化 eval 候选入口**（红线卡，监测行动环/report-review/golden_strategy 加「提为 eval 候选」按钮）
 - 进度：
-  - **D-QEVAL3（2026-06-26 完成，P1）**：subagent 评测从「LLM judge 主观打分」升级为「硬断言（规则层）+ LLM judge（语义层）双轨」。
-    - **`types.ts` 双侧**：`SubAgentEvalCase` 加 7 个可选字段（`mustCallTools` / `mustNotCallTools` / `outputContains` / `outputNotContains` / `minOutputChars` / `maxToolCalls` / `maxCostUsd`）；新 `HardRuleCheckResult` 接口；`SubAgentEvaluationRunResult` 加 `hardRuleResults?` / `ruleFailed?`；`SubAgentCaseSummary` 加 4 个聚合字段（`ruleCheckPassed` / `ruleCheckDetails` / `passAtK` / `outputVariance`）。按 Orchestration §六「总控卡委派」规则代笔（brief 内字段写死、零架构自由度）。
-    - **`subagent-evaluation-api.ts` parser**：7 个新字段全部空值不写入，保持旧 case 反序列化向后兼容（无值即 `undefined`）。
-    - **`subagent-evaluation-runner.ts`**：导出 `checkHardRules(case, runResult) → HardRuleCheckResult[]`；`runCase` 在 `assertExpectation`（含 LLM judge）**之前**跑硬断言，任一 must 失败 → `ruleFailed=true`。**关键决策**：硬断言失败**不**让 `status=fail`（brief 要求"独立于 judge 分"），仅元数据标记；`status` 仍由 expected 断言 + LLM judge 决定。这样 `pass@k = (status=success ∧ !ruleFailed) / total` 能真区分"judge 过但硬断言挂"vs"全绿"。
-    - **聚合公式**：`passAtK = passedRuns / total`；`outputVariance = σ/μ`（变异系数，对长度归一）<2 样本时返回 0；`ruleCheckDetails` 每条 rule 在 repeat 内任一 fail → 在 summary 显示为 fail（取代表性 fail 详情）。
-    - **前端 SubAgentLabPane.tsx**：`DraftCase` 加 7 字段；`CaseEditor` 末尾「硬断言（可选 · N）」可折叠区（默认收起，hardCount 实时显示）；结果表加 `pass@k` / `硬断言` / `输出 cv` 三列；ResultCard 列硬断言每条 detail + ruleFailed 徽标。
-    - **`evaluation-archive.test.ts`**：补齐 fixture 新字段（archive 渲染未加新字段，archive MD 仍按旧 schema——见开放问题）。
-  - 早间 **D-QEVAL1 文档质量评测 runner** 已完成（见正文「文档质量评测 runner」节），与 MEM-MAINTAIN/PROMOTE-UI 同等待 review 提交。
+  - **D-EVOLVE2（2026-06-27 完成）**：监测行动环/report-review/golden_strategy 加「采纳/标注失败环节→eval 候选」入口。
+    - **`web/src/lib/api/engine.ts`**：新增 `engineApi.createEvalRecord(workspaceId, body)`，调 E 域 `POST /api/workspaces/:id/evolve/eval-records`。
+    - **`HealthReportPane.tsx`**：每个 finding 行新增「提为 eval 候选」按钮（FlaskConical 图标），构造脱敏轨迹（仅 finding 元数据：ruleId/category/severity/lifecycle/signature/title/suggestion/evidence/comparisons/diagnosis，**零 draw_data 原值**），提交后显示紫色「已提为候选」标签。
+    - **`ReportReviewPane.tsx`**：每条批注卡片新增「提为 eval 候选」按钮，轨迹含 quote/issue/suggestion/severity（脱敏后的评审元数据），不存报告原文。
+    - **`GoldenStrategyPane.tsx`**：业务洞见侧边栏新增「纠正并提为 eval 候选」按钮，轨迹含 analysisModel + 前 5 个节点摘要（title/kind），不存完整节点 body。
+    - **脱敏设计**：eval 候选只存 finding 衍生字段(kind/severity/comparisons/suggestion)+期望输出，**绝不存 draw_data 原值**。前端构造 trajectory 时仅序列化聚合元数据，与 `evolve-engine.ts` 的 `sanitizeTrajectoryText` 同口径。
+    - **跨域调用**：前端 D slot 调 E 域 `/evolve/eval-records` 端点（已有），eval 候选供 E-EVOLVE1 消费。`engineApi.createEvalRecord` 是 D→E 跨域调用的第二个实例（继 skill 管理之后）。
+  - 上次 D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 仍等待用户 review 后手动提交。
 - 校验：
   - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
   - `npm -w web run build`：✅ 仅既有 chunk size warning
   - 数据探索红线 grep：✅ 无匹配
-  - 单测 **19/19** 绿（subagent runner 12：原 6 + 新 6 / subagent api parser 3 / evaluation archive 4）
+  - eval 候选代码中无 draw_data/原始数据引用：✅ 仅注释说明 "zero raw data"
 - 下一步（接续优先级）：
-  - ① 用户 review 后手动提交（D-QEVAL3 + 早间 D-QEVAL1 + 上次 MEM-MAINTAIN/PROMOTE-UI 一并）。
-  - ② **持久化向后兼容**（开放问题①，待总控决议是否本卡补）：历史 archive 反序列化得到的 `SubAgentCaseSummary` 缺新 4 字段，前端访问 `item.passAtK` 会得 `undefined`。修补点 = `db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底：`{ ruleCheckPassed: row.ruleCheckPassed ?? true, ruleCheckDetails: row.ruleCheckDetails ?? [], passAtK: row.passAtK ?? (row.total > 0 ? row.success / row.total : 0), outputVariance: row.outputVariance ?? 0 }`。`db/engine.ts` 是 E 域 slot，需总控派 E 或允许跨域。
-  - ③ **archive MD 渲染补硬断言摘要**（`evaluation-archive.ts` 的 subagent 渲染周边），让历史归档可看到 pass@k / 硬断言结果——纯文本输出，工作量小，可与 ② 同步派单。
-  - ④ 实跑：mall 报告 md → 跑 D-QEVAL1 看 combined_score；subagent eval 加硬断言 → 看 pass@k 区分度。
-  - ⑤ 早间 D-QEVAL1 + 记忆 UI 实跑点检 / D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
+  - ① 用户 review 后手动提交（D-EVOLVE2 + D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 一并）。
+  - ② **持久化向后兼容**（开放问题①，待总控决议）：`db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底。
+  - ③ **archive MD 渲染补硬断言摘要**（开放问题②）。
+  - ④ 实跑验证：D-QEVAL1 mall 报告 md → combined_score；D-QEVAL3 硬断言 → pass@k 区分度；D-EVOLVE2 入口 → eval 候选落库。
+  - ⑤ D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
 - 阻塞 / 待确认：
   - 无硬阻塞。
 - 开放问题：
-  - **① 持久化向后兼容缺口（必须解）**：旧 `subagent_evaluations.case_summaries` JSON 列反序列化得到的 summary 缺 4 个新字段，前端读 history 时 `passAtK/ruleCheckPassed/ruleCheckDetails/outputVariance` 为 undefined。修在 `db/engine.ts:644` 附近 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底（具体值见上"下一步②"）。本卡按 brief 边界（落点=types/runner/UI）未碰 db slot，需总控决议派单。
-  - **② archive MD 渲染未加新字段**：`evaluation-archive.ts` 的 subagent 报告仍按旧 schema 输出，归档报告读不到 pass@k / 硬断言结果。不影响功能，仅减少 archive 可读性。是否本期补由总控决定。
-  - **③ outputVariance cv 阈值化**：当前只输出 cv 数值，未规定"cv ≥ X 算不稳定"的阈值。E-QEVAL2 lab 看板若要把 cv 用作 gate（如回归告警），需总控审定阈值。
-  - **④ "总控卡委派" 终审加重**：本卡按 §六 修了双侧 `types.ts`，按规约"接缝层经代笔后动的是跨域单一真源，总控终审须逐行核"——需总控复核：字段双侧对齐、无本地重声明、无 baseline 报错、无跨域副作用、`typecheck`/`build` 全绿（已自检全过，但合规上仍需总控逐行核）。
-  - **⑤ D-QEVAL1 R01-R15 关键词包待校准**（保留自上次）：首版按 prompt 语义自由实现；如有 `eval_plugin/doc_eval.py` 源文件请提供路径做 1:1 同步。
-  - **⑥ D-QEVAL1 DocumentSessionMetrics 来源**（保留自上次）：依赖 E-QEVAL2 如何把 workflow run 元数据传入 runner。
+  - **① 持久化向后兼容缺口（必须解）**：旧 `subagent_evaluations.case_summaries` JSON 列反序列化得到的 summary 缺 4 个新字段。修在 `db/engine.ts:644` 附近，需总控派 E 或允许跨域。
+  - **② archive MD 渲染未加新字段**：`evaluation-archive.ts` 的 subagent 报告仍按旧 schema 输出。是否本期补由总控决定。
+  - **③ outputVariance cv 阈值化**：需总控审定阈值。
+  - **④ "总控卡委派" 终审加重**：需总控逐行核 D-QEVAL3 的双侧 types.ts 改动。
+  - **⑤ D-QEVAL1 R01-R15 关键词包待校准**。
+  - **⑥ D-QEVAL1 DocumentSessionMetrics 来源**。
+  - **⑦ D-EVOLVE2 eval 候选 UI 无批量操作**：当前每个 finding/annotation 独立提交，无「全选→批量提为候选」按钮。ponytail: 单次 finding 量小（通常 <20），手动逐个提交可接受；若后续 finding 量 >50 或用户反馈操作繁琐再加批量。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -437,3 +438,12 @@ python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print
 - **outputVariance = 变异系数 cv（σ/μ）**：选 cv 而非方差/标准差是为了归一化——不同 case 的输出长度量级差异巨大（几百 vs 几千字），方差不可比，cv 可比。<2 个 success 样本返回 0（避免 NaN）；μ=0 也返回 0（除零保护）。fakeRun 测试样本固定输出 "done"，cv 恒 0；真实运行才能体现稳定性。**阈值化留给总控**（开放问题③）：什么 cv 算"不稳定"是产品决策，runner 只算不判。
 - **接缝层「总控卡委派」首次实操**：本卡按 Orchestration §六 修了双侧 `types.ts`——这是 D 域 agent 首次代笔接缝层。**严格遵守的代笔边界**：① 只改 brief 写死的字段（7 个 case 字段 + 4 个 summary 字段 + 1 个 result 字段 + 1 个新接口），不顺手扩其他类型；② 双侧严格同步（server/web 字段名/类型/可选性完全一致）；③ 不在 `lib/api/engine.ts` 重声明 `SubAgentEvalCase` 局部类型（避免接缝层漂移），全部从 `@/types` import；④ 收尾在 §0 「开放问题④」显式提醒总控终审加重。可作后续接缝层代笔模板范例。
 - **历史 archive 反序列化向后兼容缺口**：`db/engine.ts:644` 的 `parseJsonArray<SubAgentCaseSummary>` 直接 `JSON.parse` 老数据，缺新 4 字段。本卡按 brief 边界（落点不含 db slot）未碰，列为开放问题①等总控决议。**通用范式**：接缝层 type 扩字段后，db 反序列化出口须加缺省值兜底（不能依赖 TS 编译时的 optional 标记——`row.passAtK` 是 runtime 行为，没有静态保护）。修补模板：`{ ...row, ruleCheckPassed: row.ruleCheckPassed ?? true, ruleCheckDetails: row.ruleCheckDetails ?? [], passAtK: row.passAtK ?? (row.total > 0 ? row.success / row.total : 0), outputVariance: row.outputVariance ?? 0 }`。
+
+---
+
+**产品Agent自进化 eval 候选入口（D-EVOLVE2，2026-06-27）**
+- **前端构造 trajectory、不调 server 端 evolve-engine**：`HealthReportPane`/`ReportReviewPane`/`GoldenStrategyPane` 各自在前端构造 `AgentTrajectory`（含 steps 的 input/output JSON），调 E 域已有 `POST /api/workspaces/:id/evolve/eval-records` 端点。**不**调 `evolve-engine.ts` 的 `buildEvalRecordFromFinding`（那是 server 端 E-EVOLVE1 自动触发路径，走 `upsertEvalRecordForFinding` 按 finding.id 去重；前端手动入口走 `createEvalRecord` 每次新建，不冲突）。
+- **脱敏设计 = 前端只序列化聚合元数据**：HealthReportPane 的 trajectory input 含 suite/ruleId/category/kind/severity/lifecycle/signature（元数据），output 含 title/suggestion/evidence/comparisons/diagnosis（聚合产物）。ReportReviewPane 含 quote/issue/suggestion/severity（评审元数据）。GoldenStrategyPane 含 analysisModel + 前 5 节点摘要（title/kind），不含完整 body。**所有路径零 draw_data 原值**——与 `evolve-engine.ts` 的 `sanitizeTrajectoryText` + `redactSensitive` 同口径（红线复用 E-MONITOR8）。
+- **D→E 跨域调用模式**：`engineApi.createEvalRecord` 是 D 域前端调 E 域端点的第二个实例（继 skill 管理 `SkillManagementPane` 调 `engineApi` 之后）。与 `dataApi` 的 D 域自闭环不同——eval-records 端点归 E 域（`routes/engine.ts`），D 只做消费方。**不**在 `routes/data.ts` 或 `db/data.ts` 加 eval 相关代码。
+- **UI 状态独立管理**：每个入口的 eval 提交状态（submitting/submitted）用组件本地 `useState<Set<string>>` 管理，不跨组件共享。提交后显示紫色「已提为候选」标签（`FlaskConical` + `Check` 图标），不可重复提交（按钮变只读标签）。**ponytail: 无批量操作**——单次 finding 量小（<20），逐个提交可接受；若 >50 再加「全选→批量提为候选」。
+- **golden_strategy 目录不存在**：AGENTS.md 提到 `golden_strategy/` 但文件系统中无此目录。GoldenStrategyPane 的 eval 入口落在业务洞见侧边栏（已有 UI），不依赖目录结构。

@@ -19,6 +19,7 @@ import {
   Upload,
   Search,
   Activity,
+  History,
 } from "lucide-react";
 import { api } from "@/lib/api";
 import { sharedApi } from "@/lib/api/shared";
@@ -229,6 +230,11 @@ export function SkillManagementPane({ workspaceId, model, models }: Props) {
   const [retesting, setRetesting] = useState(false);
   const [retestMsg, setRetestMsg] = useState("");
 
+  // SkillOpt: 被拒编辑列表
+  const [rejectedEdits, setRejectedEdits] = useState<Array<{ id: string; slug: string; reason: string; createdAt: number }>>([]);
+  const [showRejected, setShowRejected] = useState(false);
+  const [rejectedLoading, setRejectedLoading] = useState(false);
+
   const refresh = useCallback(async () => {
     if (!workspaceId) {
       setEntries([]);
@@ -259,6 +265,19 @@ export function SkillManagementPane({ workspaceId, model, models }: Props) {
     } finally {
       setLoading(false);
       setHistoryLoading(false);
+    }
+  }, [workspaceId]);
+
+  const loadRejectedEdits = useCallback(async () => {
+    if (!workspaceId) return;
+    setRejectedLoading(true);
+    try {
+      const edits = await api.listRejectedEdits(workspaceId);
+      setRejectedEdits(edits.map((e) => ({ id: e.id, slug: e.slug, reason: e.reason, createdAt: e.createdAt })));
+    } catch {
+      // non-critical
+    } finally {
+      setRejectedLoading(false);
     }
   }, [workspaceId]);
 
@@ -966,6 +985,16 @@ export function SkillManagementPane({ workspaceId, model, models }: Props) {
           </button>
           <button
             type="button"
+            onClick={() => { void loadRejectedEdits(); setShowRejected(true); }}
+            disabled={!workspaceId}
+            className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 text-[11.5px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            title="查看被严格门拒绝的 skill 编辑记录"
+          >
+            <History className="h-3.5 w-3.5" strokeWidth={1.75} />
+            被拒编辑
+          </button>
+          <button
+            type="button"
             onClick={beginCreate}
             className="inline-flex h-7 items-center gap-1 rounded-md bg-neutral-800 px-2.5 text-[11.5px] text-white hover:bg-neutral-700 dark:bg-neutral-200 dark:text-neutral-900 dark:hover:bg-neutral-300"
           >
@@ -1529,6 +1558,55 @@ export function SkillManagementPane({ workspaceId, model, models }: Props) {
               >
                 <Upload className="h-3.5 w-3.5" strokeWidth={1.75} />
                 {importSubmitting ? "导入中…" : "导入"}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* SkillOpt: 被拒编辑列表 */}
+      {showRejected && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowRejected(false)}>
+          <div
+            className="flex max-h-[70vh] w-[480px] flex-col rounded-lg border border-neutral-200 bg-white shadow-xl dark:border-neutral-700 dark:bg-neutral-900"
+            onClick={(e) => e.stopPropagation()}
+          >
+            <div className="flex items-center justify-between border-b border-neutral-200 px-4 py-2 dark:border-neutral-800">
+              <span className="text-sm font-semibold text-neutral-800 dark:text-neutral-100">被拒编辑记录</span>
+              <button
+                type="button"
+                onClick={() => setShowRejected(false)}
+                className="rounded p-1 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+              >
+                <X className="h-4 w-4" strokeWidth={1.75} />
+              </button>
+            </div>
+            <div className="flex-1 overflow-auto p-4">
+              {rejectedLoading ? (
+                <div className="text-center text-[11.5px] text-neutral-400">加载中...</div>
+              ) : rejectedEdits.length === 0 ? (
+                <div className="text-center text-[11.5px] text-neutral-400">暂无被拒编辑</div>
+              ) : (
+                <div className="space-y-2">
+                  {rejectedEdits.map((edit) => (
+                    <div key={edit.id} className="rounded-md border border-rose-200 bg-rose-50 p-2 dark:border-rose-800 dark:bg-rose-950/40">
+                      <div className="flex items-center justify-between">
+                        <span className="text-[11px] font-medium text-rose-700 dark:text-rose-300">{edit.slug}</span>
+                        <span className="text-[10px] text-rose-400">{new Date(edit.createdAt).toLocaleString()}</span>
+                      </div>
+                      <div className="mt-1 text-[11px] text-rose-600 dark:text-rose-400">{edit.reason}</div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+            <div className="flex items-center justify-end gap-2 border-t border-neutral-200 px-4 py-2 dark:border-neutral-800">
+              <button
+                type="button"
+                onClick={() => setShowRejected(false)}
+                className="inline-flex h-7 items-center rounded-md border border-neutral-200 bg-white px-2.5 text-[11.5px] text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              >
+                关闭
               </button>
             </div>
           </div>

@@ -6,6 +6,8 @@ import { runPiTurn } from "./pi-adapter.ts";
 import { saveSkillCurationProposals } from "./db.ts";
 import { listSkillRegistryEntries } from "./db/engine.ts";
 import { listSkills } from "./skills.ts";
+import { guardSlowUpdateWrite } from "./skill-rewrite-gate.ts";
+import { buildRejectedFeedbackPrompt, insertRejectedEdit } from "./skill-rejected-buffer.ts";
 import type { SkillCurationApplyResult, SkillCurationProposal, SkillCurationResult, SkillEvaluationDetail, SkillRegistryEntry } from "./types.ts";
 
 export interface SkillCurationRequest {
@@ -74,12 +76,17 @@ export async function curateSkillEvaluation(request: SkillCurationRequest): Prom
   });
 
   const prompt = buildCurationPrompt(evaluation, skillContents, workspaceRoot, descriptionEvidence);
+  const rejectedFeedback = registryEntries
+    .map((entry) => buildRejectedFeedbackPrompt(entry.slug, workspaceId))
+    .filter(Boolean)
+    .join("\n");
+  const fullPrompt = rejectedFeedback ? `${prompt}\n${rejectedFeedback}` : prompt;
   let text = "";
 
   const run = runPiTurn({
     workspaceRoot: curatorDir,
     piSessionId: `skill-curator-${evaluation.evaluationId}`,
-    text: prompt,
+    text: fullPrompt,
     model: model || undefined,
     allowWeb: false,
     onEvent: (event) => {
@@ -115,6 +122,54 @@ export function applySkillCurationProposals(request: SkillCurationApplyRequest):
     const permitted = allowed.some((dir) => targetPath.startsWith(dir + "/") || targetPath === dir);
     if (!permitted) {
       errors.push(`拒绝写入 ${proposal.targetPath}（不在允许的 skill 目录内）`);
+      continue;
+    }
+    const existing = existsSync(targetPath) ? readFileSync(targetPath, "utf8") : "";
+    const guard = guardSlowUpdateWrite(existing, proposal.suggestedContent);
+    if (!guard.allowed) {
+      errors.push(`拒绝写入 ${proposal.targetPath}（${guard.reason ?? "slow-update 受保护字段被修改"}）`);
+      continue;
+    }
+    try {
+      mkdirSync(dirname(targetPath), { recursive: true });
+      writeFileSync(targetPath, proposal.suggestedContent, "utf8");
+      applied.push(targetPath);
+    } catch (err) {
+      errors.push(`写入失败 ${targetPath}: ${String(err)}`);
+    }
+  }
+
+  return { applied, errors };
+}
+
+export function applySkillCurationProposalsGated(
+  request: SkillCurationApplyRequest & { workspaceId: string; slug?: string },
+): SkillCurationApplyResult {
+  const allowed = allowedSkillDirs(request.workspaceRoot);
+  const applied: string[] = [];
+  const errors: string[] = [];
+
+  for (const proposal of request.proposals) {
+    const targetPath = resolve(proposal.targetPath);
+    const permitted = allowed.some((dir) => targetPath.startsWith(dir + "/") || targetPath === dir);
+    if (!permitted) {
+      errors.push(`拒绝写入 ${proposal.targetPath}（不在允许的 skill 目录内）`);
+      continue;
+    }
+    const existing = existsSync(targetPath) ? readFileSync(targetPath, "utf8") : "";
+    const guard = guardSlowUpdateWrite(existing, proposal.suggestedContent);
+    if (!guard.allowed) {
+      const reason = guard.reason ?? "slow-update 受保护字段被修改";
+      errors.push(`拒绝写入 ${proposal.targetPath}（${reason}）`);
+      insertRejectedEdit({
+        workspaceId: request.workspaceId,
+        registryId: "",
+        slug: request.slug ?? "",
+        edit: { kind: "replace", after: proposal.suggestedContent.slice(0, 500) },
+        candidateContent: proposal.suggestedContent,
+        reason,
+        evaluationId: null,
+      });
       continue;
     }
     try {

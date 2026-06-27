@@ -4,7 +4,7 @@ import { db } from "../db.ts";
 import { enableForOrigin, setMemoryEnablement, disableItemEverywhere } from "./shared.ts";
 import { detectSkillActivation } from "../skill-activation.ts";
 import { parseEvaluationError, serializeEvaluationError } from "../evaluation-errors.ts";
-import type { ChangeManifest, CollectFolder, CommandCaseSummary, CommandEvalCase, CommandEvalSet, CommandEvaluation, CommandEvaluationDetail, CommandEvaluationRunResult, HarnessComponent, HarnessVariant, HookCaseSummary, HookEvalCase, HookEvalSet, HookEvaluation, HookEvaluationDetail, HookEvaluationRunResult, PromptEvalSet, PromptEvalTask, PromptEvaluation, PromptEvaluationDetail, PromptEvaluationRunResult, PromptPairwiseResult, PromptPairwiseSummary, PromptTaskSummary, PromptVariant, PromptVariantSummary, ScopedRevision, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus, SubAgentCaseSummary, SubAgentEvalCase, SubAgentEvalSet, SubAgentEvaluation, SubAgentEvaluationDetail, SubAgentEvaluationRunResult, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult } from "../types.ts";
+import type { AgentTrajectory, AgentTrajectoryModule, ChangeManifest, CollectFolder, CommandCaseSummary, CommandEvalCase, CommandEvalSet, CommandEvaluation, CommandEvaluationDetail, CommandEvaluationRunResult, EvalAnnotationStatus, EvalRecord, HarnessComponent, HarnessVariant, HookCaseSummary, HookEvalCase, HookEvalSet, HookEvaluation, HookEvaluationDetail, HookEvaluationRunResult, PromptEvalSet, PromptEvalTask, PromptEvaluation, PromptEvaluationDetail, PromptEvaluationRunResult, PromptPairwiseResult, PromptPairwiseSummary, PromptTaskSummary, PromptVariant, PromptVariantSummary, ScopedRevision, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, SkillRegressionStatus, SkillRegistryEntry, SkillRegistryInput, SkillSource, SkillStatus, SubAgentCaseSummary, SubAgentEvalCase, SubAgentEvalSet, SubAgentEvaluation, SubAgentEvaluationDetail, SubAgentEvaluationRunResult, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult } from "../types.ts";
 
 /**
  * 【Agent-E · 智能引擎域】db 表 slot —— owner: codex(GPT-5.5)
@@ -71,6 +71,20 @@ export function initEngineTables(): void {
   `);
   db.exec("CREATE INDEX IF NOT EXISTS idx_skill_registry_eval_history_skill ON skill_registry_eval_history(workspace_id, slug, created_at DESC)");
   db.exec("CREATE INDEX IF NOT EXISTS idx_skill_registry_eval_history_registry ON skill_registry_eval_history(registry_id, created_at DESC)");
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS skill_rejected_edits (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL,
+      registry_id       TEXT NOT NULL,
+      slug              TEXT NOT NULL,
+      edit_json         TEXT NOT NULL,
+      candidate_content TEXT NOT NULL DEFAULT '',
+      reason            TEXT NOT NULL DEFAULT '',
+      evaluation_id     TEXT,
+      created_at        INTEGER NOT NULL
+    );
+  `);
+  db.exec("CREATE INDEX IF NOT EXISTS idx_skill_rejected_edits_ws_slug ON skill_rejected_edits(workspace_id, slug, created_at DESC)");
   db.exec(`
     CREATE TABLE IF NOT EXISTS prompt_eval_sets (
       id TEXT PRIMARY KEY,
@@ -378,6 +392,29 @@ export function initEngineTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_monitor_findings_run ON monitor_findings(run_id);
     CREATE INDEX IF NOT EXISTS idx_monitor_findings_sig ON monitor_findings(signature);
+    CREATE TABLE IF NOT EXISTS agent_trajectories (
+      id              TEXT PRIMARY KEY,
+      workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      run_id          TEXT NOT NULL,
+      module          TEXT NOT NULL,
+      trajectory_json TEXT NOT NULL,
+      outcome         TEXT NOT NULL,
+      created_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_agent_trajectories_ws ON agent_trajectories(workspace_id, created_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_agent_trajectories_run ON agent_trajectories(workspace_id, run_id, module);
+    CREATE TABLE IF NOT EXISTS eval_records (
+      id                TEXT PRIMARY KEY,
+      workspace_id      TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      source_finding_id TEXT,
+      failing_trace     TEXT NOT NULL,
+      expected_output   TEXT NOT NULL,
+      pass_condition    TEXT NOT NULL,
+      annotation_status TEXT NOT NULL,
+      created_at        INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_eval_records_ws ON eval_records(workspace_id, created_at DESC);
+    CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_records_source_finding ON eval_records(workspace_id, source_finding_id);
   `);
 }
 
@@ -1847,4 +1884,180 @@ export function findPriorMonitorFindings(workspaceId: string, suite: string, met
   const r = db.prepare(sql).get(...params) as Row | undefined;
   if (!r) return [];
   return listMonitorFindings(r.id);
+}
+
+export interface AgentTrajectoryRecord {
+  id: string;
+  workspaceId: string;
+  trajectory: AgentTrajectory;
+  createdAt: number;
+}
+
+type AgentTrajectoryRow = {
+  id: string;
+  workspace_id: string;
+  trajectory_json: string;
+  created_at: number;
+};
+
+export function saveAgentTrajectory(input: { workspaceId: string; trajectory: AgentTrajectory; id?: string; createdAt?: number }): AgentTrajectoryRecord {
+  const id = input.id ?? randomUUID();
+  const createdAt = input.createdAt ?? Date.now();
+  db.prepare(`
+    INSERT INTO agent_trajectories (id, workspace_id, run_id, module, trajectory_json, outcome, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.workspaceId,
+    input.trajectory.runId,
+    input.trajectory.module,
+    JSON.stringify(input.trajectory),
+    input.trajectory.outcome,
+    createdAt,
+  );
+  return { id, workspaceId: input.workspaceId, trajectory: input.trajectory, createdAt };
+}
+
+export function listAgentTrajectories(filter: {
+  workspaceId: string;
+  runId?: string;
+  module?: AgentTrajectoryModule;
+  limit?: number;
+}): AgentTrajectoryRecord[] {
+  const limit = Math.max(1, Math.min(200, filter.limit ?? 100));
+  const clauses = ["workspace_id = ?"];
+  const params: Array<string | number> = [filter.workspaceId];
+  if (filter.runId) {
+    clauses.push("run_id = ?");
+    params.push(filter.runId);
+  }
+  if (filter.module) {
+    clauses.push("module = ?");
+    params.push(filter.module);
+  }
+  params.push(limit);
+  const rows = db.prepare(`
+    SELECT id, workspace_id, trajectory_json, created_at
+    FROM agent_trajectories
+    WHERE ${clauses.join(" AND ")}
+    ORDER BY created_at DESC
+    LIMIT ?
+  `).all(...params) as unknown as AgentTrajectoryRow[];
+  return rows.map(parseAgentTrajectoryRow);
+}
+
+export interface EvalRecordUpsertResult {
+  record: EvalRecord;
+  created: boolean;
+}
+
+type EvalRecordRow = Omit<EvalRecord, "sourceFindingId" | "failingTrace" | "expectedOutput" | "passCondition" | "annotationStatus" | "createdAt"> & {
+  source_finding_id: string | null;
+  failing_trace: string;
+  expected_output: string;
+  pass_condition: string;
+  annotation_status: string;
+  created_at: number;
+};
+
+export function createEvalRecord(workspaceId: string, input: Omit<EvalRecord, "id" | "createdAt"> & { id?: string; createdAt?: number }): EvalRecord {
+  const record: EvalRecord = {
+    id: input.id ?? randomUUID(),
+    sourceFindingId: input.sourceFindingId,
+    failingTrace: input.failingTrace,
+    expectedOutput: input.expectedOutput,
+    passCondition: input.passCondition,
+    annotationStatus: input.annotationStatus,
+    createdAt: input.createdAt ?? Date.now(),
+  };
+  db.prepare(`
+    INSERT INTO eval_records (id, workspace_id, source_finding_id, failing_trace, expected_output, pass_condition, annotation_status, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    record.id,
+    workspaceId,
+    record.sourceFindingId ?? null,
+    JSON.stringify(record.failingTrace),
+    record.expectedOutput,
+    record.passCondition,
+    record.annotationStatus,
+    record.createdAt,
+  );
+  return record;
+}
+
+export function upsertEvalRecordForFinding(workspaceId: string, input: Omit<EvalRecord, "id" | "createdAt">): EvalRecordUpsertResult {
+  if (input.sourceFindingId) {
+    const existing = getEvalRecordBySourceFinding(workspaceId, input.sourceFindingId);
+    if (existing) return { record: existing, created: false };
+  }
+  return { record: createEvalRecord(workspaceId, input), created: true };
+}
+
+export function getEvalRecord(workspaceId: string, id: string): EvalRecord | undefined {
+  const row = db.prepare(`
+    SELECT id, source_finding_id, failing_trace, expected_output, pass_condition, annotation_status, created_at
+    FROM eval_records
+    WHERE workspace_id = ? AND id = ?
+  `).get(workspaceId, id) as unknown as EvalRecordRow | undefined;
+  return row ? parseEvalRecordRow(row) : undefined;
+}
+
+export function getEvalRecordBySourceFinding(workspaceId: string, sourceFindingId: string): EvalRecord | undefined {
+  const row = db.prepare(`
+    SELECT id, source_finding_id, failing_trace, expected_output, pass_condition, annotation_status, created_at
+    FROM eval_records
+    WHERE workspace_id = ? AND source_finding_id = ?
+  `).get(workspaceId, sourceFindingId) as unknown as EvalRecordRow | undefined;
+  return row ? parseEvalRecordRow(row) : undefined;
+}
+
+export function listEvalRecords(filter: { workspaceId: string; annotationStatus?: EvalAnnotationStatus; limit?: number }): EvalRecord[] {
+  const limit = Math.max(1, Math.min(200, filter.limit ?? 100));
+  const rows = filter.annotationStatus
+    ? db.prepare(`
+      SELECT id, source_finding_id, failing_trace, expected_output, pass_condition, annotation_status, created_at
+      FROM eval_records
+      WHERE workspace_id = ? AND annotation_status = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(filter.workspaceId, filter.annotationStatus, limit) as unknown as EvalRecordRow[]
+    : db.prepare(`
+      SELECT id, source_finding_id, failing_trace, expected_output, pass_condition, annotation_status, created_at
+      FROM eval_records
+      WHERE workspace_id = ?
+      ORDER BY created_at DESC
+      LIMIT ?
+    `).all(filter.workspaceId, limit) as unknown as EvalRecordRow[];
+  return rows.map(parseEvalRecordRow);
+}
+
+export function updateEvalRecordStatus(workspaceId: string, id: string, annotationStatus: EvalAnnotationStatus): EvalRecord | undefined {
+  db.prepare("UPDATE eval_records SET annotation_status = ? WHERE workspace_id = ? AND id = ?").run(annotationStatus, workspaceId, id);
+  return getEvalRecord(workspaceId, id);
+}
+
+function parseAgentTrajectoryRow(row: AgentTrajectoryRow): AgentTrajectoryRecord {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    trajectory: parseJsonObject<AgentTrajectory>(row.trajectory_json, { runId: "", module: "monitor", steps: [], outcome: "fail" }),
+    createdAt: row.created_at,
+  };
+}
+
+function parseEvalRecordRow(row: EvalRecordRow): EvalRecord {
+  return {
+    id: row.id,
+    sourceFindingId: row.source_finding_id ?? undefined,
+    failingTrace: parseJsonObject<AgentTrajectory>(row.failing_trace, { runId: "", module: "monitor", steps: [], outcome: "fail" }),
+    expectedOutput: row.expected_output,
+    passCondition: row.pass_condition,
+    annotationStatus: parseEvalAnnotationStatus(row.annotation_status),
+    createdAt: row.created_at,
+  };
+}
+
+function parseEvalAnnotationStatus(value: string): EvalAnnotationStatus {
+  return value === "confirmed" || value === "rejected" ? value : "candidate";
 }

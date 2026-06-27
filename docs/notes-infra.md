@@ -10,8 +10,21 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。详见 `Orchestration.md §八` 发布节点。
 
-- 最近更新：2026-06-27 · 总控（subagents 体系 readme 挂内层 tab + 进阶 A/B/C/看板 4 卡终审）
-- 本批（2026-06-27 · subagents 体系 readme，总控自做）：
+- 最近更新：2026-06-27 · 总控（Harness 自进化专题 P0 全交付 + 产品 Agent 自进化 EVOLVE 链解冻推进）
+- 本批（2026-06-27 · Harness 自进化 + 产品 Agent 自进化专题，总控自做 + 多卡终审）：
+  - ✅ **X-HARNESS0（总控自做·契约+回滚预研）**：双侧 `types.ts` 加 EFC 度量（`FeedbackEvent`/`EFC_KAPPA`/`TaskDemand`/`EfcScore`）+ AHE 契约（`HarnessComponent`/`ChangeOutcome`/`ChangeManifest`/`EditVerdict`/`HarnessVariant`/`ScopedRevision`）；`cache.ts` 加 C_raw 只读 getter（`RawComputeUsage`+`getRawComputeForSession/Run`，纯读既有 token 统计、toolCalls 由 E 回填）；§九 记录 + 回滚底座审定（typed scoped revision）。
+  - ✅ **E-EFC1 终审通过（含总控收口契约漂移）**：EFC scorer + 6 runner 接入 + 6 Pane 加 EFC/η 列。终审发现 E 本地重声明 `EfcScore`/`EFC_KAPPA` 绕过 X-HARNESS0 单一真源 → **总控收口 9 文件**：`efc-scoring` import 契约 `EFC_KAPPA`、本地超集改 `EfcScoreDetail extends EfcScore`；6 runner rename；web `EfcScoreView extends` 契约。收口后 EFC 2/2 + runner 45/45 复跑绿。
+  - ✅ **E-AHE1 终审通过（含全局表裁决 + tool lab 补齐）**：`ahe-attribute` 对照器（fix/reg 精确召回 + seesaw 无回归门 + 冲突 fork variant，quality 用 EFC `normalized`）+ 3 表（`change_manifests`/`harness_edits`/`harness_variants`）+ 6 harness 路由 + `AheManifestPanel`。**裁决**：E 把三表设计成「全局」（无 `workspace_id`）偏离 §九 原审定 per-workspace → **追认**（harness=项目级资产更正确、天然规避 §二·五 脆弱性），§九 订正。补 tool lab 接入（5/6→**6/6**）。
+  - ✅ **X-EVOLVE0（总控自做·契约）**：双侧 `types.ts` 加 `AgentTrajectory`/`AgentTrajectoryStep`/`AgentTrajectoryModule` + `EvalRecord`/`EvalAnnotationStatus`（脱敏轨迹→eval 沉淀，`sourceFindingId` 复用 `HealthFinding.id`）；bounded-change **复用 AHE `ChangeManifest` 不新造**；§十 记录 + 审定（EVOLVE 轨迹/eval 应 per-workspace，区别于 §九 harness 全局表）。
+  - ✅ **E-SKILLOPT1 终审通过**：skill 受控回写器（slow-update 守门 + 严格接受门「平手也拒」+ rejected buffer + Creator/Evaluator 沙箱）+ `skill_rejected_edits` 表（per-workspace）+ 6 路由。**契约卫生达标**（`SkillRewrite*` 为 api/engine E 域内部类型、不污染 `@/types`，E-EFC1 教训已吸取）。新测 20/20。点名 4 设计边界（防作弊行为级非硬隔离 / 未复用 subagent-core / `resolveSkillScore` efc 分支 no-op stub / accept 不服务端复检严格门），均非阻塞。
+  - ✅ **E-EVOLVE1 终审通过（含总控红线脱敏硬化）**：`evolve-engine.ts`（finding→脱敏 trajectory→candidate EvalRecord→AHE ChangeManifest package）+ `agent_trajectories`/`eval_records` 两表（**per-workspace + 硬 FK + ON DELETE CASCADE**，source_finding_id UNIQUE 去重；优于 §九 harness 全局表）+ EVOLVE 路由（monitor run 后 recurring/worsening 自动沉淀 / flow·AnaX 失败存脱敏轨迹）。契约全 import 无重声明、ChangeManifest 复用、human gate 硬编码 `outcome:"defer"`。**总控收口红线**：E 原 `redactSensitive` 精确键匹配漏复合键（`sampleRows`/`rawValue`/`topRecords`）+ `010_raw` 裸路径 → 改大小写不敏感**子串匹配** + regex 加 `\d{3}_raw`，补复合键测试。复跑 evolve+monitor+ahe **22/22**、typecheck/build 绿。
+  - ✅ **D-EVOLVE2 终审通过（含总控两处红线收口）·EVOLVE 链闭环**：3 入口（`HealthReportPane`/`ReportReviewPane`/`GoldenStrategyPane`）加「提为 eval 候选」按钮 + `engineApi.createEvalRecord`（跨域调 E 端点 HTTP）。**收口 2 处红线**：① **D 偏离自卡脱敏 spec**——`HealthReportPane` output 含 `evidence: finding.evidence` 原值（卡只允许 kind/severity/comparisons/suggestion）→ 去原值改发衍生字段；② **服务端 ingress 不脱敏**——`POST /evolve/eval-records` 的 `parseAgentTrajectory` 只校验形状、手动路径绕过 `sanitizeTrajectoryText` → 入站 input/output 一律再脱敏（抓 draw_data/`0NN_raw` + 2400 截断），不信任客户端、与自动路径同口径。验证 evolve 7/7、typecheck/build 绿、数据探索隔离 grep 净。
+  - ✅ **解冻链推进**：X-EVOLVE0/E-SKILLOPT1（前置满足）→ E-EVOLVE1/D-EVOLVE2 解冻并**全部 done**。**产品 Agent 自进化 EVOLVE 链全闭环**（X-EVOLVE0 契约 → E-EVOLVE1 引擎沉淀 ↔ D-EVOLVE2 注释入口；D 标注→eval 候选→E 持久化/AHE bounded change·human gate）。AgingBench(P1)/HarnessAudit(P2) 维持冻结。
+  - ✅ **wiki 7 卡转 done**：X-HARNESS0 / E-EFC1 / E-AHE1 / X-EVOLVE0 / E-SKILLOPT1 / E-EVOLVE1 / D-EVOLVE2。
+  - ✅ **fast-follow backlog 开卡**（§十一 零残留）：`docs/backlog/SkillOpt-fast-follow-防作弊硬隔离与EFC接入.md`（#1 防作弊硬隔离=接 pi-sandbox/真实 access log；#2 EFC 真接 `resolveSkillScore`）+ README 登记。捞出建议先 EFC（小独立）后硬隔离（随「安全红线·统一单点守卫」立项）。
+  - ✅ **验证**：每卡 server+web `typecheck`/`build` 绿；EFC 2/2、6 runner 45/45、AHE 2/2、SkillOpt 新 20/20；红线 grep（draw_data/data-exploration 隔离）全净；双侧 types 镜像对齐、无本地重声明（E-EFC1 收口后）。
+  - 待用户提交：`server/src/{types,cache,efc-scoring(.test),ahe-attribute(.test),evolve-engine(.test),skill-rewrite-gate(.test),skill-rejected-buffer,skill-sandbox(.test)}`、6 `*-evaluation-runner`、`db/engine`、`skill-curator`、`routes/engine`、`web/src/{types,lib/api/engine,lib/efc,components/{6×LabPane,AheManifestPanel,SkillManagementPane,HealthReportPane,ReportReviewPane,GoldenStrategyPane}}`、`docs/{notes-infra §九/§十,wiki(7 卡 done+4 卡解冻),backlog 2 文件}`（+ E 自维护 `notes-engine`）。
+- 历史批次（2026-06-27 · subagents 体系 readme，总控自做）：
   - ✅ **subagents 说明 readme**：梳理 subagents 全貌（三种委派形态/模板/黑板/回流/Save as Skill/自愈/运行看板/红线/存储表/入口）成产品内 readme，挂为「控制·subagents 管理」第三个**内层 tab「说明」**，与运行看板/模板管理并列。
   - **改动（3 文件，全 additive、未碰接缝骨架）**：🆕 `web/src/docs/subagents-readme.md`（正文 9 节）、🆕 `web/src/components/SubAgentsReadmePane.tsx`（仿 `AggregateReadmePane` 范式）、`SubAgentManagementPane.tsx`（`view` 加 `readme` 态 + 内层 tab 按钮 + 内容区分支 + badge 文案）。未改 constants/types/App/api——内层 tab 非新 subtab，零接缝改动。
   - ✅ **验证**：web `typecheck` 绿、`build` 绿。
@@ -46,6 +59,8 @@
   - **知识库新模块**：`knowledge-injection/retrieval(.ts/.test)`、`system-prompts(.ts/.test)`、前端 `KnowledgeBasePane`/`KnowledgeBaseReadmePane`/`MemoryReadmePane` 已存在；wiki 标 done，但总控尚未逐卡运行时实跑终审。
   - 汇报可视化 / prompts 管理 / 规则记忆重构 / 知识库等跨批改动仍处于工作区未提交状态，本批未清理、不回滚。
 - 下一步：
+  - **EVOLVE 链已闭环**（X-EVOLVE0 + E-EVOLVE1 + D-EVOLVE2 全 done）；后续可选增强：eval 候选→AHE attribute 实跑（confirmed eval 进对照器）、注释→confirmed 的人工复核 UI、产品 agent bounded change 应用（仍守 human gate）。非阻塞，按需排期。
+  - **SkillOpt fast-follow 可随时捞**：`docs/backlog/SkillOpt-fast-follow-*` 的 #2 EFC 真接入（小、独立、软依赖 E-EFC1 已满足）可优先；#1 防作弊硬隔离待「安全红线·统一单点守卫」立项一起做。
   - **command 场景调用框收口**（工作树未提交，§六-外的在飞批）：`command-expand`/`routes/engine.ts`/双侧 `types.ts`(toolIds/toolParamMap)/`CommandManagementPane`/`ChatPane`/`ManualAnalysisToolCard`。backlog 标已落地，但需总控核 §0 未记的这批：跑 command 单测 + typecheck/build，并核 `ChatPane`/`ManualAnalysisToolCard` 仍走 `@工具`/`/api/extraction-tools/:id/run` 的 `source=ai` 闸门、不绕 clean_data 红线。
   - 优先做 **数字锁真实 tool-use smoke**：准备一个 `analysis` 工具返回 `metricSnapshots`，让模型故意把注入值改写，确认 `ChatPane` 出现“模型引用数值与代码计算值不符”；再跑正常引用确认无告警。也要覆盖 `send_flow` 的 flow chat 消费侧是否能看到同一 block。
   - 继续补 **知识库新模块运行时终审**：API/DB/前端逐卡实跑，尤其全局/专属 scope、enablement、检索注入、系统 prompt 聚合与旧库迁移。
@@ -329,3 +344,23 @@
 - **E-AHE1 边界**：建表 + manifest 对照器 + scoped 回滚执行；**不碰接缝层骨架**（types/cache 已由本卡定死，引用即可）。**E-EFC1 边界**：四因子打分 + 估计器 ÊFC + η 标量合成；C_raw 经 `getRawCompute*` 取数。
 
 **验证**：server + web typecheck 绿、build 绿，现有业务代码零改动。
+
+---
+
+## 十、产品 Agent 自进化接缝契约（X-EVOLVE0，2026-06-27 总控自做）
+
+**背景**：backlog `生产失败驱动的产品Agent自进化闭环.md`（OpenAI 税务 Agent「失败→eval→约束修改」闭环）落地。前置 E-AHE1 P0 跑通后解冻。本卡=接缝契约，仅定单一真源，**不实装**轨迹持久化/eval 沉淀/注释入口。解锁 **E-EVOLVE1**（引擎：失败轨迹持久化 + eval 自动沉淀，复发 finding 触发）/ **D-EVOLVE2**（监测行动环/report-review 加「采纳·标注失败环节→eval 候选」入口·红线卡）。
+
+**已交付（双侧 `types.ts` 镜像，插在 X-HARNESS0 块后、跨 lab 回归看板前）**：
+- `AgentTrajectoryModule`（'monitor'|'anax'|'flow'|'chat'）+ `AgentTrajectoryStep{stage,input,output,citation?}` + `AgentTrajectory{runId,module,steps,outcome:'pass'|'fail'}` —— 失败/对照轨迹，**脱敏后存**（input/output 为聚合/衍生文本，不含 draw_data 原始明细，沿用 E-MONITOR8 口径）。
+- `EvalAnnotationStatus`（candidate/confirmed/rejected）+ `EvalRecord{id,sourceFindingId?,failingTrace,expectedOutput,passCondition,annotationStatus,createdAt}` —— failing trace 沉淀的 eval 目标；`sourceFindingId` 关联既有 `HealthFinding.id`（监测真源，string 引用无前向依赖）。
+- **bounded-change 规格复用 AHE `ChangeManifest`（§九 X-HARNESS0），不新造。**
+
+**总控增补**：`EvalRecord` 加 `createdAt:number`（原 brief 字段表未列）——持久化排序 + 按 `sourceFindingId` 去重所需，对齐 ChangeManifest/ScopedRevision 范式。
+
+**接缝审定（E-EVOLVE1/D-EVOLVE2 必守）**：
+- 表落 `db/engine.ts`（E slot）。轨迹与 eval 记录持久化是否 per-workspace 由 E 按语义定——**注意区别于 §九 harness 表**：EVOLVE 轨迹/eval 绑具体 workspace 的生产运行（monitor/anax/flow/chat run），**应 per-workspace**（与 harness 全局资产不同）；若加 `workspace_id`，按 §二·五 现政策**无需补 deleteWorkspace**（物理删除已弃用改归档），但表设计须自洽。
+- **红线（D-EVOLVE2）**：注释入口在监测行动环/report-review，**只读衍生物**（findings/报告/聚合），轨迹 input/output 已脱敏；绝不把 draw_data 原始明细写入 `AgentTrajectoryStep`。
+- 路由落 `routes/engine.ts`，前端 api 落 `api/engine.ts`；本契约卡均未碰，留下游。
+
+**验证**：server + web typecheck 绿、build 绿（双侧各 9 处类型引用对齐），现有业务代码零改动。

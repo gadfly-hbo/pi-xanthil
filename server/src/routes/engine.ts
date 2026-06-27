@@ -84,6 +84,13 @@ import {
   listScopedRevisions,
   saveHarnessVariant,
   listHarnessVariants,
+  saveAgentTrajectory,
+  listAgentTrajectories,
+  createEvalRecord,
+  upsertEvalRecordForFinding,
+  getEvalRecord,
+  listEvalRecords,
+  updateEvalRecordStatus,
   listCollectFolders,
   getCollectFolder,
   createCollectFolder,
@@ -112,7 +119,7 @@ import { DEFAULT_MEMORY_SKILL_THRESHOLDS, fetchMemoryExperiences, runMemoryToSki
 import { runPromptDistillation } from "../prompt-distillation.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
-import type { ClientMessage, Flow, MetricSnapshot, PiEvent, RetrievalContext, Session } from "../types.ts";
+import type { AgentTrajectory, ClientMessage, EvalAnnotationStatus, Flow, MetricSnapshot, PiEvent, RetrievalContext, Session } from "../types.ts";
 import { appendMetricVerificationBlock, collectMetricSnapshotsFromEvent } from "../metric-verification-events.ts";
 import { buildAnaxWorkflow, buildAnaxQuickWorkflow } from "../anax-template.ts";
 import { buildSqlLoopWorkflow } from "../sql-loop-template.ts";
@@ -138,11 +145,23 @@ import { runToolEvaluation } from "../tool-evaluation-runner.ts";
 import { runSkillEvaluation } from "../skill-evaluation-runner.ts";
 import { parseToolEvaluationCases, parseToolEvaluationRunRequest } from "../tool-evaluation-api.ts";
 import { parseDocumentEvaluationRunRequest } from "../document-eval-api.ts";
+import {
+  buildChangeManifestFromEvalRecord,
+  buildEvalRecordFromFinding,
+  buildFlowFailureTrajectory,
+  buildMonitorFindingTrajectory,
+  sanitizeTrajectoryText,
+  shouldCreateEvalFromFinding,
+} from "../evolve-engine.ts";
 import { runDocumentEvaluation } from "../document-evaluation-runner.ts";
 import { getExtractionTool, listExtractionTools } from "../../tools/registry.ts";
 import { archiveHookEvaluation } from "../evaluation-archive.ts";
 import { type DocumentEvalResult, type Hook } from "../types.ts";
 import { autoTriggerCuration } from "../skill-curator.ts";
+import { applySkillCurationProposalsGated } from "../skill-curator.ts";
+import { runRewriteCandidateEvaluation, type SkillRewriteGateConfig } from "../skill-rewrite-gate.ts";
+import { listRejectedEdits, deleteRejectedEdit, insertRejectedEdit } from "../skill-rejected-buffer.ts";
+import { createSkillSandbox, verifyCreatorIsolation, verifyEvaluatorIsolation } from "../skill-sandbox.ts";
 import { retrieveSkills, rankSkillSimilarity } from "../skill-retrieval.ts";
 import { analyzeSkillCoverageGaps, type SkillCoverageGapCluster, type SkillCoverageTask } from "../skill-coverage-gap.ts";
 import { attributeHarnessEdit } from "../ahe-attribute.ts";
@@ -620,6 +639,10 @@ function parseChangeOutcome(value: unknown): ChangeOutcome | undefined {
   return CHANGE_OUTCOMES.includes(value as ChangeOutcome) ? (value as ChangeOutcome) : undefined;
 }
 
+function parseEvalAnnotationStatus(value: unknown): EvalAnnotationStatus | undefined {
+  return value === "candidate" || value === "confirmed" || value === "rejected" ? value : undefined;
+}
+
 function parseStringList(value: unknown): string[] {
   if (Array.isArray(value)) return value.map((item) => String(item).trim()).filter(Boolean);
   if (typeof value === "string") {
@@ -728,6 +751,104 @@ engineRouter.post("/api/harness/change-manifests/:editId/attribute", (req, res) 
 engineRouter.get("/api/harness/variants", (req, res) => {
   const baseEditId = typeof req.query.baseEditId === "string" && req.query.baseEditId.trim() ? req.query.baseEditId.trim() : undefined;
   res.json(listHarnessVariants(baseEditId));
+});
+
+function parseAgentTrajectory(value: unknown): AgentTrajectory | null {
+  if (typeof value !== "object" || value === null) return null;
+  const raw = value as Record<string, unknown>;
+  const runId = typeof raw.runId === "string" ? raw.runId.trim() : "";
+  const module = raw.module;
+  const outcome = raw.outcome;
+  const stepsRaw = Array.isArray(raw.steps) ? raw.steps : [];
+  const steps = stepsRaw
+    .map((step) => {
+      if (typeof step !== "object" || step === null) return null;
+      const s = step as Record<string, unknown>;
+      const stage = typeof s.stage === "string" ? s.stage.trim() : "";
+      const input = typeof s.input === "string" ? s.input : "";
+      const output = typeof s.output === "string" ? s.output : "";
+      if (!stage) return null;
+      // 红线兜底：入站轨迹（含 D-EVOLVE2 手动构造路径）一律再脱敏，不信任客户端——
+      // 抓 draw_data/0NN_raw 裸路径串 + 强制 2400 截断，与自动沉淀路径同口径。
+      const parsed: AgentTrajectory["steps"][number] = {
+        stage,
+        input: sanitizeTrajectoryText(input),
+        output: sanitizeTrajectoryText(output),
+      };
+      if (typeof s.citation === "string" && s.citation.trim()) parsed.citation = s.citation.trim();
+      return parsed;
+    })
+    .filter((step): step is AgentTrajectory["steps"][number] => Boolean(step));
+  if (!runId || (module !== "monitor" && module !== "anax" && module !== "flow" && module !== "chat")) return null;
+  if (outcome !== "pass" && outcome !== "fail") return null;
+  return { runId, module, steps, outcome };
+}
+
+engineRouter.get("/api/workspaces/:id/evolve/trajectories", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const module = typeof req.query.module === "string" && ["monitor", "anax", "flow", "chat"].includes(req.query.module) ? req.query.module as AgentTrajectory["module"] : undefined;
+  const runId = typeof req.query.runId === "string" && req.query.runId.trim() ? req.query.runId.trim() : undefined;
+  const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+  res.json(listAgentTrajectories({ workspaceId: req.params.id, runId, module, limit }));
+});
+
+engineRouter.post("/api/workspaces/:id/evolve/trajectories", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const trajectory = parseAgentTrajectory(req.body?.trajectory ?? req.body);
+  if (!trajectory) return res.status(400).json({ error: "valid trajectory required" });
+  res.json(saveAgentTrajectory({ workspaceId: req.params.id, trajectory }));
+});
+
+engineRouter.get("/api/workspaces/:id/evolve/eval-records", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const annotationStatus = req.query.status === undefined ? undefined : parseEvalAnnotationStatus(req.query.status);
+  if (req.query.status !== undefined && !annotationStatus) return res.status(400).json({ error: "invalid status" });
+  const limit = req.query.limit === undefined ? undefined : Number(req.query.limit);
+  res.json(listEvalRecords({ workspaceId: req.params.id, annotationStatus, limit }));
+});
+
+engineRouter.post("/api/workspaces/:id/evolve/eval-records", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const failingTrace = parseAgentTrajectory(req.body?.failingTrace);
+  if (!failingTrace) return res.status(400).json({ error: "valid failingTrace required" });
+  const expectedOutput = String(req.body?.expectedOutput ?? "").trim();
+  const passCondition = String(req.body?.passCondition ?? "").trim();
+  if (!expectedOutput || !passCondition) return res.status(400).json({ error: "expectedOutput and passCondition required" });
+  const annotationStatus = parseEvalAnnotationStatus(req.body?.annotationStatus ?? "candidate");
+  if (!annotationStatus) return res.status(400).json({ error: "invalid annotationStatus" });
+  res.json(createEvalRecord(req.params.id, {
+    sourceFindingId: typeof req.body?.sourceFindingId === "string" && req.body.sourceFindingId.trim() ? req.body.sourceFindingId.trim() : undefined,
+    failingTrace,
+    expectedOutput,
+    passCondition,
+    annotationStatus,
+  }));
+});
+
+engineRouter.get("/api/workspaces/:id/evolve/eval-records/:recordId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const record = getEvalRecord(req.params.id, req.params.recordId);
+  if (!record) return res.status(404).json({ error: "eval record not found" });
+  res.json(record);
+});
+
+engineRouter.patch("/api/workspaces/:id/evolve/eval-records/:recordId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const annotationStatus = parseEvalAnnotationStatus(req.body?.annotationStatus);
+  if (!annotationStatus) return res.status(400).json({ error: "valid annotationStatus required" });
+  const record = updateEvalRecordStatus(req.params.id, req.params.recordId, annotationStatus);
+  if (!record) return res.status(404).json({ error: "eval record not found" });
+  res.json(record);
+});
+
+engineRouter.post("/api/workspaces/:id/evolve/eval-records/:recordId/change-manifest", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const record = getEvalRecord(req.params.id, req.params.recordId);
+  if (!record) return res.status(404).json({ error: "eval record not found" });
+  const component = req.body?.component === undefined ? undefined : parseHarnessComponent(req.body.component);
+  if (req.body?.component !== undefined && !component) return res.status(400).json({ error: "invalid component" });
+  const manifest = saveChangeManifest(buildChangeManifestFromEvalRecord({ record, component }));
+  res.json({ manifest, applied: false, humanGate: true });
 });
 
 // 跨 lab 回归看板：聚合六类评测历史为统一时间线（只读，不重算/不触发评测）
@@ -3419,6 +3540,20 @@ export async function handleExecuteMultiAgent(
     });
     if (activeMultiAgentRuns.get(clientRunId) === active) activeMultiAgentRuns.delete(clientRunId);
     finishFlowRun(runRow.id, active.aborted ? "aborted" : result.code === 0 ? "success" : "failed");
+    if (active.aborted || result.code !== 0) {
+      saveAgentTrajectory({
+        workspaceId: flow.workspaceId,
+        trajectory: buildFlowFailureTrajectory({
+          runId: runRow.id,
+          module: isAnaxFlow ? "anax" : "flow",
+          flowId: flow.id,
+          flowName: flow.name,
+          code: result.code,
+          aborted: active.aborted,
+          blackboard: result.blackboard,
+        }),
+      });
+    }
     // A 卡：生产成功完成后记本次工作流注入 skill 的真实激活（聚合各节点黑板输出）。
     if (result.code === 0 && !active.aborted && workspace) {
       recordSkillActivationForRun({ workspaceId: flow.workspaceId, workspaceRoot: workspace.rootPath, skillPaths: collectWorkflowSkillPaths(workflow), output: Object.values(result.blackboard).join("\n") });
@@ -3431,6 +3566,18 @@ export async function handleExecuteMultiAgent(
   } catch (err) {
     if (activeMultiAgentRuns.get(clientRunId) === active) activeMultiAgentRuns.delete(clientRunId);
     finishFlowRun(runRow.id, active.aborted ? "aborted" : "failed");
+    saveAgentTrajectory({
+      workspaceId: flow.workspaceId,
+      trajectory: buildFlowFailureTrajectory({
+        runId: runRow.id,
+        module: isAnaxFlow ? "anax" : "flow",
+        flowId: flow.id,
+        flowName: flow.name,
+        code: null,
+        aborted: active.aborted,
+        error: String(err),
+      }),
+    });
     traceFlowEvent(flow.id, "error", "failed", String(err), { phase: "multi_agent" }, runRow.id);
     send(ws, { type: "error", flowId: flow.id, runId: clientRunId, message: String(err) });
     traceFlowEvent(flow.id, "run_end", active.aborted ? "aborted" : "failed", String(err), { code: null, aborted: active.aborted }, runRow.id);
@@ -3680,7 +3827,25 @@ engineRouter.post("/api/workspaces/:id/monitor/runs", async (req, res) => {
     const pc = findings.filter((f) => f.kind === "问题").length;
     const rc = findings.filter((f) => f.kind === "风险").length;
     finishMonitorRun(runRec.id, { problemCount: pc, riskCount: rc, status: "done" });
-    res.json({ run: { ...runRec, finishedAt: Date.now(), problemCount: pc, riskCount: rc, status: "done" }, findings });
+    const finishedRun = { ...runRec, finishedAt: Date.now(), problemCount: pc, riskCount: rc, status: "done" as const };
+    const evolve = findings
+      .filter(shouldCreateEvalFromFinding)
+      .map((finding) => {
+        const trajectory = buildMonitorFindingTrajectory(finishedRun, finding);
+        const trajectoryRecord = saveAgentTrajectory({ workspaceId: wid, trajectory });
+        const evalResult = upsertEvalRecordForFinding(wid, buildEvalRecordFromFinding(finding, trajectory));
+        return { findingId: finding.id, trajectoryId: trajectoryRecord.id, evalRecordId: evalResult.record.id, created: evalResult.created };
+      });
+    res.json({
+      run: finishedRun,
+      findings,
+      evolve: {
+        scannedFindings: findings.length,
+        candidateFindings: evolve.length,
+        createdEvalRecords: evolve.filter((item) => item.created).length,
+        records: evolve,
+      },
+    });
   } catch (e) {
     if (runRec) finishMonitorRun(runRec.id, { problemCount: 0, riskCount: 0, status: "error" });
     res.status(500).json({ error: String(e) });
@@ -3792,5 +3957,149 @@ engineRouter.post("/api/workspaces/:id/monitor/actions/draft", async (req, res) 
     res.json({ drafts: drafts.length > 0 ? drafts : buildMonitorActionsFallback(selected) });
   } catch {
     res.json({ drafts: buildMonitorActionsFallback(selected) });
+  }
+});
+
+// ---- SkillOpt: 受控回写器 ----
+
+// POST /api/workspaces/:id/skill-rewrite/evaluate
+// 对候选 skill 内容跑 held-out 评测，返回严格接受门裁决
+engineRouter.post("/api/workspaces/:id/skill-rewrite/evaluate", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown>;
+  const registryId = typeof body?.registryId === "string" ? body.registryId : "";
+  const candidateContent = typeof body?.candidateContent === "string" ? body.candidateContent : "";
+  const heldOutTasks = Array.isArray(body?.heldOutTasks) ? body.heldOutTasks as Array<{ id: string; prompt: string }> : [];
+  const heldOutModel = typeof body?.heldOutModel === "string" ? body.heldOutModel : "minimax-cn/MiniMax-M3";
+  const heldOutRepeat = typeof body?.heldOutRepeat === "number" && body.heldOutRepeat > 0 ? body.heldOutRepeat : 1;
+  const heldOutJudgeRepeat = typeof body?.heldOutJudgeRepeat === "number" && body.heldOutJudgeRepeat > 0 ? body.heldOutJudgeRepeat : 1;
+  const scoreMetric = body?.scoreMetric === "efc" ? "efc" as const : "evaluation" as const;
+
+  if (!registryId || !candidateContent) {
+    return res.status(400).json({ error: "registryId and candidateContent are required" });
+  }
+  if (heldOutTasks.length === 0) {
+    return res.status(400).json({ error: "heldOutTasks must be a non-empty array" });
+  }
+
+  const entry = getSkillRegistryEntry(registryId);
+  if (!entry) return res.status(404).json({ error: "skill registry entry not found" });
+
+  const config: SkillRewriteGateConfig = {
+    mode: "strict",
+    scoreMetric,
+    heldOutTasks: heldOutTasks.map((t) => ({ id: t.id, prompt: t.prompt })),
+    heldOutModel,
+    heldOutRepeat,
+    heldOutJudgeRepeat,
+  };
+
+  try {
+    const result = await runRewriteCandidateEvaluation({
+      workspaceRoot: workspace.rootPath,
+      entry,
+      candidateContent,
+      config,
+    });
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err) });
+  }
+});
+
+// POST /api/workspaces/:id/skill-rewrite/accept
+// 接受通过严格门的候选，写入 skill 文件
+engineRouter.post("/api/workspaces/:id/skill-rewrite/accept", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown>;
+  const registryId = typeof body?.registryId === "string" ? body.registryId : "";
+  const candidateContent = typeof body?.candidateContent === "string" ? body.candidateContent : "";
+  const slug = typeof body?.slug === "string" ? body.slug : "";
+
+  if (!registryId || !candidateContent || !slug) {
+    return res.status(400).json({ error: "registryId, candidateContent, and slug are required" });
+  }
+
+  const entry = getSkillRegistryEntry(registryId);
+  if (!entry) return res.status(404).json({ error: "skill registry entry not found" });
+
+  const result = applySkillCurationProposalsGated({
+    workspaceRoot: workspace.rootPath,
+    workspaceId: workspace.id,
+    slug,
+    proposals: [{
+      type: "update",
+      targetPath: resolve(workspace.rootPath, ".pi", "skills", slug, "SKILL.md"),
+      suggestedContent: candidateContent,
+      rationale: "SkillOpt 严格接受门通过",
+      confidence: 1,
+      evidence: [],
+    }],
+  });
+
+  res.json(result);
+});
+
+// POST /api/workspaces/:id/skill-rewrite/reject
+// 拒绝候选，写入 rejected buffer
+engineRouter.post("/api/workspaces/:id/skill-rewrite/reject", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown>;
+  const registryId = typeof body?.registryId === "string" ? body.registryId : "";
+  const candidateContent = typeof body?.candidateContent === "string" ? body.candidateContent : "";
+  const slug = typeof body?.slug === "string" ? body.slug : "";
+  const reason = typeof body?.reason === "string" ? body.reason : "rejected by user";
+  const evaluationId = typeof body?.evaluationId === "string" ? body.evaluationId : null;
+
+  if (!registryId || !slug) {
+    return res.status(400).json({ error: "registryId and slug are required" });
+  }
+
+  const edit = insertRejectedEdit({
+    workspaceId: workspace.id,
+    registryId,
+    slug,
+    edit: { kind: "replace", after: candidateContent.slice(0, 500) },
+    candidateContent,
+    reason,
+    evaluationId,
+  });
+
+  res.json({ ok: true, edit });
+});
+
+// GET /api/workspaces/:id/skill-rewrite/rejected
+// 列出被拒编辑
+engineRouter.get("/api/workspaces/:id/skill-rewrite/rejected", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const slug = typeof req.query.slug === "string" ? req.query.slug : undefined;
+  res.json(listRejectedEdits(workspace.id, slug));
+});
+
+// DELETE /api/skill-rewrite/rejected/:id
+engineRouter.delete("/api/skill-rewrite/rejected/:id", (req, res) => {
+  const ok = deleteRejectedEdit(req.params.id);
+  res.json({ ok });
+});
+
+// POST /api/workspaces/:id/skill-sandbox/verify
+// 验证 Creator/Evaluator 隔离
+engineRouter.post("/api/workspaces/:id/skill-sandbox/verify", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown>;
+  const role = typeof body?.role === "string" ? body.role : "";
+  const paths = Array.isArray(body?.paths) ? body.paths.filter((p): p is string => typeof p === "string") : [];
+
+  if (role === "creator") {
+    res.json(verifyCreatorIsolation(workspace.rootPath, paths));
+  } else if (role === "evaluator") {
+    res.json(verifyEvaluatorIsolation(workspace.rootPath, paths));
+  } else {
+    res.status(400).json({ error: "role must be 'creator' or 'evaluator'" });
   }
 });

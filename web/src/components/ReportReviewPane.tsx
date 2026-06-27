@@ -1,7 +1,8 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { AlertTriangle, Clock, FileText, Loader2, MessageSquareText, Pencil, RefreshCw, Sparkles, Wand2, GitCompare } from "lucide-react";
+import { AlertTriangle, Clock, FileText, Loader2, MessageSquareText, Pencil, RefreshCw, Sparkles, Wand2, GitCompare, FlaskConical, Check } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
+import { engineApi } from "@/lib/api/engine";
 import { useResumableTask } from "@/lib/resumableTask";
 import type { FlowTreeNode, PiModel, WorkspacePath } from "@/types";
 
@@ -150,6 +151,12 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
   const [selectedModel, setSelectedModel] = useState(() => model || defaultModelId(models));
+
+  // D-EVOLVE2: eval candidate state
+  const [evalSubmitting, setEvalSubmitting] = useState<Set<number>>(new Set());
+  const [evalSubmitted, setEvalSubmitted] = useState<Set<number>>(new Set());
+
+  const workspaceId = scope?.type === "workspace" ? scope.workspaceId : null;
 
   const selectedReport = useMemo(
     () => reports.find((report) => report.id === selectedReportId) ?? null,
@@ -340,6 +347,38 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
     setTotalScore(entry.totalScore ?? 0);
     setActiveTab("review");
   }, []);
+
+  // D-EVOLVE2: submit review annotation as eval candidate
+  const submitAnnotationAsEval = async (idx: number, annotation: Annotation) => {
+    if (!workspaceId || !selectedReport) return;
+    setEvalSubmitting((prev) => new Set(prev).add(idx));
+    try {
+      await engineApi.createEvalRecord(workspaceId, {
+        failingTrace: {
+          runId: `report-review:${selectedReport.pathId}:${selectedReport.relPath}`,
+          module: "chat",
+          outcome: "fail",
+          steps: [{
+            stage: "report-review-annotation",
+            input: JSON.stringify({ reportPath: selectedReport.relPath, reviewModel: selectedModel }),
+            output: JSON.stringify({ quote: annotation.quote, issue: annotation.issue, suggestion: annotation.suggestion, severity: annotation.severity }),
+            citation: `annotation-${idx}`,
+          }],
+        },
+        expectedOutput: `Fix report issue: ${annotation.issue}\nSuggestion: ${annotation.suggestion}`,
+        passCondition: "The corrected report should address the annotation issue and the suggestion should be reflected in the revised content.",
+      });
+      setEvalSubmitted((prev) => new Set(prev).add(idx));
+    } catch (e) {
+      setError("提交 eval 候选失败: " + String(e));
+    } finally {
+      setEvalSubmitting((prev) => {
+        const next = new Set(prev);
+        next.delete(idx);
+        return next;
+      });
+    }
+  };
 
   const emptyHint = paths.length === 0
     ? "请先在「报告输出」tab 添加报告输出文件夹或文件"
@@ -544,6 +583,21 @@ export function ReportReviewPane({ scope, model, models, onGenerated }: Props) {
                             <span className={`inline-flex h-5 items-center rounded px-1.5 text-[11px] font-medium ${SEVERITY_COLORS[a.severity] ?? ""}`}>
                               {a.severity} {SEVERITY_LABELS[a.severity] ?? ""}
                             </span>
+                            {evalSubmitted.has(idx) ? (
+                              <span className="inline-flex items-center gap-0.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                                <Check className="h-2.5 w-2.5" /> 已提为候选
+                              </span>
+                            ) : (
+                              <button
+                                onClick={() => void submitAnnotationAsEval(idx, a)}
+                                disabled={evalSubmitting.has(idx)}
+                                className="inline-flex items-center gap-0.5 rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-800 dark:bg-neutral-900 dark:text-violet-400 dark:hover:bg-violet-950/40"
+                                title="将此批注提为 eval 候选，供后续评测改进"
+                              >
+                                {evalSubmitting.has(idx) ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <FlaskConical className="h-2.5 w-2.5" />}
+                                提为 eval 候选
+                              </button>
+                            )}
                           </div>
                           <blockquote className="mb-2 border-l-2 border-neutral-300 pl-3 text-[12px] italic text-neutral-600 dark:border-neutral-600 dark:text-neutral-400">
                             "{a.quote}"

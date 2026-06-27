@@ -1,6 +1,53 @@
 // 【Agent-E · 智能引擎域】前端 API 方法 slot —— owner: codex(GPT-5.5)
 // 约定: 方法加入 engineApi; 经 api.ts 合并后组件用 api.<name>() 调用。
 //   复用请求工具 `import { json } from "./_http"`; 类型从 "@/types" 引入。
+
+// ---- E 域内部类型（不扩双侧 types.ts，照 SkillPackage 先例） ----
+
+export interface SkillRewriteEdit {
+  kind: "add" | "delete" | "replace";
+  targetSection?: string;
+  before?: string;
+  after: string;
+}
+
+export interface SkillRewriteCandidate {
+  id: string;
+  registryId: string;
+  slug: string;
+  baseVersion: number;
+  candidateContent: string;
+  heldoutScore: number | null;
+  currentScore: number | null;
+  delta: number | null;
+  verdict: "pending" | "accepted" | "rejected";
+  rejectReason: string | null;
+  evaluationId: string | null;
+  createdAt: number;
+}
+
+export interface SkillRewriteGateResult {
+  candidate: SkillRewriteCandidate;
+  accepted: boolean;
+  score: number | null;
+  currentScore: number | null;
+  delta: number | null;
+  reason: string | null;
+  evaluationId: string | null;
+}
+
+export interface SkillRejectedEdit {
+  id: string;
+  workspaceId: string;
+  registryId: string;
+  slug: string;
+  edit: SkillRewriteEdit;
+  candidateContent: string;
+  reason: string;
+  evaluationId: string | null;
+  createdAt: number;
+}
+
 import type {
   CollectFolder,
   ChangeManifest,
@@ -625,4 +672,78 @@ export const engineApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(body ?? {}),
     }).then(json<MemoryToSkillResult>),
+
+  // SkillOpt: 受控回写器
+  evaluateSkillRewrite: (
+    workspaceId: string,
+    body: {
+      registryId: string;
+      candidateContent: string;
+      heldOutTasks: Array<{ id: string; prompt: string }>;
+      heldOutModel?: string;
+      heldOutRepeat?: number;
+      heldOutJudgeRepeat?: number;
+      scoreMetric?: "evaluation" | "efc";
+    },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/skill-rewrite/evaluate`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<SkillRewriteGateResult>),
+
+  acceptSkillRewrite: (
+    workspaceId: string,
+    body: { registryId: string; candidateContent: string; slug: string },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/skill-rewrite/accept`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<{ applied: string[]; errors: string[] }>),
+
+  rejectSkillRewrite: (
+    workspaceId: string,
+    body: { registryId: string; candidateContent?: string; slug: string; reason?: string; evaluationId?: string | null },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/skill-rewrite/reject`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<{ ok: boolean; edit?: SkillRejectedEdit }>),
+
+  listRejectedEdits: (workspaceId: string, slug?: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/skill-rewrite/rejected${slug ? `?slug=${encodeURIComponent(slug)}` : ""}`)
+      .then(json<SkillRejectedEdit[]>),
+
+  deleteRejectedEdit: (id: string) =>
+    fetch(`/api/skill-rewrite/rejected/${encodeURIComponent(id)}`, { method: "DELETE" })
+      .then(json<{ ok: boolean }>),
+
+  verifySkillSandbox: (
+    workspaceId: string,
+    body: { role: "creator" | "evaluator"; paths: string[] },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/skill-sandbox/verify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<{ isolated: boolean; violations: string[] }>),
+
+  // D-EVOLVE2: 产品Agent自进化 eval 候选入口（D 域前端调 E 域端点）
+  createEvalRecord: (
+    workspaceId: string,
+    body: {
+      sourceFindingId?: string;
+      failingTrace: { runId: string; module: string; steps: Array<{ stage: string; input: string; output: string; citation?: string }>; outcome: "pass" | "fail" };
+      expectedOutput: string;
+      passCondition: string;
+      annotationStatus?: string;
+    },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/evolve/eval-records`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ ...body, annotationStatus: body.annotationStatus ?? "candidate" }),
+    }).then(json<{ id: string; annotationStatus: string }>),
 };

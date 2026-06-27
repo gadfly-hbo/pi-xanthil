@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useState } from "react";
-import { AlertTriangle, Check, CheckCircle, Loader2, Play, Sparkles } from "lucide-react";
+import { AlertTriangle, Check, CheckCircle, Loader2, Play, Sparkles, FlaskConical } from "lucide-react";
 import { vizApi } from "@/lib/api/viz";
+import { engineApi } from "@/lib/api/engine";
 import { cn } from "@/lib/cn";
 import { getHealthSelectedRunId, setHealthSelectedRunId } from "@/lib/health-ui-state";
 import type {
@@ -47,6 +48,10 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
 
   const [feedbackFormTaskId, setFeedbackFormTaskId] = useState<string | null>(null);
   const [feedbackForm, setFeedbackForm] = useState({ outcome: "", metricDelta: "", score: 5 });
+
+  // D-EVOLVE2: eval candidate submission state
+  const [evalSubmitting, setEvalSubmitting] = useState<Set<string>>(new Set());
+  const [evalSubmitted, setEvalSubmitted] = useState<Set<string>>(new Set());
 
   // 加载 runs（workspace 切换重置）
   useEffect(() => {
@@ -230,6 +235,40 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
     }
   };
 
+  // D-EVOLVE2: submit finding as eval candidate (zero raw data)
+  const submitEvalCandidate = async (finding: HealthFinding) => {
+    if (!workspaceId || !selectedRun) return;
+    setEvalSubmitting((prev) => new Set(prev).add(finding.id));
+    try {
+      await engineApi.createEvalRecord(workspaceId, {
+        sourceFindingId: finding.id,
+        failingTrace: {
+          runId: selectedRun.id,
+          module: "monitor",
+          outcome: "fail",
+          steps: [{
+            stage: "monitor-finding",
+            input: JSON.stringify({ suite: selectedRun.suite, ruleId: finding.ruleId, category: finding.category, kind: finding.kind, severity: finding.severity, lifecycle: finding.lifecycle, signature: finding.signature }),
+            // 红线：只发 finding 衍生字段（kind/severity/comparisons 聚合数值/diagnosis 摘要），绝不发原值 finding.evidence（可能含行级明细）
+            output: JSON.stringify({ title: finding.title, kind: finding.kind, severity: finding.severity, suggestion: finding.suggestion, comparisons: finding.comparisons, diagnosis: finding.diagnosis }),
+            citation: finding.id,
+          }],
+        },
+        expectedOutput: `Detect and explain production finding: ${finding.title}\nrule=${finding.ruleId}\nseverity=${finding.severity}\nlifecycle=${finding.lifecycle}`,
+        passCondition: "Reproduce the same finding signature from sanitized evidence and propose a bounded corrective change without raw row-level data.",
+      });
+      setEvalSubmitted((prev) => new Set(prev).add(finding.id));
+    } catch (e) {
+      setError("提交 eval 候选失败: " + String(e));
+    } finally {
+      setEvalSubmitting((prev) => {
+        const next = new Set(prev);
+        next.delete(finding.id);
+        return next;
+      });
+    }
+  };
+
   // 去重：drafts 已被 items（同 reportPath + title）登记的不再显示
   const pendingDrafts = drafts.filter(
     (d) => !items.some((i) => i.title === d.title),
@@ -307,8 +346,23 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
                     className="rounded"
                   />
                   <span className={cn("h-2 w-2 rounded-full", SEVERITY_DOT[f.severity] ?? "bg-neutral-400")} />
-                  <span className="text-[11px] text-neutral-700 dark:text-neutral-200">{f.title}</span>
+                  <span className="flex-1 text-[11px] text-neutral-700 dark:text-neutral-200">{f.title}</span>
                   <span className="text-[10px] text-neutral-400">[{LIFECYCLE_LABEL[f.lifecycle] ?? f.lifecycle}]</span>
+                  {evalSubmitted.has(f.id) ? (
+                    <span className="inline-flex items-center gap-0.5 rounded bg-violet-100 px-1.5 py-0.5 text-[10px] text-violet-700 dark:bg-violet-900/40 dark:text-violet-300">
+                      <Check className="h-2.5 w-2.5" /> 已提为候选
+                    </span>
+                  ) : (
+                    <button
+                      onClick={(e) => { e.preventDefault(); void submitEvalCandidate(f); }}
+                      disabled={evalSubmitting.has(f.id)}
+                      className="inline-flex items-center gap-0.5 rounded border border-violet-200 bg-white px-1.5 py-0.5 text-[10px] text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-800 dark:bg-neutral-900 dark:text-violet-400 dark:hover:bg-violet-950/40"
+                      title="将此 finding 提为 eval 候选，供后续评测改进"
+                    >
+                      {evalSubmitting.has(f.id) ? <Loader2 className="h-2.5 w-2.5 animate-spin" /> : <FlaskConical className="h-2.5 w-2.5" />}
+                      提为 eval 候选
+                    </button>
+                  )}
                 </label>
               );
             })}

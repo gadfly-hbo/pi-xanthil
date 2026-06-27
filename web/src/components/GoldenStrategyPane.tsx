@@ -10,9 +10,10 @@ import {
   type Node,
   type NodeProps,
 } from "@xyflow/react";
-import { AlertTriangle, BrainCircuit, Check, Loader2, RefreshCw, Sparkles } from "lucide-react";
+import { AlertTriangle, BrainCircuit, Check, Loader2, RefreshCw, Sparkles, FlaskConical } from "lucide-react";
 import { useBusinessRequirementContexts, type BusinessRequirementContextScope } from "@/components/useBusinessRequirementContexts";
 import { api } from "@/lib/api";
+import { engineApi } from "@/lib/api/engine";
 import { cn } from "@/lib/cn";
 import { useResumableTask } from "@/lib/resumableTask";
 import type { Flow, FlowTreeNode, GoldenStrategyError, GoldenStrategyModelId, GoldenStrategyNode, GoldenStrategyResult, PiModel } from "@/types";
@@ -253,6 +254,12 @@ export function GoldenStrategyPane({
   const taskError = task.error;
   const [activeResultModel, setActiveResultModel] = useState<GoldenStrategyModelId | null>(null);
 
+  // D-EVOLVE2: eval candidate state
+  const [evalSubmitting, setEvalSubmitting] = useState(false);
+  const [evalSubmitted, setEvalSubmitted] = useState(false);
+
+  const workspaceId = scope.type === "workspace" ? scope.workspaceId : null;
+
   useEffect(() => {
     if (task.status !== "done") return;
     setActiveResultModel((current) => current ?? task.data?.results[0]?.analysisModel ?? null);
@@ -362,6 +369,7 @@ export function GoldenStrategyPane({
     if (!selectedReport || !content.trim() || generating || selectedAnalysisModels.length === 0) return;
     setError("");
     setActiveResultModel(null);
+    setEvalSubmitted(false);
     await task.start(async () => {
       const result = await api.generateGoldenStrategyBatch({
         pathId: selectedReport.pathId,
@@ -382,6 +390,35 @@ export function GoldenStrategyPane({
       return { results: result.results, errors: result.errors };
     });
   }, [content, generating, model, onGenerated, prompt, selectedAnalysisModels, selectedBusinessRequirement, selectedReport, task]);
+
+  // D-EVOLVE2: submit golden strategy result as eval candidate
+  const submitStrategyAsEval = async () => {
+    if (!workspaceId || !activeResult || !selectedReport) return;
+    setEvalSubmitting(true);
+    try {
+      const modelLabel = ANALYSIS_MODELS.find((m) => m.id === activeResult.analysisModel)?.label ?? activeResult.analysisModel;
+      await engineApi.createEvalRecord(workspaceId, {
+        failingTrace: {
+          runId: `golden:${workspaceId}:${selectedReport.pathId}:${selectedReport.relPath}`,
+          module: "chat",
+          outcome: "fail",
+          steps: [{
+            stage: "golden-strategy-generation",
+            input: JSON.stringify({ reportPath: selectedReport.relPath, analysisModel: activeResult.analysisModel, model }),
+            output: JSON.stringify({ nodeCount: activeResult.nodes.length, topNodes: activeResult.nodes.slice(0, 5).map((n) => ({ title: n.title, kind: n.kind })) }),
+            citation: activeResult.analysisModel,
+          }],
+        },
+        expectedOutput: `Improve golden strategy analysis for ${modelLabel} on report ${selectedReport.label}`,
+        passCondition: "The strategy analysis should produce actionable conclusions and clear decision factors without hallucinated data.",
+      });
+      setEvalSubmitted(true);
+    } catch (e) {
+      setError("提交 eval 候选失败: " + String(e));
+    } finally {
+      setEvalSubmitting(false);
+    }
+  };
 
   const emptyHint = "请先在「报告输出」tab 添加报告输出文件夹或文件";
 
@@ -566,9 +603,26 @@ export function GoldenStrategyPane({
           <div className="min-h-0 flex-1 overflow-y-auto p-3 flex flex-col justify-between">
             <div>
               {activeResult ? (
-                <p className="text-[12px] leading-5 text-neutral-400">
-                  基于「{ANALYSIS_MODELS.find((item) => item.id === activeResult.analysisModel)?.label ?? activeResult.analysisModel}」决策模型演绎结果提炼业务洞见，即将推出。
-                </p>
+                <div className="space-y-3">
+                  <p className="text-[12px] leading-5 text-neutral-400">
+                    基于「{ANALYSIS_MODELS.find((item) => item.id === activeResult.analysisModel)?.label ?? activeResult.analysisModel}」决策模型演绎结果提炼业务洞见，即将推出。
+                  </p>
+                  {evalSubmitted ? (
+                    <div className="flex items-center gap-1.5 rounded-md border border-violet-200 bg-violet-50 px-3 py-2 text-[11px] text-violet-700 dark:border-violet-800 dark:bg-violet-950/30 dark:text-violet-300">
+                      <Check className="h-3 w-3" /> 已提为 eval 候选
+                    </div>
+                  ) : (
+                    <button
+                      onClick={() => void submitStrategyAsEval()}
+                      disabled={evalSubmitting}
+                      className="w-full flex items-center justify-center gap-1.5 rounded-md border border-violet-200 bg-white px-3 py-2 text-[11px] text-violet-600 hover:bg-violet-50 disabled:opacity-50 dark:border-violet-800 dark:bg-neutral-900 dark:text-violet-400 dark:hover:bg-violet-950/40"
+                      title="将此分析结果提为 eval 候选，供后续评测改进"
+                    >
+                      {evalSubmitting ? <Loader2 className="h-3 w-3 animate-spin" /> : <FlaskConical className="h-3 w-3" />}
+                      纠正并提为 eval 候选
+                    </button>
+                  )}
+                </div>
               ) : (
                 <p className="text-[12px] leading-5 text-neutral-400">
                   生成决策模型图示后，这里将基于演绎结果自动提炼业务洞见。

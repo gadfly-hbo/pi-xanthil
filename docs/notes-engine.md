@@ -9,56 +9,56 @@
 
 > 📌 **v2.2 已发布（2026-06-20，总控）**：2026-06-11→06-20 全域交付已归档进 `docs/wiki.html` CHANGELOG v2.2，v2.1 关闭、2.2 阶段启动。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-27 · **subagents 管理进阶 A/B/C + 看板方案 C 完成**（复合单元 / 共享黑板 / Save as Skill / flow_node_runs 节点级运行落库）
+- 最近更新：2026-06-27 · **E-SKILLOPT1 skill 受控回写器 MVP 完成**（验证门+严格接受+slow-update 守门+rejected buffer+Creator/Evaluator 隔离）
 - 进度：
-  - **A · 多 agent 博弈/协作复合单元**：
-    - 新增 `POST /api/sessions/:id/delegate-composite` 与 `GET /api/sessions/:id/composite-subagent-runs`，编排 `Planner → Coder → Reviewer`；Reviewer `revise` 时按 `maxReviewRounds` 打回 Coder，耗尽转 `waiting_for_help`。
-    - 三角色以内置 `SubAgentTemplate` 实现，不写入 `subagents.json`：Planner/Reviewer 不挂工具，Coder 仅挂 `duckdb-aggregate`，继续复用 `runDelegatedSubAgent` / `runSubAgentTurn` / 模板最小权限 cwd。
-    - `DelegateSubAgentCard` 增加「单 agent / 复合单元」模式切换与复合运行状态展示。
-  - **B · Shared Context Blackboard**：
-    - 新增 `subagent_blackboard_entries` 表 + `GET/POST /api/sessions/:id/subagent-blackboard`；scope 固定 `parent_session`，条目类型为 `metric_definition/business_rule/finding/assumption/note`。
-    - 子 agent systemPrompt 会读取同 parent session 最近黑板条目作为只读聚合口径/衍生结论；写入端有长度、表格、JSON rows/records/data/items 明细风险校验，禁止把原始明细或大表格放进 LLM 上下文。
-    - 成功 subagent 任务可在前端编辑后「写入黑板」，避免自动保存未复核内容。
-  - **C · Save as Skill**：
-    - 新增 `POST /api/subagent-tasks/:id/save-skill`，仅允许 `success` 任务；输入只取 brief、授权 clean_data 文件名、summary、报告 excerpt 等衍生产物。
-    - 复用既有 `distillSkillCandidate()`，产物固定 `source:"distilled"` / `status:"candidate"`，不自动 active、不绕过 Skill Registry 人审门。
-    - 前端成功任务新增 `Skill` 按钮；用户需到实验场 Skill Registry 评测后再采纳。
-  - **D · 工作流节点级运行落库**：
-    - 新增 `flow_node_runs` 表 + `FlowNodeRun` 双侧类型；`multi-agent-runner` 增加可选 `nodeRunWriter` DI hook，runner 不直接 import DB。
-    - `handleExecuteMultiAgent` 接线 writer：node start 插入 running，普通节点/gate/budget/blocked/abort 更新终态，`outputPath` 记录节点运行目录。
-    - `GET /api/workflow-agents` 返回 `nodeRuns`；`SubAgentBoard` 工作流 agent 卡优先显示新节点级统计，老历史无 nodeRuns 时保留流水线级统计。
-  - **接缝/共享层改动已按用户确认执行**：
-    - 双侧 `types.ts` 新增 `CompositeSubAgentRun` / `SubAgentBlackboardEntry` / `FlowNodeRun`；`SubAgentTemplate.source` 扩为 `"custom" | "builtin"`。
-    - `db/shared.ts` 新增三张共享表及 CRUD；legacy `index.ts` 新增 subagent 相关 API，因现有 delegate runner 仍在该文件附近。
+  - **A · 验证门 + 严格接受**（`skill-rewrite-gate.ts`）：
+    - `evaluateStrictGate()`：候选分数必须**严格大于**当前分数才接受，平手也拒。
+    - `runRewriteCandidateEvaluation()`：对候选 skill 内容跑 held-out 评测，复用 `skillRegistryMetricsFromEvaluation` 算分，经严格门裁决。
+    - 评分默认走 evaluation 分数，预留 `scoreMetric:"efc"` 切换 flag。
+  - **B · slow-update 受保护字段守门**（`skill-rewrite-gate.ts`）：
+    - SKILL.md 用 `<!-- @slow-update -->...<!-- /@slow-update -->` 块标记受保护字段。
+    - `guardSlowUpdateWrite()` 纯函数校验，不调 LLM；`applySkillCurationProposals` 已集成守门，修改受保护块则拒写。
+    - 新增 `applySkillCurationProposalsGated()`：守门拒绝时自动写入 `skill_rejected_edits` buffer。
+  - **C · rejected-edit buffer**（`skill-rejected-buffer.ts` + `db/engine.ts` `skill_rejected_edits` 表）：
+    - `insertRejectedEdit()` / `listRejectedEdits()` / `deleteRejectedEdit()` CRUD。
+    - `buildRejectedFeedbackPrompt()` 取最近 5 条被拒编辑注入 curator prompt 作负反馈。
+    - `skill-curator.ts` `curateSkillEvaluation` 已接线：对每个 active registry entry 查被拒编辑并拼入 prompt。
+  - **D · Creator/Evaluator 权限隔离**（`skill-sandbox.ts`）：
+    - `createSkillSandbox()` 按 role 创建独立 cwd + systemPrompt 后缀。
+    - Creator 红线：禁访 `golden_strategy/validator/execution_traces/trace`。
+    - Evaluator 红线：禁写 `.pi/skills/`。
+    - `verifyCreatorIsolation()` / `verifyEvaluatorIsolation()` 纯函数校验。
+  - **E · 路由**（`routes/engine.ts`）：
+    - `POST /api/workspaces/:id/skill-rewrite/evaluate`：跑 held-out 评测 + 严格门裁决。
+    - `POST /api/workspaces/:id/skill-rewrite/accept`：接受候选，经 gated apply 写盘。
+    - `POST /api/workspaces/:id/skill-rewrite/reject`：拒绝候选，写入 rejected buffer。
+    - `GET /api/workspaces/:id/skill-rewrite/rejected`：列出被拒编辑。
+    - `DELETE /api/skill-rewrite/rejected/:id`：删除被拒编辑。
+    - `POST /api/workspaces/:id/skill-sandbox/verify`：验证隔离。
+  - **F · 前端**（`web/src/lib/api/engine.ts` + `SkillManagementPane.tsx`）：
+    - E 域内部类型（`SkillRewriteEdit/Candidate/GateResult/RejectedEdit`）放 `api/engine.ts`，不扩双侧 types.ts。
+    - `engineApi` 新增 6 个方法；`SkillManagementPane` 工具栏新增「被拒编辑」按钮 + 弹窗列表。
   - **前序状态仍有效**：
-    - E-QEVAL2 文档评测浏览器/API smoke 仍待跑。
-    - SkillLab registry candidate 浏览器 smoke、E-COLLECT2 浏览器验收仍待执行。
+    - subagents 进阶浏览器/API smoke 仍待跑。
+    - flow_node_runs smoke、E-QEVAL2、SkillLab candidate、E-COLLECT2 浏览器验收仍待执行。
 - 校验：
   - `npm run typecheck` ✅（server + web）
-  - `npm run build` ✅（仅既有 echarts dynamic import / chunk size warnings）
+  - `npm run build` ✅
+  - `node --experimental-strip-types --test server/src/skill-rewrite-gate.test.ts` ✅（13/13）
+  - `node --experimental-strip-types --test server/src/skill-sandbox.test.ts` ✅（7/7）
   - `node --experimental-strip-types --test server/src/multi-agent-runner.test.ts` ✅（35/35）
   - `node --experimental-strip-types --test server/src/memory-to-skill.test.ts` ✅（8/8）
+  - `node --experimental-strip-types --test server/src/skill-regression.test.ts` ✅
 - 下一步：
-  - **subagents 进阶浏览器/API smoke**：
-    - 用真实 session + clean_data 文件跑「复合单元」，确认 Planner/Coder/Reviewer 子任务顺序、Reviewer pass/revise、轮次耗尽状态与前端刷新。
-    - 成功任务写入黑板后再启动新 subagent，确认黑板只读注入、生效且不包含明细。
-    - 成功任务点 `Skill`，确认产出 registry candidate，并在 SkillLab baseline 对照后采纳/弃用。
-  - **flow_node_runs smoke**：新跑一个 multi-agent workflow，确认 `flow_node_runs` 有 per-node 记录，看板「工作流 agent」出现节点级统计；老 flow_run 无节点记录属预期，不回填。
-  - **E-QEVAL2 浏览器/API smoke**：用真实 workspace 的 `report/*.md` 或 `060_reports/*.md` 路径跑「实验场 → 文档评测」，确认 run→GET→结果视图闭环；若使用 Vite dev，需确保 proxy 指向已包含新 route 的 server 进程。
-  - **SkillLab registry candidate 浏览器 smoke**：制造/保留一个 `skill_registry.status="candidate"`，跑 baseline 对照，确认报告页可采纳/弃用并刷新候选列表。
-  - **E-COLLECT2 浏览器验收**：知识库→收集 tab 实跑。
-  - **可选真实 smoke**：带 analysis 工具真实工作区跑 chat/flow chat，确认数字锁段注入与 metric_verification 告警 UI。
-- 阻塞：无硬阻塞；本次 subagents 进阶未跑真实 pi/browser smoke，需运行包含新 API 的 server。
+  - **E-SKILLOPT1 浏览器 smoke**：起 server → 在 SkillLab 跑一次 skill evaluation → 触发 curator 生成 proposal → 调 evaluate 端点跑 held-out 评测 → 观察严格门裁决 → accept/reject → 查被拒编辑列表。
+  - **有界 L_t 余弦衰减**（P2 优化）：当前未实现，`skill-rewrite-gate.ts` 预留接口。
+  - 前序 smoke 队列：subagents 进阶、flow_node_runs、E-QEVAL2、SkillLab candidate、E-COLLECT2。
+- 阻塞：无硬阻塞；E-SKILLOPT1 未跑真实 pi/browser smoke。
 - 开放问题（需总控）：
-  - 本次新增的 `CompositeSubAgentRun` / `SubAgentBlackboardEntry` / `FlowNodeRun` 双侧类型、`SubAgentTemplate.source="builtin"`、`db/shared.ts` 三表是否正式纳入接缝层。
-  - 复合单元目前是自编排而非复用 `multi-agent-runner.ts`，总控是否接受该分层；若未来要可视化/可配置，是否升级为 workflow 模板。
-  - Shared Blackboard 当前 scope 固定 `parent_session`，workspace 级共享和互改/删除权限暂未实现；是否进入后续接缝设计。
-  - Save as Skill 当前只固化为 Skill candidate，不固化为 ExtractionTool；若要 Save as Tool，需要另做工具目录写入、安全审计和评测口径。
-  - `flow_node_runs` 仅记录新运行，历史 flow_run 不回填；总控是否需要归档/trace 下钻的正式 UI 契约。
-  - `document_eval` 是否正式纳入接缝层 `SubTab` / `LAB_SUB_TABS`，还是后续改成字符串 escape 方案。
-  - 文档评测 P0 是否保持“进程内存结果、不入 LabOverview/回归”，或升级为持久化 evaluation history / archive。
-  - AnaX workflow run 详情页的「触发文档评测」快捷入口是否进入 P1，并由谁扩 run 详情接缝。
-  - 沿用前序开放项：资料刷新口径、E-METRIC2 覆盖范围、E-KB4 触发口径/阈值参数化、E-PROMPT1 占位空值、记忆 skill 阈值。
+  - `skill_rejected_edits` 表是否纳入接缝层 `db/shared.ts`（当前在 `db/engine.ts`）。
+  - held-out 评测当前每次跑完整 evaluation，是否后续加缓存/增量。
+  - Creator/Evaluator 隔离当前是软隔离（systemPrompt + 路径校验），pi 进程仍可读绝对路径；是否后续加 OS 级沙箱。
+  - 沿用前序开放项（subagents 进阶接缝归属、黑板 scope、Save as Skill 工具化、flow_node_runs 归档、文档评测持久化等）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -142,6 +142,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **command 向导前端边界（2026-06-16，E 卡）**：ChatPane `/` 补全只能消费 `GET /api/commands` 的 enabled commands，不在前端构造/展开 prompt。无 `params` 命令只插入 `/${name} `；有 `params` 命令弹 React 表单并在提交时编码为现有 text：`/name --key=value`。`type:"file" + source:"clean_data"` 只拉登记路径列表并提交 `WorkspacePath.path`，不读取文件内容、不发送数据样本/列名/剖析结果给任何 LLM。表单 required 校验是用户体验层，权威展开仍是 server `command-expand.ts`。
 - **跨域数据查询隔离规范（2026-06-19）**：为了避免子系统之间相互引用 DB 文件导致的循环依赖与类型接缝污染，D 域等其他域查询 E 域的记忆特征（如 `knowledge-graph` 的打分与 Prompt）时，**禁止跨域 import** `server/src/knowledge-graph.ts` 的底层读写函数。统一规范通过暴露内网 GET API 接口（如 `/api/workspaces/:id/kg/relevance`）并通过 `fetch` 进行跨域通信，这确保了各域可独立测试，且边界坚固。
 - **监测/agent 安全回归口径（E-MONITOR8，2026-06-23）**：D-MONITOR6 在 D 域 slot 新增监测专用 SQL 导入单入口（`POST /api/workspaces/:id/monitor/import-sql` + `GET /monitor/imports`）后，E 域负责回归验证 LLM/agent/workflow 不获得写库或原始行级数据通道。审查口径（无新代码、仅静态 + 单测 + grep）：① **agent runner 文件**（`multi-agent-runner.ts` / `autonomous-runner.ts` / `subagent-core.ts` / `skill-*.ts` / `memory-injection.ts` / `pi-adapter.ts`）grep 必须无 `monitor/import-sql`、`monitor/imports`、`import/commit`、`create-table`、`addWorkspacePath`、`exportTableQuery` 任意一个。② 工作流 SQL 工具节点（`multi-agent-runner.ts:741`）必须经 `validateSql` → `executeQuery`，**只读 SELECT**。③ **monitor-llm prompt 安全红线**：`buildDraftPrompt`/`actions/draft` prompt 只能拼 `BiAggregationDataset.columns/rowCount/name` + ontology 元数据 + findings 衍生字段（`kind/severity/lifecycle/category/title/suggestion/comparisons/diagnosis`），**绝禁** rows/cells/draw_data。④ monitor `/runs` 端点必须在 `insertMonitorRun` 前差集校验 metric-system bindings 的全部 datasetPathId 属当前 workspace `/api/bi/aggregations` 返回集，非法即 400 且**不落空 run**；ontologyId 同口径。⑤ run 数据流：`fetch /api/bi/aggregations/:pathId/data` → `runMonitorChecks`（纯函数零 LLM）→ findings 落库，rows 永不进入 LLM。⑥ `subagent-core.ts` 的 `writeFileSync` 仅限模板配置 + 沙箱 `.mcp.json`，不得扩散为数据写入通道。后续监测相关改动如新增 LLM 调用或新接缝端点，必须按本口径重做回归。
+- **SkillOpt 受控回写器（E-SKILLOPT1，2026-06-27）**：skill 自迭代的受控回写桥，把测评台评分闭环回写进 skill 文档。五个机制：① **严格接受门**——候选 skill 在 held-out 测评集分数必须**严格大于**当前才接受（平手也拒），复用 `skillRegistryMetricsFromEvaluation` 算分，预留 `scoreMetric:"efc"` 切换。② **slow-update 受保护字段**——SKILL.md 用 `<!-- @slow-update -->...<!-- /@slow-update -->` HTML 注释块标记跨 epoch 长程经验，`guardSlowUpdateWrite()` 纯函数校验，`applySkillCurationProposals` 已集成守门（消融去掉跌 22.5 分，最重要）。③ **rejected-edit buffer**——`skill_rejected_edits` 表存被拒编辑，`buildRejectedFeedbackPrompt()` 取最近 5 条注入 curator prompt 作负反馈。④ **Creator/Evaluator 权限隔离**——Creator（优化队）禁访 `golden_strategy/validator/execution_traces/trace`，可写 skill 库；Evaluator（评估队）可读 oracle/validator，禁写 skill 库。隔离是软隔离（systemPrompt + 路径校验），pi 进程仍可读绝对路径，后续可加 OS 级沙箱。⑤ **有界 L_t**——接口预留，当前未实现（P2 优化）。类型放 E 域内部（`web/src/lib/api/engine.ts`），不扩双侧 types.ts（照 SkillPackage 先例）。路由落 `routes/engine.ts`（evaluate/accept/reject/rejected list/delete/sandbox verify），不碰 legacy `index.ts`。MVP 交付=验证门+严格接受+slow-update 守门+rejected buffer+隔离，验收=typecheck+build+20 新测试全绿。
 
 ---
 

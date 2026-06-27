@@ -2145,6 +2145,52 @@ export interface ScopedRevision {
   createdAt: number;
 }
 
+// ════ 产品 Agent 自进化接缝契约（X-EVOLVE0，总控自做）════
+// 来源 docs/backlog/生产失败驱动的产品Agent自进化闭环.md（OpenAI 税务 Agent「失败→eval→约束修改」闭环）。
+// 本块仅定契约单一真源；失败轨迹持久化/eval 自动沉淀(复发 finding 触发)/专家注释入口均归
+// E-EVOLVE1（引擎）/ D-EVOLVE2（注释入口·红线）实装。bounded-change 规格复用 AHE ChangeManifest
+// （上方 X-HARNESS0，不新造）。脱敏边界沿用监测 E-MONITOR8 口径（input/output 不含原始明细）。
+
+/** 生产轨迹来源模块。 */
+export type AgentTrajectoryModule = "monitor" | "anax" | "flow" | "chat";
+
+/** 一步轨迹（脱敏后存：input/output 为聚合/衍生文本，不含 draw_data 原始明细）。 */
+export interface AgentTrajectoryStep {
+  stage: string;
+  input: string;
+  output: string;
+  /** 该步引用的证据标识（指标/工具/来源），可选。 */
+  citation?: string;
+}
+
+/** 失败（或对照）轨迹，脱敏后持久化，作为 eval 沉淀与 bounded-change 的证据载体。 */
+export interface AgentTrajectory {
+  runId: string;
+  module: AgentTrajectoryModule;
+  steps: AgentTrajectoryStep[];
+  outcome: "pass" | "fail";
+}
+
+/** eval 记录注释生命周期：候选 → 确认 / 弃用。 */
+export type EvalAnnotationStatus = "candidate" | "confirmed" | "rejected";
+
+/** 由 failing trace 沉淀的 eval 目标（复发/恶化 finding 触发 → eval 候选 → 专家注释确认）。 */
+export interface EvalRecord {
+  id: string;
+  /** 关联监测发现 HealthFinding.id（复发触发沉淀时），可选。 */
+  sourceFindingId?: string;
+  /** 触发本 eval 的失败轨迹。 */
+  failingTrace: AgentTrajectory;
+  /** 期望产出（专家注释或规则模板给定）。 */
+  expectedOutput: string;
+  /** 通过条件（确定性可判，供 eval runner 复算）。 */
+  passCondition: string;
+  /** 注释状态。 */
+  annotationStatus: EvalAnnotationStatus;
+  /** 创建时刻（ms）；持久化排序 + 按 sourceFindingId 去重所需（总控增补，对齐 ChangeManifest 范式）。 */
+  createdAt: number;
+}
+
 // ---- 跨 lab 回归看板 + CI gate (Phase5 P5-2) ----
 
 export type LabKind = "skill" | "tool" | "prompt" | "command" | "subagent" | "hook";
