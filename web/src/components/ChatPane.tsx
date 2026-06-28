@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Archive, ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, RefreshCw, Square, WandSparkles, Wrench, X } from "lucide-react";
+import { Archive, ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, Paperclip, RefreshCw, Square, WandSparkles, Wrench, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
@@ -42,6 +42,9 @@ interface Props {
   onCompact: () => void;
   onRefreshRuntime: () => void;
   renderMessageAction?: (message: UiMessage) => ReactNode;
+  skillScope?: Exclude<FolderScope, { type: "session"; sessionId: string }> | null;
+  skillSources?: Array<"global" | "project">;
+  enableFileUpload?: boolean;
   // E-COLLECT-TRIM：能力开关（默认 false=保持现状；收集场景关掉这些会话工具/沉淀/选择器）。
   hideSediment?: boolean;   // 沉淀 trace + 沉淀 prompt
   hideSkill?: boolean;      // skill 选择器
@@ -50,6 +53,31 @@ interface Props {
   hideToolPanel?: boolean;  // @工具
   hideDelegate?: boolean;   // 委派子 agent
 }
+
+interface ComposerAttachment {
+  id: string;
+  name: string;
+  size: number;
+  text: string;
+}
+
+const TEXT_UPLOAD_EXTENSIONS = new Set([
+  ".txt",
+  ".md",
+  ".markdown",
+  ".csv",
+  ".tsv",
+  ".json",
+  ".jsonl",
+  ".yaml",
+  ".yml",
+  ".html",
+  ".htm",
+  ".xml",
+  ".log",
+]);
+const TEXT_UPLOAD_ACCEPT = Array.from(TEXT_UPLOAD_EXTENSIONS).join(",");
+const MAX_COMPOSER_FILE_BYTES = 2 * 1024 * 1024;
 
 function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (v: string) => void }) {
   // Group by provider
@@ -109,6 +137,20 @@ function encodeCommandLine(command: XanCommand, values: Record<string, string>):
 
 function cleanDataLabel(path: WorkspacePath): string {
   return path.path.split(/[\\/]/).filter(Boolean).at(-1) ?? path.path;
+}
+
+function isTextUpload(file: File): boolean {
+  const dot = file.name.lastIndexOf(".");
+  const ext = dot >= 0 ? file.name.toLowerCase().slice(dot) : "";
+  return file.type.startsWith("text/") || TEXT_UPLOAD_EXTENSIONS.has(ext);
+}
+
+function attachmentBlock(attachments: ComposerAttachment[]): string {
+  if (attachments.length === 0) return "";
+  const blocks = attachments.map((file) => (
+    `### ${file.name}\n\n${file.text}`
+  ));
+  return `\n\n[本轮上传文件]\n${blocks.join("\n\n---\n\n")}`;
 }
 
 interface CommandParamDialogProps {
@@ -256,6 +298,8 @@ function CommandParamDialog({
 export function ChatPane(p: Props) {
   const [input, setInput] = useState("");
   const [selectedSkillPaths, setSelectedSkillPaths] = useState<string[]>([]);
+  const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
+  const [attachmentError, setAttachmentError] = useState("");
   const [activeAssistPanel, setActiveAssistPanel] = useState<"fork" | "delegate" | "tool" | null>(null);
   const [commands, setCommands] = useState<XanCommand[]>([]);
   const [commandsLoading, setCommandsLoading] = useState(false);
@@ -292,6 +336,7 @@ export function ChatPane(p: Props) {
   const rootRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
   const taRef = useRef<HTMLTextAreaElement>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
   const activeSessionId = p.sessionId || (p.folderScope?.type === "session" ? p.folderScope.sessionId : "");
   const canUseSessionTools = Boolean(activeSessionId) && !p.disabled;
   const commandQueryText = commandQuery(input);
@@ -508,9 +553,10 @@ export function ChatPane(p: Props) {
 
   function sendText(text: string) {
     const trimmed = text.trim();
-    if (!trimmed || p.running || p.disabled) return;
+    if ((!trimmed && attachments.length === 0) || p.running || p.disabled) return;
+    const textWithAttachments = `${trimmed}${attachmentBlock(attachments)}`.trim();
     p.onSend(
-      trimmed,
+      textWithAttachments,
       selectedSkillPaths.length > 0 ? selectedSkillPaths : undefined,
       selectedBusinessRequirement ? {
         pathId: selectedBusinessRequirement.pathId,
@@ -518,15 +564,45 @@ export function ChatPane(p: Props) {
         jsonPath: selectedBusinessRequirement.jsonPath,
       } : undefined,
     );
+    setAttachments([]);
+    setAttachmentError("");
   }
 
   function submit() {
     const text = input.trim();
-    if (!text || p.running || p.disabled) return;
+    if ((!text && attachments.length === 0) || p.running || p.disabled) return;
     sendText(text);
     setInput("");
     setCommandMenuOpen(false);
     requestAnimationFrame(autosize);
+  }
+
+  async function addFiles(files: FileList | null) {
+    if (!files || files.length === 0) return;
+    setAttachmentError("");
+    const next: ComposerAttachment[] = [];
+    for (const file of Array.from(files)) {
+      if (!isTextUpload(file)) {
+        setAttachmentError(`不支持 ${file.name}；当前仅支持文本类文件。`);
+        continue;
+      }
+      if (file.size > MAX_COMPOSER_FILE_BYTES) {
+        setAttachmentError(`${file.name} 超过 2MB；请拆分或转为较小文本。`);
+        continue;
+      }
+      try {
+        next.push({
+          id: `${file.name}:${file.size}:${file.lastModified}:${Math.random().toString(36).slice(2)}`,
+          name: file.name,
+          size: file.size,
+          text: await file.text(),
+        });
+      } catch (error) {
+        setAttachmentError(`读取 ${file.name} 失败：${error instanceof Error ? error.message : String(error)}`);
+      }
+    }
+    if (next.length > 0) setAttachments((current) => [...current, ...next]);
+    if (fileInputRef.current) fileInputRef.current.value = "";
   }
 
   function insertPrompt(body: string) {
@@ -850,6 +926,28 @@ export function ChatPane(p: Props) {
                 ))}
               </div>
             )}
+            {attachments.length > 0 && (
+              <div className="flex flex-wrap gap-1.5 border-b border-neutral-100 px-3 py-2 dark:border-neutral-800">
+                {attachments.map((file) => (
+                  <span
+                    key={file.id}
+                    className="inline-flex max-w-[220px] items-center gap-1 rounded-md bg-neutral-100 px-2 py-1 text-[11px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300"
+                    title={`${file.name} · ${file.size} bytes`}
+                  >
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="truncate">{file.name}</span>
+                    <button
+                      type="button"
+                      onClick={() => setAttachments((current) => current.filter((item) => item.id !== file.id))}
+                      className="ml-0.5 text-neutral-400 hover:text-neutral-800 dark:hover:text-neutral-100"
+                      title={`移除 ${file.name}`}
+                    >
+                      <X className="h-3 w-3" />
+                    </button>
+                  </span>
+                ))}
+              </div>
+            )}
             <textarea
               ref={taRef}
               value={input}
@@ -883,6 +981,28 @@ export function ChatPane(p: Props) {
             />
             <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
               <div className="flex items-center gap-1">
+                {p.enableFileUpload && (
+                  <>
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      multiple
+                      accept={TEXT_UPLOAD_ACCEPT}
+                      className="hidden"
+                      onChange={(event) => void addFiles(event.currentTarget.files)}
+                    />
+                    <button
+                      type="button"
+                      onClick={() => fileInputRef.current?.click()}
+                      disabled={p.disabled || p.running}
+                      className="inline-flex h-7 items-center gap-1 rounded-md px-1.5 text-[11.5px] text-neutral-500 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800"
+                      title="上传文本文件作为本轮上下文"
+                    >
+                      <Paperclip className="h-3.5 w-3.5" strokeWidth={1.75} />
+                      文件
+                    </button>
+                  </>
+                )}
                 <label className="flex items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
                   <Cpu className="h-3.5 w-3.5" strokeWidth={1.75} />
                   {p.models.length > 0 ? (
@@ -898,9 +1018,10 @@ export function ChatPane(p: Props) {
                 </label>
                 {!p.hideSkill && (
                 <SkillSelector
-                  scope={p.workspaceId ? { type: "workspace", workspaceId: p.workspaceId } : null}
+                  scope={p.skillScope ?? (p.workspaceId ? { type: "workspace", workspaceId: p.workspaceId } : null)}
                   selectedPaths={selectedSkillPaths}
                   onChange={setSelectedSkillPaths}
+                  sources={p.skillSources}
                 />
                 )}
                 {!p.hidePromptLib && <PromptSelector workspaceId={p.workspaceId} onInsert={insertPrompt} />}
@@ -923,11 +1044,11 @@ export function ChatPane(p: Props) {
               </div>
               <button
                 onClick={p.running ? p.onStop : submit}
-                disabled={p.disabled || (!p.running && !input.trim())}
+                disabled={p.disabled || (!p.running && !input.trim() && attachments.length === 0)}
                 title={p.running ? "停止生成" : "发送（Shift+Enter）"}
                 className={cn(
                   "inline-flex h-8 w-8 items-center justify-center rounded-full transition-colors",
-                  p.disabled || (!p.running && !input.trim())
+                  p.disabled || (!p.running && !input.trim() && attachments.length === 0)
                     ? "bg-neutral-200 text-neutral-400 dark:bg-neutral-800 dark:text-neutral-600"
                     : "bg-neutral-900 text-white hover:bg-neutral-700 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white",
                 )}
@@ -939,6 +1060,11 @@ export function ChatPane(p: Props) {
                 )}
               </button>
             </div>
+            {attachmentError && (
+              <div className="border-t border-neutral-100 px-3 py-2 text-[11px] text-red-500 dark:border-neutral-800 dark:text-red-400">
+                {attachmentError}
+              </div>
+            )}
           </div>
         </div>
       </div>

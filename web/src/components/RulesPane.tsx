@@ -9,6 +9,7 @@ import {
   Activity,
   AlertTriangle,
   ArrowUpCircle,
+  BookOpen,
   Brain,
   Eye,
   Inbox,
@@ -44,7 +45,7 @@ import type {
 } from "@/types";
 
 type Scope = MemoryItem["scope"];
-type TabKey = MemoryItemType | "fact" | "review" | "proposal";
+type TabKey = MemoryItemType | "fact" | "review" | "proposal" | "readme";
 
 interface CreateDraft {
   type: MemoryItemType;
@@ -68,6 +69,7 @@ const TYPE_TABS: { key: TabKey; label: string; hint: string }[] = [
   { key: "fact", label: "fact (投影)", hint: "business_context / metric / reference 投影，只读" },
   { key: "review", label: "review", hint: "D-INGEST 候选复核队列" },
   { key: "proposal", label: "💡 提案", hint: "Safe Distiller 蒸馏的子技能提案（零 draw_data，人审入库）" },
+  { key: "readme", label: "说明", hint: "统一记忆模块说明：定位、已实现能力与未来方向" },
 ];
 
 const DEFAULT_DRAFT: CreateDraft = { type: "experience", title: "", body: "", scope: "global", tags: "" };
@@ -116,6 +118,134 @@ function RiskBadge({ flag }: { flag: MemoryRiskFlag }) {
     <span title={flag.message} className={`inline-flex items-center gap-1 rounded border px-1.5 py-0.5 text-[10.5px] ${tone}`}>
       <AlertTriangle className="h-3 w-3" /> {flag.code}
     </span>
+  );
+}
+
+const IMPLEMENTED_FEATURES: { title: string; body: string }[] = [
+  { title: "统一真源", body: "核心记忆落在 memory_items，不再散落在多个旧规则入口。" },
+  { title: "类型区分", body: "constraint 管硬规则，experience 管经验，episode 管阶段性背景。" },
+  { title: "新建编辑", body: "可以直接新建、修改、启用、停用、刷新记忆。" },
+  { title: "tag 管理", body: "用 task: / industry: / method: / data: / problem: 等标签帮助筛选和召回。" },
+  { title: "scope 控制", body: "可以区分 global / chat / workflow，减少把项目经验用错地方。" },
+  { title: "注入预览", body: "能看到最终可能进入 prompt 的 memory、fact、字符数和 token 估算。" },
+  { title: "正负反馈", body: "记忆帮上忙就加正反馈，误导结果就加负反馈。" },
+  { title: "fact 投影", body: "业务环境、指标口径、参照标准等事实会投影到统一视图里，只读展示。" },
+  { title: "候选复核", body: "系统发现的候选不会自动入库，需要人审后才成为长期记忆。" },
+  { title: "Safe Distiller 提案", body: "高频经验可以形成 Skill 提案，但不会自动启用。" },
+  { title: "老化治理", body: "可以查看冲突、过期、被替代的记忆，先预览再维护。" },
+  { title: "Skill 升级", body: "高频 experience 簇可以升级为 Skill 候选，再去实验场评测。" },
+];
+
+const FUTURE_DIRECTIONS: { title: string; body: string }[] = [
+  { title: "从手工记到系统建议", body: "系统从对话、工作流、失败记录里发现候选记忆，人来批准、改写或拒绝。" },
+  { title: "记忆质量更可见", body: "告诉用户哪些记忆经常帮上忙，哪些经常被负反馈，哪些很久没用。" },
+  { title: "冲突处理更强", body: "主动提示两条记忆可能矛盾，建议合并、停用旧条目或改写。" },
+  { title: "记忆到 Skill 更顺", body: "高频经验先变 Skill 草稿，再进实验场评测，通过后才激活。" },
+  { title: "注入更可解释", body: "说明这次为什么召回某条记忆，另一条为什么没进 prompt。" },
+  { title: "分层治理", body: "区分个人习惯、项目记忆、团队共识、公司级红线。" },
+  { title: "数据安全更强", body: "写入前检查原始行级数据、敏感字段和可能来自 draw_data 的内容。" },
+];
+
+function UnifiedMemoryReadme() {
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex items-start gap-3">
+          <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700 dark:text-neutral-200" />
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">统一记忆是什么</h2>
+            <p className="mt-2 text-[13px] leading-6 text-neutral-600 dark:text-neutral-300">
+              统一记忆就是 pi-Xanthil 给 AI 准备的“工作习惯本”。你希望 AI 长期记住的规则、经验、业务背景、阶段性事件，不应该每次对话都重复打一遍；统一记忆负责把这些东西收起来，并在合适的时候带进日常对话、专题分析或工作流。
+            </p>
+            <div className="mt-3 grid gap-2 text-[12px] text-neutral-600 dark:text-neutral-300 sm:grid-cols-3">
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">资料库放外部文档、SOP、方法论和参考材料。</div>
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">聊天记录放一次对话里说过什么。</div>
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">统一记忆放下次还要继续遵守或参考的东西。</div>
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">它解决什么问题</h2>
+        <div className="mt-3 grid gap-2 text-[12px] text-neutral-600 dark:text-neutral-300 sm:grid-cols-2">
+          <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">上次说过“报告数字必须带来源”，下次又忘了。</p>
+          <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">项目业务背景讲过很多遍，每次新对话还要重讲。</p>
+          <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">一次分析里踩过坑，换个 session 又踩一遍。</p>
+          <p className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">指标口径、业务红线、输出格式散落在不同地方，没人确定最终有没有进 prompt。</p>
+        </div>
+        <p className="mt-3 text-[12px] leading-5 text-neutral-500">统一记忆不是让 AI 什么都记，而是只记那些对后续工作有价值、可以复用、能被人检查的内容。</p>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">现在已经实现了什么</h2>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {IMPLEMENTED_FEATURES.map((item) => (
+            <div key={item.title} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+              <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{item.title}</h3>
+              <p className="mt-1 text-[11.5px] leading-5 text-neutral-600 dark:text-neutral-300">{item.body}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[12px] leading-5 text-neutral-500">现在它已经能支撑“人负责判断，系统负责记住和提醒”的基本闭环。</p>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">一条记忆怎么被用上</h2>
+        <div className="mt-3 grid gap-2 text-[12px] text-neutral-600 dark:text-neutral-300 sm:grid-cols-3">
+          {["写入一条记忆", "启用这条记忆", "顶栏记忆库为 on", "按任务、scope、tag、query 检索", "在 token budget 内裁剪", "注入到 system prompt"].map((step, index) => (
+            <div key={step} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+              <span className="text-[10.5px] uppercase text-neutral-400">step {index + 1}</span>
+              <p className="mt-1 font-medium text-neutral-800 dark:text-neutral-200">{step}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[12px] leading-5 text-neutral-500">“保存了”不等于“一定会用上”。如果觉得 AI 没遵守某条记忆，先看「预览注入」和 trace 里的「记忆注入检查器」。</p>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">怎么写一条好记忆</h2>
+        <div className="mt-3 grid gap-3 lg:grid-cols-2">
+          <div>
+            <h3 className="text-[12px] font-semibold text-neutral-800 dark:text-neutral-200">好写法</h3>
+            <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 text-[11.5px] leading-5 text-neutral-700 dark:bg-neutral-950 dark:text-neutral-300">{`type: constraint
+scope: chat
+title: 报告数字必须标注来源
+body: 输出报告时，每个关键数字必须说明来自工具结果、聚合表、报告引用或人工输入；没有来源时要明确说无法确认。
+tags: task:report, method:evidence, problem:hallucination`}</pre>
+            <p className="mt-2 text-[12px] leading-5 text-neutral-500">规则具体、影响范围清楚、能判断是否遵守，tag 也方便后续召回。</p>
+          </div>
+          <div>
+            <h3 className="text-[12px] font-semibold text-neutral-800 dark:text-neutral-200">不好写法</h3>
+            <pre className="mt-2 whitespace-pre-wrap rounded-lg bg-neutral-50 p-3 text-[11.5px] leading-5 text-neutral-700 dark:bg-neutral-950 dark:text-neutral-300">{`title: 报告要专业
+body: 以后输出都要专业一点。`}</pre>
+            <p className="mt-2 text-[12px] leading-5 text-neutral-500">问题是太泛，不知道什么叫专业，也很难检查是否执行，还会挤占 prompt 空间。</p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">未来产品发展方向</h2>
+        <p className="mt-1 text-[12px] text-neutral-500">下面是产品方向，不表示每一项都已经上线。</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {FUTURE_DIRECTIONS.map((item) => (
+            <div key={item.title} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+              <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{item.title}</h3>
+              <p className="mt-1 text-[11.5px] leading-5 text-neutral-600 dark:text-neutral-300">{item.body}</p>
+            </div>
+          ))}
+        </div>
+        <p className="mt-3 text-[12px] leading-5 text-neutral-500">统一记忆未来要从“有记忆”升级到“记忆可控、可解释、可治理”。核心原则不变：系统可以建议，但长期影响 AI 的内容必须能被人复核。</p>
+      </section>
+
+      <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        <h2 className="text-[14px] font-semibold">安全边界</h2>
+        <p className="mt-2 text-[12px] leading-5">统一记忆不要存 draw_data 原始行、用户级明细、订单明细列表、样本值列表、手机号、地址、身份证号等敏感信息。更合适的写法是写聚合后的结论、指标口径、分析纪律、业务约束和已经人工确认过的经验。</p>
+        <pre className="mt-3 whitespace-pre-wrap rounded-lg bg-white/70 p-3 text-[11.5px] leading-5 text-amber-900 dark:bg-neutral-950/50 dark:text-amber-100">{`不建议：用户 A 在 2026-06-01 买了 3 件商品，手机号是 ...
+
+建议：会员复购分析不得直接使用用户级明细进入 prompt；需要先聚合到分层、周期和指标口径后再解释。`}</pre>
+      </section>
+    </div>
   );
 }
 
@@ -760,17 +890,19 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
 
         <div className="flex flex-wrap gap-2">
           {TYPE_TABS.map((t) => {
-            const count = t.key === "fact"
-              ? facts.filter((f) => f.enabled).length
-              : t.key === "review"
-                ? reviews.length
-                : t.key === "proposal"
-                  ? proposals.length
-                  : grouped.get(t.key as MemoryItemType)?.length ?? 0;
+            const count = t.key === "readme"
+              ? null
+              : t.key === "fact"
+                ? facts.filter((f) => f.enabled).length
+                : t.key === "review"
+                  ? reviews.length
+                  : t.key === "proposal"
+                    ? proposals.length
+                    : grouped.get(t.key as MemoryItemType)?.length ?? 0;
             const active = activeTab === t.key;
             return (
               <button key={t.key} onClick={() => setActiveTab(t.key)} title={t.hint} className={`inline-flex items-center gap-1.5 rounded-md border px-3 py-1.5 text-[12px] ${active ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900" : "border-neutral-200 bg-white text-neutral-700 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"}`}>
-                {t.label} <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10.5px] dark:bg-white/10">{count}</span>
+                {t.label} {count !== null && <span className="rounded-full bg-black/10 px-1.5 py-0.5 text-[10.5px] dark:bg-white/10">{count}</span>}
               </button>
             );
           })}
@@ -972,6 +1104,8 @@ export function RulesPane({ workspaceId, onRulesChanged }: { workspaceId: string
             }))}
           </div>
         )}
+
+        {activeTab === "readme" && <UnifiedMemoryReadme />}
       </div>
     </div>
   );

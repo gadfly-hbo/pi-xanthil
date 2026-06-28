@@ -5,6 +5,8 @@ import { sharedApi } from "@/lib/api/shared";
 import { cn } from "@/lib/cn";
 import type { PiSkill, SkillRegistryEntry } from "@/types";
 
+type SkillSource = PiSkill["source"];
+
 type Scope =
   | { type: "workspace"; workspaceId: string }
   | { type: "flow"; flowId: string };
@@ -15,9 +17,10 @@ interface Props {
   onChange: (paths: string[]) => void;
   align?: "left" | "right";
   direction?: "up" | "down";
+  sources?: SkillSource[];
 }
 
-export function SkillSelector({ scope, selectedPaths, onChange, align = "left", direction = "up" }: Props) {
+export function SkillSelector({ scope, selectedPaths, onChange, align = "left", direction = "up", sources }: Props) {
   const [skills, setSkills] = useState<PiSkill[]>([]);
   const [registryEntries, setRegistryEntries] = useState<SkillRegistryEntry[]>([]);
   const [enabledIds, setEnabledIds] = useState<Set<string>>(new Set());
@@ -46,7 +49,7 @@ export function SkillSelector({ scope, selectedPaths, onChange, align = "left", 
     Promise.all([skillsRequest, registryRequest])
       .then(([items, [entries, enablements]]) => {
         if (cancelled) return;
-        setSkills(items);
+        setSkills(sources ? items.filter((item) => sources.includes(item.source)) : items);
         setRegistryEntries(entries);
         setEnabledIds(new Set(enablements.filter((e) => e.enabled).map((e) => e.itemId)));
       })
@@ -59,7 +62,7 @@ export function SkillSelector({ scope, selectedPaths, onChange, align = "left", 
     return () => {
       cancelled = true;
     };
-  }, [scope?.type, scope?.type === "workspace" ? scope.workspaceId : scope?.flowId]);
+  }, [scope?.type, scope?.type === "workspace" ? scope.workspaceId : scope?.flowId, sources?.join("|")]);
 
   const sortedRows = useMemo(() => {
     const bySlug = new Map(registryEntries.map((entry) => [entry.slug, entry]));

@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { BookmarkPlus, Check, Globe2, X } from "lucide-react";
 import { ChatPane } from "@/components/ChatPane";
 import { CollectSidebar } from "@/components/CollectSidebar";
@@ -44,6 +44,10 @@ export function CollectPane({ ctx }: { ctx: TabContext }) {
   const [error, setError] = useState("");
   const [notice, setNotice] = useState("");
   const [savedDocs, setSavedDocs] = useState<Record<string, string>>(() => readSavedDocs());
+  const collectSkillScope = useMemo(() => {
+    const session = ctx.collectSessions.find((item) => item.id === ctx.activeCollectSessionId);
+    return session ? { type: "workspace" as const, workspaceId: session.workspaceId } : null;
+  }, [ctx.activeCollectSessionId, ctx.collectSessions]);
 
   async function saveDraft() {
     if (!ctx.activeWorkspaceId || !draft || saving) return;
@@ -127,8 +131,10 @@ export function CollectPane({ ctx }: { ctx: TabContext }) {
           onCompact={() => void ctx.compactCollectContext()}
           onRefreshRuntime={() => void ctx.refreshCollectRuntime()}
           renderMessageAction={renderMessageAction}
+          skillScope={collectSkillScope}
+          skillSources={["project"]}
+          enableFileUpload
           hideSediment
-          hideSkill
           hidePromptLib
           hideBizReq
           hideToolPanel
