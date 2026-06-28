@@ -9,31 +9,31 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-27 · **E-MONITOR-TARGET1 完成**（确定性目标测算纯函数 + 8 单测全绿）
-- 进度：
-  - **E-MONITOR-TARGET1**（`web/src/lib/monitor-target-calculator.ts`）：
-    - 纯函数 `calculateTarget(input)`：输入 `TargetCalculationInput` → 输出 `TargetCalculationResult`（三情景 cases + 分期 breakdown）。
-    - 核心公式链：traffic × conversionRate → orders → gmv → revenue → grossProfit → profit → roi；反推公式按 metric 类型推导 requiredOrders/requiredTraffic/requiredAov/requiredConversionRate。
-    - 情景因子：conservative ×0.85、baseline ×1.0、stretch ×1.15，应用于 conversionRate 和 aov。
-    - 分期：yearly_kpi/rolling_monthly 按月，campaign 按天；invalid date range → 空 breakdown。
-    - 边界：safeDiv/safeMul 防 NaN/null/0/Infinity；marketingCost=0 → roi=null；conversionRate=0 → requiredTraffic=null。
-    - 类型自包含（内联 TargetScenarioKind/TargetMetricKind/TargetCase/TargetAssumptions 等），不依赖 @/types 别名，确保 node --test 可独立运行。
-    - 测试文件 `monitor-target-calculator.test.ts`：8 用例（年度 GMV 反推/大促利润/marketingCost=0/conversionRate=0/缺失 assumptions/无效日期/rolling_monthly/NaN 负值），`@ts-nocheck` 兼容 tsc + node --experimental-strip-types。
-  - **前序状态仍有效**：
-    - E-SKILLINJECT1/E-SUBSKILL1 已完成但未跑真实 pi/browser smoke。
-    - E-SKILLOPT1 浏览器 smoke 仍待跑。
-    - subagents 进阶/flow_node_runs/E-QEVAL2/SkillLab/E-COLLECT2 浏览器验收仍待执行。
-- 校验：
-  - `npm run typecheck` ✅（server + web）
-  - `npm run build` ✅（仅既有 Vite chunk warning）
-  - `node --experimental-strip-types --test web/src/lib/monitor-target-calculator.test.ts` ✅（8/8）
-- 下一步：
-  - **E-MONITOR-TARGET1 已完成**；下游 F-MONITOR-TARGET2（HealthTargetPane）和 D-MONITOR-TARGET3（目标计划 API）可开工。
-  - **E-SKILLINJECT1 真实 workflow smoke**：准备 4+ active/project skills 的 workflow → 运行典型多节点任务 → 观察每步 skill 从全量降到 2-3 个。
-  - **E-SKILLOPT1 浏览器 smoke**：起 server → SkillLab 跑一次 skill evaluation → 触发 curator → 调 evaluate 端点跑 held-out → 观察严格门裁决。
-- 阻塞：无硬阻塞。
-- 开放问题（需总控）：
-  - 沿用前序开放项（动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等）。
+- 最近更新:2026-06-28 · **DLF 模拟实验专题收尾完成**（X-DLF0/E-DLF1/V-DLF2/D-DLF3/E-DLF4/X-DLF5 全部 done；产品说明 + v2 路线已沉淀）
+- 进度:
+  - **X-DLF5**（`docs/wiki.html` + `docs/notes-infra.md` + `docs/notes-engine.md`）:
+    - 补齐模拟实验产品说明：定位为行动前预测 / 方案试压，输入 report 衍生产物 + DLF persona，输出可解释的接受度、反对点、接受条件、风险、修改建议和下一步验证实验。
+    - 固定使用方式：在日常/重复/专题的 `dlf` 子 tab 选择 report，选择 `consumer_campaign` / `product_concept` / `expert_panel` 场景，选 SubAgentTemplate persona 或 manual persona，运行后落 `simulation_lab/*.json` 与 `*.md`。
+    - 固定边界：不是统计预测模型，不承诺真实市场结果；首版 DLF 只复用 persona，不继承 `toolIds`，不启动真实 subagent runner，不读 `draw_data` / 数据探索样本 / `clean_data` / `knowledge`。
+    - v2 路线：独立生命体 runner、多轮辩论/交叉质询、历史模拟库、执行反馈校准集、clean_data 聚合数据知情接入。
+  - **E-DLF4**（`server/src/simulation-lab.ts` + `simulation-lab.test.ts` + `routes/engine.ts`）:
+    - 重构 `simulation-lab.ts`:抽出 `parseSimulationRunRequest()`(纯函数·shape 校验)、`buildSimulationPrompts()`(纯函数·返回 system/user prompts)、导出 `validateReportRelPath`/`extractJsonObject`/`normalizeSimulationResult`;`runSimulationLab(input, { runPi? })` 新增可注入 pi runner 用于单测。
+    - prompt builder 显式包含报告名/scenario/lifeForms persona/business context;持久化 truncate(persona 1500、report 30000)。**绝不暴露 toolIds 或 templateId 给 LLM**(测试坐实)。
+    - 路由 `POST /api/simulation-lab/run` 走 `parseSimulationRunRequest`,统一错误 → 400/500;`does not accept` 误差也纳入 400 域。
+    - 测试 26 用例覆盖:① parse 非法 scenario/空 lifeForms/空 persona/空 id/空 name 全拒;② path guard 拒 hidden/parent/empty,放行普通相对路径;③ prompt 包含报告名+报告内容+scenario+persona,**不含 toolIds/templateId**;④ JSON repair(尾逗号 + markdown fence)修复后可 validate;⑤ artifact 成功落 json/md(相对路径,实际写盘),fake runPi 仅调一次(无 subagent 调用、无 repair 第二次调用);⑥ 源码级断言:`simulation-lab.ts` 无 `runSubAgentTurn` / `runDelegatedSubAgent` / `runAutonomousTask` / `subagent-core` / `autonomous-runner` import,且必含 `folder !== "report"` 守卫。
+    - 红线核查:数据探索隔离 grep `(generate|chat|extract|clarify|sink|distill).*api\.` 在 `DataExplorationPane.tsx` 与 `data-exploration/` 子树**无匹配**;simulation-lab 后端读取范围**只限 `report` folder 的 `.md/.markdown/.txt` 文本**,禁止范围 = `draw_data`/`clean_data`/非文本报告/隐藏文件/parent 段。
+  - **前序状态仍有效**(MONITOR-TARGET1 已 done;SKILLINJECT1/SUBSKILL1/SKILLOPT1 浏览器 smoke 仍 pending;subagents 进阶/flow_node_runs/E-QEVAL2/SkillLab/E-COLLECT2 浏览器验收仍待执行)。
+- 校验:
+  - `npm run typecheck` ✅(server + web)
+  - `npm run build` ✅(仅既有 Vite chunk warning)
+  - `node --experimental-strip-types --test server/src/simulation-lab.test.ts` ✅(**26/26**)
+  - 数据探索隔离 grep ✅(no match)
+- 下一步:
+  - DLF 模拟实验专题已收尾;后续进入真实使用反馈与 v2 需求拆卡。
+  - 仍未开工:E-SKILLINJECT1 真实 workflow smoke、E-SKILLOPT1 浏览器 smoke。
+- 阻塞:无硬阻塞。
+- 开放问题(需总控):
+  - 沿用前序开放项(动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等)。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -120,6 +120,10 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **跨域数据查询隔离规范（2026-06-19）**：为了避免子系统之间相互引用 DB 文件导致的循环依赖与类型接缝污染，D 域等其他域查询 E 域的记忆特征（如 `knowledge-graph` 的打分与 Prompt）时，**禁止跨域 import** `server/src/knowledge-graph.ts` 的底层读写函数。统一规范通过暴露内网 GET API 接口（如 `/api/workspaces/:id/kg/relevance`）并通过 `fetch` 进行跨域通信，这确保了各域可独立测试，且边界坚固。
 - **监测/agent 安全回归口径（E-MONITOR8，2026-06-23）**：D-MONITOR6 在 D 域 slot 新增监测专用 SQL 导入单入口（`POST /api/workspaces/:id/monitor/import-sql` + `GET /monitor/imports`）后，E 域负责回归验证 LLM/agent/workflow 不获得写库或原始行级数据通道。审查口径（无新代码、仅静态 + 单测 + grep）：① **agent runner 文件**（`multi-agent-runner.ts` / `autonomous-runner.ts` / `subagent-core.ts` / `skill-*.ts` / `memory-injection.ts` / `pi-adapter.ts`）grep 必须无 `monitor/import-sql`、`monitor/imports`、`import/commit`、`create-table`、`addWorkspacePath`、`exportTableQuery` 任意一个。② 工作流 SQL 工具节点（`multi-agent-runner.ts:741`）必须经 `validateSql` → `executeQuery`，**只读 SELECT**。③ **monitor-llm prompt 安全红线**：`buildDraftPrompt`/`actions/draft` prompt 只能拼 `BiAggregationDataset.columns/rowCount/name` + ontology 元数据 + findings 衍生字段（`kind/severity/lifecycle/category/title/suggestion/comparisons/diagnosis`），**绝禁** rows/cells/draw_data。④ monitor `/runs` 端点必须在 `insertMonitorRun` 前差集校验 metric-system bindings 的全部 datasetPathId 属当前 workspace `/api/bi/aggregations` 返回集，非法即 400 且**不落空 run**；ontologyId 同口径。⑤ run 数据流：`fetch /api/bi/aggregations/:pathId/data` → `runMonitorChecks`（纯函数零 LLM）→ findings 落库，rows 永不进入 LLM。⑥ `subagent-core.ts` 的 `writeFileSync` 仅限模板配置 + 沙箱 `.mcp.json`，不得扩散为数据写入通道。后续监测相关改动如新增 LLM 调用或新接缝端点，必须按本口径重做回归。
 - **SkillOpt 受控回写器（E-SKILLOPT1，2026-06-27）**：skill 自迭代的受控回写桥，把测评台评分闭环回写进 skill 文档。五个机制：① **严格接受门**——候选 skill 在 held-out 测评集分数必须**严格大于**当前才接受（平手也拒），复用 `skillRegistryMetricsFromEvaluation` 算分，预留 `scoreMetric:"efc"` 切换。② **slow-update 受保护字段**——SKILL.md 用 `<!-- @slow-update -->...<!-- /@slow-update -->` HTML 注释块标记跨 epoch 长程经验，`guardSlowUpdateWrite()` 纯函数校验，`applySkillCurationProposals` 已集成守门（消融去掉跌 22.5 分，最重要）。③ **rejected-edit buffer**——`skill_rejected_edits` 表存被拒编辑，`buildRejectedFeedbackPrompt()` 取最近 5 条注入 curator prompt 作负反馈。④ **Creator/Evaluator 权限隔离**——Creator（优化队）禁访 `golden_strategy/validator/execution_traces/trace`，可写 skill 库；Evaluator（评估队）可读 oracle/validator，禁写 skill 库。隔离是软隔离（systemPrompt + 路径校验），pi 进程仍可读绝对路径，后续可加 OS 级沙箱。⑤ **有界 L_t**——接口预留，当前未实现（P2 优化）。类型放 E 域内部（`web/src/lib/api/engine.ts`），不扩双侧 types.ts（照 SkillPackage 先例）。路由落 `routes/engine.ts`（evaluate/accept/reject/rejected list/delete/sandbox verify），不碰 legacy `index.ts`。MVP 交付=验证门+严格接受+slow-update 守门+rejected buffer+隔离，验收=typecheck+build+20 新测试全绿。
+- **模拟实验 (DLF) 后端单测接缝（E-DLF4，2026-06-28）**：simulation-lab API 单测落地需要把 `runSimulationLab` 内的两类边界抽成可测的纯函数 + 一个 LLM runner 注入点。① `parseSimulationRunRequest(body)` 是纯函数 shape 守卫（rejects 非法 scenario/空 lifeForms/空 persona/空 id-name/缺 pathId/空 model + 强制丢弃外部传入的 `toolIds`），路由层只调它并把抛出消息归 400；不在路由层做 enum 字符串硬编码。② `buildSimulationPrompts({reportName, reportText, input})` 是纯函数 prompt 构造（必含 reportName / scenario / persona / business context / report body 摘要；persona 截 1500、report 截 30000；**禁止**输出 toolIds/templateId 到 prompt），用于直接断言 prompt 形态而无须真起 pi turn。③ `runSimulationLab(input, { runPi?: SimulationRunPi })` 默认走 `runPiPrompt`，注入 fake `runPi` 后单测可断言"路径守卫 / extension 守卫 / artifact 落盘 / 仅一次 LLM 调用"，从源头杜绝 subagent runner 上身。**红线**：源码级单测固化"`simulation-lab.ts` 不得 import `subagent-core` / `autonomous-runner`、不得引用 `runSubAgentTurn` / `runDelegatedSubAgent` / `runAutonomousTask`、必须包含 `folder !== "report"` 守卫"——任何后续把 DLF 升级到真子 agent 的改动必须同时显式承担这些断言的修改责任，不能默默放开。**模拟实验后端读取范围**=仅 `report` folder 下 `.md / .markdown / .txt` 文本经 `readFlowFile` 读入，再走 LLM；**模拟实验后端禁止范围**=`draw_data` / `clean_data` / `knowledge` folder、非文本报告（.xlsx/.csv 等）、hidden segment（`.` 开头）、parent 段（`..`）、空相对路径，以及任何 toolIds / templateId 流入 prompt。
+
+- **模拟实验 (DLF) 产品使用与 v2 路线（X-DLF5，2026-06-28）**：产品口径固定为“行动前预测 / 方案试压”，服务对象是报告、黄金策、行动方案、新品方案、增长方案等衍生产物，不是统计预测模型。首版用户流程：选择 report 文本 → 选择 consumer campaign / product concept / expert panel 场景 → 选择 SubAgentTemplate persona 或手填 manual persona → 补充模拟重点 → 一次生成结构化结果并落 `simulation_lab` 产物。输出用于人工修改方案与设计验证实验，不得被展示为真实销量、转化率、利润或市场承诺。v2 拆卡方向按五类推进：① 独立 DLF runner 与 trace，但权限必须重新审计；② 多轮辩论、交叉质询和主持人归纳；③ 历史模拟库与方案横向对比；④ 与行动执行反馈/A-B test/复盘结论形成校准集；⑤ clean_data 聚合指标知情接入，仍禁止 raw row / draw_data / 数据探索样本入 LLM。
+
 
 ---
 

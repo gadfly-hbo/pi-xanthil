@@ -290,6 +290,210 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【行动闭环·模拟实验 DLF】（总控拆卡 2026-06-28；来源=用户需求：针对分析报告产出的行动策略/方案，用数字生命体做模拟预测。典型场景：门店零售活动目标客群接受度、新品概念测款、用户增长方案专家投票）。首版决策：数字生命体复用 subagents 管理里的 SubAgentTemplate persona，但不启动真实 subagent runner；统一由 simulation API 读取报告/方案衍生产物并输出结构化模拟结果。红线：只允许 report/business_requirements/golden_strategy/actions 进入 LLM，禁止 draw_data 原始行级内容。════
+  { dom: "X", status: "done", created: "2026-06-28 10:00", title: "【行动闭环·模拟实验·契约·P0】X-DLF0：Simulation Lab 类型契约 + 数据红线 + subagent persona 复用口径", brief:
+`目标：定义“模拟实验”模块的总控契约，作为日常/专题/重复的 action_loop → dlf 子 tab 真正能力入口。模块目的：针对报告、黄金策、行动方案、新品方案等，用数字生命体进行模拟预测，输出方案可行性、接受度、反对点、修改建议和下一步验证实验。
+
+首版产品口径：
+1. 数字生命体 = SubAgentTemplate 的 persona 复用层，可以选择 subagents 管理中已有模板，也可以手填 manual persona。
+2. 首版不启动真实 subagent runner，不继承 template.toolIds，不产生委派任务；只读取 template.id/name/persona 作为模拟角色输入。
+3. 执行由统一 simulation API 受控调用 LLM，一次返回结构化 JSON，保证成本、权限和结果 schema 可控。
+4. v2 再考虑每个生命体独立 runner、多轮辩论、trace 留档和历史校准。
+
+必须定义双侧类型：
+- SimulationScenario = consumer_campaign / product_concept / expert_panel。
+- DigitalLifeFormSource = subagent_template / manual_persona。
+- DigitalLifeForm：id, name, source, persona, templateId?。
+- SimulationRunInput：pathId, relPath?, scenario, model, lifeForms, prompt?, businessContext?。
+- SimulationRoleAssessment：lifeFormId, name, stance, score, acceptanceConditions, objections, evidenceQuotes, suggestions。
+- SimulationRunResult：scenario, verdict, overallScore, summary, roleAssessments, risks, recommendedChanges, validationExperiments, artifactPaths?, model。
+
+数据红线：
+1. 只允许 report、business_requirements、golden_strategy、actions 等衍生产物进入 LLM。
+2. 禁止读取 draw_data 原始行级内容；禁止把数据探索结果/字段值/样本片段送入 LLM。
+3. clean_data 如后续接入必须用户知情，且只能是聚合数据，不在本首版范围。
+4. SubAgentTemplate.toolIds 只作为管理字段展示，不进入模拟执行权限。
+
+完成标准：
+- server/src/types.ts 与 web/src/types.ts 双侧类型对齐。
+- docs/notes-infra.md 或本卡备注固定首版执行口径和 v2 演进边界。
+- 下游 E-DLF1、V-DLF2、D/V-DLF3 可按契约施工，不再自行拍 schema。
+
+✅ 总控自做 done（2026-06-28）：双侧 types.ts 镜像新增 SimulationScenario / DigitalLifeFormSource / SimulationVerdict / SimulationStance + DigitalLifeForm / SimulationRunInput / SimulationRoleAssessment / SimulationArtifactPaths / SimulationRunResult；docs/notes-infra.md §十四 固定首版口径：DLF 只复用 SubAgentTemplate.persona，不启动真实 subagent runner、不继承 toolIds；允许 report/business_requirements/golden_strategy/actions 衍生产物进 LLM，禁止 draw_data 原始行级内容与数据探索样本。未注册路由、未接 UI、未改 subagent runner。验证：数据探索隔离 grep 无匹配、npm run typecheck✅、npm run build✅。` },
+
+  { dom: "E", status: "done", created: "2026-06-28 10:01", title: "【行动闭环·模拟实验·后端·P0】E-DLF1：POST /api/simulation-lab/run + JSON repair + 产物落盘", brief:
+`前置：X-DLF0 类型契约审定。
+
+目标：实现模拟实验后端 API。输入一份报告/方案文本 + 一组数字生命体 persona，输出结构化模拟结果，并落盘到报告路径下 simulation_lab 目录。
+
+建议落点：
+- server/src/index.ts 或 server/src/routes/viz.ts。若放 routes/viz.ts，需保持现有 report/action/golden_strategy 所在可视交付路由口径一致。
+- 如需 helper，可新增 server/src/simulation-lab.ts，放 prompt 构造、结果校验、Markdown 渲染。
+
+API：
+POST /api/simulation-lab/run
+body:
+- pathId: number
+- relPath?: string
+- scenario: consumer_campaign | product_concept | expert_panel
+- model: string
+- lifeForms: DigitalLifeForm[]
+- prompt?: string
+
+行为：
+1. 只从已登记 report 路径读取报告文件，沿用 workspace path 校验；非 report folder 返回 400。
+2. 文本类型仅 md/markdown/txt；非文本报告返回 400。
+3. lifeForms 至少 1 个，建议最多 12 个，persona 过长需截断但不能空。
+4. 构造 prompt 时明确：角色逐个独立评估，输出严格 JSON，不要 Markdown fence。
+5. 使用 runPiPrompt；parse 失败走既有 repairJsonObject 机制。
+6. 校验结果必须包含 verdict、overallScore、roleAssessments、risks、recommendedChanges、validationExperiments。
+7. 生成 simulation_lab/*.json 与 simulation_lab/*.md，返回 artifactPaths。
+
+安全要求：
+- 不读取 draw_data。
+- 不调用 extraction-tools 处理原始行。
+- 不继承 subagent template toolIds，不启动 runSubAgentTurn。
+- LLM 输入只能包含报告文本、用户 prompt、persona 文本。
+
+验收：
+- 缺 pathId、非法 scenario、空 lifeForms、非 report path、非文本文件都有显式错误。
+- 正常请求能返回结构化结果并落盘。
+- server typecheck 绿；npm run typecheck / npm run build 绿。
+- 回报中说明没有触碰数据探索子树。
+
+✅ Agent-E 实装 + 总控终审 done（2026-06-28）：新增 server/src/simulation-lab.ts + routes/engine.ts POST /api/simulation-lab/run，读取 report 登记路径文本，构造 DLF persona 模拟 prompt，JSON parse + repair，落盘 simulation_lab/*.json 与 *.md。总控收口 3 点：① runSimulationLab 返回值从 SimulationArtifactPaths 改回 X-DLF0 契约的 SimulationRunResult，并把 artifactPaths 嵌入结果；② relPath 从字符串 startsWith 改为 readFlowFile/writeFlowFile + validateReportRelPath，禁止 hidden/.. 段，file path 不接受 relPath，artifactPaths 返回相对路径不泄漏本地绝对路径；③ businessContext 纳入 prompt，summary/model/scenario/roleAssessments 做后端归一化。未调用 subagent runner，不继承 toolIds，不读 draw_data。验证：npm run typecheck✅、npm run build✅、数据探索隔离 grep 无匹配✅。` },
+
+  { dom: "X", delegate: "D", status: "done", created: "2026-06-28 10:02", title: "【行动闭环·模拟实验·前端·P0】V-DLF2：SimulationLabPane 页面 + dlf 占位替换（Agent-D 代笔）", brief:
+`前置：X-DLF0；可与 E-DLF1 并行，先按契约 mock 结果结构施工，最终接 api。
+
+治理口径：本卡是可视交付/V 域任务，但 V-agent 已停用，按 Orchestration 约定委派 Agent-D 代笔实现，回流总控终审。
+
+目标：新增 SimulationLabPane，替换当前 EngineTabs 中 dlf 的 Placeholder，让日常/专题/重复三个模块都能进入“模拟实验”。
+
+改动范围：
+- 新增 web/src/components/SimulationLabPane.tsx。
+- web/src/tabs/EngineTabs.tsx：activeSubTab === dlf 时渲染 SimulationLabPane。
+- web/src/lib/api.ts：增加 runSimulationLab 调用。
+- 必要时少量补 web/src/types.ts 中 X-DLF0 已审定类型。
+
+页面能力：
+1. 报告选择：复用 ActionsPane / GoldenStrategyPane 的报告输出登记路径扫描逻辑，支持 session / flow / workspace scope。
+2. 场景选择：消费者活动评估、 新品概念测款、专家投票评审。
+3. 数字生命体选择：展示 subagents 管理中的 template，支持多选；显示 name + persona 摘要。
+4. 手填 persona：支持新增 manual persona，作为临时数字生命体。
+5. 参数输入：用户补充本次模拟重点，例如门店活动利益点、新品概念、增长方案假设。
+6. 运行结果展示：总体 verdict / overallScore / 分角色评分卡 / 关键反对点 / 接受条件 / 修改建议 / 下一步验证实验。
+7. 空态、loading、error、retry 状态完整。
+
+UI 约束：
+- 工作型界面，信息密度参考 ActionsPane，不做 hero/营销页。
+- 不用大段说明文字堆页面；必要提示用短提示。
+- 移动端不溢出，按钮和选择卡稳定尺寸。
+
+红线：
+- 不 import chat/generate/extract/clarify 等会触发 LLM 的前端 API，除本卡新增的 runSimulationLab 专用 API。
+- 不碰 DataExplorationPane 子树。
+- 不读取 draw_data。
+
+验收：
+- 日常/专题/重复进入 dlf 都看到 SimulationLabPane。
+- 可选报告、选择 subagent template、手填 persona、点击运行。
+- web typecheck/build 绿；npm run typecheck/build 绿。
+
+✅ Agent-D 代笔实装 + 总控终审 done（2026-06-28）：新增 SimulationLabPane，dlf 占位替换为真实工作台；支持报告选择、三类 scenario、subagent template 多选、显示停用模板、手填 persona、模拟重点输入、运行与结构化结果展示（verdict/总分/分角色卡/反对点/接受条件/建议/引用/风险/修改建议/验证实验/artifact paths）。新增 api.runSimulationLab。总控收口 1 点：专题 dlf scope 改用 zhuantiChatFolderScope / zhuantiChatFlow，对齐黄金策与行动，避免误扫 workspace 报告。验证：npm run typecheck✅、npm run build✅、数据探索隔离 grep 无匹配✅。` },
+
+  { dom: "X", delegate: "D", status: "done", created: "2026-06-28 10:03", title: "【行动闭环·模拟实验·subagents接缝·P0】D/V-DLF3：SubAgentTemplate 作为数字生命体候选，只复用 persona 不继承工具权限", brief:
+`前置：X-DLF0；依赖现有 GET /api/subagents。
+
+目标：把 subagents 管理模块中新建的子 agent 模板，作为模拟实验里的数字生命体候选。注意：这里是 persona registry 复用，不是真实委派执行。
+
+范围：
+1. 前端在 SimulationLabPane 加载 api.listSubAgents 或现有 /api/subagents。
+2. 只展示 enabled 或全部模板需按 X-DLF0 审定口径执行；建议默认展示 enabled，提供“显示停用模板”可选项可后续做。
+3. 候选卡展示 name、persona 摘要，不展示 toolIds 细节，不让用户误以为会挂载工具。
+4. 选择多个 template 后转换为 DigitalLifeForm：source=subagent_template, templateId=id, name, persona。
+5. manual persona 与 template persona 可以混用。
+6. 运行请求中不得带 toolIds；后端即使收到也应丢弃或忽略。
+
+安全说明：
+- SubAgentTemplate.persona 只能作为 prompt 文本；禁止把 template 配置解释成外部调用或工具授权。
+- persona 含外链等非法模板在 subagents 管理保存时已有 server coerce；本模块不新增放宽入口。
+- 不启动 runDelegatedSubAgent / runSubAgentTurn。
+
+验收：
+- 在 subagents 管理中新建一个“目标客群生命体”或“增长专家”模板后，模拟实验能看到并选择。
+- 选择模板运行时，API payload 只包含 id/name/persona/source/templateId。
+- 页面文案明确当前为 persona 模拟，不是子 agent 委派。
+- typecheck/build 绿。
+
+✅ Agent-D 代笔实装 + 总控终审 done（2026-06-28）：SimulationLabPane 读取 /api/subagents 作为数字生命体候选，默认只展示 enabled 模板，可切换显示停用模板；模板卡仅展示 name + persona 摘要，不展示 toolIds；运行 payload 由 DigitalLifeForm 组装，只包含 id/name/persona/source/templateId，与 manual persona 混用。UI 明示“仅 persona 模拟 · 不挂载工具 · 不读取 draw_data”“仅复用 persona，不继承 toolIds”。验证 grep 确认 SimulationLabPane 仅调用 api.listSubAgents / api.runSimulationLab / 路径读取 API，无 chat/generate/extract/clarify 类调用。` },
+
+  { dom: "E", status: "done", created: "2026-06-28 10:04", title: "【行动闭环·模拟实验·测试·P1】E-DLF4：后端 API 单测 + 安全红线核查", brief:
+`前置：E-DLF1、V-DLF2、D/V-DLF3。
+
+目标：验证模拟实验 API 和集成边界，尤其是数据安全和 subagent persona 复用边界。
+
+必须覆盖：
+1. parse request：非法 scenario 被拒；lifeForms 为空被拒；persona 为空被拒。
+2. path guard：非 report folder 被拒；draw_data path 无法作为输入；非文本文件被拒。
+3. prompt 构造：包含报告名、报告内容摘要、scenario、lifeForms persona；不包含 toolIds。
+4. JSON repair：构造一次非严格 JSON 输出，确认 repair 后能 validate。
+5. artifact：成功运行后返回 json/md 两类 artifact path。
+6. subagent runner 隔离：测试或代码断言本路径不调用 runSubAgentTurn。
+
+安全 grep：
+- grep DataExplorationPane.tsx 与 data-exploration 子树，确认没有 generate/chat/extract/clarify/sink/distill 等 LLM API 调用。
+- 确认 simulation-lab 后端不读取 draw_data。
+
+必须运行：
+- npm run typecheck
+- npm run build
+- 相关 node --test 单测
+
+完成标准：
+- 新测试绿。
+- 全局 typecheck/build 绿。
+- 回报列出模拟实验读取范围和禁止范围。
+
+✅ Agent-E 交付 + 总控终审 done（2026-06-28）：新增 server/src/simulation-lab.test.ts 26 单测；simulation-lab.ts 抽出 parseSimulationRunRequest / buildSimulationPrompts 纯函数，导出 validateReportRelPath / extractJsonObject / normalizeSimulationResult，并给 runSimulationLab 增加 { runPi? } 注入点。路由改走 parseSimulationRunRequest。测试覆盖非法 scenario/空 lifeForms/空 persona/空 id+name/缺 pathId/空 model、path guard、prompt 不含 toolIds/templateId、JSON repair、artifact 落盘、fake runPi 单次调用、源码级 subagent/autonomous 黑名单与 folder !== "report" 守卫。读取范围固定为 report 下 .md/.markdown/.txt；禁止 draw_data/clean_data/knowledge、非文本报告、hidden/.. 段、toolIds/templateId 入 prompt。验证：simulation-lab.test 26/26✅、npm run typecheck✅、npm run build✅、数据探索隔离 grep 无匹配✅。` },
+
+  { dom: "X", status: "done", created: "2026-06-28 10:05", title: "【行动闭环·模拟实验·文档·P1】X-DLF5：wiki / notes 产品说明 + v2 演进路线", brief:
+`前置：X-DLF0 口径稳定；建议在 E-DLF1/V-DLF2 完成后收口。
+
+目标：把模拟实验的产品定位、使用方式、边界和演进路线写清楚，避免后续把它误做成统计预测模型或真实 subagent 委派。
+
+需要写清：
+1. 定位：模拟实验是“行动前预测 / 方案试压”，针对报告产出的策略、活动方案、新品方案、增长方案做模拟评估。
+2. 它不是统计预测模型，不承诺真实市场结果；输出是基于报告与 persona 的假设推演。
+3. 首版数字生命体来源：
+   - subagents 管理中的 SubAgentTemplate persona。
+   - 手填 manual persona。
+   - 不继承 toolIds，不启动真实子 agent。
+4. 三个典型用例：
+   - 门店零售活动方案：目标客群是否接受利益点和活动方式。
+   - 新品开发方案：用消费者生命体测款、找购买阻碍与接受条件。
+   - 用户增长方案：模拟多位专家投票，指出漏洞、风险和优化建议。
+5. 数据边界：
+   - 允许 report / business_requirements / golden_strategy / actions。
+   - 禁止 draw_data 原始行级内容。
+   - clean_data 聚合数据如后续接入必须用户知情并另立卡。
+6. v2 演进：
+   - 每个生命体独立 subagent runner。
+   - 多轮辩论 / 交叉质询。
+   - 历史模拟库和结果校准。
+   - 与行动闭环执行反馈形成校准集。
+
+落点建议：
+- docs/wiki.html 当前 DLF 卡回流备注。
+- docs/notes-infra.md 或 docs/notes-engine.md 中新增“模拟实验 DLF”小节。
+
+验收：
+- 文档层级不超过三级。
+- 包含目的、使用方式、示例、注意事项。
+- 与行动闭环模块语义一致。
+
+✅ 总控自做 done（2026-06-28）：wiki 与 notes 已补齐模拟实验产品说明、使用方式、典型示例、注意事项和 v2 演进路线；专题收尾口径固定为“行动前预测 / 方案试压”，基于 report 等衍生产物 + persona 做假设推演，不是统计预测模型，不承诺真实市场结果。首版 DLF 来源仅为 SubAgentTemplate persona 复用与 manual persona，不继承 toolIds、不启动真实 subagent runner；后端只读 report 下 .md/.markdown/.txt 并落 simulation_lab 产物。v2 路线收敛为独立生命体 runner、多轮辩论/交叉质询、历史模拟库与执行反馈校准集、clean_data 聚合数据知情接入。收尾验证：simulation-lab 26/26 单测✅、npm run typecheck✅、npm run build✅、数据探索隔离 grep 无匹配✅、wiki script check✅。` },
+
   // ════ 【监测·目标测算】（总控拆卡 2026-06-27；来源=用户需求：在监测模块新增“目标测算”，用于全年 KPI、大促活动销售/利润目标测算，并与观星台目标差距监测闭环）。定位：目标测算不是发现差距，而是在监测前生成/推演/拆解目标；首版确定性测算，零 LLM，零 raw row，确认后写入 clean_data/monitor/ 作为 goal 数据集，复用现有 R-GAP-TARGET actual vs target 监测。波次：X 契约 → E 纯函数测算 → F 页面 → D 持久化/绑定 → F 联动 → QA 验收。════
   { dom: "X", status: "done", created: "2026-06-27 16:00", title: "【监测·目标测算·契约·P0】X-MONITOR-TARGET0：目标测算产品边界 + 数据安全边界 + 前后端契约", brief:
 `目标：定义“目标测算”模块的总控契约，避免各域实现发散。定位为“监测前的目标生成/推演/拆解”，不是观星台的差距发现。

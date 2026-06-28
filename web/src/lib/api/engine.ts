@@ -787,4 +787,16 @@ export const engineApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, annotationStatus: body.annotationStatus ?? "candidate" }),
     }).then(json<{ id: string; annotationStatus: string }>),
+
+  // ---- 模拟实验 / DLF（行动闭环·V-DLF2，Agent-D 代笔）-------------------------
+  // 首版 persona 复用层：调 server simulation-lab runner（routes/engine.ts:/api/simulation-lab/run），
+  // 不启动真实 subagent runner、不读 draw_data；payload 只送 persona/name/id/source/templateId。
+  runSimulationLab: (
+    body: import("@/types").SimulationRunInput,
+  ): Promise<import("@/types").SimulationRunResult> =>
+    fetch("/api/simulation-lab/run", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<import("@/types").SimulationRunResult>),
 };

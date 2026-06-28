@@ -10,27 +10,31 @@
 
 > **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-06-27 · **D-MONITOR-TARGET3 目标计划 API + adopt 写入 monitor goal 数据集**
+- 最近更新：2026-06-28 · **V-DLF2 + D-DLF3 模拟实验（DLF）前端落地（Agent-D 代笔，V-agent 已停用）**
 - 进度：
+  - **V-DLF2 + D-DLF3（2026-06-28 完成）**：行动闭环 → 模拟实验前端落地。V-agent 已停用，可视交付任务按 Orchestration 约定由 D 代笔，回流总控终审。
+    - **`web/src/components/SimulationLabPane.tsx`**（新增 621 行）：① 报告选择（复用 ActionsPane 报告扫描范式：`list*Paths` + `workspacePathTree` + 文件名启发匹配，支持 session/flow/workspace scope）；② 场景三选（消费者活动评估/新品概念测款/专家投票评审）；③ subagent template 多选（默认仅显示 enabled + 「显示停用模板」可选项，候选卡只展示 name + persona 摘要，不展示 toolIds 细节）；④ 手填 persona（临时 DLF，不写 subagents 模板库）；⑤ 模拟重点 prompt 输入；⑥ 运行结果（verdict 标签 / overallScore / 分角色卡 stance+评分+反对点+接受条件+建议+引用 / risks / recommendedChanges / validationExperiments / artifactPaths）；⑦ 空态 / loading / error / retry 完整。UI 信息密度对齐 ActionsPane。
+    - **`web/src/tabs/EngineTabs.tsx`**：删除 dlf Placeholder + `FlaskConical` 导入，按 explore / multi / zhuanti 分别接入 SimulationLabPane，scope 派发模式对齐 ActionsPane / GoldenStrategyPane。
+    - **`web/src/lib/api/engine.ts`**：新增 `runSimulationLab(input)` → `POST /api/simulation-lab/run`。复用 X-DLF0 双侧契约类型 `SimulationRunInput` / `SimulationRunResult`（用内联 `import("@/types").X` 注解避免在 api.ts 顶部类型表新增 churn——api.ts 是接缝层骨架不动）。
+    - **D-DLF3 红线**：payload 只送 `id/name/persona/source/templateId`，**零 toolIds**（lifeForms 用 useMemo 装配，从 SubAgentTemplate 仅摘 persona + id + name）；UI 多处明示「仅 persona 模拟 · 不挂载工具 · 不读取 draw_data」「仅复用 persona，不继承 toolIds」。新 Pane 唯一 LLM 入口 = `api.runSimulationLab`，无任何 chat/generate/extract/clarify 调用。
+    - **接缝层未碰**：types.ts / api.ts / App.tsx / index.ts / db.ts / constants.ts 全部零改动。
   - **D-MONITOR-TARGET3（2026-06-27 完成）**：目标测算计划持久化 + adopt 为监测 goal 数据集。纯确定性 CRUD，零 LLM，零 draw_data。
-    - **`server/src/db/viz.ts`**：新增 `target_plans` 表（id/workspace_id/name/input_json/result_json/status/goal_dataset_path_id/timestamps）+ `initTargetPlanTables()` + `createTargetPlan` / `listTargetPlans` / `getTargetPlan` / `adoptTargetPlan` 4 个 CRUD 函数。`adoptTargetPlan` 更新 status→adopted + 记录 goalDatasetPathId。
-    - **`server/src/routes/viz.ts`**：4 端点 `POST /monitor/target-plans`（创建）/ `GET /monitor/target-plans`（列表）/ `GET /monitor/target-plans/:planId`（详情）/ `POST /monitor/target-plans/:planId/adopt`（采纳）。adopt 路径：① 将目标计划写 JSON 到 `clean_data/monitor/` ② `addWorkspacePath` 登记 ③ 更新 `monitor_configs.datasetBindings` 替换已有 `role=goal` 绑定（保留其他 role）④ 返回 `replacedGoalBinding` 供前端提示。文件名 sanitize + resolve 沙箱双步防御（复用 D-MONITOR6 范式）。
-    - **`web/src/lib/api/viz.ts`**：`createTargetPlan` / `listTargetPlans` / `getTargetPlan` / `adoptTargetPlan` 4 个 API client 方法。类型不上提 types.ts（仅 D 域消费 + 跨域走 HTTP）。
-  - **D-SAFEDISTILL1（2026-06-27 完成）**：子技能提案人审入库，纯模板渲染零 LLM。`server/src/safe-distiller.ts` 316 行 + db 表 + 4 端点 + 12 测试全绿 + 前端提案 tab。
+  - **D-SAFEDISTILL1（2026-06-27 完成）**：子技能提案人审入库，纯模板渲染零 LLM。
   - 上次 D-AGING2 + D-EVOLVE2 + D-QEVAL3 + D-QEVAL1 + MEM-MAINTAIN/PROMOTE-UI 仍等待用户 review 后手动提交。
 - 校验：
   - `npm -w server run typecheck`：✅ 0 错
   - `npm -w web run typecheck`：✅ 0 错
-  - `npm -w web run build`：✅ 仅既有 chunk size warning
-  - 数据探索红线 grep（DataExplorationPane.tsx + data-exploration/）：✅ 0 匹配
+  - `npm -w web run build`：✅ 仅既有 chunk size warning + echarts dynamic-import warning
+  - 数据探索红线 grep（DataExplorationPane.tsx + data-exploration/ + insights.ts + joins.ts + profiling.ts）：✅ 0 匹配
 - 下一步（接续优先级）：
-  - ① 用户 review 后手动提交（D-MONITOR-TARGET3 + D-SAFEDISTILL1 + D-AGING2 + 历史 D-EVOLVE2 / D-QEVAL3 / D-QEVAL1 / MEM-MAINTAIN/PROMOTE-UI 一并）。
-  - ② 实跑验证：在含 ≥3 次同骨架查询的工作区跑 `/skill-proposals/scan` → 检验 evidence 完整性 + approve 后 skill-registry 出现 draft 条目。
-  - ③ 实跑验证 D-MONITOR-TARGET3：POST 创建计划 → GET 列表 → POST adopt → 检查 `monitor_configs.datasetBindings` 中 goal 绑定 + `clean_data/monitor/` 下 JSON 文件。
-  - ④ 前端 UI（HealthDataPane 目标测算板块）待 E-MONITOR-TARGET1 公式稳定后接。API 已就绪可直接调。
-  - ⑤ **持久化向后兼容**（开放问题①，待总控决议）：`db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底。
-  - ⑥ **archive MD 渲染补硬断言摘要**（开放问题②）。
-  - ⑦ D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
+  - ① 用户 review 后手动提交（V-DLF2/D-DLF3 + D-MONITOR-TARGET3 + D-SAFEDISTILL1 + D-AGING2 + 历史 D-EVOLVE2 / D-QEVAL3 / D-QEVAL1 / MEM-MAINTAIN/PROMOTE-UI 一并）。
+  - ② **实跑验证 V-DLF2/D-DLF3**：日常/专题/重复进 dlf 都应见 SimulationLabPane（非 Placeholder）；在「计算工具 → subagents 管理」新建 enabled 模板（如「目标客群生命体」「增长专家」）→ 回模拟实验刷新看到 → 选 ≥1 模板 + 手填 1 persona + 输入活动重点 → 运行；DevTools Network 看 `/api/simulation-lab/run` request body 应**无** `toolIds` 字段；结果区四块（分角色 / 风险 / 修改建议 / 验证实验）能正常渲染。
+  - ③ 实跑验证 D-SAFEDISTILL1：含 ≥3 次同骨架查询的工作区跑 `/skill-proposals/scan` → evidence 完整性 + approve 后 skill-registry 出现 draft 条目。
+  - ④ 实跑验证 D-MONITOR-TARGET3：POST 创建计划 → GET 列表 → POST adopt → 检查 `monitor_configs.datasetBindings` 中 goal 绑定 + `clean_data/monitor/` 下 JSON 文件。
+  - ⑤ 前端 UI（HealthDataPane 目标测算板块）待 E-MONITOR-TARGET1 公式稳定后接。
+  - ⑥ **持久化向后兼容**（开放问题①，待总控决议）：`db/engine.ts` 的 `parseJsonArray<SubAgentCaseSummary>` 出口加缺省值兜底。
+  - ⑦ **archive MD 渲染补硬断言摘要**（开放问题②）。
+  - ⑧ D-METRIC1/3 / D-ZH3/6/7/8 / renderReconciliationBlock UI 接入点仍待总控指定。
 - 阻塞 / 待确认：
   - 无硬阻塞。
 - 开放问题：
@@ -45,8 +49,11 @@
   - **⑨ D-SAFEDISTILL1 scan 触发方式**：当前仅手动按钮，无后台定时扫描。若 backlog Phase 3「后台轻量提炼」要全自动，需总控审定 cron 频率 + 用户感知策略（推送/badge）。
   - **⑩ D-SAFEDISTILL1 skill body 模板可读性**：当前纯模板拼接（无 LLM 包装），用户审阅时 body 偏机械。若总控认可"输入仍是脱敏骨架 → 调 LLM 包装 body 文笔"不违反红线，可后续升级为方案 B（pi-adapter 调用，输入零 draw_data 字面量）。
   - **⑪ D-MONITOR-TARGET3 前端 UI 缺失**：API 已就绪，但 HealthDataPane 尚无目标测算板块（创建计划表单 + 列表 + adopt 按钮）。需等 E-MONITOR-TARGET1 公式稳定后接 UI。
+  - **⑫ V-DLF2/D-DLF3 server 端 toolIds 防御**：D 已确保前端 payload 不带 toolIds，但 `routes/engine.ts:/api/simulation-lab/run` 当前未显式声明「即使收到 toolIds 也丢弃/忽略」。E-DLF1 或总控终审时可在 server 端补一道 `delete lf.toolIds` 兜底（lifeForms 入口处），对齐契约 D-DLF3 第 6 条「即使收到也应丢弃或忽略」。
+  - **⑬ V-DLF2 UI 文案"persona 模拟 ≠ 子 agent 委派"是否需更显眼**：当前在顶部副标题（hint 一行）与模板候选区两处用次级文字提示。若总控认为需首次进入时浮层强提示一次，可补 onboarding tip。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
+
 
 ---
 
@@ -294,6 +301,16 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **X 接缝缺漏的工程教训**：本卡触发时发现 wiki §X 标 done 但仓库实际只落地 web 端（constants），types 双侧 + db schema 均缺。**通用做法**：D 卡执行前先 grep 验证 X 卡声明的资产是否真落地（`grep -rn "PromptTemplate\|prompt_templates" server/ web/src/types.ts`），漏盘的就在本卡内一并补救（顺手做不绕路），开放问题里上报让总控决议。**反对**：等 X 卡修好再做 D（任务卡明确写【依赖】X，但 wiki 标 done 是可信凭证缺失，等待会导致整个 prompts 模块阻塞）。沉淀这条是因为同样的"声明 done 但未落地"模式可能在其他模块（hooks/skills/subagents）的 X 接缝里复现。
 - **prompt NULL 恒启用范式（2026-06-23，D-POOL1）**：`prompt_templates.workspace_id IS NULL` 的全局模板不入 `workspace_memory_enablements`，消费侧恒启用。原因是这类模板的设计语义就是"无条件全局"；写入 enablement 表会有（a）新 ws 必须 backfill 维护（b）NULL 无 origin 无法确定自动启用。消费侧合并公式 = `enabled=1 ∪ workspace_id IS NULL`。对应 create 分支：非 NULL 走 `enableForOrigin`，NULL 不调。此范式适用于任何"表中 workspace_id 可空 = 全局"的设计。
 - **knowledge scope 列 + 入池出池范式（2026-06-23，D-POOL1）**：`knowledge_docs.scope ∈ {'global','workspace'}`，默认 workspace（专属）。global 文档入池，create 后 `enableForOrigin(wsId,"knowledge",id)`；workspace 私有不入 enablement（本就独占，写 enablement 反而有歧义）。消费侧 `listKnowledgeChunksForRetrieval` 直接 union（本 ws 私有 ∪ 本 ws 已启用 global），SQL 通过 `d.scope='workspace' AND d.workspace_id=? OR (d.scope='global' AND d.id IN (enabled_set))` 实现。enabled 集为空时 fallback `IN('')` (恒 false) 保持 SQL 静态。GET 路由 403 豁免 global = `scope !== 'global' && workspaceId !== id`，PATCH/DELETE 守 origin。`parseStringArray` + `rowTo*` 皮层级均补 scope 解析。
+
+**模拟实验 SimulationLabPane（V-DLF2 + D-DLF3，2026-06-28，Agent-D 代笔）**
+- **跨域代笔范式**：V-agent 已停用后，可视交付/V 域任务由 D 域代笔——按 Orchestration §一治理口径执行 + 回流总控终审。本卡是首批此模式下落地的纯前端 V 域任务（SimulationLabPane）。**判定标准**：任务卡明确"V 域 / V-agent 已停用 / 委派 D 代笔"三件套时直接由 D 接 + 完成后总控加重终审；不绕回主板派发。
+- **persona-only DLF 安全模型**：`DigitalLifeForm` 复用层从 `SubAgentTemplate` 只取 `id/name/persona`，**绝不**透传 `toolIds` / `dataScope` / `maxRetries`。前端 `useMemo` 装配 lifeForms 时硬编码字段集，序列化时天然不带 toolIds。**核心安全契约**：subagent 模板的 persona 是 prompt 文本；toolIds 是工具授权；二者在 DLF 场景下必须分离——persona 复用 ≠ 子 agent 委派。UI 多处显式提示用户「仅 persona 模拟 · 不挂载工具」。
+- **api.ts 接缝层不动 + 内联类型注解范式**：新增 `runSimulationLab` 走 `engineApi`，但需要引用双侧 `types.ts` 的 `SimulationRunInput`/`SimulationRunResult` 契约。**直接在方法签名内用 `import("@/types").X` 内联引用**，避免动 `web/src/lib/api.ts` 顶部的 type-only import 大表（那是接缝层骨架）。后续在 `engineApi` / `dataApi` / `vizApi` 域片段里引用双侧契约类型时一律照此办——只动域片段，不动 api.ts。
+- **报告扫描复用 ActionsPane 范式**：SimulationLabPane 的报告候选逻辑（`isReportFile` 文件名启发 + `flattenFiles` 递归 + `list*Paths`+`workspacePathTree` 三 scope 派发 + `Promise.all` 并发拉树）**与 ActionsPane 1:1 同构**。这是「衍生于报告输出登记路径」的通用模式，未来 N 个"消费报告"的面板都按此抄。**未提抽 hook**：因当前只 2 处用，抽 hook 是 YAGNI；第 3 处出现时再考虑提到 `useReportPathScanner(scope)`。
+- **大文件 TSX 写入仍走 `cat >> file <<'CHUNK'` 多段拼接**：SimulationLabPane（~621 行）触发 opencode write 工具的 JSON Unterminated string 第 7 次。本次用 bash heredoc + `CHUNK1..CHUNK5` 5 段拼接落地，每块 < 200 行。沿用 D-SQL2 起的范式。**反思**：写代码前刻意分块比起冲一把后被 JSON 解析炸更省 token——下次大文件直接先分块。
+- **scope 派发到 EngineTabs 三 tab**：dlf subtab 在 explore / multi / zhuanti 三 tab 都需可见（X-DLF0 已声明）。派发模式 = workspace > session/flow 退化：explore 退 session、multi 退 active flow、zhuanti 退 zhuantiChatFlow。逻辑直接抄 ActionsPane 三行 scope 对照，不必抽公共函数。
+- **结果 UI 拆 ResultBlock + RoleList + BulletBlock 三 helper**：主组件保持「表单 + 控制流」单一职责，结果展示纯渲染逻辑下沉到三个无 state helper。**判定**：组件超 200 行渲染逻辑时优先拆 helper；helper 接口窄（只接 props，无回调）就内嵌同文件、不开新文件。
+
 
 ---
 

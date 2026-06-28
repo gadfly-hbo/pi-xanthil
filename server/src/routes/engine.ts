@@ -175,6 +175,8 @@ import {
   parseSkillRegressionThresholds,
   runSkillRegistryRetest,
 } from "../skill-regression.ts";
+import { runSimulationLab } from "../simulation-lab.ts";
+import { parseSimulationRunRequest } from "../simulation-lab.ts";
 
 /**
  * 【Agent-E · 智能引擎域】HTTP 路由 slot —— owner: codex(GPT-5.5)
@@ -4160,3 +4162,19 @@ engineRouter.post("/api/workspaces/:id/skill-sandbox/verify", (req, res) => {
     res.status(400).json({ error: "role must be 'creator' or 'evaluator'" });
   }
 });
+
+engineRouter.post("/api/simulation-lab/run", async (req, res) => {
+  try {
+    const input = parseSimulationRunRequest(req.body);
+    const result = await runSimulationLab(input);
+    res.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("not found") || msg.includes("invalid") || msg.includes("only supports") || msg.includes("required") || msg.includes("does not accept")) {
+      res.status(400).json({ error: msg });
+    } else {
+      res.status(500).json({ error: msg });
+    }
+  }
+});
+

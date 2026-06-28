@@ -2701,6 +2701,62 @@ export interface ActionFeedbackInput {
   score?: number;
 }
 
+// ─── simulation lab（行动闭环 → 模拟实验 / DLF）────────────────────
+// 首版 DLF = persona 复用层：可引用 subagents 管理中的 SubAgentTemplate.persona，
+// 但不启动真实 subagent runner，不继承 toolIds，不读取 draw_data。
+export type SimulationScenario = "consumer_campaign" | "product_concept" | "expert_panel";
+export type DigitalLifeFormSource = "subagent_template" | "manual_persona";
+export type SimulationVerdict = "go" | "revise" | "hold" | "reject";
+export type SimulationStance = "support" | "conditional" | "oppose" | "uncertain";
+
+export interface DigitalLifeForm {
+  id: string;
+  name: string;
+  source: DigitalLifeFormSource;
+  persona: string;
+  templateId?: string; // source=subagent_template 时为 SubAgentTemplate.id；仅复用 persona，不继承 toolIds
+}
+
+export interface SimulationRunInput {
+  pathId: number;
+  relPath?: string;
+  scenario: SimulationScenario;
+  model: string;
+  lifeForms: DigitalLifeForm[];
+  prompt?: string; // 本次模拟重点，如活动利益点、新品概念、增长方案假设
+  businessContext?: string; // 可选衍生上下文；不得包含 draw_data 原始行级内容
+}
+
+export interface SimulationRoleAssessment {
+  lifeFormId: string;
+  name: string;
+  stance: SimulationStance;
+  score: number; // 0..100
+  rationale: string;
+  acceptanceConditions: string[];
+  objections: string[];
+  evidenceQuotes: string[]; // 来自报告/方案的短引用，不放原始明细
+  suggestions: string[];
+}
+
+export interface SimulationArtifactPaths {
+  json?: string;
+  markdown?: string;
+}
+
+export interface SimulationRunResult {
+  scenario: SimulationScenario;
+  verdict: SimulationVerdict;
+  overallScore: number; // 0..100
+  summary: string;
+  roleAssessments: SimulationRoleAssessment[];
+  risks: string[];
+  recommendedChanges: string[];
+  validationExperiments: string[];
+  artifactPaths?: SimulationArtifactPaths;
+  model: string;
+}
+
 // ─── 抽取 Prompt 管理（P8，对齐 nano Prompt 表：命名+版本化+模板复用）──────
 export interface OntoPrompt {
   id: string;

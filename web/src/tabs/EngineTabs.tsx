@@ -1,7 +1,6 @@
 import { useMemo, useState } from "react";
-import { FlaskConical } from "lucide-react";
-import { Placeholder } from "@/components/Placeholder";
 import { ChatPane } from "@/components/ChatPane";
+import { SimulationLabPane } from "@/components/SimulationLabPane";
 import { BusinessRequirementPane } from "@/components/BusinessRequirementPane";
 import { MultiAgentExecutionPane } from "@/components/MultiAgentExecutionPane";
 import { SkillLabPane } from "@/components/SkillLabPane";
@@ -217,8 +216,23 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
       {activeTab === "aggregate" && String(activeSubTab) === "lab_regression" && (
         <RegressionDashboardPane workspaceId={ctx.activeWorkspaceId} />
       )}
-      {(activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti") && activeSubTab === "dlf" && (
-        <Placeholder icon={FlaskConical} title="DLF" hint="DLF 模块管理，即将推出" />
+      {activeTab === "explore" && activeSubTab === "dlf" && (
+        <SimulationLabPane
+          scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : { type: "session", sessionId: ctx.activeSessionId }}
+          models={ctx.models}
+        />
+      )}
+      {activeTab === "multi" && activeSubTab === "dlf" && (
+        <SimulationLabPane
+          scope={ctx.folderScope?.type === "workspace" ? ctx.folderScope : { type: "flow", flow: ctx.activeFlow?.kind === "multi" ? ctx.activeFlow : null }}
+          models={ctx.models}
+        />
+      )}
+      {activeTab === "zhuanti" && activeSubTab === "dlf" && (
+        <SimulationLabPane
+          scope={ctx.zhuantiChatFolderScope?.type === "workspace" ? ctx.zhuantiChatFolderScope : { type: "flow", flow: ctx.zhuantiChatFlow?.kind === "multi" ? ctx.zhuantiChatFlow : null }}
+          models={ctx.models}
+        />
       )}
 
       {activeTab === "zhuanti" && activeSubTab === "anax_view" && (
