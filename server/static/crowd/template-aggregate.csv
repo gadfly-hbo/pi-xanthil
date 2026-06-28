@@ -1,0 +1,4 @@
+﻿segment_name,dem_gender_female_pct,dem_gender_male_pct,dem_age_18_24_pct,dem_age_25_34_pct,dem_age_35_44_pct,dem_age_45_54_pct,dem_age_55_plus_pct,dem_city_t1_pct,dem_city_t1_new_pct,dem_city_t2_pct,dem_city_t3_pct,dem_city_t4_plus_pct,con_avg_monthly_spend,pri_sens_high_pct,pri_sens_mid_pct,pri_sens_low_pct,pri_dis_coupon_pct,pri_dis_flash_sale_pct,pri_dis_member_price_pct,pri_dis_none_pct,cha_top_channel,lif_new_pct,lif_active_pct,lif_repeat_pct,lif_dormant_pct,lif_churned_pct,sample_count
+都市新锐女性,72,28,35,40,18,5,2,45,30,15,10,0,3800,25,50,25,30,20,35,15,小红书,15,55,20,8,2,1200
+下沉市场实用派,38,62,12,22,30,28,8,8,0,22,35,35,2200,55,35,10,45,25,10,20,线下门店,5,25,35,25,10,800
+高净值成熟客,45,55,5,25,45,20,5,60,0,25,10,5,8500,10,40,50,10,15,55,20,天猫,3,30,55,10,2,450

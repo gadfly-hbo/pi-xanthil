@@ -104,7 +104,7 @@ function normalizeRoleAssessment(value: unknown, fallback: DigitalLifeForm): Sim
   };
 }
 
-export function normalizeSimulationResult(value: unknown, input: SimulationRunInput, artifactPaths: SimulationArtifactPaths): SimulationRunResult {
+export function normalizeSimulationResult(value: unknown, input: SimulationRunInput, artifactPaths: SimulationArtifactPaths, id = `simulation_${Date.now()}`): SimulationRunResult {
   const source = typeof value === "object" && value !== null ? value as Record<string, unknown> : {};
   const verdict = source.verdict === "go" || source.verdict === "revise" || source.verdict === "hold" || source.verdict === "reject"
     ? source.verdict
@@ -112,6 +112,7 @@ export function normalizeSimulationResult(value: unknown, input: SimulationRunIn
   const rawAssessments = Array.isArray(source.roleAssessments) ? source.roleAssessments : [];
   const roleAssessments = input.lifeForms.map((lifeForm, index) => normalizeRoleAssessment(rawAssessments[index], lifeForm));
   return {
+    id,
     scenario: input.scenario,
     verdict,
     overallScore: Math.max(0, Math.min(100, rawScore)),
@@ -155,8 +156,8 @@ export function parseSimulationRunRequest(body: unknown): SimulationRunInput {
     if (typeof lf.id !== "string" || !lf.id.trim()) throw new Error(`lifeForms[${idx}].id required`);
     if (typeof lf.name !== "string" || !lf.name.trim()) throw new Error(`lifeForms[${idx}].name required`);
     if (typeof lf.persona !== "string" || !lf.persona.trim()) throw new Error(`lifeForms[${idx}].persona required`);
-    const source: "subagent_template" | "manual_persona" =
-      lf.source === "subagent_template" || lf.source === "manual_persona" ? lf.source : "manual_persona";
+    const source: "subagent_template" | "manual_persona" | "crowd_profile" =
+      lf.source === "subagent_template" || lf.source === "manual_persona" || lf.source === "crowd_profile" ? lf.source : "manual_persona";
     const out: DigitalLifeForm = {
       id: lf.id.trim(),
       name: lf.name.trim(),
@@ -164,6 +165,8 @@ export function parseSimulationRunRequest(body: unknown): SimulationRunInput {
       source,
     };
     if (typeof lf.templateId === "string" && lf.templateId.trim()) out.templateId = lf.templateId.trim();
+    if (typeof lf.crowdProfileId === "string" && lf.crowdProfileId.trim()) out.crowdProfileId = lf.crowdProfileId.trim();
+    if (typeof lf.crowdProfileVersionId === "string" && lf.crowdProfileVersionId.trim()) out.crowdProfileVersionId = lf.crowdProfileVersionId.trim();
     return out;
   });
   const result: SimulationRunInput = {
@@ -277,8 +280,9 @@ export async function runSimulationLab(input: SimulationRunInput, opts: RunSimul
   }
 
   const timestamp = Date.now();
-  const jsonName = `simulation_${timestamp}.json`;
-  const mdName = `simulation_${timestamp}.md`;
+  const runId = `simulation_${timestamp}`;
+  const jsonName = `${runId}.json`;
+  const mdName = `${runId}.md`;
   const sourceDir = dirname(sourceRelPath) === "." ? "" : dirname(sourceRelPath);
   const outputPrefix = sourceDir ? join(sourceDir, "simulation_lab") : "simulation_lab";
   const jsonRelPath = join(outputPrefix, jsonName);
@@ -287,7 +291,7 @@ export async function runSimulationLab(input: SimulationRunInput, opts: RunSimul
     json: jsonRelPath,
     markdown: markdownRelPath,
   };
-  const result = normalizeSimulationResult(parsed, input, artifactPaths);
+  const result = normalizeSimulationResult(parsed, input, artifactPaths, runId);
 
   writeFlowFile(outputDir, jsonRelPath, `${JSON.stringify(result, null, 2)}\n`);
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Database, Store } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
+import { CrowdPane } from "@/components/CrowdPane";
 import { LlmManagementPane } from "@/components/LlmManagementPane";
 import { TokenStatsPane } from "@/components/TokenStatsPane";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
@@ -99,7 +100,9 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
       )}
 
       {activeTab === "xan_db" && activeSubTab === "the-crowd" && (
-        <Placeholder icon={Database} title="the-crowd" hint="人群数据库管理，即将推出" />
+        ctx.activeWorkspaceId
+          ? <CrowdPane workspaceId={ctx.activeWorkspaceId} />
+          : <Placeholder icon={Database} title="the-crowd" hint="请先选择工作区" />
       )}
       {activeTab === "xan_db" && activeSubTab === "industry" && (
         <IndustryPane workspaceId={ctx.activeWorkspaceId ?? ""} model={ctx.model} />

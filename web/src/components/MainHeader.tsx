@@ -10,8 +10,8 @@ export const TABS: { id: Tab; label: string; icon: LucideIcon }[] = [
   { id: "explore", label: "日常", icon: Compass },
   { id: "zhuanti", label: "专题", icon: Telescope },
   { id: "multi", label: "重复", icon: Users },
-  { id: "aggregate", label: "控制", icon: Calculator },
-  { id: "rule_memory", label: "记忆", icon: BookOpen },
+  { id: "aggregate", label: "控制台", icon: Calculator },
+  { id: "rule_memory", label: "记忆库", icon: BookOpen },
   { id: "xan_db", label: "数据库", icon: Database },
   { id: "knowledge_base", label: "知识库", icon: Library },
   { id: "onto_xanthil", label: "本体库", icon: Network },
@@ -127,7 +127,7 @@ export function MainHeader(p: Props) {
               : "text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200",
           )}
         >
-          记忆 {p.rulesPromptCount === 0 ? "none" : p.rulesPromptEnabled ? "on" : "off"}
+          记忆库 {p.rulesPromptCount === 0 ? "none" : p.rulesPromptEnabled ? "on" : "off"}
         </button>
         <span
           title={`今日 Provider 缓存命中率：${(p.cacheHitRate * 100).toFixed(1)}%\n命中 token 占比 = cacheRead / (input + cacheRead + cacheWrite)`}

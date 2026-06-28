@@ -1,0 +1,7 @@
+﻿segment_name,dem_gender_female_pct,dem_gender_male_pct,dem_age_18_24_pct,dem_age_25_34_pct,dem_age_35_44_pct,dem_age_45_54_pct,dem_age_55_plus_pct,dem_city_t1_pct,dem_city_t1_new_pct,dem_city_t2_pct,dem_city_t3_pct,dem_city_t4_plus_pct,con_avg_monthly_spend,pri_sens_high_pct,pri_sens_mid_pct,pri_sens_low_pct,pri_dis_coupon_pct,pri_dis_flash_sale_pct,pri_dis_member_price_pct,pri_dis_none_pct,cha_top_channel,lif_new_pct,lif_active_pct,lif_repeat_pct,lif_dormant_pct,lif_churned_pct,sample_count
+都市新锐女性,75,25,38,42,15,3,2,42,32,16,10,0,4200,22,52,26,32,22,30,16,小红书,18,52,22,6,2,40
+下沉市场实用派,35,65,15,25,32,22,6,10,0,20,38,32,1850,58,32,10,48,28,12,12,线下门店,8,28,38,18,8,35
+高净值成熟客,48,52,3,22,48,22,5,58,0,28,10,4,9200,8,42,50,8,18,52,22,天猫,2,32,58,6,2,25
+Z世代潮流族,55,45,65,25,8,1,1,35,35,20,10,0,2800,45,40,15,40,35,15,10,抖音,50,35,10,3,2,20
+银发养生族,30,70,0,5,15,40,40,5,0,15,40,40,1600,40,45,15,35,10,40,15,微信,0,15,35,30,20,15
+家庭采购主力,62,38,8,30,38,20,4,25,15,30,20,10,5500,30,45,25,40,15,35,10,天猫,5,40,40,12,3,30

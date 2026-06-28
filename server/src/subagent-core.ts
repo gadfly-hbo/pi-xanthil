@@ -97,6 +97,11 @@ export function coerceSubAgentTemplate(input: unknown): SubAgentTemplate | null 
     ? Math.max(0, Math.min(5, Math.trunc(maxRetriesRaw)))
     : DEFAULT_SUBAGENT_MAX_RETRIES;
 
+  const originRaw = asConfigString(o.origin).trim();
+  const origin = originRaw === "manual" || originRaw === "crowd_profile" || originRaw === "system" ? originRaw : undefined;
+  const crowdProfileId = asConfigString(o.crowdProfileId).trim();
+  const crowdProfileVersionId = asConfigString(o.crowdProfileVersionId).trim();
+
   return {
     id,
     name,
@@ -106,6 +111,9 @@ export function coerceSubAgentTemplate(input: unknown): SubAgentTemplate | null 
     dataScope: "clean_data",
     maxRetries,
     source: "custom",
+    ...(origin ? { origin } : {}),
+    ...(origin === "crowd_profile" && crowdProfileId ? { crowdProfileId } : {}),
+    ...(origin === "crowd_profile" && crowdProfileVersionId ? { crowdProfileVersionId } : {}),
   };
 }
 

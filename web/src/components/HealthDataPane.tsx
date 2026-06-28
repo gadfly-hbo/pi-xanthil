@@ -13,6 +13,9 @@ import type {
   MonitorMetricSystemDraft,
   MonitorMetricSystemEntry,
 } from "@/types";
+import { Markdown } from "@/components/Markdown";
+import { cn } from "@/lib/cn";
+import readmeContent from "@/docs/health-data-readme.md?raw";
 
 // D-MONITOR7（X-MONITOR5 口径）：监测初始化页只保留「数据库连接导入」单入口，
 // 只展示 clean_data/monitor/ 下的「监测聚合数据」，不暴露工作区其他 clean_data。
@@ -37,6 +40,7 @@ const BTN_PRIMARY = "h-8 rounded-md bg-neutral-900 px-3 text-[12px] font-medium 
 const BTN_GHOST = "h-8 rounded-md border border-neutral-300 bg-white px-3 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300";
 
 export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) {
+  const [view, setView] = useState<"main" | "readme">("main");
   // 监测专用导入数据 + 角色绑定
   const [datasets, setDatasets] = useState<BiAggregationDataset[]>([]);
   const [bindings, setBindings] = useState<Map<string, MonitorDatasetBinding>>(new Map());
@@ -263,9 +267,35 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
   }, [bindings, datasets]);
 
   return (
-    <div className="h-full min-h-0 flex-1 overflow-y-auto bg-neutral-50/40 text-[12.5px] dark:bg-neutral-950/40">
-      <div className="mx-auto w-full max-w-5xl space-y-4 p-5">
-        <header>
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-neutral-50/40 text-[12.5px] dark:bg-neutral-950/40">
+      <div className="flex items-center justify-end border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex rounded-md bg-neutral-100 p-0.5 dark:bg-neutral-900">
+          <button
+            type="button"
+            onClick={() => setView("main")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "main" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            功能
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("readme")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "readme" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            readme
+          </button>
+        </div>
+      </div>
+      {view === "readme" ? (
+        <div className="flex-1 overflow-auto p-5">
+          <div className="mx-auto w-full max-w-4xl rounded-lg border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <Markdown>{readmeContent}</Markdown>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-5xl space-y-4 p-5">
+            <header>
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">监测初始化 · 数据接入</h2>
           <p className="mt-1 text-[12px] text-neutral-500 dark:text-neutral-400">
             通过数据库连接将表或 SELECT 查询导入到当前工作区的「监测聚合数据」目录（<code>clean_data/monitor/</code>）。
@@ -298,7 +328,9 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
 
         {/* 指标体系初始化 */}
         {renderMetricSystemSection()}
-      </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 

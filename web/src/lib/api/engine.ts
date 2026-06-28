@@ -788,9 +788,39 @@ export const engineApi = {
       body: JSON.stringify({ ...body, annotationStatus: body.annotationStatus ?? "candidate" }),
     }).then(json<{ id: string; annotationStatus: string }>),
 
+  // ---- 数据库 · the-crowd（E-CROWD5/E-CROWD8 后续实现；X-CROWD0 只定契约） ----
+  // 画像生成只允许传聚合摘要可推导的 segmentId + 人工 businessContext；server 端不得读取/注入原始行级标签明细。
+  generateCrowdProfile: (
+    workspaceId: string,
+    body: import("@/types").CrowdProfileGenerationInput,
+  ): Promise<import("@/types").CrowdProfileGenerationResult> =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profile-generation/run`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<import("@/types").CrowdProfileGenerationResult>),
+
+  createCrowdProfileFeedbackFromSimulation: (
+    workspaceId: string,
+    profileId: string,
+    body: {
+      profileVersionId: string;
+      sourceRunId?: string;
+      sourceLifeFormId?: string;
+      objections: string[];
+      acceptanceConditions: string[];
+      suggestions: string[];
+    },
+  ): Promise<import("@/types").CrowdProfileFeedback> =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/feedback`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<import("@/types").CrowdProfileFeedback>),
+
   // ---- 模拟实验 / DLF（行动闭环·V-DLF2，Agent-D 代笔）-------------------------
   // 首版 persona 复用层：调 server simulation-lab runner（routes/engine.ts:/api/simulation-lab/run），
-  // 不启动真实 subagent runner、不读 draw_data；payload 只送 persona/name/id/source/templateId。
+  // 不启动真实 subagent runner、不读 draw_data；payload 只送 persona/name/id/source/templateId/crowdProfileId/crowdProfileVersionId。
   runSimulationLab: (
     body: import("@/types").SimulationRunInput,
   ): Promise<import("@/types").SimulationRunResult> =>

@@ -38,7 +38,22 @@ import type {
   PromptTemplateInput,
   PromptTemplatePatch,
   SystemPromptOverview,
+  CrowdDataset,
+  CrowdTagDictionaryEntry,
+  CrowdSegment,
+  CrowdSegmentRuleGroup,
+  CrowdProfile,
+  CrowdProfileVersion,
+  CrowdProfileFeedback,
+  CrowdSubAgentDraft,
 } from "@/types";
+
+type CrowdTagDictionaryEntryInput = Pick<
+  CrowdTagDictionaryEntry,
+  "field" | "label" | "description" | "dimension" | "sensitivity" | "weight" | "valueLabels" | "enabled"
+>;
+
+type AggregateImportResult = { dataset: CrowdDataset; tagDictionary: CrowdTagDictionaryEntry[]; segments: CrowdSegment[] };
 
 // 插件管理：pi 已加载扩展/包清单条目（模块本地类型，仅本域消费故不上提接缝层）。
 // 来源 source 与 server routes/data.ts 的 PluginInfo 同源。
@@ -506,4 +521,231 @@ export const dataApi = {
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/imports`).then(
       json<BiAggregationDataset[]>,
     ),
+
+  // ---- 数据库 · the-crowd（X-CROWD0 契约，D-CROWD1 实装） ----
+  // 红线：这些接口返回聚合摘要、标签字典、画像侧写与版本；不得返回原始行级标签明细供 LLM 使用。
+
+  // -- datasets --
+  listCrowdDatasets: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets`).then(json<CrowdDataset[]>),
+
+  createCrowdDataset: (workspaceId: string, payload: { name: string; source?: string; rowCount?: number; fieldCount?: number; fieldProfiles?: CrowdDataset["fieldProfiles"] }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<CrowdDataset>),
+
+  importCrowdDataset: (workspaceId: string, file: File, name?: string) => {
+    const fd = new FormData();
+    fd.append("file", file);
+    if (name) fd.append("name", name);
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/import`, {
+      method: "POST",
+      body: fd,
+    }).then(json<CrowdDataset>);
+  },
+
+  importCrowdDatasetFromSql: (workspaceId: string, payload: { connectionId: string; sql: string; name?: string }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/import-sql`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<CrowdDataset>),
+
+  getCrowdDataset: (workspaceId: string, datasetId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/${encodeURIComponent(datasetId)}`).then(json<CrowdDataset>),
+
+  updateCrowdDataset: (workspaceId: string, datasetId: string, patch: Record<string, unknown>) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/${encodeURIComponent(datasetId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then(json<CrowdDataset>),
+
+  deleteCrowdDataset: (workspaceId: string, datasetId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/${encodeURIComponent(datasetId)}?confirm=true`, {
+      method: "DELETE",
+    }).then(json<{ deleted: boolean }>),
+
+  // -- templates / demo downloads (D-CROWD10) --
+  getCrowdTemplate: (name: string) =>
+    fetch(`/api/crowd/templates/${encodeURIComponent(name)}`),
+
+  listCrowdTagDictionary: (workspaceId: string, datasetId: string) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/${encodeURIComponent(datasetId)}/tag-dictionary`,
+    ).then(json<CrowdTagDictionaryEntry[]>),
+
+  saveCrowdTagDictionary: (workspaceId: string, datasetId: string, entries: CrowdTagDictionaryEntryInput[]) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/${encodeURIComponent(datasetId)}/tag-dictionary`,
+      {
+        method: "PUT",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ entries }),
+      },
+    ).then(json<CrowdTagDictionaryEntry[]>),
+
+  // -- segments --
+  listCrowdSegments: (workspaceId: string, datasetId?: string) => {
+    const qs = datasetId ? `?datasetId=${encodeURIComponent(datasetId)}` : "";
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/segments${qs}`).then(json<CrowdSegment[]>);
+  },
+
+  createCrowdSegment: (
+    workspaceId: string,
+    payload: { datasetId: string; name: string; description?: string; rule?: CrowdSegmentRuleGroup },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/segments`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<CrowdSegment>),
+
+  getCrowdSegment: (workspaceId: string, segmentId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/segments/${encodeURIComponent(segmentId)}`).then(json<CrowdSegment>),
+
+  updateCrowdSegment: (workspaceId: string, segmentId: string, patch: Record<string, unknown>) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/segments/${encodeURIComponent(segmentId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then(json<CrowdSegment>),
+
+  deleteCrowdSegment: (workspaceId: string, segmentId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/segments/${encodeURIComponent(segmentId)}?confirm=true`, {
+      method: "DELETE",
+    }).then(json<{ deleted: boolean }>),
+
+  copyCrowdSegment: (workspaceId: string, segmentId: string, name?: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/segments/${encodeURIComponent(segmentId)}/copy`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ name }),
+    }).then(json<CrowdSegment>),
+
+  previewCrowdSegment: (workspaceId: string, datasetId: string, rule: CrowdSegmentRuleGroup) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/segments/preview`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ datasetId, rule }),
+    }).then(json<{ sampleCount: number; coverageRatio: number; tagDistribution: CrowdSegment["tagDistribution"]; errors: Array<{ field: string; message: string }> }>),
+
+  // -- aggregate import + auto defaults (E-CROWD11) --
+  importCrowdAggregate: (workspaceId: string, file: File, name?: string) => {
+    const form = new FormData();
+    form.append("file", file);
+    if (name) form.append("name", name);
+    const url = `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/import-aggregate`;
+    return fetch(url, { method: "POST", body: form }).then(json<AggregateImportResult>);
+  },
+
+  autoTagDictionary: (workspaceId: string, datasetId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/${encodeURIComponent(datasetId)}/auto-tag-dictionary`, {
+      method: "POST",
+    }).then(json<CrowdTagDictionaryEntry[]>),
+
+  createDefaultCrowdSegment: (workspaceId: string, datasetId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/${encodeURIComponent(datasetId)}/default-segment`, {
+      method: "POST",
+    }).then(json<CrowdSegment>),
+
+  // -- profiles --
+  listCrowdProfiles: (workspaceId: string, segmentId?: string) => {
+    const qs = segmentId ? `?segmentId=${encodeURIComponent(segmentId)}` : "";
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles${qs}`).then(json<CrowdProfile[]>);
+  },
+
+  createCrowdProfile: (workspaceId: string, payload: { segmentId: string; name: string; status?: string }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<CrowdProfile>),
+
+  getCrowdProfile: (workspaceId: string, profileId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}`).then(json<CrowdProfile>),
+
+  updateCrowdProfile: (workspaceId: string, profileId: string, patch: Record<string, unknown>) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then(json<CrowdProfile>),
+
+  deleteCrowdProfile: (workspaceId: string, profileId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}?confirm=true`, {
+      method: "DELETE",
+    }).then(json<{ deleted: boolean }>),
+
+  // -- profile versions --
+  listCrowdProfileVersions: (workspaceId: string, profileId: string) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/versions`,
+    ).then(json<CrowdProfileVersion[]>),
+
+  createCrowdProfileVersion: (workspaceId: string, profileId: string, payload: { content: CrowdProfileVersion["content"]; source?: string; sourceFeedbackId?: string }) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/versions`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    ).then(json<CrowdProfileVersion>),
+
+  getCrowdProfileVersion: (workspaceId: string, profileId: string, versionId: string) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/versions/${encodeURIComponent(versionId)}`,
+    ).then(json<CrowdProfileVersion>),
+
+  // -- subagent draft --
+  createCrowdSubAgentDraft: (workspaceId: string, profileId: string, versionId: string) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/versions/${encodeURIComponent(versionId)}/subagent-draft`,
+      { method: "POST" },
+    ).then(json<CrowdSubAgentDraft>),
+
+  // -- feedback --
+  listCrowdProfileFeedback: (workspaceId: string, profileId: string) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/feedback`,
+    ).then(json<CrowdProfileFeedback[]>),
+
+  createCrowdProfileFeedback: (workspaceId: string, profileId: string, payload: { profileVersionId: string; sourceRunId?: string; sourceLifeFormId?: string; objections?: string[]; acceptanceConditions?: string[]; suggestions?: string[] }) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/feedback`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(payload),
+      },
+    ).then(json<CrowdProfileFeedback>),
+
+  updateCrowdProfileFeedbackStatus: (workspaceId: string, profileId: string, feedbackId: string, status: "adopted" | "rejected") =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/feedback/${encodeURIComponent(feedbackId)}`,
+      {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ status }),
+      },
+    ).then(json<CrowdProfileFeedback>),
+
+  adoptCrowdProfileFeedback: (workspaceId: string, profileId: string, feedbackId: string) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/feedback/${encodeURIComponent(feedbackId)}/adopt`,
+      { method: "POST" },
+    ).then(json<{ version: CrowdProfileVersion; profile: CrowdProfile }>),
+
+  rollbackCrowdProfile: (workspaceId: string, profileId: string, versionId: string) =>
+    fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/profiles/${encodeURIComponent(profileId)}/rollback?confirm=true`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ versionId }),
+      },
+    ).then(json<CrowdProfile>),
 };

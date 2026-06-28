@@ -290,6 +290,573 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【数据库·the-crowd 人群画像资产库】（总控拆卡 2026-06-28；来源=用户需求：数据库/the-crowd 打造成“人群画像标签数据 → 人群侧写 → 数字生命体画像侧写”的资产库，并与 subagents 管理、日常/模拟实验深度联动）。首版决策：the-crowd 不做普通表浏览器，而做人群画像资产库；LLM 只可读取聚合摘要/标签解释/画像衍生产物，禁止原始行级标签明细进 LLM。════
+  { dom: "X", status: "done", created: "2026-06-28 14:00", title: "【数据库·the-crowd·契约·P0】X-CROWD0：人群画像资产库类型契约 + 数据红线 + 发布口径", brief:
+`目标：定义 the-crowd 的总控契约，把当前数据库 tab 下的占位页升级为“人群画像资产库”。
+
+产品定位：
+1. the-crowd 不是普通数据表浏览器，而是 crowd dataset → tag dictionary → segment → profile → profile version → digital life form 的资产链路。
+2. 输入是人群画像标签数据；输出是聚合摘要、分群规则、人群侧写、可发布的 persona。
+3. 画像侧写可发布到 subagents 管理，也可作为日常/模拟实验里的数字生命体候选。
+
+必须审定的契约：
+- CrowdDataset / CrowdTagDictionary / CrowdSegment / CrowdProfile / CrowdProfileVersion / CrowdProfileFeedback。
+- crowd profile → subagent draft 的 payload 白名单：id/name/persona/source/profileId/version。
+- crowd profile → simulation life form 的 payload 白名单：id/name/persona/source/profileId/version。
+- simulation result → profile feedback 的回写结构：objections / acceptanceConditions / suggestions / sourceRunId / profileVersion。
+
+数据红线：
+1. 原始行级标签明细不得进入 LLM。
+2. LLM 画像生成只能读取聚合摘要、标签字典解释、分群规则、人工补充业务解释。
+3. 错误日志、prompt、trace 不得包含原始行样本、用户级字段值、明细列表。
+4. 发布到 subagents 或 simulation 不授予读取标签明细能力。
+
+落点：
+- server/src/types.ts、web/src/types.ts：只定义总控审定后的共享类型。
+- web/src/lib/api/data.ts 或 engine.ts 的新增签名由本卡定口径，D/E 按域实现。
+- docs/the-crowd-任务派发.md 同步为长文说明。
+
+验收：
+- D/E 后续卡无需再自由发挥核心 schema。
+- 所有 LLM 入口都有明确“只读聚合摘要”的输入边界。
+- 与既有 SimulationLab persona-only 安全模型一致：不继承 toolIds，不读 draw_data，不启动真实 subagent runner。` },
+
+  { dom: "D", status: "done", created: "2026-06-28 14:01", title: "【数据库·the-crowd·数据层·P0】D-CROWD1：crowd 数据模型 + CRUD API + workspace 隔离", brief:
+`目标：实现 the-crowd 的数据底座，支撑 dataset、tag dictionary、segment、profile、profile version、feedback 的基础 CRUD。
+
+范围：
+1. 在 data slot 内新增 crowd 相关表和 CRUD，所有记录按 workspaceId 隔离。
+2. Dataset 记录导入批次元信息：名称、来源、字段数、记录数、创建时间、状态、staging 引用。
+3. Tag dictionary 记录字段名、业务名、标签类型、枚举解释、权重、敏感级别、标准画像维度。
+4. Segment 记录分群规则、覆盖率、样本量、核心标签分布摘要。
+5. Profile / ProfileVersion 记录结构化画像侧写和版本历史。
+6. Feedback 记录模拟实验回写的待采纳建议。
+
+安全要求：
+- 不提供“返回原始行列表给前端再送 LLM”的接口。
+- API 输出明细预览时只允许字段摘要、分布摘要、枚举 TopN，禁止用户级行样本。
+- 删除、覆盖、重建版本类动作预留二次确认参数。
+
+落点建议：
+- server/src/db/data.ts
+- server/src/routes/data.ts
+- web/src/lib/api/data.ts
+- 必要时补 server/src/types.ts / web/src/types.ts 由 X-CROWD0 先定。
+
+验收：
+- server typecheck 通过。
+- 基础 CRUD smoke 覆盖 workspace 隔离。
+- draw_data 原始行不能通过 crowd API 被直接取出。` },
+
+  { dom: "D", status: "done", created: "2026-06-28 14:02", title: "【数据库·the-crowd·导入字典·P1】D-CROWD2：标签数据导入 + 字段画像 + 标签字典管理", brief:
+`目标：实现人群标签数据的安全导入和标签字典管理。
+
+范围：
+1. 支持 CSV / Excel / SQL 查询结果导入为 crowd dataset。
+2. 导入后生成字段画像：字段类型、缺失率、唯一值数量、枚举 TopN、数值范围。
+3. 支持用户维护标签字典：业务名、描述、枚举解释、权重、敏感级别、标准画像维度。
+4. 标准画像维度首版建议：人口属性、消费能力、兴趣偏好、渠道偏好、价格敏感、生命周期、场景偏好。
+5. SQL 导入复用现有 SQL 连接能力，但写入 crowd staging，不改变现有只读 query 安全口径。
+
+安全要求：
+- 字段画像可展示聚合统计，不展示原始行样本。
+- 标签字典里的人工解释可以进入画像生成；原始字段值明细不能进入 LLM。
+- 导入失败日志不得包含整行数据。
+
+落点建议：
+- server/src/routes/data.ts
+- server/src/db/data.ts
+- web/src/components/CrowdPane.tsx 或 web/src/components/crowd/*
+
+验收：
+- 可完成一个 mock CSV 导入并生成字段画像。
+- 可编辑并保存标签字典。
+- npm run typecheck / npm run build 通过。` },
+
+  { dom: "D", status: "done", created: "2026-06-28 14:03", title: "【数据库·the-crowd·分群规则·P1】D-CROWD3：CrowdSegment 规则引擎 + 覆盖率/标签分布摘要", brief:
+`目标：实现确定性的 crowd segment 分群规则引擎，为画像生成提供安全聚合输入。
+
+范围：
+1. 设计 segment rule parser：字段条件、枚举包含、数值区间、标签权重、AND/OR 组合。
+2. 对 dataset 执行 deterministic evaluator，计算样本量、覆盖率、核心标签分布。
+3. 保存 segment rule、摘要、更新时间和版本。
+4. 支持复制 segment 派生新规则。
+
+安全要求：
+- evaluator 输出聚合摘要，不输出命中的原始行列表。
+- 规则错误返回字段级错误，不打印样本值。
+- 大数据集执行需避免阻塞 UI，必要时后端异步或分页摘要。
+
+落点建议：
+- server/src/crowd-segment.ts
+- server/src/db/data.ts
+- server/src/routes/data.ts
+- web/src/components/crowd/SegmentBuilder.tsx
+
+验收：
+- 单测覆盖合法规则、非法规则、AND/OR、空结果、字段缺失。
+- 前端能创建 segment 并看到样本量、覆盖率、核心标签分布。
+- 不调用任何 LLM。` },
+
+  { dom: "D", status: "done", created: "2026-06-28 14:04", title: "【数据库·the-crowd·画像版本·P1】D-CROWD4：ProfileVersion 历史 + 模拟反馈待采纳存储", brief:
+`目标：让 crowd profile 成为可追溯、可回滚、可审计的画像资产。
+
+范围：
+1. Profile 保存当前版本指针、发布状态、关联 segment。
+2. ProfileVersion 保存每次生成或人工修改后的画像 JSON、persona 文本、证据摘要、创建来源。
+3. ProfileFeedback 保存模拟实验回写的 objections、acceptanceConditions、suggestions、sourceRunId、profileVersion。
+4. 支持采纳 feedback 生成新 ProfileVersion，不自动覆盖当前版本。
+5. 支持查看历史版本和回滚到某一版本。
+
+安全要求：
+- evidenceSummary 只允许聚合证据，不保存原始行 quote。
+- 采纳反馈必须有人审动作，不做自动更新。
+- 删除版本、回滚版本必须二次确认。
+
+验收：
+- profile 历史可查看、可回滚。
+- feedback 采纳后生成新版本，有审计记录。
+- server/web typecheck 通过。` },
+
+  { dom: "E", status: "done", created: "2026-06-28 14:05", title: "【数据库·the-crowd·画像生成·P1】E-CROWD5：基于聚合摘要生成结构化人群侧写", brief:
+`目标：实现 crowd profile 画像生成 runner，用聚合摘要和标签解释生成结构化 persona draft。
+
+输入白名单：
+1. segment rule。
+2. 字段画像聚合摘要。
+3. 标签字典解释。
+4. 核心标签分布摘要。
+5. 用户填写的业务场景说明。
+
+禁止输入：
+- 原始行级标签明细。
+- 用户级字段值列表。
+- 错误日志中的样本片段。
+- draw_data 原始数据。
+
+输出 schema：
+- traits
+- motivations
+- decisionTriggers
+- objections
+- tone
+- contentPreference
+- riskNotes
+- evidenceSummary
+- persona
+
+实现要求：
+- 增加 JSON repair 和 schema validate。
+- 失败时返回可重试错误，不吞异常。
+- 输出 evidenceSummary 必须是聚合口径，不能出现行级 quote。
+
+落点建议：
+- server/src/crowd-profile-runner.ts
+- server/src/routes/engine.ts 或 data router 中受控 endpoint，按 X-CROWD0 定口径。
+- web/src/lib/api/engine.ts 或 data.ts 新增调用。
+
+验收：
+- 单测或 smoke 验证 prompt payload 不含 raw rows。
+- 画像生成结果 schema 稳定。
+- npm run typecheck 通过。` },
+
+  { dom: "D", status: "done", created: "2026-06-28 14:06", title: "【数据库·the-crowd·前端·P0】D-CROWD6：CrowdPane 五区界面替换占位页", brief:
+`目标：替换数据库/the-crowd 当前占位页，落地可操作的 CrowdPane。
+
+界面结构：
+1. 顶部概览：dataset 数、segment 数、profile 数、已发布数字生命体数、安全状态。
+2. 数据导入区：导入入口、批次列表、字段画像摘要。
+3. 标签字典区：字段表、标准画像维度、敏感级别、业务解释。
+4. 人群分群区：规则构建器、覆盖率、核心标签分布。
+5. 画像侧写区：profile 详情、版本历史、persona 预览、发布动作。
+6. 数字生命体发布区：发布到 subagents、加入模拟实验候选、查看反馈。
+
+交互要求：
+- 空态要直接引导导入、建字典、创建 segment。
+- 所有 LLM 相关动作前显示“仅发送聚合摘要”的安全说明。
+- 错误、加载、无 workspace 状态完整。
+- 不做 landing page，首屏就是资产管理工作台。
+
+落点：
+- web/src/components/CrowdPane.tsx
+- web/src/components/crowd/*
+- web/src/tabs/DataTabs.tsx 替换 the-crowd Placeholder。
+
+验收：
+- web typecheck/build 通过。
+- 浏览器打开 the-crowd 不再是占位。
+- 不 import 数据探索 LLM 禁区相关 API。` },
+
+  { dom: "D", status: "done", created: "2026-06-28 14:07", title: "【数据库·the-crowd·subagents联动·P2】D-CROWD7：CrowdProfile 发布为 subagent draft + 来源回跳", brief:
+`目标：打通 crowd profile 到 subagents 管理的发布链路。
+
+范围：
+1. crowd profile 详情页增加“发布为 subagent 模板”动作。
+2. 发布前生成 subagent draft：name、persona、source=crowd_profile、crowdProfileId、crowdProfileVersion。
+3. subagents 管理中展示模板来源：manual / crowd_profile / system。
+4. 来自 crowd profile 的模板展示 profileId、version、回跳到画像详情入口。
+5. 写入 subagents.json 前必须人工确认，保存仍走 server coerce。
+
+安全要求：
+- 只发布 persona，不发布 datasetId 的读取权限。
+- dataScope 仍强制 clean_data。
+- 不继承 crowd dataset 访问能力，不增加 toolIds。
+
+落点建议：
+- web/src/components/CrowdPane.tsx
+- web/src/components/SubAgentManagementPane.tsx
+- server/src/subagent-core.ts 如需扩展来源字段，先确认 X-CROWD0 类型口径。
+
+验收：
+- 从 crowd profile 能生成待确认 subagent draft。
+- 保存后 subagents 管理可看来源与回跳。
+- 不破坏现有 custom subagent 模板。` },
+
+  { dom: "E", status: "done", created: "2026-06-28 14:08", title: "【数据库·the-crowd·模拟实验联动·P2】E-CROWD8：SimulationLab 选择 crowd life forms + 结果反馈回写", brief:
+`目标：让日常/模拟实验可以直接使用 the-crowd 的画像侧写作为数字生命体，并把模拟结果回写为画像反馈。
+
+范围：
+1. SimulationLabPane 的数字生命体候选新增 crowd profile 来源分组。
+2. 支持按 profile 名称、segment、标签维度、场景搜索。
+3. SimulationRunInput lifeForms 支持 source=crowd_profile、profileId、profileVersion。
+4. 运行 payload 只传 id/name/persona/source/profileId/version，不传标签明细、不传 toolIds。
+5. 结果页对每个角色增加“回写到画像反馈”动作。
+6. 回写内容进入 ProfileFeedback 待采纳列表，不自动改 persona。
+
+安全要求：
+- 继续保持 SimulationLab 当前 persona-only 模型。
+- 不启动真实 subagent runner。
+- 不读 draw_data，不读 crowd dataset 原始行。
+
+落点建议：
+- web/src/components/SimulationLabPane.tsx
+- server/src/simulation-lab.ts
+- server/src/routes/engine.ts
+- web/src/lib/api/engine.ts / data.ts
+
+验收：
+- 可选择 crowd profile 运行模拟实验。
+- simulation result 可追溯 profile/version。
+- 反馈回写后能在 the-crowd 里看到待采纳项。` },
+
+  { dom: "X", status: "done", created: "2026-06-28 14:09", title: "【数据库·the-crowd·验收审计·P3】X-CROWD9：全链路实跑 + 数据泄漏审计 + wiki/notes 收口", brief:
+`目标：总控完成 the-crowd 全链验收，确认产品链路和安全边界可发布。
+
+验收链路：
+1. 准备 mock 人群标签数据。
+2. 导入 dataset。
+3. 建标签字典。
+4. 创建 segment。
+5. 生成 profile 和 persona。
+6. 发布为 subagent draft。
+7. 在模拟实验选择 crowd life form 运行。
+8. 将 objections / acceptanceConditions / suggestions 回写为 profile feedback。
+9. 采纳反馈生成新 profile version。
+
+安全审计：
+- 检查 LLM payload 不含 raw rows。
+- 检查错误日志不含原始行样本。
+- 检查 simulation payload 不含 toolIds、dataset rows、draw_data。
+- 检查 subagents 管理中 crowd 来源模板 dataScope 仍为 clean_data。
+
+门禁：
+- npm run typecheck。
+- npm run build。
+- 相关 server tests / smoke tests。
+- 如触及数据探索子树，额外跑 AGENTS.md 指定隔离 grep；默认本链路不应触及数据探索。
+
+收口：
+- 更新 docs/notes-data.md 或 notes-infra.md 的关键决策。
+- 更新 docs/wiki.html 卡片状态。
+- 必要时追加 docs/the-crowd-任务派发.md 的实跑结论。` },
+
+  // ════ 【数据库·the-crowd 一键画像 + CSV 模板】（总控拆卡 2026-06-28；来源=用户需求：①缺少 CSV 模板，用户不知道传什么字段，链路第一步卡死；②希望"LLM 直接处理用户上传的人群标签数据"快速产出侧写）。决策：①直接提供模板/示例 CSV 下载；②不破 X-CROWD0 红线（原始行级明细禁入 LLM），新增「聚合数据上传」独立入口（UI 明示"聚合数据 · 不传敏感明细"），LLM 全程只看聚合摘要。════
+  { dom: "X", status: "done", created: "2026-06-28 19:30", title: "【数据库·the-crowd·契约·P0】X-CROWD10：聚合上传安全口径 + CSV 模板规范 + 一键画像工作流契约", brief:
+`目标：审定两项契约，让后续 D/E 卡有据可依，并锁死安全口径。
+
+来源用户需求：
+1. 缺少 CSV 模板，用户不知道往里填什么字段，整条链路第一步推不动。
+2. 希望"上传人群画像标签数据即出侧写"，减少手工步骤。
+
+安全裁定（强约束，与 X-CROWD0 / AGENTS.md 红线对齐）：
+- X-CROWD0 红线不变：原始行级明细禁入 LLM，包括 prompt / 错误日志 / 字典推断逻辑。
+- 用户需求②不通过让 LLM 读原始行实现，而通过"聚合上传 + 自动跑现有 generateCrowdProfile 链路"实现。
+- 新增「聚合数据上传」通道（与现有明细上传通道并列），UI 必须显著标识"聚合数据 · 不传敏感明细"。
+- 聚合上传通道不绕过 LLM 边界：仍走 E-CROWD5 generateCrowdProfile 的聚合摘要 prompt 形态，LLM payload 不变。
+
+必须审定的契约：
+1. CSV 模板规范（两份）：
+   - 明细模板 template-detail.csv：列名按 7 个标准画像维度（人口属性 / 消费能力 / 兴趣偏好 / 渠道偏好 / 价格敏感 / 生命周期 / 场景偏好）各给 2-3 个示例字段，3-5 行示例。
+   - 聚合模板 template-aggregate.csv：列结构 = field / business_name / dimension / value / ratio / tgi（或等价聚合统计列），不含 user_id / 行级数据。
+2. 示例数据集（两份，均为总控直接造的虚拟数据，30-50 行）：demo-detail.csv + demo-aggregate.csv。
+3. 模板/示例托管位置 + 下载 API 口径：建议 server/static/crowd/ + GET /api/crowd/templates/:name，白名单 4 个文件名。
+4. 聚合上传入口的数据模型：落 CrowdDataset，source="aggregate_upload"，新增 isAggregate: true 标记，fieldProfiles 由聚合统计推导，行数显示为"聚合行数"。同步落 CrowdTagDictionary 草稿（business_name + dimension 直接成字典条目，autoGenerated: true）。
+5. 一键画像工作流（明细通道 4 步）：import → auto-tag-dictionary → default-segment → generateCrowdProfile。聚合通道 3 步：import-aggregate（含字典 draft）→ default-segment → generateCrowdProfile。任一步失败：保留已成功资产，UI 友好提示，不静默吞错。
+6. 自动产物标记：CrowdTagDictionaryEntry / CrowdSegment 增 autoGenerated?: boolean，UI 标"auto"徽章 + 提示"可手工补充提升画像质量"。
+
+类型契约更新草案（双侧 types.ts，由 D/E 卡实装）：
+- CrowdDataset 增 isAggregate?: boolean。
+- CrowdTagDictionaryEntry 增 autoGenerated?: boolean。
+- CrowdSegment 增 autoGenerated?: boolean。
+
+验收：
+- D-CROWD10 / E-CROWD11 / D-CROWD11 / X-CROWD12 据本卡口径即可实施，无歧义。
+- 红线条款写入 docs/the-crowd-任务派发.md 追加章节。
+
+不在本卡范围：
+- 聚合数据字段映射启发式细节（E-CROWD11）。
+- UI 文案与按钮位置（D-CROWD10 / D-CROWD11）。
+
+—— 审定结论（2026-06-28 19:45 · 总控自做完成）：
+全部审定条款已落入 docs/the-crowd-任务派发.md §8（§8.1 安全裁定 / §8.2 CSV 列结构 / §8.3 工作流 + 失败回滚 / §8.4 类型契约 / §8.5 下载 API / §8.6 自动产物 UI / §8.7 里程碑）。
+关键决策：
+1) CSV 模板列名已固定到位（明细模板 10 列，聚合模板 6 列），含枚举范围、类型、示例与硬约束（UTF-8 BOM、不含 PII、ratio 求和误差 ±0.02）。
+2) 一键画像 = 现有 generateCrowdProfile 之前自动跑 import → auto-tag-dictionary → default-segment 三步，LLM payload 不变，红线不动。
+3) 失败回滚 = 保留已成功资产，不级联回滚，stepper 显示具体卡点。
+4) 类型契约新增 CrowdDataset.isAggregate / CrowdTagDictionaryEntry.autoGenerated / CrowdSegment.autoGenerated / CrowdDatasetSource +"aggregate_upload"。
+5) 7 维度枚举沿用 CrowdProfileDimension 不变，启发式匹配兜底走 "custom"。
+D/E 卡可立即领取实施。
+
+—— 审定 v2 修订（2026-06-28 20:35 · D-CROWD10 v1 审核驳回触发）：
+D-CROWD10 v1 落地反馈：snake_case 英文枚举对国内非技术用户填写困难；6 列长表聚合 CSV 对业务用户难读。决定升级契约：
+1) 明细模板枚举改为"中文展示 + server 端归一化映射"。新增中英对照表（gender 女/男/其他 → F/M/O、city_tier 新增"新一线"独立枚举、lifecycle 补齐"流失"/churned）。多值字段分隔符从 | 改为 /（中文输入法友好）。详见 §8.2.1 v2 表。
+2) 聚合模板改为"宽表 27 列固定顺序 + 4 字母 dimension 列名前缀（dem_/con_/int_/cha_/pri_/lif_/sce_）"。每行 = 1 个 segment，*_pct 用 0~100 整数（不用 0~1 ratio）。pri_ 维度分成 pri_sens_*（敏感度）+ pri_dis_*（促销响应）两组。详见 §8.2.2 v2 列表。
+3) 聚合通道工作流由 v1 "3 步全自动"改为 v2 "2 步全自动 + 1 步用户触发"。理由：聚合 CSV N 行 = N 个 segment，自动 N 次 LLM 调用会爆成本，最后一步 generateCrowdProfile 改为用户在 segment 列表逐个点按。详见 §8.3.2 v2。
+4) D-CROWD2 server 导入路径需加一层中→英归一化映射层；映射失败的值入库为原文 + normalizationFailed 标记，UI 可见但不进 LLM。
+5) D-CROWD10 v1 同时检出代码缺陷：routes/data.ts:2529 死代码 readFileSync(filePath) 紧接 sendFile，需删除。
+6) §8.4 类型契约 v1 不变（isAggregate / autoGenerated 两标记已能覆盖宽表 + 中文枚举的所有产物标识需求）。
+D-CROWD10 状态：v1 返修，按 §8.2/§8.3 v2 重做 4 个 CSV + 删死代码；返修完成后再走审核。D-CROWD11 / E-CROWD11 须等 D-CROWD10 v2 done 后启动（避免再次撞契约）。` },
+
+
+  { dom: "D", status: "done", created: "2026-06-28 19:31", title: "【数据库·the-crowd·模板·P0】D-CROWD10：CSV 模板 + 虚拟示例数据集 + 下载入口", brief:
+`目标：用户在 DatasetImporter 上看得到、下得到模板和示例数据集，模块上手不再卡第一步。
+
+依赖：X-CROWD10 审定通过。
+
+实现：
+1. 静态文件（server/static/crowd/，UTF-8 BOM，Excel / Numbers / VSCode 均可正常打开）：
+   - template-detail.csv：明细模板，按 X-CROWD10 审定的 7 维度字段表头 + 3-5 行示例。
+   - template-aggregate.csv：聚合模板，列结构按 X-CROWD10 第 1 条审定，3-5 行示例。
+   - demo-detail.csv：总控直接造的虚拟明细数据，30-50 行，覆盖 7 维度典型组合（无真实用户数据，纯 mock）。
+   - demo-aggregate.csv：与 demo-detail 对应的聚合统计样例。
+2. server 暴露 GET /api/crowd/templates/:name，白名单 4 个文件名，未命中返回 404 不泄漏服务路径。
+3. web 端 DatasetImporter 增加 4 个下载/试用按钮：「下载明细模板」「下载聚合模板」「试用明细示例」「试用聚合示例」。试用类按钮直接拉示例文件走对应上传流程，跳过文件选择。
+4. 同步更新 web/src/docs/the-crowd-readme.md 与 docs/the-crowd-README.md：增加"模板字段说明"小节，列出每个字段含义、枚举建议、维度归属。
+
+字段表头草案（明细模板，最终以 X-CROWD10 审定为准）：
+- 人口属性：gender / age_bracket / city_tier
+- 消费能力：avg_monthly_spend / price_sensitivity_level
+- 兴趣偏好：interest_top3
+- 渠道偏好：preferred_channel
+- 价格敏感：discount_response
+- 生命周期：lifecycle_stage
+- 场景偏好：scenario_top2
+
+门禁：
+- npm run typecheck + npm run build。
+- 手动用 Excel / Numbers / VSCode 各打开一次模板 CSV，确认无乱码。
+- 不引入新 npm 依赖（静态文件 + 简单 GET）。
+
+不在本卡范围：
+- 聚合上传通道的后端逻辑（E-CROWD11）。
+- 一键串联工作流的前端编排（D-CROWD11）。
+
+—— v1 返修要点（2026-06-28 20:35 · 总控审核驳回，按 X-CROWD10 v2 修订）：
+v1 已交付：4 个 CSV + GET /api/crowd/templates/:name 路由 + 前端 4 个快捷按钮 + 文档同步。typecheck/build 通过。
+返修原因（X-CROWD10 v2 升级契约）：
+1) template-detail.csv / demo-detail.csv：枚举值全部按 §8.2.1 v2 中英对照表改成"中文展示值"（女/男/其他、新一线、流失等），多值分隔符 | → /。
+2) template-aggregate.csv / demo-aggregate.csv：列结构改成 §8.2.2 v2 的 27 列固定宽表 + dimension 列名前缀（dem_/con_/int_/cha_/pri_sens_/pri_dis_/lif_/sce_）。demo-aggregate 行数从 4 行扩到 5-8 行覆盖多 segment。
+3) server/src/routes/data.ts:2529 死代码：删除 readFileSync(filePath) 那一行（sendFile 已经自带读取）。
+4) 前端按钮顺手优化：handleTemplateAction 整个 try 期间置 importing=true，避免下载阶段无 loading 反馈。
+5) 文档同步：web/src/docs/the-crowd-readme.md + docs/the-crowd-README.md 的"模板字段说明"章节按 v2 重写。
+门禁不变：server typecheck + web typecheck + web build + 4 个 CSV BOM 验证。
+返修完成后改回 status: done，再走总控复审。
+
+—— v2 复审结论（2026-06-28 21:00 · 通过）：
+返修 4 条全部清，自动化抽样校验全过：明细 40 行枚举 100% 命中中文集 + 多值分隔符 / 一致 + 聚合 6 segment 所有 *_pct 求和精确 = 100 + cha_top_channel 中文展示值 + 4 CSV BOM 完好 + server/web typecheck/build 绿。
+顺手修复 1 处文档拼写：两份 README 的 lifecycle 英文枚举从 dormancy 改回 dormant（与契约 §8.2.1 + CSV 列名 lif_dormant_pct 对齐）。
+D-CROWD10 v2 验收通过，状态 done。E-CROWD11 / D-CROWD11 解锁，可领取。` },
+
+
+  { dom: "E", status: "done", created: "2026-06-28 19:32", title: "【数据库·the-crowd·聚合上传·P1】E-CROWD11：聚合数据上传 + 自动字典 + 默认分群", brief:
+`目标：实现"聚合数据上传"独立入口的 server 端能力，以及一键画像工作流中间两步（auto-tag-dictionary、default-segment）。
+
+依赖：X-CROWD10 审定通过。
+
+实现：
+1. POST /api/workspaces/:wid/crowd/datasets/import-aggregate
+   - 接收聚合 CSV（X-CROWD10 第 1 条审定的列结构）。
+   - 解析后落 CrowdDataset，source="aggregate_upload"，isAggregate: true。
+   - fieldProfiles 从聚合表 dimension/field 列推导（不含 user 级数据）。
+   - 同步落 CrowdTagDictionary 草稿：business_name + dimension 直接成字典条目，enumValues 来自聚合的 value 列，标 autoGenerated: true。
+   - 错误返回体 / 日志严禁打印任何字段值样本。
+2. POST /api/workspaces/:wid/crowd/datasets/:dsId/auto-tag-dictionary
+   - 适用于明细通道，复用 D-CROWD2 已生成的 fieldProfiles。
+   - 启发式：业务名 = 字段名；维度 = 字段名前缀映射（age* → 人口属性、spend|amount* → 消费能力、interest|prefer* → 兴趣偏好、channel* → 渠道偏好、discount|price* → 价格敏感、lifecycle|stage* → 生命周期、scenario|context* → 场景偏好，匹配不上 = "未分类"）。
+   - 枚举值 = 字段 TopN；枚举解释留空。
+   - 全部标 autoGenerated: true。纯算法，零 LLM 调用。
+3. POST /api/workspaces/:wid/crowd/datasets/:dsId/default-segment
+   - 创建无条件全样本 segment：name="全样本（自动）"、coverageRatio=1.0、autoGenerated: true。
+4. 复用现有 generateCrowdProfile（E-CROWD5），不改其 prompt 与安全口径。
+
+数据模型变更（与 X-CROWD10 对齐）：
+- CrowdDataset 增 isAggregate?: boolean。
+- CrowdTagDictionaryEntry / CrowdSegment 增 autoGenerated?: boolean。
+- server/src/types.ts + web/src/types.ts 双侧同步。
+
+安全：
+- 三个新端点零 LLM 调用，端点文件 grep "openai|llm|chat" 必须空匹配。
+- 聚合上传不存原始行（CSV 本身不含），仍按 workspace 隔离落库。
+- 错误返回体 / 日志不打印字段值样本，只回字段名和位置。
+
+门禁：
+- 单测覆盖 3 个新端点：合法/非法 CSV、字段映射启发式正确性、autoGenerated 标记落库。
+- npm run typecheck + npm run build。
+- grep 校验：新增 route 文件不 import LLM client。
+
+不在本卡范围：
+- 前端一键串联编排（D-CROWD11）。
+- 自定义聚合 CSV 列结构扩展（首版仅支持 X-CROWD10 审定列）。
+
+—— v1 返修要点（2026-06-28 21:30 · 总控审核驳回，按 X-CROWD10 v2 修订）：
+v1 已交付：双侧 types + DB 3 列迁移 + 3 路由端点 + crowd-aggregate.ts/test 11/11 + web api stub。typecheck/build/zero-LLM grep 通过。
+🔴 致命违约：crowd-aggregate.ts:43 的 REQUIRED_AGG_COLS = ["dimension","field","value"] 是 X-CROWD10 v1 已废的长表规范，X-CROWD10 v2 §8.2.2 审定的是 27 列固定宽表（segment_name + dem_/con_/pri_sens_/pri_dis_/cha_/lif_ 前缀 + sample_count）。D-CROWD10 v2 交付的 template/demo aggregate CSV 当前根本无法通过 importAggregateDataset 校验，聚合通道整条链路无法启动。返修原因推断：v1→v2 修订时只看了 task brief 旧描述，未拉 §8.2 v2 全文；测试与实现同步走错。
+返修清单：
+1) 致命 · 重写 crowd-aggregate.ts:39-147 importAggregateDataset：列规范改为 §8.2.2 v2 的 27 列严格校验（断言列名 + 顺序），解析改为「按行循环 → 每行 = 1 个 segment」，按 dem_/con_/pri_sens_/pri_dis_/cha_/lif_ 前缀分组生成 fieldProfiles，落 1 套 tagDictionary draft（dimension 直接来自列名前缀，不走启发式），返回结构改为 { dataset, tagDictionary, segments: CrowdSegment[] }。
+2) 必修 · 补 D-CROWD2 中→英归一化映射层（X-CROWD10 v2 §8.2.1）：新建 crowd-normalize.ts 或扩 crowd-import.ts，按 v2 对照表（女→F、新一线→T1_NEW、优惠券→coupon、小红书→xhs、流失→churned 等）入库英文规范值；未命中映射 → 入库原文 + 在 CrowdFieldProfile/CrowdTagValueSummary 上加 normalizationFailed?: boolean 标记。双侧 types.ts 同步。
+3) 重写 crowd-aggregate.test.ts 全部聚合用例：用 v2 宽表 fixture + 多 segment 行，验证「N 行 → N CrowdSegment」契约；新增 R2 归一化层单测覆盖命中 + 未命中两条路径。
+4) 路由响应体 import-aggregate 增加 segments 字段；前端 importCrowdAggregate stub 的 AggregateImportResult type 同步更新。
+5) autoTagDictionary（明细通道用，行 153-178）保留不动，但需复核中文 fallback 在 i flag 下的正则行为；不在本次返修硬范围。
+门禁：
+- npm run typecheck（双侧）+ npm run build + crowd-aggregate.test 全绿。
+- grep crowd-aggregate.ts + crowd-normalize.ts 零 LLM 匹配。
+- 用 D-CROWD10 交付的 demo-aggregate.csv 真跑一次 import-aggregate（test fixture 或 curl），确认产 6 个 CrowdSegment + tagDictionary draft 完整。
+- 用 demo-detail.csv 真跑一次 importCrowdDataset，确认归一化层把中文枚举入库为英文规范值。
+D-CROWD11 须等 E-CROWD11 v2 done 后启动。
+
+—— v2 复审结论（2026-06-28 22:00 · 通过 R1/R4，挂 R5/R6 二轮返修）：
+v1 致命 R1（v2 27 列宽表）+ R4（测试重写）已修：crowd-aggregate.ts 严格断言 27 列、拒 v1 长表、每行 → 1 CrowdSegment；测试 23/23 真读 demo-aggregate.csv fixture 产 6 segment。路由响应体 + 双侧 types + AggregateImportResult 全数对齐。typecheck/build/grep/zero-LLM 全过。
+🔴 R5（新发现违约）：crowd-normalize.ts 写好但未接入 D-CROWD2 明细主链路 —— crowd-import.ts 没 import，crowd-aggregate.ts:18-19 import 了但未调用（死 import），全代码库 normalizationFailed 零写入位。用户上传 demo-detail.csv 时中文枚举会原样入库，E-CROWD5 prompt 看到混合中英枚举，画像质量崩坏。所谓"E2E 验证 女→F..."是直接调 normalizeEnumValue 函数单测，不是 importCrowdDataset 真实导入路径。
+🟡 R6（映射偏离契约）：gender "其他" 实现成 OTHER（契约 §8.2.1 是 O）；preferred_channel "微信" 实现成 wechat（契约是 wechat_mp）。这两条会让 cha_top_channel 在聚合通道里归一化对不上后续 segment tag。
+二轮返修清单：
+1) R5 必修 · 在 server/src/crowd-import.ts 主导入路径里调用 normalizeRow：对每个 row 先 normalize，再算 fieldProfiles；把 failedFields 透到 CrowdFieldProfile.topValues[].normalizationFailed = true 落库。
+2) R5 必修 · 新增测试用例：真读 server/static/crowd/demo-detail.csv 跑一次 importCrowdDataset，断言入库后 gender=F、city_tier=T1_NEW、preferred_channel=xhs、lifecycle_stage=churned 等字段值为英文规范值。
+3) R5 顺手 · 删除 crowd-aggregate.ts:18-19 的死 import（normalizeRow/normalizeEnumValue 在 aggregate 通道不调用）。
+4) R6 必修 · crowd-normalize.ts：GENDER_MAP["其他"] 改回 "O"；CHANNEL_MAP["微信"] 改回 "wechat_mp"（保留 wechat_mp 单值，删除 wechat 单值条目）。同步更新 11 个归一化测试用例若被影响。
+门禁不变：双侧 typecheck + build + crowd-aggregate.test 全绿 + grep 零 LLM + demo-detail.csv 真跑归一化 E2E。
+返修完成后总控做最终复审，通过即置 done。
+
+—— 二轮复审结论（2026-06-28 22:30 · R5 主路径达标 / R6 修对 / 仅 2 处小遗留挂三轮）：
+R5 主返修达标：crowd-import.ts:44-54 在 computeFieldProfiles 里加 normalizeEnums 选项；routes/data.ts:1943（file import）+ :1977（SQL import）两条 D-CROWD2 主路径均传 normalizeEnums: true，归一化已真接入。R6 字面值改对：GENDER_MAP["其他"]="O"、CHANNEL_MAP["微信"]="wechat_mp"。测试 23/54 全绿，typecheck/build/zero-LLM 全过。
+🟡 三轮小遗留（不阻塞主功能，必须修但工作量 5-10 分钟）：
+1) crowd-aggregate.ts:18-19 死 import 没删：normalizeRow / normalizeEnumValue 仍在 import 列表但函数体里零调用。删 2 行即可。
+2) 缺 demo-detail.csv 真读固化 E2E 测试：本轮交付的"E2E 验证 gender [F,M,O]..."是手跑脚本，未固化为 test case。下次回归如归一化层意外断会失测。需照搬 R1 里 demo-aggregate fixture 那条用例（readFileSync server/static/crowd/demo-detail.csv → 解析 → computeFieldProfiles({ normalizeEnums: true }) → 断言 topValues 出现 F/T1_NEW/xhs/churned 等英文枚举、零中文残留）加进 crowd-import.test.ts 或 crowd-aggregate.test.ts。
+🟢 可放过到后续（不挂本卡）：
+- normalizationFailed 标记当前在 types 定义但未落 CrowdTagValueSummary.topValues[].normalizationFailed 字段；computeFieldProfiles 拿到 normalizeRow.failedFields 后没透出。这是 UI 侧未来审计信号，留作 D-CROWD11 联动时补。
+三轮门禁不变：双侧 typecheck + build + 全测试绿 + grep 零 LLM。三轮通过后置 done。
+
+—— 三轮复审结论（2026-06-28 22:50 · 通过 · 置 done）：
+两项小遗留全清：crowd-aggregate.ts 死 import 已删；crowd-aggregate.test.ts:275-320 新增 E2E demo-detail.csv 真读用例，断言 gender [F,M,O] / city_tier [T1,T1_NEW] / channel [xhs,wechat_mp] / lifecycle [churned,active] 全英文且零中文残留（4 个字段各加正则反向断言"无中文"双保险）。测试 24/24 全绿，双侧 typecheck 干净。
+E-CROWD11 v2 验收通过，状态 done。D-CROWD11 解锁，可领取（依赖 X-CROWD10 v2 + E-CROWD11 v2 均已 done）。
+未挂本卡的后续 follow-up：CrowdTagValueSummary.topValues[].normalizationFailed 字段当前在 types 已定义但未落库写入；D-CROWD11 前端审计信号联动时再补，不影响主链路。` },
+
+
+  { dom: "D", status: "done", created: "2026-06-28 19:33", title: "【数据库·the-crowd·前端串联·P1】D-CROWD11：聚合上传入口 + 一键画像工作流前端编排", brief:
+`目标：用户在 CrowdPane 看到明显的「聚合数据上传 + 自动画像」入口，端到端跑通 X-CROWD10 审定的工作流。
+
+依赖：X-CROWD10、E-CROWD11 完成。
+
+实现：
+1. DatasetImporter 改造为双通道（Tab 切换或并排卡片）：
+   - 通道 A · 明细上传：现状保留，副标"原始行不进 LLM，仅生成聚合摘要"，沿用 importCrowdDataset。
+   - 通道 B · 聚合数据上传（新增）：顶部显著提示条"聚合数据 · 不传敏感明细"（Shield 图标 + 蓝/绿色），调用 import-aggregate 端点。
+2. 两个通道各放一个 toggle「上传后自动生成画像」（默认开）。开启后串联：
+   - 通道 A：importCrowdDataset → auto-tag-dictionary → default-segment → generateCrowdProfile
+   - 通道 B：import-aggregate（含字典 draft）→ default-segment → generateCrowdProfile
+3. 4 步进度展示（顶部条形 stepper）：导入 / 字典 / 分群 / 画像。每步实时反馈。
+4. 任一步失败：保留已成功资产，回退到手动模式（数据集列表显示已导入，但无后续资产），错误信息友好提示具体卡在哪一步。
+5. 自动产物 UI 标记：tagDictionary 条目和 segment 卡片右上角显示 "auto" 徽章，鼠标 hover 提示"可手工补充提升画像质量"。
+6. 文案与按钮位置：与 D-CROWD10 的 4 个下载/试用按钮放同一区，整体保持 CrowdPane 现有视觉风格。
+
+门禁：
+- npm run typecheck + npm run build。
+- 浏览器手动 e2e：分别用通道 A 和通道 B 跑一次完整链路 + 一次中途失败链路（mock 后端返回 500），验证回退和提示。
+- 数据探索隔离 grep（AGENTS.md 指定）—— 本卡不应触及探索模块。
+
+不在本卡范围：
+- 后端端点实现（E-CROWD11 已完成）。
+- 模板/示例 CSV 静态文件（D-CROWD10 已完成）。
+- 全链验收与安全审计（X-CROWD12）。
+
+—— v1 复审结论（2026-06-28 23:15 · 主形态达标 / 2 处硬伤挂二轮）：
+v1 已交付：DatasetImporter 双通道 Tab（明细/聚合）+ 各通道安全提示条 + 自动生成 toggle + Stepper 实时反馈 + 失败保留资产；CrowdPane segment 卡片 autoGenerated "auto" 灰徽章 + hover 提示。typecheck/build/数据探索隔离 grep 全过。
+🔴 R1 必修 · model 字段硬编码 "default"（DatasetImporter.tsx:135）：generateCrowdProfile body 写 `model: "default"`，server crowd-profile-runner.ts:64-65 只校验非空字符串通过初步校验，但实际 pi 适配器查 model id 表会找不到 → 真实环境 100% 报错 → 画像 step 必红。整个一键画像最后一步永远跑废，本卡 UI demo 时永远看到"画像 失败"。修法：参考 GoldenStrategyPane.tsx:207-211 标准模式 — 组件挂载时 api.listPiModels() 拉列表，DEFAULT_MODEL="minimax-cn/MiniMax-M3" 兜底，state 存真实 model id，调用时传该 id 而非字符串。
+🔴 R2 必修 · 聚合通道工作流违 §8.3.2 v2（DatasetImporter.tsx:82,130-145）：契约 §8.3.2 v2 明确「聚合通道 2 步全自动 + 1 步用户触发」，理由是 N 行 → N segment，自动 N 次 LLM 调用爆成本（这正是 X-CROWD10 v1→v2 修订的核心原因）。实际：(a) 聚合通道把"字典"step 整个砍掉（实际上 import-aggregate 已经一并落字典 draft，前端应展示出来）；(b) 自动只跑 segments[0] 即第 1 个分群，用户上传 6 segment 的聚合 CSV 只有 1 个有画像，5 个空白，用户会迷惑。修法（推荐）：聚合通道隐藏"上传后自动生成画像"toggle，改成 UI 文案"上传后由您在分群列表逐个生成画像"，与"用户触发"语义对齐；明细通道保留 toggle（4 步全自动不变）。
+🟡 R3 follow-up（不挂本卡）· §8.3.3 失败回滚契约「分群失败跳到 Zone 4」未实现：当前只显示错误文案，没有 scroll-to-segments 跨组件跳转。可留 D-CROWD12 verify 前后补 onScrollToSegments callback。
+🟡 R4 follow-up（不挂本卡）· Stepper 连接线视觉：连线放 label 与下个圆圈之间，label 长短不一导致连线比例失调。小 polish。
+二轮门禁：双侧 typecheck + build + 浏览器手动 e2e 跑通明细 + 聚合两条真实链路（不能再 mock，必须看到画像 step 真绿）+ 数据探索隔离 grep。
+二轮通过后置 done，解锁 X-CROWD12 全链验收。
+
+—— v2 复审结论（2026-06-28 23:50 · R2 通过 / R1 半通过 / 挂三轮 1 处小修）：
+R2 完美修：聚合通道 Stepper 仅 2 步（导入+分群），代码逻辑严格不跑画像（runWorkflow 第 143 行 if (!isAggregate && autoGenerate ...) 双守门），聚合安全提示条文案"导入后请在分群列表逐个点「生成画像」"对齐 §8.3.2 v2 用户触发语义。明细通道保留 4 步全自动 §8.3.1。
+R1 半修：DatasetImporter mount useEffect 调 api.listModels() 拉真实列表 ✅，但 defaultModel = models[0]?.id ?? "" 兜底不闭环：(a) 不 prefer isDefault: true model（违项目惯例 GoldenStrategyPane.tsx:207-211 标准 4 级 fallback）；(b) 没 fallback 到 DEFAULT_MODEL = "minimax-cn/MiniMax-M3" 常量；(c) "" 空字符串会被 server crowd-profile-runner.ts:64 throw "model required"，listModels 失败/超时/空数组时画像 step 仍 100% 跑红。
+🟡 三轮 1 处小修：照搬 GoldenStrategyPane.tsx:207-211 标准模式：
+```
+const DEFAULT_MODEL = "minimax-cn/MiniMax-M3";
+const defaultModel = useMemo(
+  () => models.find((m) => m.id === DEFAULT_MODEL)?.id
+     ?? models.find((m) => m.isDefault)?.id
+     ?? models[0]?.id
+     ?? DEFAULT_MODEL,
+  [models]
+);
+```
+项目既有惯例，照搬而非自创。
+三轮门禁：双侧 typecheck + build + 浏览器手动 e2e 明细通道画像 step 真绿（不能 mock）。通过即置 done。
+
+—— 三轮复审结论（2026-06-29 00:05 · 通过 · 置 done）：
+R1.1 修对：DatasetImporter.tsx:7,80-83 4 级 fallback 照搬 GoldenStrategyPane.tsx:207-211 项目惯例（DEFAULT_MODEL → isDefault → [0] → 常量兜底）。listModels 失败/空数组场景画像 step 不再 100% 红。typecheck/build 全过。
+D-CROWD11 v3 验收通过，状态 done。X-CROWD12 解锁，可由总控启动全链实跑 + 安全审计收口。
+未挂本卡的 follow-up（留 X-CROWD12 或后续 polish）：
+- R3 §8.3.3 分群失败"跳到 Zone 4"跨组件跳转未实现，当前仅显示错误文案。
+- R4 Stepper 连接线视觉小瑕疵（label 长短导致连线比例失调）。
+- 用户编辑 segment/tagDictionary 后 autoGenerated 标记前端是否清零，未在本卡明确处理（仅在 UI 层显示徽章，未触发清零）。X-CROWD12 实跑时如出现"用户改了 segment 名但 auto 徽章仍在"现象，由该卡补 PATCH 时显式 autoGenerated: false。` },
+
+
+  { dom: "X", status: "doing", created: "2026-06-28 19:34", title: "【数据库·the-crowd·验收·P3】X-CROWD12：一键画像 + 模板下载全链验收 + 安全审计", brief:
+`目标：总控完成 X-CROWD10~D-CROWD11 链路的全链实跑与红线审计，确认两个新功能可发布。
+
+依赖：D-CROWD10、E-CROWD11、D-CROWD11 全部完成。
+
+验收链路：
+1. 全新 workspace 进入 the-crowd。
+2. 点「下载明细模板」「下载聚合模板」，分别用 Excel / Numbers 打开，确认字段、示例、编码符合 X-CROWD10 规范。
+3. 点「试用明细示例」，触发通道 A 一键画像，4 步 stepper 全绿，画像 v1 可查看，字典/分群带 "auto" 徽章。
+4. 点「试用聚合示例」，触发通道 B 一键画像，3 步 stepper 全绿，画像 v1 可查看。
+5. 关闭"上传后自动生成画像" toggle，手动跑完整链路（导入 → 字典 → 分群 → 生成画像），确认不退化。
+6. 用 demo-detail.csv 故意制造缺失/异常字段（手工编辑），上传后验证回退提示。
+7. 用户手填字典业务解释 → 在已有分群上重新生成画像 → 对比 v1 / v2 质量。
+
+安全审计（必须通过）：
+- import-aggregate / auto-tag-dictionary / default-segment 三路由：grep "openai|llm|chat|generate" 必须空匹配。
+- generateCrowdProfile 调用栈：通过日志确认 LLM payload 不含原始行、不含聚合 CSV 内容，只含聚合摘要。
+- 错误返回体 / server log：grep 任意字段值样本必须空匹配。
+- 模板/示例 CSV 静态文件：人工 review 确认全部为虚拟数据，无任何真实 PII。
+- 检查 simulation 联动路径未受影响（沿用 X-CROWD9 旧验收清单）。
+
+门禁：
+- npm run typecheck + npm run build。
+- server 相关测试（crowd-e2e-smoke 等）。
+- 数据探索隔离 grep（AGENTS.md 指定）。
+
+收口：
+- 更新 docs/notes-data.md：追加"聚合上传通道安全口径"决策章节。
+- 更新 docs/the-crowd-任务派发.md：追加 X-CROWD10~12 章节与实跑结论。
+- 更新 web/src/docs/the-crowd-readme.md + docs/the-crowd-README.md：增加一键模式 + 双通道说明。
+- wiki 卡片状态置 done。
+- 一阶段 done 全部完成后，将 X-CROWD10~12 + D-CROWD10/11 + E-CROWD11 汇总进 CHANGELOG 一条版本记录，再从 TASKS 删除这些 done 条目。` },
+
+
   // ════ 【行动闭环·模拟实验 DLF】（总控拆卡 2026-06-28；来源=用户需求：针对分析报告产出的行动策略/方案，用数字生命体做模拟预测。典型场景：门店零售活动目标客群接受度、新品概念测款、用户增长方案专家投票）。首版决策：数字生命体复用 subagents 管理里的 SubAgentTemplate persona，但不启动真实 subagent runner；统一由 simulation API 读取报告/方案衍生产物并输出结构化模拟结果。红线：只允许 report/business_requirements/golden_strategy/actions 进入 LLM，禁止 draw_data 原始行级内容。════
   { dom: "X", status: "done", created: "2026-06-28 10:00", title: "【行动闭环·模拟实验·契约·P0】X-DLF0：Simulation Lab 类型契约 + 数据红线 + subagent persona 复用口径", brief:
 `目标：定义“模拟实验”模块的总控契约，作为日常/专题/重复的 action_loop → dlf 子 tab 真正能力入口。模块目的：针对报告、黄金策、行动方案、新品方案等，用数字生命体进行模拟预测，输出方案可行性、接受度、反对点、修改建议和下一步验证实验。

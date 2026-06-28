@@ -75,6 +75,24 @@ test("parse: strips toolIds — DLF must not inherit subagent tool permissions",
   assert.equal((parsed.lifeForms[0] as unknown as { toolIds?: unknown }).toolIds, undefined);
 });
 
+test("parse: accepts crowd_profile source with crowdProfileId and crowdProfileVersionId", () => {
+  const parsed = lab.parseSimulationRunRequest(baseBody({
+    lifeForms: [{ id: "crowd:seg-1", name: "高价值用户", persona: "persona text", source: "crowd_profile", crowdProfileId: "cp-1", crowdProfileVersionId: "cpv-1" }],
+  }));
+  const lf = parsed.lifeForms[0]!;
+  assert.equal(lf.source, "crowd_profile");
+  assert.equal((lf as unknown as { crowdProfileId?: string }).crowdProfileId, "cp-1");
+  assert.equal((lf as unknown as { crowdProfileVersionId?: string }).crowdProfileVersionId, "cpv-1");
+});
+
+test("parse: crowd_profile without crowdProfileId falls back to manual_persona", () => {
+  const parsed = lab.parseSimulationRunRequest(baseBody({
+    lifeForms: [{ id: "x", name: "n", persona: "p", source: "crowd_profile" }],
+  }));
+  assert.equal(parsed.lifeForms[0]!.source, "crowd_profile");
+  assert.equal((parsed.lifeForms[0]! as unknown as { crowdProfileId?: string }).crowdProfileId, undefined);
+});
+
 test("parse: happy path returns SimulationRunInput", () => {
   const parsed = lab.parseSimulationRunRequest(baseBody({
     relPath: "sub/r.md",

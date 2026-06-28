@@ -26,6 +26,23 @@ import type {
   PromptTemplate,
   PromptTemplateInput,
   PromptTemplatePatch,
+  CrowdDataset,
+  CrowdDatasetSource,
+  CrowdDatasetStatus,
+  CrowdTagDictionaryEntry,
+  CrowdTagSensitivity,
+  CrowdProfileDimension,
+  CrowdSegment,
+  CrowdSegmentRuleGroup,
+  CrowdProfile,
+  CrowdProfileStatus,
+  CrowdProfileContent,
+  CrowdProfileVersion,
+  CrowdProfileFeedback,
+  CrowdProfileFeedbackStatus,
+  CrowdSubAgentDraft,
+  CrowdFieldProfile,
+  CrowdTagValueSummary,
 } from "../types.ts";
 // 规则记忆 v2 跨 server/web 契约统一在 types.ts（总控终审 D-PANEL 时收敛）；
 // 下游（routes/data.ts·memory-injection.ts）仍从本文件 import，故此处再导出保持兼容。
@@ -195,6 +212,106 @@ export function initDataTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_skill_proposals_ws_status ON skill_proposals(workspace_id, status, updated_at DESC);
   `);
+
+  // ── the-crowd 人群画像资产库（D-CROWD1 · X-CROWD0 契约审定 schema）──────────────
+  // 6 表：dataset → tag_dictionary → segment → profile → profile_version → feedback
+  // 红线：fieldProfiles/tagDistribution 只存聚合摘要（TopN 枚举+分布），不存原始行级标签明细。
+  //       API 输出明细预览时只允许字段摘要、分布摘要、枚举 TopN，禁止用户级行样本。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS crowd_datasets (
+      id              TEXT PRIMARY KEY,
+      workspace_id    TEXT NOT NULL REFERENCES workspaces(id),
+      name            TEXT NOT NULL,
+      source          TEXT NOT NULL DEFAULT 'upload_csv',
+      status          TEXT NOT NULL DEFAULT 'importing',
+      row_count       INTEGER NOT NULL DEFAULT 0,
+      field_count     INTEGER NOT NULL DEFAULT 0,
+      field_profiles  TEXT NOT NULL DEFAULT '[]',
+      error_message   TEXT,
+      created_at      INTEGER NOT NULL,
+      updated_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_crowd_datasets_ws ON crowd_datasets(workspace_id, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS crowd_tag_dictionary (
+      id              TEXT PRIMARY KEY,
+      workspace_id    TEXT NOT NULL REFERENCES workspaces(id),
+      dataset_id      TEXT NOT NULL REFERENCES crowd_datasets(id),
+      field           TEXT NOT NULL,
+      label           TEXT NOT NULL,
+      description     TEXT NOT NULL DEFAULT '',
+      dimension       TEXT NOT NULL DEFAULT 'custom',
+      sensitivity     TEXT NOT NULL DEFAULT 'internal',
+      weight          REAL NOT NULL DEFAULT 1,
+      value_labels    TEXT NOT NULL DEFAULT '{}',
+      enabled         INTEGER NOT NULL DEFAULT 1,
+      created_at      INTEGER NOT NULL,
+      updated_at      INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_crowd_tag_dict_ws_ds ON crowd_tag_dictionary(workspace_id, dataset_id);
+
+    CREATE TABLE IF NOT EXISTS crowd_segments (
+      id               TEXT PRIMARY KEY,
+      workspace_id     TEXT NOT NULL REFERENCES workspaces(id),
+      dataset_id       TEXT NOT NULL REFERENCES crowd_datasets(id),
+      name             TEXT NOT NULL,
+      description      TEXT NOT NULL DEFAULT '',
+      rule             TEXT NOT NULL DEFAULT '{"logic":"and","conditions":[]}',
+      sample_count     INTEGER NOT NULL DEFAULT 0,
+      coverage_ratio   REAL NOT NULL DEFAULT 0,
+      tag_distribution TEXT NOT NULL DEFAULT '{}',
+      created_at       INTEGER NOT NULL,
+      updated_at       INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_crowd_segments_ws ON crowd_segments(workspace_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_crowd_segments_ws_ds ON crowd_segments(workspace_id, dataset_id);
+
+    CREATE TABLE IF NOT EXISTS crowd_profiles (
+      id                            TEXT PRIMARY KEY,
+      workspace_id                  TEXT NOT NULL REFERENCES workspaces(id),
+      segment_id                    TEXT NOT NULL REFERENCES crowd_segments(id),
+      name                          TEXT NOT NULL,
+      status                        TEXT NOT NULL DEFAULT 'draft',
+      current_version_id            TEXT,
+      published_subagent_template_id TEXT,
+      created_at                    INTEGER NOT NULL,
+      updated_at                    INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_crowd_profiles_ws ON crowd_profiles(workspace_id, updated_at DESC);
+    CREATE INDEX IF NOT EXISTS idx_crowd_profiles_seg ON crowd_profiles(segment_id);
+
+    CREATE TABLE IF NOT EXISTS crowd_profile_versions (
+      id                 TEXT PRIMARY KEY,
+      workspace_id       TEXT NOT NULL REFERENCES workspaces(id),
+      profile_id         TEXT NOT NULL REFERENCES crowd_profiles(id),
+      version            INTEGER NOT NULL,
+      content            TEXT NOT NULL DEFAULT '{}',
+      source             TEXT NOT NULL DEFAULT 'generated',
+      source_feedback_id TEXT,
+      created_at         INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_crowd_profile_versions_pid ON crowd_profile_versions(profile_id, version DESC);
+
+    CREATE TABLE IF NOT EXISTS crowd_profile_feedback (
+      id                   TEXT PRIMARY KEY,
+      workspace_id         TEXT NOT NULL REFERENCES workspaces(id),
+      profile_id           TEXT NOT NULL REFERENCES crowd_profiles(id),
+      profile_version_id   TEXT NOT NULL REFERENCES crowd_profile_versions(id),
+      source_run_id        TEXT,
+      source_life_form_id  TEXT,
+      objections           TEXT NOT NULL DEFAULT '[]',
+      acceptance_conditions TEXT NOT NULL DEFAULT '[]',
+      suggestions          TEXT NOT NULL DEFAULT '[]',
+      status               TEXT NOT NULL DEFAULT 'pending',
+      created_at           INTEGER NOT NULL,
+      reviewed_at          INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_crowd_feedback_pid ON crowd_profile_feedback(profile_id, created_at DESC);
+  `);
+  // migration: add columns for E-CROWD11 (safe to run repeatedly)
+  try { db.exec(`ALTER TABLE crowd_datasets ADD COLUMN is_aggregate INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE crowd_tag_dictionary ADD COLUMN auto_generated INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
+  try { db.exec(`ALTER TABLE crowd_segments ADD COLUMN auto_generated INTEGER NOT NULL DEFAULT 0`); } catch { /* already exists */ }
 }
 
 // ============================================================================
@@ -1518,4 +1635,560 @@ export function rejectSkillProposal(id: string, reason: string): SkillProposal |
     .run(reason ?? "", now, id);
   if (info.changes === 0) return null;
   return getSkillProposal(id);
+}
+
+// ============================================================================
+// the-crowd CRUD（D-CROWD1 · X-CROWD0 契约实装）
+// ============================================================================
+// 红线：fieldProfiles/tagDistribution 只存聚合摘要（TopN 枚举+分布），不存原始行级标签明细。
+//       API 输出明细预览时只允许字段摘要、分布摘要、枚举 TopN，禁止用户级行样本。
+//       删除/覆盖/重建版本类动作预留二次确认参数（由 routes 层 ?confirm=true 控制）。
+// ============================================================================
+
+// ---- row types ----
+
+interface CrowdDatasetRow {
+  id: string; workspace_id: string; name: string; source: string; status: string;
+  row_count: number; field_count: number; field_profiles: string; is_aggregate: number;
+  error_message: string | null; created_at: number; updated_at: number;
+}
+
+interface CrowdTagDictionaryRow {
+  id: string; workspace_id: string; dataset_id: string; field: string; label: string;
+  description: string; dimension: string; sensitivity: string; weight: number;
+  value_labels: string; enabled: number; auto_generated: number;
+  created_at: number; updated_at: number;
+}
+
+interface CrowdSegmentRow {
+  id: string; workspace_id: string; dataset_id: string; name: string; description: string;
+  rule: string; sample_count: number; coverage_ratio: number; tag_distribution: string;
+  auto_generated: number; created_at: number; updated_at: number;
+}
+
+interface CrowdProfileRow {
+  id: string; workspace_id: string; segment_id: string; name: string; status: string;
+  current_version_id: string | null; published_subagent_template_id: string | null;
+  created_at: number; updated_at: number;
+}
+
+interface CrowdProfileVersionRow {
+  id: string; workspace_id: string; profile_id: string; version: number;
+  content: string; source: string; source_feedback_id: string | null; created_at: number;
+}
+
+interface CrowdProfileFeedbackRow {
+  id: string; workspace_id: string; profile_id: string; profile_version_id: string;
+  source_run_id: string | null; source_life_form_id: string | null;
+  objections: string; acceptance_conditions: string; suggestions: string;
+  status: string; created_at: number; reviewed_at: number | null;
+}
+
+// ---- helpers ----
+
+function parseJsonField<T>(s: string, fallback: T): T {
+  try { return JSON.parse(s) as T; } catch { return fallback; }
+}
+
+function parseJsonStrArray(s: string): string[] {
+  try { const v = JSON.parse(s) as unknown; return Array.isArray(v) ? v.filter((x): x is string => typeof x === "string") : []; } catch { return []; }
+}
+
+function parseJsonStrMap(s: string): Record<string, string> {
+  try { const v = JSON.parse(s) as unknown; return typeof v === "object" && v !== null && !Array.isArray(v) ? Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([, val]) => typeof val === "string").map(([k, val]) => [k, val as string])) : {}; } catch { return {}; }
+}
+
+// ---- crowd_datasets ----
+
+function rowToCrowdDataset(r: CrowdDatasetRow): CrowdDataset {
+  return {
+    id: r.id, workspaceId: r.workspace_id, name: r.name,
+    source: r.source as CrowdDatasetSource, status: r.status as CrowdDatasetStatus,
+    rowCount: r.row_count, fieldCount: r.field_count,
+    fieldProfiles: parseJsonField<CrowdFieldProfile[]>(r.field_profiles, []),
+    isAggregate: r.is_aggregate === 1 ? true : undefined,
+    errorMessage: r.error_message ?? undefined,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export interface CrowdDatasetCreateInput {
+  name: string;
+  source?: CrowdDatasetSource;
+  rowCount?: number;
+  fieldCount?: number;
+  fieldProfiles?: CrowdFieldProfile[];
+  isAggregate?: boolean;
+}
+
+export function createCrowdDataset(workspaceId: string, input: CrowdDatasetCreateInput): CrowdDataset {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO crowd_datasets (id, workspace_id, name, source, status, row_count, field_count, field_profiles, is_aggregate, created_at, updated_at)
+     VALUES (?, ?, ?, ?, 'ready', ?, ?, ?, ?, ?, ?)`,
+  ).run(id, workspaceId, input.name, input.source ?? "upload_csv", input.rowCount ?? 0, input.fieldCount ?? 0, JSON.stringify(input.fieldProfiles ?? []), input.isAggregate ? 1 : 0, now, now);
+  return rowToCrowdDataset(db.prepare("SELECT * FROM crowd_datasets WHERE id = ?").get(id) as unknown as CrowdDatasetRow);
+}
+
+export function getCrowdDataset(id: string): CrowdDataset | undefined {
+  const r = db.prepare("SELECT * FROM crowd_datasets WHERE id = ?").get(id) as unknown as CrowdDatasetRow | undefined;
+  return r ? rowToCrowdDataset(r) : undefined;
+}
+
+export function listCrowdDatasets(workspaceId: string): CrowdDataset[] {
+  const rows = db.prepare("SELECT * FROM crowd_datasets WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId) as unknown as CrowdDatasetRow[];
+  return rows.map(rowToCrowdDataset);
+}
+
+export interface CrowdDatasetPatch {
+  name?: string;
+  status?: CrowdDatasetStatus;
+  rowCount?: number;
+  fieldCount?: number;
+  fieldProfiles?: CrowdFieldProfile[];
+  isAggregate?: boolean;
+  errorMessage?: string | null;
+}
+
+export function updateCrowdDataset(id: string, patch: CrowdDatasetPatch): CrowdDataset | undefined {
+  const existing = db.prepare("SELECT * FROM crowd_datasets WHERE id = ?").get(id) as unknown as CrowdDatasetRow | undefined;
+  if (!existing) return undefined;
+  const now = Date.now();
+  db.prepare(
+    `UPDATE crowd_datasets SET name = ?, status = ?, row_count = ?, field_count = ?, field_profiles = ?, is_aggregate = ?, error_message = ?, updated_at = ? WHERE id = ?`,
+  ).run(
+    patch.name ?? existing.name, patch.status ?? existing.status,
+    patch.rowCount ?? existing.row_count, patch.fieldCount ?? existing.field_count,
+    JSON.stringify(patch.fieldProfiles ?? parseJsonField<CrowdFieldProfile[]>(existing.field_profiles, [])),
+    patch.isAggregate !== undefined ? (patch.isAggregate ? 1 : 0) : existing.is_aggregate,
+    patch.errorMessage !== undefined ? patch.errorMessage : existing.error_message,
+    now, id,
+  );
+  return getCrowdDataset(id);
+}
+
+export function deleteCrowdDataset(id: string): boolean {
+  db.exec("BEGIN");
+  try {
+    const profiles = db.prepare(`
+      SELECT p.id FROM crowd_profiles p
+      JOIN crowd_segments s ON s.id = p.segment_id
+      WHERE s.dataset_id = ?
+    `).all(id) as Array<{ id: string }>;
+    for (const profile of profiles) {
+      db.prepare("DELETE FROM crowd_profile_feedback WHERE profile_id = ?").run(profile.id);
+      db.prepare("DELETE FROM crowd_profile_versions WHERE profile_id = ?").run(profile.id);
+    }
+    db.prepare("DELETE FROM crowd_profiles WHERE segment_id IN (SELECT id FROM crowd_segments WHERE dataset_id = ?)").run(id);
+    db.prepare("DELETE FROM crowd_segments WHERE dataset_id = ?").run(id);
+    db.prepare("DELETE FROM crowd_tag_dictionary WHERE dataset_id = ?").run(id);
+    const info = db.prepare("DELETE FROM crowd_datasets WHERE id = ?").run(id);
+    db.exec("COMMIT");
+    return info.changes > 0;
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// ---- crowd_tag_dictionary ----
+
+function rowToCrowdTagDictionaryEntry(r: CrowdTagDictionaryRow): CrowdTagDictionaryEntry {
+  return {
+    id: r.id, workspaceId: r.workspace_id, datasetId: r.dataset_id,
+    field: r.field, label: r.label, description: r.description,
+    dimension: r.dimension as CrowdProfileDimension, sensitivity: r.sensitivity as CrowdTagSensitivity,
+    weight: r.weight, valueLabels: parseJsonStrMap(r.value_labels),
+    enabled: r.enabled === 1, autoGenerated: r.auto_generated === 1 ? true : undefined,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export function listCrowdTagDictionary(workspaceId: string, datasetId: string): CrowdTagDictionaryEntry[] {
+  const rows = db.prepare(
+    "SELECT * FROM crowd_tag_dictionary WHERE workspace_id = ? AND dataset_id = ? ORDER BY field",
+  ).all(workspaceId, datasetId) as unknown as CrowdTagDictionaryRow[];
+  return rows.map(rowToCrowdTagDictionaryEntry);
+}
+
+export interface CrowdTagDictionaryEntryInput {
+  field: string;
+  label: string;
+  description?: string;
+  dimension?: CrowdProfileDimension;
+  sensitivity?: CrowdTagSensitivity;
+  weight?: number;
+  valueLabels?: Record<string, string>;
+  enabled?: boolean;
+  autoGenerated?: boolean;
+}
+
+export function saveCrowdTagDictionary(workspaceId: string, datasetId: string, entries: CrowdTagDictionaryEntryInput[]): CrowdTagDictionaryEntry[] {
+  const now = Date.now();
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM crowd_tag_dictionary WHERE workspace_id = ? AND dataset_id = ?").run(workspaceId, datasetId);
+    const result: CrowdTagDictionaryEntry[] = [];
+    for (const e of entries) {
+      const id = randomUUID();
+      db.prepare(
+        `INSERT INTO crowd_tag_dictionary (id, workspace_id, dataset_id, field, label, description, dimension, sensitivity, weight, value_labels, enabled, auto_generated, created_at, updated_at)
+         VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+      ).run(id, workspaceId, datasetId, e.field, e.label, e.description ?? "", e.dimension ?? "custom", e.sensitivity ?? "internal", e.weight ?? 1, JSON.stringify(e.valueLabels ?? {}), e.enabled !== false ? 1 : 0, e.autoGenerated ? 1 : 0, now, now);
+      result.push(rowToCrowdTagDictionaryEntry(db.prepare("SELECT * FROM crowd_tag_dictionary WHERE id = ?").get(id) as unknown as CrowdTagDictionaryRow));
+    }
+    db.exec("COMMIT");
+    return result;
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// ---- crowd_segments ----
+
+function rowToCrowdSegment(r: CrowdSegmentRow): CrowdSegment {
+  return {
+    id: r.id, workspaceId: r.workspace_id, datasetId: r.dataset_id,
+    name: r.name, description: r.description,
+    rule: parseJsonField<CrowdSegmentRuleGroup>(r.rule, { logic: "and", conditions: [] }),
+    sampleCount: r.sample_count, coverageRatio: r.coverage_ratio,
+    tagDistribution: parseJsonField<Record<string, CrowdTagValueSummary[]>>(r.tag_distribution, {}),
+    autoGenerated: r.auto_generated === 1 ? true : undefined,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export interface CrowdSegmentCreateInput {
+  datasetId: string;
+  name: string;
+  description?: string;
+  rule?: CrowdSegmentRuleGroup;
+  autoGenerated?: boolean;
+}
+
+export function createCrowdSegment(workspaceId: string, input: CrowdSegmentCreateInput): CrowdSegment {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO crowd_segments (id, workspace_id, dataset_id, name, description, rule, sample_count, coverage_ratio, tag_distribution, auto_generated, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, 0, 0, '{}', ?, ?, ?)`,
+  ).run(id, workspaceId, input.datasetId, input.name, input.description ?? "", JSON.stringify(input.rule ?? { logic: "and", conditions: [] }), input.autoGenerated ? 1 : 0, now, now);
+  return rowToCrowdSegment(db.prepare("SELECT * FROM crowd_segments WHERE id = ?").get(id) as unknown as CrowdSegmentRow);
+}
+
+export function getCrowdSegment(id: string): CrowdSegment | undefined {
+  const r = db.prepare("SELECT * FROM crowd_segments WHERE id = ?").get(id) as unknown as CrowdSegmentRow | undefined;
+  return r ? rowToCrowdSegment(r) : undefined;
+}
+
+export function listCrowdSegments(workspaceId: string, datasetId?: string): CrowdSegment[] {
+  const rows = (datasetId
+    ? db.prepare("SELECT * FROM crowd_segments WHERE workspace_id = ? AND dataset_id = ? ORDER BY updated_at DESC").all(workspaceId, datasetId)
+    : db.prepare("SELECT * FROM crowd_segments WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId)) as unknown as CrowdSegmentRow[];
+  return rows.map(rowToCrowdSegment);
+}
+
+export interface CrowdSegmentPatch {
+  name?: string;
+  description?: string;
+  rule?: CrowdSegmentRuleGroup;
+  sampleCount?: number;
+  coverageRatio?: number;
+  tagDistribution?: Record<string, CrowdTagValueSummary[]>;
+  autoGenerated?: boolean;
+}
+
+export function updateCrowdSegment(id: string, patch: CrowdSegmentPatch): CrowdSegment | undefined {
+  const existing = db.prepare("SELECT * FROM crowd_segments WHERE id = ?").get(id) as unknown as CrowdSegmentRow | undefined;
+  if (!existing) return undefined;
+  const now = Date.now();
+  db.prepare(
+    `UPDATE crowd_segments SET name = ?, description = ?, rule = ?, sample_count = ?, coverage_ratio = ?, tag_distribution = ?, auto_generated = ?, updated_at = ? WHERE id = ?`,
+  ).run(
+    patch.name ?? existing.name,
+    patch.description ?? existing.description,
+    JSON.stringify(patch.rule ?? parseJsonField<CrowdSegmentRuleGroup>(existing.rule, { logic: "and", conditions: [] })),
+    patch.sampleCount ?? existing.sample_count,
+    patch.coverageRatio ?? existing.coverage_ratio,
+    JSON.stringify(patch.tagDistribution ?? parseJsonField<Record<string, CrowdTagValueSummary[]>>(existing.tag_distribution, {})),
+    patch.autoGenerated !== undefined ? (patch.autoGenerated ? 1 : 0) : existing.auto_generated,
+    now, id,
+  );
+  return getCrowdSegment(id);
+}
+
+export function deleteCrowdSegment(id: string): boolean {
+  db.exec("BEGIN");
+  try {
+    const profiles = db.prepare("SELECT id FROM crowd_profiles WHERE segment_id = ?").all(id) as Array<{ id: string }>;
+    for (const profile of profiles) {
+      db.prepare("DELETE FROM crowd_profile_feedback WHERE profile_id = ?").run(profile.id);
+      db.prepare("DELETE FROM crowd_profile_versions WHERE profile_id = ?").run(profile.id);
+    }
+    db.prepare("DELETE FROM crowd_profiles WHERE segment_id = ?").run(id);
+    const info = db.prepare("DELETE FROM crowd_segments WHERE id = ?").run(id);
+    db.exec("COMMIT");
+    return info.changes > 0;
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// ---- crowd_profiles ----
+
+function rowToCrowdProfile(r: CrowdProfileRow): CrowdProfile {
+  return {
+    id: r.id, workspaceId: r.workspace_id, segmentId: r.segment_id,
+    name: r.name, status: r.status as CrowdProfileStatus,
+    currentVersionId: r.current_version_id,
+    publishedSubAgentTemplateId: r.published_subagent_template_id ?? undefined,
+    createdAt: r.created_at, updatedAt: r.updated_at,
+  };
+}
+
+export interface CrowdProfileCreateInput {
+  segmentId: string;
+  name: string;
+  status?: CrowdProfileStatus;
+}
+
+export function createCrowdProfile(workspaceId: string, input: CrowdProfileCreateInput): CrowdProfile {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO crowd_profiles (id, workspace_id, segment_id, name, status, created_at, updated_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, workspaceId, input.segmentId, input.name, input.status ?? "draft", now, now);
+  return rowToCrowdProfile(db.prepare("SELECT * FROM crowd_profiles WHERE id = ?").get(id) as unknown as CrowdProfileRow);
+}
+
+export function getCrowdProfile(id: string): CrowdProfile | undefined {
+  const r = db.prepare("SELECT * FROM crowd_profiles WHERE id = ?").get(id) as unknown as CrowdProfileRow | undefined;
+  return r ? rowToCrowdProfile(r) : undefined;
+}
+
+export function listCrowdProfiles(workspaceId: string, segmentId?: string): CrowdProfile[] {
+  const rows = (segmentId
+    ? db.prepare("SELECT * FROM crowd_profiles WHERE workspace_id = ? AND segment_id = ? ORDER BY updated_at DESC").all(workspaceId, segmentId)
+    : db.prepare("SELECT * FROM crowd_profiles WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId)) as unknown as CrowdProfileRow[];
+  return rows.map(rowToCrowdProfile);
+}
+
+export interface CrowdProfilePatch {
+  name?: string;
+  status?: CrowdProfileStatus;
+  currentVersionId?: string | null;
+  publishedSubAgentTemplateId?: string | null;
+}
+
+export function updateCrowdProfile(id: string, patch: CrowdProfilePatch): CrowdProfile | undefined {
+  const existing = db.prepare("SELECT * FROM crowd_profiles WHERE id = ?").get(id) as unknown as CrowdProfileRow | undefined;
+  if (!existing) return undefined;
+  const now = Date.now();
+  db.prepare(
+    `UPDATE crowd_profiles SET name = ?, status = ?, current_version_id = ?, published_subagent_template_id = ?, updated_at = ? WHERE id = ?`,
+  ).run(
+    patch.name ?? existing.name, patch.status ?? existing.status,
+    patch.currentVersionId !== undefined ? patch.currentVersionId : existing.current_version_id,
+    patch.publishedSubAgentTemplateId !== undefined ? patch.publishedSubAgentTemplateId : existing.published_subagent_template_id,
+    now, id,
+  );
+  return getCrowdProfile(id);
+}
+
+export function deleteCrowdProfile(id: string): boolean {
+  db.exec("BEGIN");
+  try {
+    db.prepare("DELETE FROM crowd_profile_feedback WHERE profile_id = ?").run(id);
+    db.prepare("DELETE FROM crowd_profile_versions WHERE profile_id = ?").run(id);
+    const info = db.prepare("DELETE FROM crowd_profiles WHERE id = ?").run(id);
+    db.exec("COMMIT");
+    return info.changes > 0;
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+// ---- crowd_profile_versions ----
+
+function rowToCrowdProfileVersion(r: CrowdProfileVersionRow): CrowdProfileVersion {
+  return {
+    id: r.id, workspaceId: r.workspace_id, profileId: r.profile_id,
+    version: r.version,
+    content: parseJsonField<CrowdProfileContent>(r.content, { traits: [], motivations: [], decisionTriggers: [], objections: [], tone: "", contentPreference: [], riskNotes: [], evidenceSummary: [], persona: "" }),
+    source: r.source as CrowdProfileVersion["source"],
+    sourceFeedbackId: r.source_feedback_id ?? undefined,
+    createdAt: r.created_at,
+  };
+}
+
+export interface CrowdProfileVersionCreateInput {
+  content: CrowdProfileContent;
+  source?: CrowdProfileVersion["source"];
+  sourceFeedbackId?: string;
+}
+
+export function createCrowdProfileVersion(workspaceId: string, profileId: string, input: CrowdProfileVersionCreateInput): CrowdProfileVersion {
+  const existing = db.prepare("SELECT * FROM crowd_profiles WHERE id = ?").get(profileId) as unknown as CrowdProfileRow | undefined;
+  if (!existing) throw new Error("profile not found");
+  if (existing.workspace_id !== workspaceId) throw new Error("profile belongs to another workspace");
+  const maxVer = db.prepare("SELECT MAX(version) as mv FROM crowd_profile_versions WHERE profile_id = ?").get(profileId) as unknown as { mv: number | null };
+  const nextVer = (maxVer?.mv ?? 0) + 1;
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO crowd_profile_versions (id, workspace_id, profile_id, version, content, source, source_feedback_id, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(id, workspaceId, profileId, nextVer, JSON.stringify(input.content), input.source ?? "generated", input.sourceFeedbackId ?? null, now);
+  return rowToCrowdProfileVersion(db.prepare("SELECT * FROM crowd_profile_versions WHERE id = ?").get(id) as unknown as CrowdProfileVersionRow);
+}
+
+export function getCrowdProfileVersion(id: string): CrowdProfileVersion | undefined {
+  const r = db.prepare("SELECT * FROM crowd_profile_versions WHERE id = ?").get(id) as unknown as CrowdProfileVersionRow | undefined;
+  return r ? rowToCrowdProfileVersion(r) : undefined;
+}
+
+export function listCrowdProfileVersions(profileId: string): CrowdProfileVersion[] {
+  const rows = db.prepare("SELECT * FROM crowd_profile_versions WHERE profile_id = ? ORDER BY version DESC").all(profileId) as unknown as CrowdProfileVersionRow[];
+  return rows.map(rowToCrowdProfileVersion);
+}
+
+// ---- crowd_profile_feedback ----
+
+function rowToCrowdProfileFeedback(r: CrowdProfileFeedbackRow): CrowdProfileFeedback {
+  return {
+    id: r.id, workspaceId: r.workspace_id, profileId: r.profile_id,
+    profileVersionId: r.profile_version_id,
+    sourceRunId: r.source_run_id ?? undefined,
+    sourceLifeFormId: r.source_life_form_id ?? undefined,
+    objections: parseJsonStrArray(r.objections),
+    acceptanceConditions: parseJsonStrArray(r.acceptance_conditions),
+    suggestions: parseJsonStrArray(r.suggestions),
+    status: r.status as CrowdProfileFeedbackStatus,
+    createdAt: r.created_at, reviewedAt: r.reviewed_at ?? undefined,
+  };
+}
+
+export interface CrowdProfileFeedbackCreateInput {
+  profileVersionId: string;
+  sourceRunId?: string;
+  sourceLifeFormId?: string;
+  objections?: string[];
+  acceptanceConditions?: string[];
+  suggestions?: string[];
+}
+
+export function createCrowdProfileFeedback(workspaceId: string, profileId: string, input: CrowdProfileFeedbackCreateInput): CrowdProfileFeedback {
+  const version = getCrowdProfileVersion(input.profileVersionId);
+  if (!version) throw new Error("profile version not found");
+  if (version.workspaceId !== workspaceId || version.profileId !== profileId) {
+    throw new Error("profile version belongs to another profile or workspace");
+  }
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO crowd_profile_feedback (id, workspace_id, profile_id, profile_version_id, source_run_id, source_life_form_id, objections, acceptance_conditions, suggestions, status, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 'pending', ?)`,
+  ).run(id, workspaceId, profileId, input.profileVersionId, input.sourceRunId ?? null, input.sourceLifeFormId ?? null, JSON.stringify(input.objections ?? []), JSON.stringify(input.acceptanceConditions ?? []), JSON.stringify(input.suggestions ?? []), now);
+  return rowToCrowdProfileFeedback(db.prepare("SELECT * FROM crowd_profile_feedback WHERE id = ?").get(id) as unknown as CrowdProfileFeedbackRow);
+}
+
+export function listCrowdProfileFeedback(profileId: string): CrowdProfileFeedback[] {
+  const rows = db.prepare("SELECT * FROM crowd_profile_feedback WHERE profile_id = ? ORDER BY created_at DESC").all(profileId) as unknown as CrowdProfileFeedbackRow[];
+  return rows.map(rowToCrowdProfileFeedback);
+}
+
+export function getCrowdProfileFeedback(id: string): CrowdProfileFeedback | undefined {
+  const r = db.prepare("SELECT * FROM crowd_profile_feedback WHERE id = ?").get(id) as unknown as CrowdProfileFeedbackRow | undefined;
+  return r ? rowToCrowdProfileFeedback(r) : undefined;
+}
+
+export function updateCrowdProfileFeedbackStatus(id: string, profileId: string, status: CrowdProfileFeedbackStatus): CrowdProfileFeedback | undefined {
+  const now = Date.now();
+  const info = db.prepare(
+    `UPDATE crowd_profile_feedback SET status = ?, reviewed_at = ? WHERE id = ? AND profile_id = ? AND status = 'pending'`,
+  ).run(status, status !== "pending" ? now : null, id, profileId);
+  if (info.changes === 0) return undefined;
+  const r = db.prepare("SELECT * FROM crowd_profile_feedback WHERE id = ?").get(id) as unknown as CrowdProfileFeedbackRow;
+  return rowToCrowdProfileFeedback(r);
+}
+
+// ---- crowd_subagent_draft (纯函数，不写表) ----
+
+export function buildCrowdSubAgentDraft(profileId: string, versionId: string): CrowdSubAgentDraft | undefined {
+  const profile = getCrowdProfile(profileId);
+  if (!profile) return undefined;
+  const version = getCrowdProfileVersion(versionId);
+  if (!version || version.profileId !== profileId) return undefined;
+  return {
+    name: profile.name,
+    persona: version.content.persona,
+    source: "crowd_profile",
+    crowdProfileId: profileId,
+    crowdProfileVersionId: versionId,
+  };
+}
+
+// ---- profile lifecycle ----
+
+function appendUnique(values: string[], additions: string[]): string[] {
+  const seen = new Set(values);
+  const next = [...values];
+  for (const item of additions) {
+    const trimmed = item.trim();
+    if (!trimmed || seen.has(trimmed)) continue;
+    seen.add(trimmed);
+    next.push(trimmed);
+  }
+  return next;
+}
+
+export function adoptFeedbackToVersion(
+  feedbackId: string,
+  workspaceId: string,
+  profileId: string,
+): { version: CrowdProfileVersion; profile: CrowdProfile } | undefined {
+  const feedback = getCrowdProfileFeedback(feedbackId);
+  if (!feedback || feedback.profileId !== profileId || feedback.status !== "pending") return undefined;
+  const baseVersion = getCrowdProfileVersion(feedback.profileVersionId);
+  if (!baseVersion || baseVersion.workspaceId !== workspaceId || baseVersion.profileId !== profileId) return undefined;
+  db.exec("BEGIN");
+  try {
+    const content: CrowdProfileContent = {
+      ...baseVersion.content,
+      objections: appendUnique(baseVersion.content.objections, feedback.objections),
+      riskNotes: appendUnique(baseVersion.content.riskNotes, feedback.acceptanceConditions),
+      decisionTriggers: appendUnique(baseVersion.content.decisionTriggers, feedback.suggestions),
+      evidenceSummary: appendUnique(baseVersion.content.evidenceSummary, [
+        `Adopted simulation feedback ${feedback.id}`,
+        ...(feedback.sourceRunId ? [`Source simulation run ${feedback.sourceRunId}`] : []),
+      ]),
+    };
+    const version = createCrowdProfileVersion(workspaceId, profileId, {
+      content,
+      source: "simulation_feedback",
+      sourceFeedbackId: feedbackId,
+    });
+    updateCrowdProfileFeedbackStatus(feedbackId, profileId, "adopted");
+    updateCrowdProfile(profileId, { currentVersionId: version.id });
+    db.exec("COMMIT");
+    const profile = getCrowdProfile(profileId)!;
+    return { version, profile };
+  } catch (err) {
+    db.exec("ROLLBACK");
+    throw err;
+  }
+}
+
+export function rollbackProfileToVersion(
+  profileId: string,
+  versionId: string,
+): CrowdProfile | undefined {
+  const version = getCrowdProfileVersion(versionId);
+  if (!version || version.profileId !== profileId) return undefined;
+  return updateCrowdProfile(profileId, { currentVersionId: versionId }) ?? undefined;
 }

@@ -1,6 +1,8 @@
 import { Router } from "express";
+import multer from "multer";
 import { readFileSync, writeFileSync, existsSync, mkdirSync, readdirSync, statSync } from "node:fs";
 import { extname, dirname, join, resolve } from "node:path";
+import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
 import { listWorkspacePaths, getWorkspacePath, getWorkspace, listMemoryInjectionRecords, addTraceEvent, addWorkspacePath } from "../db.ts";
@@ -15,6 +17,7 @@ import {
   rowsToCsv,
   rowsToJson,
   validateSql,
+  executeQuery,
   type ImportColumn,
   type ImportPreviewResult,
 } from "../sql-connections.ts";
@@ -71,7 +74,46 @@ import {
   rejectSkillProposal,
   upsertSkillProposal,
   type SkillProposalStatus,
+  createCrowdDataset,
+  getCrowdDataset,
+  listCrowdDatasets,
+  updateCrowdDataset,
+  deleteCrowdDataset,
+  listCrowdTagDictionary,
+  saveCrowdTagDictionary,
+  createCrowdSegment,
+  getCrowdSegment,
+  listCrowdSegments,
+  updateCrowdSegment,
+  deleteCrowdSegment,
+  createCrowdProfile,
+  getCrowdProfile,
+  listCrowdProfiles,
+  updateCrowdProfile,
+  deleteCrowdProfile,
+  createCrowdProfileVersion,
+  getCrowdProfileVersion,
+  listCrowdProfileVersions,
+  createCrowdProfileFeedback,
+  getCrowdProfileFeedback,
+  listCrowdProfileFeedback,
+  updateCrowdProfileFeedbackStatus,
+  adoptFeedbackToVersion,
+  rollbackProfileToVersion,
+  buildCrowdSubAgentDraft,
+  type CrowdDatasetCreateInput,
+  type CrowdDatasetPatch,
+  type CrowdTagDictionaryEntryInput,
+  type CrowdSegmentCreateInput,
+  type CrowdSegmentPatch,
+  type CrowdProfileCreateInput,
+  type CrowdProfilePatch,
+  type CrowdProfileVersionCreateInput,
+  type CrowdProfileFeedbackCreateInput,
 } from "../db/data.ts";
+import { evaluateSegment, validateSegmentRule } from "../crowd-segment.ts";
+import { computeFieldProfiles } from "../crowd-import.ts";
+import { importAggregateDataset, autoTagDictionary, createDefaultSegment } from "../crowd-aggregate.ts";
 import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
 import { PORT } from "../config.ts";
 import type {
@@ -91,6 +133,7 @@ import type {
   MemoryItemType,
   KnowledgeDocPatch,
   PromptTemplatePatch,
+  CrowdSegmentRuleGroup,
 } from "../types.ts";
 
 /**
@@ -1869,4 +1912,674 @@ dataRouter.post("/api/workspaces/:id/skill-proposals/:proposalId/reject", (req, 
     payload: { decision: "rejected", reason },
   });
   res.json(rejected);
+});
+
+// ============================================================================
+// the-crowd 路由（D-CROWD1 · X-CROWD0 契约实装）
+// ============================================================================
+// 红线：不提供"返回原始行列表给前端再送 LLM"的接口。
+//       API 输出明细预览时只允许字段摘要、分布摘要、枚举 TopN，禁止用户级行样本。
+//       删除/覆盖/重建版本类动作预留二次确认参数（?confirm=true）。
+// ============================================================================
+
+// ---- datasets ----
+
+const crowdUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 50 * 1024 * 1024 } });
+
+dataRouter.post("/api/workspaces/:id/crowd/datasets/import", crowdUpload.single("file"), (req, res) => {
+  const workspaceId = req.params.id;
+  if (!workspaceId) return res.status(400).json({ error: "workspace id required" });
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "file is required" });
+  const originalName = file.originalname || "upload";
+  const lower = originalName.toLowerCase();
+  if (!lower.endsWith(".csv") && !lower.endsWith(".tsv") && !lower.endsWith(".xlsx") && !lower.endsWith(".xls")) {
+    return res.status(400).json({ error: "unsupported file type, expected .csv/.tsv/.xlsx/.xls" });
+  }
+  try {
+    const { columns, rows } = parseAggregationBuffer(file.buffer, originalName);
+    if (columns.length === 0) return res.status(400).json({ error: "file has no columns" });
+    const fieldProfiles = computeFieldProfiles({ columns, rows, normalizeEnums: true });
+    const name = typeof req.body?.name === "string" && req.body.name.trim() ? req.body.name.trim() : originalName.replace(/\.[^.]+$/, "");
+    const source: CrowdDatasetCreateInput["source"] = lower.endsWith(".xlsx") || lower.endsWith(".xls") ? "upload_excel" : "upload_csv";
+    const dataset = createCrowdDataset(workspaceId, {
+      name,
+      source,
+      rowCount: rows.length,
+      fieldCount: columns.length,
+      fieldProfiles,
+    });
+    addTraceEvent({ workspaceId, targetKind: "crowd_dataset", targetId: dataset.id, type: "crowd_dataset_imported", target: dataset.name, status: "success", detail: `导入 crowd dataset · ${dataset.name} · ${rows.length} 行 ${columns.length} 列`, payload: { source, rowCount: rows.length, fieldCount: columns.length } });
+    res.status(201).json(dataset);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "import failed";
+    res.status(400).json({ error: `import failed: ${msg}` });
+  }
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/datasets/import-sql", async (req, res) => {
+  const workspaceId = req.params.id;
+  if (!workspaceId) return res.status(400).json({ error: "workspace id required" });
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.connectionId !== "string" || typeof body.sql !== "string" || !body.sql.trim()) {
+    return res.status(400).json({ error: "connectionId and sql are required" });
+  }
+  const conn = getSqlConnection(body.connectionId);
+  if (!conn) return res.status(404).json({ error: "SQL connection not found" });
+  const validation = validateSql(body.sql);
+  if (!validation.safe) return res.status(400).json({ error: validation.risks.join("; ") || "unsafe SQL", validation });
+  try {
+    const result = await executeQuery(conn, body.sql, 50000);
+    if (!result.columns || result.columns.length === 0) return res.status(400).json({ error: "query returned no columns" });
+    const rows = result.rows as Array<Record<string, unknown>>;
+    const fieldProfiles = computeFieldProfiles({ columns: result.columns, rows, normalizeEnums: true });
+    const name = typeof body.name === "string" && body.name.trim() ? body.name.trim() : `sql_import_${Date.now()}`;
+    const dataset = createCrowdDataset(workspaceId, {
+      name,
+      source: "sql_import",
+      rowCount: rows.length,
+      fieldCount: result.columns.length,
+      fieldProfiles,
+    });
+    addTraceEvent({ workspaceId, targetKind: "crowd_dataset", targetId: dataset.id, type: "crowd_dataset_imported", target: dataset.name, status: "success", detail: `SQL 导入 crowd dataset · ${dataset.name} · ${rows.length} 行`, payload: { source: "sql_import", connectionId: body.connectionId, rowCount: rows.length } });
+    res.status(201).json(dataset);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "import failed";
+    res.status(400).json({ error: `SQL import failed: ${msg}` });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/crowd/datasets", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listCrowdDatasets(workspaceId));
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/datasets", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.name !== "string" || !body.name.trim()) {
+    return res.status(400).json({ error: "name is required" });
+  }
+  const input: CrowdDatasetCreateInput = {
+    name: body.name,
+    source: typeof body.source === "string" ? body.source as CrowdDatasetCreateInput["source"] : undefined,
+    rowCount: typeof body.rowCount === "number" ? body.rowCount : undefined,
+    fieldCount: typeof body.fieldCount === "number" ? body.fieldCount : undefined,
+    fieldProfiles: Array.isArray(body.fieldProfiles) ? body.fieldProfiles as CrowdDatasetCreateInput["fieldProfiles"] : undefined,
+  };
+  const dataset = createCrowdDataset(workspaceId, input);
+  addTraceEvent({ workspaceId, targetKind: "crowd_dataset", targetId: dataset.id, type: "crowd_dataset_created", target: dataset.name, status: "success", detail: `创建 crowd dataset · ${dataset.name}`, payload: { source: dataset.source } });
+  res.status(201).json(dataset);
+});
+
+dataRouter.get("/api/workspaces/:id/crowd/datasets/:datasetId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const dataset = getCrowdDataset(req.params.datasetId);
+  if (!dataset) return res.status(404).json({ error: "dataset not found" });
+  if (dataset.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  res.json(dataset);
+});
+
+dataRouter.patch("/api/workspaces/:id/crowd/datasets/:datasetId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getCrowdDataset(req.params.datasetId);
+  if (!existing) return res.status(404).json({ error: "dataset not found" });
+  if (existing.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body) return res.status(400).json({ error: "body required" });
+  const patch: CrowdDatasetPatch = {};
+  if (typeof body.name === "string") patch.name = body.name;
+  if (typeof body.status === "string") patch.status = body.status as CrowdDatasetPatch["status"];
+  if (typeof body.rowCount === "number") patch.rowCount = body.rowCount;
+  if (typeof body.fieldCount === "number") patch.fieldCount = body.fieldCount;
+  if (Array.isArray(body.fieldProfiles)) patch.fieldProfiles = body.fieldProfiles as CrowdDatasetPatch["fieldProfiles"];
+  if (body.errorMessage === null || typeof body.errorMessage === "string") patch.errorMessage = body.errorMessage;
+  const updated = updateCrowdDataset(req.params.datasetId, patch);
+  if (!updated) return res.status(500).json({ error: "failed to update dataset" });
+  res.json(updated);
+});
+
+dataRouter.delete("/api/workspaces/:id/crowd/datasets/:datasetId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getCrowdDataset(req.params.datasetId);
+  if (!existing) return res.status(404).json({ error: "dataset not found" });
+  if (existing.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  if (req.query.confirm !== "true") return res.status(400).json({ error: "confirm=true required to delete dataset" });
+  deleteCrowdDataset(req.params.datasetId);
+  addTraceEvent({ workspaceId, targetKind: "crowd_dataset", targetId: req.params.datasetId, type: "crowd_dataset_deleted", target: existing.name, status: "success", detail: `删除 crowd dataset · ${existing.name}` });
+  res.json({ deleted: true });
+});
+
+// ---- tag dictionary ----
+
+dataRouter.get("/api/workspaces/:id/crowd/datasets/:datasetId/tag-dictionary", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const dataset = getCrowdDataset(req.params.datasetId);
+  if (!dataset) return res.status(404).json({ error: "dataset not found" });
+  if (dataset.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  res.json(listCrowdTagDictionary(workspaceId, req.params.datasetId));
+});
+
+dataRouter.put("/api/workspaces/:id/crowd/datasets/:datasetId/tag-dictionary", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const dataset = getCrowdDataset(req.params.datasetId);
+  if (!dataset) return res.status(404).json({ error: "dataset not found" });
+  if (dataset.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || !Array.isArray(body.entries)) return res.status(400).json({ error: "entries array required" });
+  const entries: CrowdTagDictionaryEntryInput[] = (body.entries as Array<Record<string, unknown>>).map((e) => ({
+    field: typeof e.field === "string" ? e.field : "",
+    label: typeof e.label === "string" ? e.label : "",
+    description: typeof e.description === "string" ? e.description : undefined,
+    dimension: typeof e.dimension === "string" ? e.dimension as CrowdTagDictionaryEntryInput["dimension"] : undefined,
+    sensitivity: typeof e.sensitivity === "string" ? e.sensitivity as CrowdTagDictionaryEntryInput["sensitivity"] : undefined,
+    weight: typeof e.weight === "number" ? e.weight : undefined,
+    valueLabels: typeof e.valueLabels === "object" && e.valueLabels !== null && !Array.isArray(e.valueLabels) ? e.valueLabels as Record<string, string> : undefined,
+    enabled: typeof e.enabled === "boolean" ? e.enabled : undefined,
+  }));
+  const invalid = entries.find((e) => !e.field.trim());
+  if (invalid) return res.status(400).json({ error: "each entry must have a non-empty field" });
+  const saved = saveCrowdTagDictionary(workspaceId, req.params.datasetId, entries);
+  addTraceEvent({ workspaceId, targetKind: "crowd_tag_dictionary", targetId: req.params.datasetId, type: "crowd_tag_dict_saved", target: dataset.name, status: "success", detail: `保存标签字典 · ${saved.length} 条`, payload: { count: saved.length } });
+  res.json(saved);
+});
+
+// ---- segments ----
+
+dataRouter.get("/api/workspaces/:id/crowd/segments", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const datasetId = typeof req.query.datasetId === "string" ? req.query.datasetId : undefined;
+  res.json(listCrowdSegments(workspaceId, datasetId));
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/segments/preview", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.datasetId !== "string" || typeof body.rule !== "object" || body.rule === null) {
+    return res.status(400).json({ error: "datasetId and rule are required" });
+  }
+  const dataset = getCrowdDataset(body.datasetId);
+  if (!dataset) return res.status(404).json({ error: "dataset not found" });
+  if (dataset.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  const rule = body.rule as CrowdSegmentRuleGroup;
+  const valErrs = validateSegmentRule(rule, dataset.fieldProfiles);
+  if (valErrs.length > 0) {
+    return res.status(400).json({ error: "invalid rule", validationErrors: valErrs });
+  }
+  const result = evaluateSegment(rule, dataset.fieldProfiles, dataset.rowCount);
+  res.json(result);
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/segments", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.datasetId !== "string" || typeof body.name !== "string" || !body.name.trim()) {
+    return res.status(400).json({ error: "datasetId and name are required" });
+  }
+  const dataset = getCrowdDataset(body.datasetId);
+  if (!dataset) return res.status(404).json({ error: "dataset not found" });
+  if (dataset.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  const rule = (typeof body.rule === "object" && body.rule !== null ? body.rule : { logic: "and", conditions: [] }) as CrowdSegmentCreateInput["rule"];
+  const valErrs = validateSegmentRule(rule!, dataset.fieldProfiles);
+  if (valErrs.length > 0) {
+    return res.status(400).json({ error: "invalid rule", validationErrors: valErrs });
+  }
+  const evalResult = evaluateSegment(rule!, dataset.fieldProfiles, dataset.rowCount);
+  const input: CrowdSegmentCreateInput = {
+    datasetId: body.datasetId,
+    name: body.name,
+    description: typeof body.description === "string" ? body.description : undefined,
+    rule,
+  };
+  const segment = createCrowdSegment(workspaceId, input);
+  const updated = updateCrowdSegment(segment.id, {
+    sampleCount: evalResult.sampleCount,
+    coverageRatio: evalResult.coverageRatio,
+    tagDistribution: evalResult.tagDistribution,
+  });
+  addTraceEvent({ workspaceId, targetKind: "crowd_segment", targetId: segment.id, type: "crowd_segment_created", target: segment.name, status: "success", detail: `创建分群 · ${segment.name} · 样本 ${evalResult.sampleCount}`, payload: { datasetId: segment.datasetId, sampleCount: evalResult.sampleCount, coverageRatio: evalResult.coverageRatio } });
+  res.status(201).json(updated ?? segment);
+});
+
+dataRouter.get("/api/workspaces/:id/crowd/segments/:segmentId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const segment = getCrowdSegment(req.params.segmentId);
+  if (!segment) return res.status(404).json({ error: "segment not found" });
+  if (segment.workspaceId !== workspaceId) return res.status(403).json({ error: "segment belongs to another workspace" });
+  res.json(segment);
+});
+
+dataRouter.patch("/api/workspaces/:id/crowd/segments/:segmentId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getCrowdSegment(req.params.segmentId);
+  if (!existing) return res.status(404).json({ error: "segment not found" });
+  if (existing.workspaceId !== workspaceId) return res.status(403).json({ error: "segment belongs to another workspace" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body) return res.status(400).json({ error: "body required" });
+  const patch: CrowdSegmentPatch = {};
+  if (typeof body.name === "string") patch.name = body.name;
+  if (typeof body.description === "string") patch.description = body.description;
+  if (typeof body.rule === "object" && body.rule !== null) {
+    const rule = body.rule as CrowdSegmentPatch["rule"];
+    const dataset = getCrowdDataset(existing.datasetId);
+    if (dataset) {
+      const valErrs = validateSegmentRule(rule!, dataset.fieldProfiles);
+      if (valErrs.length > 0) {
+        return res.status(400).json({ error: "invalid rule", validationErrors: valErrs });
+      }
+      const evalResult = evaluateSegment(rule!, dataset.fieldProfiles, dataset.rowCount);
+      patch.rule = rule;
+      patch.sampleCount = evalResult.sampleCount;
+      patch.coverageRatio = evalResult.coverageRatio;
+      patch.tagDistribution = evalResult.tagDistribution;
+    } else {
+      patch.rule = rule;
+    }
+  }
+  if (typeof body.sampleCount === "number") patch.sampleCount = body.sampleCount;
+  if (typeof body.coverageRatio === "number") patch.coverageRatio = body.coverageRatio;
+  if (typeof body.tagDistribution === "object" && body.tagDistribution !== null) patch.tagDistribution = body.tagDistribution as CrowdSegmentPatch["tagDistribution"];
+  const updated = updateCrowdSegment(req.params.segmentId, patch);
+  if (!updated) return res.status(500).json({ error: "failed to update segment" });
+  res.json(updated);
+});
+
+dataRouter.delete("/api/workspaces/:id/crowd/segments/:segmentId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getCrowdSegment(req.params.segmentId);
+  if (!existing) return res.status(404).json({ error: "segment not found" });
+  if (existing.workspaceId !== workspaceId) return res.status(403).json({ error: "segment belongs to another workspace" });
+  if (req.query.confirm !== "true") return res.status(400).json({ error: "confirm=true required to delete segment" });
+  deleteCrowdSegment(req.params.segmentId);
+  addTraceEvent({ workspaceId, targetKind: "crowd_segment", targetId: req.params.segmentId, type: "crowd_segment_deleted", target: existing.name, status: "success", detail: `删除分群 · ${existing.name}` });
+  res.json({ deleted: true });
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/segments/:segmentId/copy", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getCrowdSegment(req.params.segmentId);
+  if (!existing) return res.status(404).json({ error: "segment not found" });
+  if (existing.workspaceId !== workspaceId) return res.status(403).json({ error: "segment belongs to another workspace" });
+  const body = req.body as Record<string, unknown> | undefined;
+  const name = typeof body?.name === "string" && body.name.trim() ? body.name : `${existing.name} (copy)`;
+  const dataset = getCrowdDataset(existing.datasetId);
+  const evalResult = dataset
+    ? evaluateSegment(existing.rule, dataset.fieldProfiles, dataset.rowCount)
+    : { sampleCount: existing.sampleCount, coverageRatio: existing.coverageRatio, tagDistribution: existing.tagDistribution, errors: [] };
+  const segment = createCrowdSegment(workspaceId, {
+    datasetId: existing.datasetId,
+    name,
+    description: existing.description,
+    rule: existing.rule,
+  });
+  const updated = updateCrowdSegment(segment.id, {
+    sampleCount: evalResult.sampleCount,
+    coverageRatio: evalResult.coverageRatio,
+    tagDistribution: evalResult.tagDistribution,
+  });
+  addTraceEvent({ workspaceId, targetKind: "crowd_segment", targetId: segment.id, type: "crowd_segment_copied", target: name, status: "success", detail: `复制分群 · ${existing.name} → ${name}`, payload: { sourceSegmentId: existing.id } });
+  res.status(201).json(updated ?? segment);
+});
+
+// ---- aggregate import + auto defaults (E-CROWD11) ----
+
+dataRouter.post("/api/workspaces/:id/crowd/datasets/import-aggregate", crowdUpload.single("file"), (req, res) => {
+  const workspaceId = req.params.id;
+  if (!workspaceId) return res.status(400).json({ error: "workspace id required" });
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const file = req.file;
+  if (!file) return res.status(400).json({ error: "file is required" });
+  const originalName = file.originalname || "upload";
+  const lower = originalName.toLowerCase();
+  if (!lower.endsWith(".csv") && !lower.endsWith(".tsv") && !lower.endsWith(".xlsx") && !lower.endsWith(".xls")) {
+    return res.status(400).json({ error: "unsupported file type, expected .csv/.tsv/.xlsx/.xls" });
+  }
+  try {
+    const { columns, rows } = parseAggregationBuffer(file.buffer, originalName);
+    if (columns.length === 0) return res.status(400).json({ error: "file has no columns" });
+    const name = typeof req.body?.name === "string" && req.body.name.trim() ? req.body.name.trim() : originalName.replace(/\.[^.]+$/, "");
+    const result = importAggregateDataset(workspaceId, name, columns, rows);
+    addTraceEvent({ workspaceId, targetKind: "crowd_dataset", targetId: result.dataset.id, type: "crowd_aggregate_imported", target: result.dataset.name, status: "success", detail: `聚合导入 · ${result.dataset.name} · ${rows.length} 行 ${result.tagDictionary.length} 字段`, payload: { rowCount: rows.length, fieldCount: result.tagDictionary.length } });
+    res.status(201).json({ dataset: result.dataset, tagDictionary: result.tagDictionary, segments: result.segments });
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "import failed";
+    res.status(400).json({ error: `aggregate import failed: ${msg}` });
+  }
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/datasets/:datasetId/auto-tag-dictionary", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const entries = autoTagDictionary(workspaceId, req.params.datasetId);
+    addTraceEvent({ workspaceId, targetKind: "crowd_tag_dictionary", targetId: req.params.datasetId, type: "crowd_auto_tag_dict", target: req.params.datasetId, status: "success", detail: `自动生成标签字典 · ${entries.length} 条`, payload: { count: entries.length } });
+    res.json(entries);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "auto-tag failed";
+    const status = msg.includes("not found") ? 404 : 400;
+    res.status(status).json({ error: msg });
+  }
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/datasets/:datasetId/default-segment", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const segment = createDefaultSegment(workspaceId, req.params.datasetId);
+    addTraceEvent({ workspaceId, targetKind: "crowd_segment", targetId: segment.id, type: "crowd_default_segment", target: segment.name, status: "success", detail: `创建默认分群 · ${segment.name}`, payload: { datasetId: req.params.datasetId } });
+    res.status(201).json(segment);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : "create default segment failed";
+    const status = msg.includes("not found") ? 404 : 400;
+    res.status(status).json({ error: msg });
+  }
+});
+
+// ---- profiles ----
+
+dataRouter.get("/api/workspaces/:id/crowd/profiles", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const segmentId = typeof req.query.segmentId === "string" ? req.query.segmentId : undefined;
+  res.json(listCrowdProfiles(workspaceId, segmentId));
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/profiles", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.segmentId !== "string" || typeof body.name !== "string" || !body.name.trim()) {
+    return res.status(400).json({ error: "segmentId and name are required" });
+  }
+  const segment = getCrowdSegment(body.segmentId);
+  if (!segment) return res.status(404).json({ error: "segment not found" });
+  if (segment.workspaceId !== workspaceId) return res.status(403).json({ error: "segment belongs to another workspace" });
+  const input: CrowdProfileCreateInput = {
+    segmentId: body.segmentId,
+    name: body.name,
+    status: typeof body.status === "string" ? body.status as CrowdProfileCreateInput["status"] : undefined,
+  };
+  const profile = createCrowdProfile(workspaceId, input);
+  addTraceEvent({ workspaceId, targetKind: "crowd_profile", targetId: profile.id, type: "crowd_profile_created", target: profile.name, status: "success", detail: `创建画像 · ${profile.name}`, payload: { segmentId: profile.segmentId } });
+  res.status(201).json(profile);
+});
+
+dataRouter.get("/api/workspaces/:id/crowd/profiles/:profileId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  res.json(profile);
+});
+
+dataRouter.patch("/api/workspaces/:id/crowd/profiles/:profileId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getCrowdProfile(req.params.profileId);
+  if (!existing) return res.status(404).json({ error: "profile not found" });
+  if (existing.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body) return res.status(400).json({ error: "body required" });
+  const patch: CrowdProfilePatch = {};
+  if (typeof body.name === "string") patch.name = body.name;
+  if (typeof body.status === "string") patch.status = body.status as CrowdProfilePatch["status"];
+  if (body.currentVersionId === null) {
+    patch.currentVersionId = null;
+  } else if (typeof body.currentVersionId === "string") {
+    const version = getCrowdProfileVersion(body.currentVersionId);
+    if (!version) return res.status(404).json({ error: "current version not found" });
+    if (version.profileId !== req.params.profileId || version.workspaceId !== workspaceId) {
+      return res.status(403).json({ error: "current version belongs to another profile or workspace" });
+    }
+    patch.currentVersionId = body.currentVersionId;
+  }
+  if (body.publishedSubAgentTemplateId === null || typeof body.publishedSubAgentTemplateId === "string") patch.publishedSubAgentTemplateId = body.publishedSubAgentTemplateId;
+  const updated = updateCrowdProfile(req.params.profileId, patch);
+  if (!updated) return res.status(500).json({ error: "failed to update profile" });
+  res.json(updated);
+});
+
+dataRouter.delete("/api/workspaces/:id/crowd/profiles/:profileId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const existing = getCrowdProfile(req.params.profileId);
+  if (!existing) return res.status(404).json({ error: "profile not found" });
+  if (existing.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  if (req.query.confirm !== "true") return res.status(400).json({ error: "confirm=true required to delete profile" });
+  deleteCrowdProfile(req.params.profileId);
+  addTraceEvent({ workspaceId, targetKind: "crowd_profile", targetId: req.params.profileId, type: "crowd_profile_deleted", target: existing.name, status: "success", detail: `删除画像 · ${existing.name}` });
+  res.json({ deleted: true });
+});
+
+// ---- profile versions ----
+
+dataRouter.get("/api/workspaces/:id/crowd/profiles/:profileId/versions", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  res.json(listCrowdProfileVersions(req.params.profileId));
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/profiles/:profileId/versions", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.content !== "object" || body.content === null) {
+    return res.status(400).json({ error: "content object required" });
+  }
+  const input: CrowdProfileVersionCreateInput = {
+    content: body.content as CrowdProfileVersionCreateInput["content"],
+    source: typeof body.source === "string" ? body.source as CrowdProfileVersionCreateInput["source"] : undefined,
+    sourceFeedbackId: typeof body.sourceFeedbackId === "string" ? body.sourceFeedbackId : undefined,
+  };
+  if (input.sourceFeedbackId) {
+    const feedback = getCrowdProfileFeedback(input.sourceFeedbackId);
+    if (!feedback) return res.status(404).json({ error: "source feedback not found" });
+    if (feedback.profileId !== req.params.profileId || feedback.workspaceId !== workspaceId) {
+      return res.status(403).json({ error: "source feedback belongs to another profile or workspace" });
+    }
+  }
+  try {
+    const version = createCrowdProfileVersion(workspaceId, req.params.profileId, input);
+    res.status(201).json(version);
+  } catch (err) {
+    res.status(500).json({ error: "failed to create profile version" });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/crowd/profiles/:profileId/versions/:versionId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  const version = getCrowdProfileVersion(req.params.versionId);
+  if (!version) return res.status(404).json({ error: "version not found" });
+  if (version.profileId !== req.params.profileId) return res.status(403).json({ error: "version belongs to another profile" });
+  res.json(version);
+});
+
+// ---- profile generation (E-CROWD5) ----
+
+dataRouter.post("/api/workspaces/:id/crowd/profile-generation/run", async (req, res) => {
+  try {
+    const { parseCrowdProfileRequest, runCrowdProfileGeneration } = await import("../crowd-profile-runner.ts");
+    const input = parseCrowdProfileRequest(req.body);
+    const workspaceId = req.params.id;
+    if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+    const segment = getCrowdSegment(input.segmentId);
+    if (!segment) return res.status(404).json({ error: "segment not found" });
+    if (segment.workspaceId !== workspaceId) return res.status(403).json({ error: "segment belongs to another workspace" });
+    const result = await runCrowdProfileGeneration(input, { workspaceId });
+    addTraceEvent({ workspaceId, targetKind: "crowd_profile", targetId: result.profile.id, type: "crowd_profile_generated", target: result.profile.name, status: "success", detail: `画像生成 · ${result.profile.name}`, payload: { segmentId: input.segmentId, model: input.model } });
+    res.json(result);
+  } catch (err) {
+    const msg = err instanceof Error ? err.message : String(err);
+    if (msg.includes("not found") || msg.includes("required") || msg.includes("invalid")) {
+      res.status(400).json({ error: msg });
+    } else {
+      res.status(500).json({ error: msg });
+    }
+  }
+});
+
+// ---- subagent draft ----
+
+dataRouter.post("/api/workspaces/:id/crowd/profiles/:profileId/versions/:versionId/subagent-draft", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  const draft = buildCrowdSubAgentDraft(req.params.profileId, req.params.versionId);
+  if (!draft) return res.status(404).json({ error: "version not found or mismatch" });
+  res.json(draft);
+});
+
+// ---- feedback ----
+
+dataRouter.get("/api/workspaces/:id/crowd/profiles/:profileId/feedback", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  res.json(listCrowdProfileFeedback(req.params.profileId));
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/profiles/:profileId/feedback", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.profileVersionId !== "string") {
+    return res.status(400).json({ error: "profileVersionId is required" });
+  }
+  const input: CrowdProfileFeedbackCreateInput = {
+    profileVersionId: body.profileVersionId,
+    sourceRunId: typeof body.sourceRunId === "string" ? body.sourceRunId : undefined,
+    sourceLifeFormId: typeof body.sourceLifeFormId === "string" ? body.sourceLifeFormId : undefined,
+    objections: Array.isArray(body.objections) ? body.objections.filter((x): x is string => typeof x === "string") : undefined,
+    acceptanceConditions: Array.isArray(body.acceptanceConditions) ? body.acceptanceConditions.filter((x): x is string => typeof x === "string") : undefined,
+    suggestions: Array.isArray(body.suggestions) ? body.suggestions.filter((x): x is string => typeof x === "string") : undefined,
+  };
+  let feedback;
+  try {
+    feedback = createCrowdProfileFeedback(workspaceId, req.params.profileId, input);
+  } catch (err) {
+    const message = err instanceof Error ? err.message : String(err);
+    if (message.includes("profile version not found")) return res.status(404).json({ error: "profile version not found" });
+    if (message.includes("another profile or workspace")) return res.status(403).json({ error: "profile version belongs to another profile or workspace" });
+    throw err;
+  }
+  addTraceEvent({ workspaceId, targetKind: "crowd_feedback", targetId: feedback.id, type: "crowd_feedback_created", target: profile.name, status: "success", detail: `模拟反馈回写 · ${profile.name}`, payload: { profileVersionId: input.profileVersionId } });
+  res.status(201).json(feedback);
+});
+
+dataRouter.patch("/api/workspaces/:id/crowd/profiles/:profileId/feedback/:feedbackId", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.status !== "string") return res.status(400).json({ error: "status is required (adopted | rejected)" });
+  if (body.status !== "adopted" && body.status !== "rejected") return res.status(400).json({ error: "status must be 'adopted' or 'rejected'" });
+  const existing = getCrowdProfileFeedback(req.params.feedbackId);
+  if (!existing) return res.status(404).json({ error: "feedback not found" });
+  if (existing.profileId !== req.params.profileId || existing.workspaceId !== workspaceId) {
+    return res.status(403).json({ error: "feedback belongs to another profile or workspace" });
+  }
+  const updated = updateCrowdProfileFeedbackStatus(req.params.feedbackId, req.params.profileId, body.status);
+  if (!updated) return res.status(404).json({ error: "feedback not found or already reviewed" });
+  addTraceEvent({ workspaceId, targetKind: "crowd_feedback", targetId: updated.id, type: "crowd_feedback_reviewed", target: profile.name, status: "success", detail: `反馈审核 · ${updated.status}`, payload: { status: updated.status } });
+  res.json(updated);
+});
+
+// ---- profile lifecycle ----
+
+dataRouter.post("/api/workspaces/:id/crowd/profiles/:profileId/rollback", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  if (req.query.confirm !== "true") return res.status(400).json({ error: "confirm=true required to rollback" });
+  const body = req.body as Record<string, unknown> | undefined;
+  if (!body || typeof body.versionId !== "string") return res.status(400).json({ error: "versionId is required" });
+  const updated = rollbackProfileToVersion(req.params.profileId, body.versionId);
+  if (!updated) return res.status(404).json({ error: "version not found or mismatch" });
+  addTraceEvent({ workspaceId, targetKind: "crowd_profile", targetId: updated.id, type: "crowd_profile_rollback", target: updated.name, status: "success", detail: `回滚画像版本 · ${updated.name} → ${body.versionId}`, payload: { versionId: body.versionId } });
+  res.json(updated);
+});
+
+dataRouter.post("/api/workspaces/:id/crowd/profiles/:profileId/feedback/:feedbackId/adopt", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const profile = getCrowdProfile(req.params.profileId);
+  if (!profile) return res.status(404).json({ error: "profile not found" });
+  if (profile.workspaceId !== workspaceId) return res.status(403).json({ error: "profile belongs to another workspace" });
+  const feedback = getCrowdProfileFeedback(req.params.feedbackId);
+  if (!feedback) return res.status(404).json({ error: "feedback not found" });
+  if (feedback.profileId !== req.params.profileId || feedback.workspaceId !== workspaceId) {
+    return res.status(403).json({ error: "feedback belongs to another profile or workspace" });
+  }
+  if (feedback.status !== "pending") return res.status(409).json({ error: `feedback already ${feedback.status}` });
+  try {
+    const result = adoptFeedbackToVersion(req.params.feedbackId, workspaceId, req.params.profileId);
+    if (!result) return res.status(500).json({ error: "failed to adopt feedback" });
+    addTraceEvent({ workspaceId, targetKind: "crowd_profile", targetId: result.profile.id, type: "crowd_feedback_adopted", target: result.profile.name, status: "success", detail: `采纳反馈生成新版本 · ${result.profile.name} v${result.version.version}`, payload: { feedbackId: req.params.feedbackId, versionId: result.version.id } });
+    res.status(201).json(result);
+  } catch (err) {
+    res.status(500).json({ error: "failed to adopt feedback" });
+  }
+});
+
+// ---- templates / demo downloads (D-CROWD10) ----
+
+const CROWD_TEMPLATE_WHITELIST = new Set([
+  "template-detail.csv",
+  "template-aggregate.csv",
+  "demo-detail.csv",
+  "demo-aggregate.csv",
+]);
+
+const CROWD_STATIC_DIR = join(import.meta.dirname ?? dirname(fileURLToPath(import.meta.url)), "..", "static", "crowd");
+
+dataRouter.get("/api/crowd/templates/:name", (req, res) => {
+  const name = req.params.name;
+  if (!CROWD_TEMPLATE_WHITELIST.has(name)) {
+    return res.status(404).json({ error: "template not found" });
+  }
+  const filePath = join(CROWD_STATIC_DIR, name);
+  if (!existsSync(filePath)) {
+    return res.status(404).json({ error: "template not found" });
+  }
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="${name}"`);
+  res.sendFile(filePath);
 });

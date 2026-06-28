@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Bot, Plus, Save, Trash2, AlertTriangle, Lock, RefreshCw } from "lucide-react";
+import { Bot, Plus, Save, Trash2, AlertTriangle, Lock, RefreshCw, Database, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { SubAgentBoard } from "@/components/SubAgentBoard";
@@ -106,6 +106,12 @@ const RISK_BADGE: Record<RiskLevel, string> = {
 const CATEGORY_LABEL: Record<ExtractionToolCategory, string> = {
   ingestion: "采集",
   analysis: "分析",
+};
+
+const ORIGIN_LABEL: Record<string, string> = {
+  manual: "手动",
+  crowd_profile: "人群画像",
+  system: "系统",
 };
 
 export function SubAgentManagementPane() {
@@ -358,7 +364,21 @@ function TemplateList({
                 className={`mt-1 h-1.5 w-1.5 shrink-0 rounded-full ${t.enabled ? "bg-emerald-500" : "bg-neutral-300 dark:bg-neutral-600"}`}
               />
               <div className="min-w-0 flex-1">
-                <div className="truncate font-medium text-neutral-700 dark:text-neutral-200">{t.name}</div>
+                <div className="flex items-center gap-1.5">
+                  <span className="truncate font-medium text-neutral-700 dark:text-neutral-200">{t.name}</span>
+                  {t.origin === "crowd_profile" && (
+                    <span className="shrink-0 flex items-center gap-0.5 rounded bg-emerald-100 px-1 py-0 text-[9px] text-emerald-600 dark:bg-emerald-900/40 dark:text-emerald-300">
+                      <Database className="h-2.5 w-2.5" />
+                      画像
+                    </span>
+                  )}
+                  {t.origin === "system" && (
+                    <span className="shrink-0 flex items-center gap-0.5 rounded bg-violet-100 px-1 py-0 text-[9px] text-violet-600 dark:bg-violet-900/40 dark:text-violet-300">
+                      <Sparkles className="h-2.5 w-2.5" />
+                      系统
+                    </span>
+                  )}
+                </div>
                 <div className="truncate text-[11px] text-neutral-400">{personaSummary(t.persona) || "—"}</div>
               </div>
               {t.toolIds.length > 0 && (
@@ -440,6 +460,24 @@ function TemplateEditor({
             <code className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10.5px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
               {selected.id}
             </code>
+            {selected.origin && (
+              <span className={`flex items-center gap-1 rounded px-1.5 py-0.5 text-[10.5px] font-medium ${
+                selected.origin === "crowd_profile"
+                  ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300"
+                  : selected.origin === "system"
+                    ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300"
+                    : "bg-neutral-100 text-neutral-600 dark:bg-neutral-800 dark:text-neutral-400"
+              }`}>
+                {selected.origin === "crowd_profile" && <Database className="h-3 w-3" />}
+                {ORIGIN_LABEL[selected.origin] ?? selected.origin}
+              </span>
+            )}
+            {selected.origin === "crowd_profile" && selected.crowdProfileId && (
+              <code className="rounded bg-emerald-50 px-1.5 py-0.5 text-[10px] font-mono text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">
+                profile: {selected.crowdProfileId.slice(0, 8)}…
+                {selected.crowdProfileVersionId && ` v${selected.crowdProfileVersionId.slice(0, 6)}`}
+              </code>
+            )}
             <button
               onClick={onRemove}
               className="ml-auto flex items-center gap-1 rounded border border-red-200 px-2 py-1 text-[11.5px] text-red-600 hover:bg-red-50 dark:border-red-900 dark:text-red-400 dark:hover:bg-red-950/40"

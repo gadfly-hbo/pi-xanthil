@@ -1,10 +1,12 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { AlertTriangle, BookOpen, FlaskConical, Loader2, Play, Plus, RefreshCw, Trash2, X } from "lucide-react";
+import { AlertTriangle, BookOpen, FlaskConical, Loader2, Play, Plus, RefreshCw, Search, Trash2, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { Markdown } from "@/components/Markdown";
 import readmeContent from "@/docs/simulation-lab-readme.md?raw";
 import type {
+  CrowdProfile,
+  CrowdProfileVersion,
   DigitalLifeForm,
   Flow,
   FlowTreeNode,
@@ -109,7 +111,7 @@ function makeManualId(): string {
   return `manual_${Date.now().toString(36)}_${Math.random().toString(36).slice(2, 6)}`;
 }
 
-export function SimulationLabPane({ scope, models }: { scope: Scope; models: PiModel[] }) {
+export function SimulationLabPane({ scope, models, workspaceId }: { scope: Scope; models: PiModel[]; workspaceId?: string }) {
   // 报告
   const [reports, setReports] = useState<ReportOption[]>([]);
   const [selectedReportId, setSelectedReportId] = useState("");
@@ -120,6 +122,12 @@ export function SimulationLabPane({ scope, models }: { scope: Scope; models: PiM
   const [templatesLoading, setTemplatesLoading] = useState(false);
   const [selectedTemplateIds, setSelectedTemplateIds] = useState<Set<string>>(new Set());
   const [showDisabledTemplates, setShowDisabledTemplates] = useState(false);
+
+  // crowd profiles（the-crowd 画像 · persona-only 复用，不读标签明细）
+  const [crowdProfiles, setCrowdProfiles] = useState<(CrowdProfile & { version?: CrowdProfileVersion })[]>([]);
+  const [crowdProfilesLoading, setCrowdProfilesLoading] = useState(false);
+  const [selectedCrowdProfileIds, setSelectedCrowdProfileIds] = useState<Set<string>>(new Set());
+  const [crowdProfileSearch, setCrowdProfileSearch] = useState("");
 
   // 手填 persona
   const [manualList, setManualList] = useState<ManualPersona[]>([]);
@@ -166,8 +174,18 @@ export function SimulationLabPane({ scope, models }: { scope: Scope; models: PiM
       persona: m.persona,
       source: "manual_persona",
     }));
-    return [...fromTemplates, ...fromManual];
-  }, [templates, selectedTemplateIds, manualList]);
+    const fromCrowd: DigitalLifeForm[] = crowdProfiles
+      .filter((p) => selectedCrowdProfileIds.has(p.id) && p.version)
+      .map((p) => ({
+        id: `crowd:${p.id}`,
+        name: p.name,
+        persona: p.version!.content.persona || `画像「${p.name}」暂无 persona 文本`,
+        source: "crowd_profile" as const,
+        crowdProfileId: p.id,
+        crowdProfileVersionId: p.version!.id,
+      }));
+    return [...fromTemplates, ...fromCrowd, ...fromManual];
+  }, [templates, selectedTemplateIds, manualList, crowdProfiles, selectedCrowdProfileIds]);
 
   const loadReports = useCallback(async () => {
     const sc = scopeRef.current;
@@ -217,6 +235,50 @@ export function SimulationLabPane({ scope, models }: { scope: Scope; models: PiM
   }, []);
 
   useEffect(() => { void loadTemplates(); }, [loadTemplates]);
+
+  // ── crowd profiles（the-crowd 画像 · persona-only）──────────────
+  const loadCrowdProfiles = useCallback(async () => {
+    if (!workspaceId) return;
+    setCrowdProfilesLoading(true);
+    try {
+      const profiles = await api.listCrowdProfiles(workspaceId);
+      const active = profiles.filter((p) => p.status === "draft" || p.status === "active");
+      const withVersions = await Promise.all(active.map(async (p) => {
+        if (!p.currentVersionId) return { ...p } as CrowdProfile & { version?: CrowdProfileVersion };
+        try {
+          const version = await api.getCrowdProfileVersion(workspaceId, p.id, p.currentVersionId);
+          return { ...p, version } as CrowdProfile & { version?: CrowdProfileVersion };
+        } catch {
+          return { ...p } as CrowdProfile & { version?: CrowdProfileVersion };
+        }
+      }));
+      setCrowdProfiles(withVersions);
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setCrowdProfilesLoading(false);
+    }
+  }, [workspaceId]);
+
+  useEffect(() => { void loadCrowdProfiles(); }, [loadCrowdProfiles]);
+
+  const crowdProfilesFiltered = useMemo(() => {
+    if (!crowdProfileSearch.trim()) return crowdProfiles;
+    const q = crowdProfileSearch.toLowerCase();
+    return crowdProfiles.filter((p) =>
+      p.name.toLowerCase().includes(q)
+      || (p.version?.content.persona ?? "").toLowerCase().includes(q)
+      || (p.version?.content.traits ?? []).some((t) => t.toLowerCase().includes(q))
+    );
+  }, [crowdProfiles, crowdProfileSearch]);
+
+  const toggleCrowdProfile = (id: string) => {
+    setSelectedCrowdProfileIds((prev) => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
 
   useEffect(() => {
     if (models.some((m) => m.id === model)) return;
@@ -324,12 +386,12 @@ export function SimulationLabPane({ scope, models }: { scope: Scope; models: PiM
             说明
           </button>
           <button
-            onClick={() => { void loadReports(); void loadTemplates(); }}
-            disabled={loadingReports || running || templatesLoading}
+            onClick={() => { void loadReports(); void loadTemplates(); void loadCrowdProfiles(); }}
+            disabled={loadingReports || running || templatesLoading || crowdProfilesLoading}
             className="inline-flex h-8 items-center gap-1.5 rounded-md px-2 text-[12px] text-neutral-500 hover:bg-neutral-100 disabled:opacity-50 dark:text-neutral-400 dark:hover:bg-neutral-800"
             title="刷新报告与模板列表"
           >
-            <RefreshCw className={cn("h-3.5 w-3.5", (loadingReports || templatesLoading) && "animate-spin")} strokeWidth={1.75} />
+            <RefreshCw className={cn("h-3.5 w-3.5", (loadingReports || templatesLoading || crowdProfilesLoading) && "animate-spin")} strokeWidth={1.75} />
             刷新
           </button>
           <button
@@ -430,6 +492,84 @@ export function SimulationLabPane({ scope, models }: { scope: Scope; models: PiM
               )}
             </div>
 
+            {workspaceId && (
+              <div className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-2 dark:border-neutral-800 dark:bg-neutral-900/40">
+                <div className="mb-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
+                  来自「the-crowd」画像（仅复用 persona，不读标签明细）
+                </div>
+                <div className="relative mb-1.5">
+                  <Search className="absolute left-2 top-1/2 h-3.5 w-3.5 -translate-y-1/2 text-neutral-400" strokeWidth={1.75} />
+                  <input
+                    type="text"
+                    value={crowdProfileSearch}
+                    onChange={(e) => setCrowdProfileSearch(e.target.value)}
+                    placeholder="搜索画像名称 / traits / persona…"
+                    className="h-7 w-full rounded-md border border-neutral-200 bg-white pl-7 pr-2 text-[11.5px] outline-none focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:focus:border-neutral-500"
+                  />
+                </div>
+                {crowdProfilesLoading ? (
+                  <div className="flex items-center gap-2 px-2 py-3 text-[12px] text-neutral-400">
+                    <Loader2 className="h-3.5 w-3.5 animate-spin" /> 加载画像中…
+                  </div>
+                ) : crowdProfilesFiltered.length === 0 ? (
+                  <div className="px-2 py-3 text-[12px] text-neutral-400">
+                    {crowdProfiles.length === 0 ? "暂无画像。可在「Xan 数据库 → the-crowd」创建。" : "无匹配画像。"}
+                  </div>
+                ) : (
+                  <ul className="flex flex-col gap-1.5">
+                    {crowdProfilesFiltered.map((p) => {
+                      const checked = selectedCrowdProfileIds.has(p.id);
+                      const persona = p.version?.content.persona;
+                      const traits = p.version?.content.traits ?? [];
+                      return (
+                        <li
+                          key={p.id}
+                          onClick={() => toggleCrowdProfile(p.id)}
+                          className={cn(
+                            "flex cursor-pointer items-start gap-2 rounded-md border bg-white px-2.5 py-2 text-[12px] transition dark:bg-neutral-950",
+                            checked
+                              ? "border-violet-400 ring-1 ring-violet-300 dark:border-violet-600 dark:ring-violet-700"
+                              : "border-neutral-200 hover:border-neutral-300 dark:border-neutral-800 dark:hover:border-neutral-700",
+                          )}
+                        >
+                          <input
+                            type="checkbox"
+                            className="mt-0.5"
+                            checked={checked}
+                            readOnly
+                          />
+                          <div className="min-w-0 flex-1">
+                            <div className="flex items-center gap-2">
+                              <div className="truncate text-[12.5px] font-medium text-neutral-800 dark:text-neutral-100">{p.name}</div>
+                              <span className={cn(
+                                "rounded border px-1 py-0.5 text-[10px]",
+                                p.status === "active" ? "border-emerald-200 text-emerald-600 dark:border-emerald-800 dark:text-emerald-400" : "border-neutral-200 text-neutral-400 dark:border-neutral-700",
+                              )}>
+                                {p.status === "active" ? "已发布" : "草稿"}
+                              </span>
+                            </div>
+                            {traits.length > 0 && (
+                              <div className="mt-0.5 flex flex-wrap gap-1">
+                                {traits.slice(0, 3).map((t, i) => (
+                                  <span key={i} className="rounded bg-violet-50 px-1 py-0.5 text-[10px] text-violet-600 dark:bg-violet-900/30 dark:text-violet-300">{t}</span>
+                                ))}
+                                {traits.length > 3 && <span className="text-[10px] text-neutral-400">+{traits.length - 3}</span>}
+                              </div>
+                            )}
+                            {persona && (
+                              <div className="mt-0.5 line-clamp-2 text-[11.5px] leading-4 text-neutral-500 dark:text-neutral-400">
+                                {personaSummary(persona, 140)}
+                              </div>
+                            )}
+                          </div>
+                        </li>
+                      );
+                    })}
+                  </ul>
+                )}
+              </div>
+            )}
+
             <div className="rounded-lg border border-neutral-200 bg-neutral-50/50 p-2 dark:border-neutral-800 dark:bg-neutral-900/40">
               <div className="mb-1.5 flex items-center justify-between">
                 <div className="text-[11px] text-neutral-500 dark:text-neutral-400">手填 persona（临时数字生命体）</div>
@@ -507,7 +647,7 @@ export function SimulationLabPane({ scope, models }: { scope: Scope; models: PiM
                   尚无结果。选好报告与数字生命体后点击「运行」。
                 </div>
               ) : (
-                <ResultBlock result={result} />
+                <ResultBlock result={result} lifeForms={lifeForms} workspaceId={workspaceId} />
               )}
             </div>
           </section>
@@ -543,7 +683,38 @@ export function SimulationLabPane({ scope, models }: { scope: Scope; models: PiM
 }
 
 // ─── 结果展示 ────────────────────────────────────────────────────
-function ResultBlock({ result }: { result: SimulationRunResult }) {
+function ResultBlock({ result, lifeForms, workspaceId }: { result: SimulationRunResult; lifeForms: DigitalLifeForm[]; workspaceId?: string }) {
+  const [writebacks, setWritebacks] = useState<Record<string, { status: "idle" | "loading" | "done" | "error"; error?: string }>>({});
+
+  const crowdLifeForms = useMemo(() => {
+    const map = new Map<string, DigitalLifeForm>();
+    for (const lf of lifeForms) {
+      if (lf.source === "crowd_profile" && lf.crowdProfileId && lf.crowdProfileVersionId) {
+        map.set(lf.id, lf);
+      }
+    }
+    return map;
+  }, [lifeForms]);
+
+  const handleWriteback = async (assessment: SimulationRunResult["roleAssessments"][number]) => {
+    const lf = crowdLifeForms.get(assessment.lifeFormId);
+    if (!lf || !workspaceId || !lf.crowdProfileId || !lf.crowdProfileVersionId) return;
+    setWritebacks((prev) => ({ ...prev, [assessment.lifeFormId]: { status: "loading" } }));
+    try {
+      await api.createCrowdProfileFeedbackFromSimulation(workspaceId, lf.crowdProfileId, {
+        profileVersionId: lf.crowdProfileVersionId,
+        sourceRunId: result.id,
+        sourceLifeFormId: assessment.lifeFormId,
+        objections: assessment.objections,
+        acceptanceConditions: assessment.acceptanceConditions,
+        suggestions: assessment.suggestions,
+      });
+      setWritebacks((prev) => ({ ...prev, [assessment.lifeFormId]: { status: "done" } }));
+    } catch (err) {
+      setWritebacks((prev) => ({ ...prev, [assessment.lifeFormId]: { status: "error", error: String(err) } }));
+    }
+  };
+
   return (
     <div className="flex flex-col gap-3">
       <div className="flex flex-wrap items-center gap-2">
@@ -558,6 +729,71 @@ function ResultBlock({ result }: { result: SimulationRunResult }) {
 
       {result.summary && (
         <p className="whitespace-pre-wrap text-[12.5px] leading-5 text-neutral-800 dark:text-neutral-100">{result.summary}</p>
+      )}
+
+      {result.roleAssessments.length > 0 && (
+        <div>
+          <div className="mb-1.5 text-[11.5px] font-semibold text-neutral-600 dark:text-neutral-300">分角色评分</div>
+          <ul className="grid gap-2 sm:grid-cols-2">
+            {result.roleAssessments.map((a) => {
+              const isCrowd = crowdLifeForms.has(a.lifeFormId);
+              const wb = writebacks[a.lifeFormId];
+              return (
+                <li key={a.lifeFormId} className="rounded-md border border-neutral-200 bg-neutral-50/60 p-2 dark:border-neutral-800 dark:bg-neutral-900/40">
+                  <div className="flex items-center justify-between gap-2">
+                    <div className="truncate text-[12.5px] font-medium text-neutral-800 dark:text-neutral-100">{a.name}</div>
+                    <div className="flex items-center gap-1.5">
+                      <span className={cn("inline-flex h-5 items-center rounded px-1.5 text-[10.5px]", STANCE_TONE[a.stance])}>{STANCE_LABEL[a.stance]}</span>
+                      <span className="text-[11px] font-medium text-neutral-700 dark:text-neutral-200">{a.score}</span>
+                    </div>
+                  </div>
+                  {a.rationale && (
+                    <p className="mt-1 whitespace-pre-wrap text-[11.5px] leading-4 text-neutral-600 dark:text-neutral-300">{a.rationale}</p>
+                  )}
+                  {a.objections.length > 0 && (
+                    <RoleList title="反对点" items={a.objections} tone="red" />
+                  )}
+                  {a.acceptanceConditions.length > 0 && (
+                    <RoleList title="接受条件" items={a.acceptanceConditions} tone="amber" />
+                  )}
+                  {a.suggestions.length > 0 && (
+                    <RoleList title="建议" items={a.suggestions} tone="sky" />
+                  )}
+                  {a.evidenceQuotes.length > 0 && (
+                    <div className="mt-1.5">
+                      <div className="text-[10.5px] text-neutral-400">引用</div>
+                      <ul className="mt-0.5 flex flex-col gap-0.5">
+                        {a.evidenceQuotes.map((q, idx) => (
+                          <li key={idx} className="rounded border-l-2 border-neutral-300 bg-white/60 px-1.5 py-0.5 text-[11px] italic text-neutral-500 dark:border-neutral-600 dark:bg-neutral-950/40 dark:text-neutral-400">
+                            &ldquo;{q}&rdquo;
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {isCrowd && workspaceId && (
+                    <div className="mt-1.5 border-t border-neutral-100 pt-1.5 dark:border-neutral-800">
+                      {wb?.status === "done" ? (
+                        <div className="text-[11px] text-emerald-600 dark:text-emerald-400">已回写到画像反馈</div>
+                      ) : wb?.status === "error" ? (
+                        <div className="text-[11px] text-red-500">{wb.error}</div>
+                      ) : (
+                        <button
+                          onClick={() => void handleWriteback(a)}
+                          disabled={wb?.status === "loading"}
+                          className="inline-flex items-center gap-1 rounded border border-neutral-200 px-1.5 py-0.5 text-[10.5px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                        >
+                          {wb?.status === "loading" ? <Loader2 className="h-3 w-3 animate-spin" /> : null}
+                          回写到画像反馈
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </li>
+              );
+            })}
+          </ul>
+        </div>
       )}
 
       {result.roleAssessments.length > 0 && (

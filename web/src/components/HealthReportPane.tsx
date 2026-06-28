@@ -4,6 +4,8 @@ import { vizApi } from "@/lib/api/viz";
 import { engineApi } from "@/lib/api/engine";
 import { cn } from "@/lib/cn";
 import { getHealthSelectedRunId, setHealthSelectedRunId } from "@/lib/health-ui-state";
+import { Markdown } from "@/components/Markdown";
+import readmeContent from "@/docs/health-report-readme.md?raw";
 import type {
   HealthFinding,
   MonitorRun,
@@ -32,6 +34,7 @@ function monitorReportKey(runId: string): string {
 }
 
 export function HealthReportPane({ workspaceId }: { workspaceId: string | null }) {
+  const [view, setView] = useState<"main" | "readme">("main");
   const [runs, setRuns] = useState<MonitorRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [findings, setFindings] = useState<HealthFinding[]>([]);
@@ -237,6 +240,7 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
 
   // D-EVOLVE2: submit finding as eval candidate (zero raw data)
   const submitEvalCandidate = async (finding: HealthFinding) => {
+    const selectedRun = runs.find((r) => r.id === selectedRunId);
     if (!workspaceId || !selectedRun) return;
     setEvalSubmitting((prev) => new Set(prev).add(finding.id));
     try {
@@ -283,6 +287,32 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
 
   return (
     <div className="flex h-full min-h-0 flex-col bg-white dark:bg-neutral-950">
+      <div className="flex items-center justify-end border-b border-neutral-200 bg-neutral-50 px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex rounded-md bg-neutral-100 p-0.5 dark:bg-neutral-900">
+          <button
+            type="button"
+            onClick={() => setView("main")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "main" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            功能
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("readme")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "readme" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            readme
+          </button>
+        </div>
+      </div>
+      {view === "readme" ? (
+        <div className="flex-1 overflow-auto p-5">
+          <div className="mx-auto w-full max-w-4xl rounded-lg border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <Markdown>{readmeContent}</Markdown>
+          </div>
+        </div>
+      ) : (
+        <>
       {/* 顶部：run 选择 + 触发提取 */}
       <div className="flex shrink-0 flex-col gap-2 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
         <div className="flex flex-wrap items-center gap-2">
@@ -532,6 +562,8 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
         <div className="shrink-0 border-t border-neutral-200 bg-neutral-50/50 px-4 py-1.5 text-[11px] text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/50">
           run {selectedRun.id.slice(0, 8)}… · {findings.length} findings · {items.length} 行动项（{adoptCountForCurrentRun} 采纳） · {runTasks.length} 任务 · {Object.keys(feedbacks).length} 反馈
         </div>
+      )}
+      </>
       )}
     </div>
   );

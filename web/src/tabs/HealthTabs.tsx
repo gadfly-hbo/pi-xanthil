@@ -4,6 +4,7 @@ import { HealthDataPane } from "@/components/HealthDataPane";
 import { HealthTargetPane } from "@/components/HealthTargetPane";
 import { HealthDashboardPane } from "@/components/HealthDashboardPane";
 import { HealthReportPane } from "@/components/HealthReportPane";
+import { HealthReadmePane } from "@/components/HealthReadmePane";
 import type { TabContext } from "./types";
 
 export function HealthTabs({ ctx }: { ctx: TabContext }) {
@@ -20,7 +21,7 @@ export function HealthTabs({ ctx }: { ctx: TabContext }) {
     case "health_report":
       return <HealthReportPane workspaceId={ws} />;
     case "readme":
-      return <Placeholder icon={HeartPulse} title="监测 · 说明" hint="通过确定性规则持续监测经营指标，发现已发生的问题与将发生的风险" />;
+      return <HealthReadmePane />;
     default:
       return <Placeholder icon={HeartPulse} title="监测" hint="骨架占位" />;
   }

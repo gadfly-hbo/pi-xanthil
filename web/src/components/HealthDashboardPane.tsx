@@ -10,6 +10,9 @@ import type {
   MonitorComparison,
   TargetPlan,
 } from "@/types";
+import { Markdown } from "@/components/Markdown";
+import { cn } from "@/lib/cn";
+import readmeContent from "@/docs/health-dashboard-readme.md?raw";
 
 const SUITES: { id: HealthSuite; label: string }[] = [
   { id: "daily", label: "日度" },
@@ -81,6 +84,7 @@ export function HealthDashboardPane({
   workspaceId: string | null;
   setActiveSubTab: (sub: SubTab) => void;
 }) {
+  const [view, setView] = useState<"main" | "readme">("main");
   const [rules, setRules] = useState<HealthRuleMeta[]>([]);
   const [suite, setSuite] = useState<HealthSuite>("monthly");
   const [thresholds, setThresholds] = useState<Record<string, number>>({});
@@ -183,8 +187,34 @@ export function HealthDashboardPane({
   const risks = findings.filter((f) => f.kind === "风险");
 
   return (
-    <div className="h-full min-h-0 flex-1 overflow-y-auto bg-neutral-50/40 text-[12.5px] dark:bg-neutral-950/40">
-      <div className="mx-auto w-full max-w-5xl space-y-4 p-5">
+    <div className="flex h-full min-h-0 flex-1 flex-col bg-neutral-50/40 text-[12.5px] dark:bg-neutral-950/40">
+      <div className="flex items-center justify-end border-b border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex rounded-md bg-neutral-100 p-0.5 dark:bg-neutral-900">
+          <button
+            type="button"
+            onClick={() => setView("main")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "main" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            功能
+          </button>
+          <button
+            type="button"
+            onClick={() => setView("readme")}
+            className={cn("rounded px-2.5 py-1 text-[12px]", view === "readme" ? "bg-white text-neutral-900 shadow-sm dark:bg-neutral-800 dark:text-neutral-100" : "text-neutral-500")}
+          >
+            readme
+          </button>
+        </div>
+      </div>
+      {view === "readme" ? (
+        <div className="flex-1 overflow-auto p-5">
+          <div className="mx-auto w-full max-w-4xl rounded-lg border border-neutral-200 bg-white p-6 dark:border-neutral-800 dark:bg-neutral-900">
+            <Markdown>{readmeContent}</Markdown>
+          </div>
+        </div>
+      ) : (
+        <div className="flex-1 overflow-y-auto">
+          <div className="mx-auto w-full max-w-5xl space-y-4 p-5">
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">观星台</h2>
         <div className="flex items-center gap-2">
@@ -357,6 +387,8 @@ export function HealthDashboardPane({
         )}
       </div>
       </div>
+      </div>
+      )}
     </div>
   );
 }
