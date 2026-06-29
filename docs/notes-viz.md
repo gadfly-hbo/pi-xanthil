@@ -9,29 +9,22 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-27 · **F-MONITOR-TARGET2（目标测算页面）+ F-MONITOR-TARGET4（保存联动观星台）done**。
+- 最近更新：2026-06-29 · **V-TRACE1（TracePane 分面视图）+ V-TRACE5（失败状态更新）+ V-TRACE7（巡检建议视图）done**。
 - 进度：
-  - **X-MONITOR0**（done）：经营指标监测契约与接缝定稿；UI 二级 tab 为「初始化 / 目标测算 / 观星台 / 行动环 / readme」。
-  - **D-MONITOR1 / E-MONITOR2 / D-MONITOR3 / X-MONITOR4**（done）：监测配置、指标体系草案、观星台、行动环、全链路 run/findings/actions 基线已完成并通过前序总控终审。
-  - **X-MONITOR5**（done）：初始化入口新口径审定。
-  - **D-MONITOR6 / D-MONITOR7 / E-MONITOR8 / X-MONITOR9**（done）：监测初始化数据库单入口全链路终审完成。
-  - **X-MONITOR-TARGET0**（done，总控）：双侧 types 定 TargetScenarioKind/TargetMetricKind/TargetCase/TargetPlan 等契约；`monitor-target-calculator.ts` 纯函数计算器。
-  - **F-MONITOR-TARGET2**（done，本次）：`HealthTargetPane` 页面完整实现（场景选择/指标选择/11 参数输入/三情景结果卡/拆解表）+ `constants.ts` SubTab 增 `health_target` + `HealthTabs.tsx` 接线。
-  - **F-MONITOR-TARGET4**（done，本次）：保存按钮接入 `vizApi.createTargetPlan` + `adoptTargetPlan`；成功后绿色提示条 +「去观星台 →」跳转；`HealthDashboardPane` 加载 adopted target plan 并展示「已绑定目标计划：xxx」状态条 + 无目标时「去目标测算 →」入口。
+  - **V-TRACE1**（done，本次）：重构 `TracePane.tsx` 为分面视图模式（运行看板、失败分析、巡检建议、记忆注入、规则提炼、说明），降低信息密度，分离职责。
+  - **V-TRACE5**（done，本次）：在失败分析页增加状态过滤与标记（全部、open、fixed、distilled、ignored）。卡片集成 inline 按钮支持快速填写 note，并做乐观本地渲染+局部 API 更新回滚。
+  - **V-TRACE7**（done，本次）：新增独立的“巡检建议” Tab。接入 E-TRACE6 端点（`listTraceInspectionFindings`），展示 7/14/30 天异常窗口（如失败峰值）并附带一键复制 targetId/errorType 快捷操作及修复建议的闭环操作 UI。
 - 校验：
-  - `npm -w server run typecheck` ✅
   - `npm -w web run typecheck` ✅
-  - `npm -w web run build` ✅（仅既有 echarts dynamic/static import 与 chunk-size warning）
-  - 数据探索 LLM 隔离 grep ✅ EXIT=1 无匹配
+  - `npm -w web run build` ✅
+  - 数据探索 LLM 隔离 grep ✅（未修改探索模块）
 - 下一步：
   - 用户 review 后手动 `git add/commit`。
-  - 可选人工浏览器点检：目标测算 → 保存 → 跳转观星台 → 查看目标绑定状态。
-  - 等待 D-MONITOR-TARGET3（server 端 target-plans CRUD 端点）完成后浏览器端到端实跑保存链路。
+  - 等待 D 域接口（D-TRACE4 端点就绪）或直接进行失败状态闭环与巡检建议的端到端浏览器人工实跑点检。
+  - 推进 `KICKOFF-P0.md` 其他项。
 - 阻塞 / 待总控：无。
 - 开放问题：
-  - PG/MySQL tableName 模式目前依靠 quoteIdent，未做 schema 预校验；后续如需严格校验，再补 information_schema / SHOW TABLES。
-  - 行动环继续复用 `ActionItem.sourceKind="session" + reportPath="monitor:${runId}"` 标识 monitor 来源；暂不扩 `"monitor"` 枚举，待统计/过滤需求明确再扩。
-  - 保存目标依赖 D-MONITOR-TARGET3 的 server 端点（`POST /api/workspaces/:id/monitor/target-plans` 等），前端已按契约调用，但需 server 端实装后才能真跑。
+  - V-TRACE5 的失败状态更新动作目前为了快速处理，设计成免二次确认的短按钮 + prompt() 形式，并依赖后端或本地重刷回滚；若后续发生大面积误触问题，再考虑补齐二次弹窗确认流程。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -136,6 +129,7 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - **体检接入面板必须调 addWorkspacePath 登记产物**（2026-06-22）：SQL export / extraction tool run 产出的文件不会自动进入 clean_data 聚合集列表。正确做法：SQL export 后用 `result.path`（exportSql 返回的规范化路径，非用户原始输入）调 `api.addWorkspacePath(workspaceId, "clean_data", path, "file")`；tool run 后遍历 `run.results[].outputs` 过滤表格文件(.csv/.tsv/.xlsx/.xls)逐个登记。登记失败不吞 catch，收集错误显示给用户。
 - **体检 HTML 导出必须复用 renderMarkdownReportToHtml**（2026-06-22）：不能在前端拼 `<pre>` 放 Markdown——那不是渲染后的 HTML 报告。正确做法：新增 `POST /api/workspaces/:id/health/export-html` 端点，server 端调 `renderMarkdownReportToHtml(reportName, markdown)` 返回 HTML，前端 fetch 后下载。
 - **Express 同一路径重复注册**（2026-06-22）：`vizRouter.post("/api/.../export-html", ...)` 重复注册两次时，第二个 handler 永远不可达，不报错但功能失效。多文件 cat >> 追加时尤其注意。
+- **TracePane 状态局部更新机制（2026-06-29）**：对于 V-TRACE5 失败卡片状态变更（如 mark as fixed），如果先 `await api.updateTraceFailureStatus` 再重刷列表，网络延迟会造成操作手感滞后或冻结。因此必须采用乐观更新（Optimistic Update）：用 `setFailures` 在本地映射到新状态再调用 API，但若 API 异常抛出，则在 catch 块必须重新 fetch 原数据来回滚 UI，避免留下幽灵状态。
 
 ---
 

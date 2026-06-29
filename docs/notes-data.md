@@ -10,8 +10,10 @@
 
 > **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-06-29 · **业务环境迭代专题 X-BC4 收口完成**
+- 最近更新：2026-06-29 · **trace 迭代专题 X-TRACE8 收口完成**
 - 进度：
+  - **X-TRACE8（trace 专题数据红线终审）**：本专题未触及 `web/src/components/DataExplorationPane.tsx` 或 `web/src/components/data-exploration/` 子树，未触发 AGENTS.md 数据探索隔离 grep。trace 巡检只消费 `trace_events`、failure 聚合状态和 memory injection snapshot 元数据，不读取 `draw_data` / `clean_data` 文件正文，不输出 raw row、客户明细、订单样本、完整 prompt 正文或未脱敏日志。
+  - **数据侧残留风险**：detail 脱敏是关键词/长度规则，后续遇到新的日志格式需扩规则；真实长周期 trace 数据量可能需要分页、索引或按 workspace 配置巡检窗口/阈值；failure status UI 当前基于已加载列表过滤，超量时建议改走服务端 status 查询。
   - **X-BC4（业务环境专题总控验收）**：业务环境迭代专题已收口，`X-BC0 / D-BC1 / E-BC2 / D-BC3 / X-BC4` 全部 done。静态门禁、业务环境治理后端回归、业务环境使用痕迹回归、数据探索隔离 grep 与 wiki/notes 收口已完成。浏览器 smoke 按用户指示跳过，由用户后续自行点检。
   - **D-BC3（业务环境工作台 UI）**：`BusinessContextPane` 已从「管理/说明」升级为五视图工作台：管理、冲突治理、导入导出、使用痕迹、说明。管理表单支持 source/owner/validFrom/validUntil，列表展示来源、负责人和过期/即将过期状态；冲突治理页展示 D-BC1 conflict 结果并给出人工处理建议；导入导出页支持 CSV/JSON 文件 preview→commit 与导出；使用痕迹页接 `business_context_injection_traces` API，支持空态/有数据态。新增最小 viz route 与 `vizApi.listBusinessContextInjectionTraces`，复用 E-BC2 已落地 DB 真源。
   - **D-BC1（业务环境治理后端 P1）**：`business_contexts` 的 `source/owner/valid_from/valid_until` 字段已接入 CRUD 与旧 payload 兼容；`buildEnabledBusinessContextPrompt` 会过滤 `validUntil < now` 的过期条目，并在 prompt 中仅简洁附带来源/负责人。新增确定性冲突检测（重复标题、相似 title/content、约束/目标互斥线索）与 CSV/JSON import preview/commit/export API；全程不读 draw_data、不调用 LLM、不碰数据探索子树。

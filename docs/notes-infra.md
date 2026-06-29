@@ -10,7 +10,12 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。2.3 发布后增量（Harness 全专题等）见 `Orchestration.md §八「2.3 阶段进展」`。详见发布节点。
 
-- 最近更新：2026-06-29 · 总控（业务环境迭代专题 X-BC4 已收口）
+- 最近更新：2026-06-29 · 总控（trace 迭代专题 X-TRACE8 已收口）
+- 本批（2026-06-29 · trace 迭代专题，总控终审）：
+  - ✅ **X-TRACE8 全链验收通过**：trace 专题 `X-TRACE0 / V-TRACE1 / D-TRACE2 / V-TRACE3 / D-TRACE4 / V-TRACE5 / E-TRACE6 / V-TRACE7 / X-TRACE8` 全部 done。TracePane 已具备运行、失败、记忆注入、规则提炼、巡检建议、说明六分面；事件详情抽屉、failure 状态闭环、纯规则巡检建议已接入。
+  - ✅ **验证**：`node --experimental-strip-types --test server/src/trace-detail.test.ts server/src/trace-failure-state.test.ts server/src/trace-inspection.test.ts server/src/metric-injection-trace.test.ts` 30/30 通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 Echarts dynamic-import 与 chunk-size warning。
+  - ✅ **安全红线**：trace detail 经后端脱敏，inspection finding 只含聚合计数、target、errorType、status、omittedReason 等元数据；自动巡检零 LLM 调用，不读取 `draw_data` / `clean_data` 文件正文；failure 状态更新只写 `trace_failure_states` metadata，不删除 `trace_events`。
+  - 📌 **残留风险 / 下一波建议**：真实长周期 trace 数据量性能未压测；detail 脱敏覆盖率需随真实日志样本扩充；巡检阈值是否需要 workspace 级配置待观察。另 failure status 前端本地过滤超量不完整、巡检 API 失败保留旧列表，后续可小修。
 - 本批（2026-06-29 · 业务环境迭代专题，总控规划/派发）：
   - ✅ **X-BC0 已完成拆卡**：围绕业务环境说明页列出的 4 个优化方向，拆为 `X-BC0`（契约/派发，done）→ `D-BC1`（元数据字段、冲突检测、CSV/JSON 导入导出、过期过滤）→ `E-BC2`（business_context 注入痕迹采集）→ `D-BC3`（BusinessContextPane 工作台 UI）→ `X-BC4`（全链验收）。
   - ✅ **D-BC1 已回流并通过总控复核**：后端已接入 `source` / `owner` / `validFrom` / `validUntil`、旧库幂等迁移、create/update 校验、prompt 过期过滤、确定性冲突检测、CSV/JSON import preview/commit/export API、双侧类型/API client 与治理单测；导入导出 UI 未做，留给 `D-BC3`。

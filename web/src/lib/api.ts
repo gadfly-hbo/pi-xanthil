@@ -1,4 +1,4 @@
-import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, BusinessContextConflict, BusinessContextImportCommitResult, BusinessContextImportFormat, BusinessContextImportPreview, BusinessContextImportRow, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, PresentationGenerateInput, PresentationTaskResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, CollectSession, CollectFolder, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlImportPreview, SqlImportCommitResult, SqlQueryResult, SqlValidateResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, ToolRunRecord, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
+import type { AnalysisCase, AnaxGateConfig, AnalysisStandard, AnalysisStandardInput, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, BusinessContextConflict, BusinessContextImportCommitResult, BusinessContextImportFormat, BusinessContextImportPreview, BusinessContextImportRow, ChangeProposal, ChangeProposalStatus, CreateRuleResult, DecisionTreeResult, EvaluationArchiveIndexItem, EvaluationArchiveResult, GoldenStrategyBatchResult, GoldenStrategyModelId, GoldenStrategyResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, ExtractionRun, ExtractionTool, Flow, FlowRun, FlowTreeNode, KgEdge, KgNode, KgSyncResult, MemoryEvaluation, MemoryEvaluationDetail, MemoryInjectionRecord, MemoryProposal, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, PiModel, PiSkill, PredictionResult, PresentationGenerateInput, PresentationTaskResult, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, RuleConflict, RuleMemory, MemoryFailureAttribution, SchemaTable, Session, CollectSession, CollectFolder, SessionArtifactTree, SessionCompactResult, SessionRuntime, SessionTokenStats, AutonomousRunResult, RetrievedSkill, SkillCurationApplyResult, SkillCurationProposal, SkillCurationProposalRecord, SkillCurationProposalStatus, SkillCurationResult, SkillEvalSet, SkillEvalTask, SkillEvaluation, SkillEvaluationDetail, SkillVariant, SqlConnection, SqlImportPreview, SqlImportCommitResult, SqlQueryResult, SqlValidateResult, StaleNode, StoredFlowMessage, StoredMessage, TokenUsageStats, ToolCaseSet, ToolEvalCase, ToolEvalCaseTemplateList, ToolEvaluation, ToolEvaluationDetail, ToolRunRecord, TraceEvent, TraceEventDetail, TraceFailure, TraceFailureStatePatch, TraceFailureStatus, TraceInspectionFinding, TraceOverview, TraceRuleSuggestion, TraceTargetKind, TraceTimelineItem, TraceTrendPoint, WorkflowDef, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowFavorite, Workspace, WorkspacePath, WorkspacePathKind } from "@/types";
 
 export interface TocGraphItem {
   id: string;
@@ -311,10 +311,25 @@ const legacyApi = {
     fetch(`/api/workspaces/${workspaceId}/trace/trend?days=${days}`).then(json<TraceTrendPoint[]>),
   listToolRuns: (workspaceId: string, limit = 200) =>
     fetch(`/api/workspaces/${workspaceId}/tool-runs?limit=${limit}`).then(json<ToolRunRecord[]>),
+  getTraceEventDetail: (workspaceId: string, eventId: string, opts: { beforeLimit?: number; afterLimit?: number } = {}) => {
+    const params = new URLSearchParams();
+    if (opts.beforeLimit !== undefined) params.set("beforeLimit", String(opts.beforeLimit));
+    if (opts.afterLimit !== undefined) params.set("afterLimit", String(opts.afterLimit));
+    const qs = params.toString();
+    return fetch(`/api/workspaces/${workspaceId}/trace/events/${encodeURIComponent(eventId)}/detail${qs ? `?${qs}` : ""}`).then(json<TraceEventDetail>);
+  },
   getTraceTimeline: (workspaceId: string, targetKind: TraceTargetKind, targetId: string) =>
     fetch(`/api/workspaces/${workspaceId}/trace/timeline?targetKind=${encodeURIComponent(targetKind)}&targetId=${encodeURIComponent(targetId)}`).then(json<TraceTimelineItem[]>),
-  listTraceFailures: (workspaceId: string, limit = 10) =>
-    fetch(`/api/workspaces/${workspaceId}/trace/failures?limit=${limit}`).then(json<TraceFailure[]>),
+  listTraceFailures: (workspaceId: string, limit = 10, status?: TraceFailureStatus) =>
+    fetch(`/api/workspaces/${workspaceId}/trace/failures?limit=${limit}${status ? `&status=${status}` : ""}`).then(json<TraceFailure[]>),
+  listTraceInspectionFindings: (workspaceId: string, days = 14) =>
+    fetch(`/api/workspaces/${workspaceId}/trace/inspections?days=${days}`).then(json<TraceInspectionFinding[]>),
+  updateTraceFailureStatus: (workspaceId: string, failureId: string, payload: TraceFailureStatePatch) =>
+    fetch(`/api/workspaces/${workspaceId}/trace/failures/${encodeURIComponent(failureId)}/status`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<TraceFailure>),
   generateTraceRuleSuggestions: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/trace/rule-suggestions`, { method: "POST" }).then(json<TraceRuleSuggestion[]>),
   pruneTraceEvents: (workspaceId: string, retainDays: number) =>

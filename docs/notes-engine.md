@@ -9,8 +9,14 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新:2026-06-29 · **E-OKH3 完成：指标使用痕迹采集 + 注入引用统计**
+- 最近更新:2026-06-29 · **X-TRACE8 完成：trace 详情 / 失败闭环 / 纯规则巡检终审**
 - 进度:
+  - **X-TRACE8（trace 迭代专题终审）**：
+    - `TraceEventDetail`、`TraceFailureStatus`、`TraceInspectionFinding` 已在 server/web `types.ts` 镜像；前端 `TracePane` 消费 `getTraceEventDetail`、`listTraceFailures(status)`、`updateTraceFailureStatus`、`listTraceInspectionFindings`。
+    - 后端 trace API：`GET /trace/events/:eventId/detail`、`GET /trace/failures`、`PATCH /trace/failures/:failureId/status`、`GET /trace/inspections` 均按 `workspaceId` 读写；detail before/after limit clamp 到 0-10，failures limit clamp 到 1-50，inspection days clamp 到 1-90。
+    - 自动巡检规则覆盖 `failure_spike`、`error_type_spike`、`repeated_target_failure`、`memory_injection_omission`、`stale_open_failure`；只读 trace 元数据、failure 状态和 memory injection omittedReason 聚合，不调用 LLM。
+    - 状态闭环只写 `trace_failure_states`，不会删除或改写原始 `trace_events`。
+    - 验证：trace 相关 node:test 30/30、`npm run typecheck`、`npm run build` 均通过。
   - **E-OKH3**（`server/src/db/viz.ts` + `server/src/routes/viz.ts` + `server/src/index.ts` + `server/src/routes/engine.ts` + `web/src/lib/api/viz.ts` + `web/src/types.ts` + `server/src/types.ts` + `server/src/metric-injection-trace.test.ts`）:
     - 新建 `metric_injection_traces` 表（`initVizTables`），记录每次注入中哪些 metric 被引用。
     - `extractInjectedMetricIds(snapshot)` 从 MemoryInjectionSnapshot 的 standards source 中分离 metric ID（排除 reference_file ID）。

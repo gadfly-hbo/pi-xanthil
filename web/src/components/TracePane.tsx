@@ -1,9 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BellRing, BookOpen, Bot, CheckCircle2, Clock3, GitBranch, ListTree, MousePointerClick, RefreshCw, Route, ScrollText, ServerCrash, ShieldAlert, Sparkles, Workflow, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, BellRing, BookOpen, Bot, CheckCircle2, Clock3, Copy, GitBranch, Lightbulb, ListTree, MousePointerClick, RefreshCw, Route, ScrollText, ServerCrash, ShieldAlert, Sparkles, Workflow, X, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
-import type { MemoryFailureAttribution, MemoryInjectionRecord, MemoryProposal, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint } from "@/types";
+import type { MemoryFailureAttribution, MemoryInjectionRecord, MemoryProposal, TraceEvent, TraceEventDetail, TraceFailure, TraceFailureStatus, TraceInspectionFinding, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint } from "@/types";
 
-type ViewMode = "dashboard" | "readme";
+type ViewMode = "dashboard" | "failures" | "inspections" | "memory" | "rules" | "readme";
 
 const emptyOverview: TraceOverview = {
   todaySessions: 0,
@@ -29,13 +29,16 @@ function formatAgo(ts: number | null): string {
 }
 
 function StatusPill({ status }: { status: string }) {
-  const style = status === "success"
-    ? "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300"
-    : status === "failed"
-      ? "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300"
-      : status === "idle"
-        ? "border-neutral-200 bg-neutral-50 text-neutral-600 dark:border-neutral-800 dark:bg-neutral-950/30 dark:text-neutral-400"
-        : "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300";
+  let style = "border-amber-200 bg-amber-50 text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-300";
+  if (status === "success" || status === "fixed") {
+    style = "border-emerald-200 bg-emerald-50 text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300";
+  } else if (status === "failed") {
+    style = "border-rose-200 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300";
+  } else if (status === "idle" || status === "ignored") {
+    style = "border-neutral-200 bg-neutral-50 text-neutral-600 dark:border-neutral-800 dark:bg-neutral-950/30 dark:text-neutral-400";
+  } else if (status === "distilled") {
+    style = "border-sky-200 bg-sky-50 text-sky-700 dark:border-sky-900 dark:bg-sky-950/30 dark:text-sky-300";
+  }
   return <span className={`rounded-full border px-2 py-0.5 text-[11px] ${style}`}>{status}</span>;
 }
 
@@ -141,6 +144,109 @@ function TraceReadme() {
   );
 }
 
+function TraceDetailDrawer({
+  event,
+  detail,
+  loading,
+  copied,
+  onClose,
+  onCopy,
+}: {
+  event: TraceEvent;
+  detail: TraceEventDetail | null;
+  loading: boolean;
+  copied: boolean;
+  onClose: () => void;
+  onCopy: () => void;
+}) {
+  const timeline = detail ? [...detail.timelineBefore, { id: detail.event.id, time: detail.event.time, type: detail.event.type, title: detail.event.target, detail: detail.event.detail, status: detail.event.status }, ...detail.timelineAfter] : [];
+  return (
+    <aside className="fixed inset-y-0 right-0 z-40 flex w-full max-w-[min(560px,100vw)] flex-col border-l border-neutral-200 bg-white shadow-2xl dark:border-neutral-800 dark:bg-neutral-950">
+      <div className="flex items-start justify-between gap-3 border-b border-neutral-200 p-4 dark:border-neutral-800">
+        <div className="min-w-0">
+          <div className="flex items-center gap-2 text-[12px] text-neutral-500">
+            <ScrollText className="h-3.5 w-3.5" />
+            <span className="font-mono">{event.type}</span>
+          </div>
+          <h2 className="mt-1 truncate text-[15px] font-semibold text-neutral-950 dark:text-neutral-50">{event.target}</h2>
+          <div className="mt-1 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+            <span className="font-mono">{event.targetKind}:{event.targetId}</span>
+            <StatusPill status={event.status} />
+          </div>
+        </div>
+        <button onClick={onClose} className="rounded-md p-1.5 text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800" aria-label="关闭详情">
+          <X className="h-4 w-4" />
+        </button>
+      </div>
+
+      <div className="min-h-0 flex-1 overflow-auto p-4">
+        {loading ? (
+          <div className="rounded-lg border border-neutral-200 bg-neutral-50 p-8 text-center text-[12px] text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900">加载 trace 详情...</div>
+        ) : !detail ? (
+          <div className="rounded-lg border border-amber-200 bg-amber-50 p-8 text-center text-[12px] text-amber-700 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">未能加载该事件详情</div>
+        ) : (
+          <div className="space-y-4">
+            <section className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="mb-2 flex items-center justify-between gap-2">
+                <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">诊断摘要</h3>
+                <button onClick={onCopy} className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 py-1 text-[11px] text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-300">
+                  <Copy className="h-3.5 w-3.5" />
+                  {copied ? "已复制" : "复制"}
+                </button>
+              </div>
+              <p className="whitespace-pre-wrap break-words font-mono text-[11.5px] leading-5 text-neutral-700 dark:text-neutral-300">{detail.diagnosticSummary}</p>
+              {detail.safetyLevel === "redacted_detail" && <p className="mt-2 text-[11px] text-amber-600 dark:text-amber-300">部分 detail 已按 trace 安全边界隐藏。</p>}
+            </section>
+
+            <section className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950">
+              <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">事件详情</h3>
+              <dl className="mt-2 grid gap-2 text-[11.5px] sm:grid-cols-2">
+                <div><dt className="text-neutral-400">time</dt><dd className="font-mono text-neutral-700 dark:text-neutral-300">{new Date(detail.event.time).toLocaleString()}</dd></div>
+                <div><dt className="text-neutral-400">status</dt><dd><StatusPill status={detail.event.status} /></dd></div>
+                <div><dt className="text-neutral-400">target</dt><dd className="break-all font-mono text-neutral-700 dark:text-neutral-300">{detail.target.targetKind}:{detail.target.targetId}</dd></div>
+                <div><dt className="text-neutral-400">safety</dt><dd className="font-mono text-neutral-700 dark:text-neutral-300">{detail.safetyLevel}</dd></div>
+              </dl>
+              <div className="mt-3 rounded-md bg-neutral-50 p-2 text-[11.5px] leading-5 text-neutral-600 dark:bg-neutral-900 dark:text-neutral-300">
+                {detail.event.detail ?? "无可展示 detail"}
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950">
+              <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">上下游 timeline</h3>
+              <div className="mt-3 space-y-2">
+                {timeline.length === 0 ? <div className="py-4 text-center text-[12px] text-neutral-400">暂无上下游事件</div> : timeline.map((item) => (
+                  <div key={item.id} className={`rounded-md border px-2 py-1.5 text-[11.5px] ${item.id === detail.event.id ? "border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/30" : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900"}`}>
+                    <div className="flex items-center justify-between gap-2">
+                      <span className="font-mono text-neutral-700 dark:text-neutral-300">{formatTime(item.time)} · {item.type}</span>
+                      <StatusPill status={item.status} />
+                    </div>
+                    <div className="mt-1 truncate text-neutral-500">{item.title}{item.detail ? ` · ${item.detail}` : ""}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+
+            <section className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950">
+              <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">关联失败</h3>
+              <div className="mt-2 space-y-2">
+                {detail.relatedFailures.length === 0 ? <div className="py-4 text-center text-[12px] text-neutral-400">暂无关联 failure pattern</div> : detail.relatedFailures.map((failure) => (
+                  <div key={failure.id} className="rounded-md border border-neutral-200 bg-neutral-50 p-2 text-[11.5px] dark:border-neutral-800 dark:bg-neutral-900">
+                    <div className="flex items-start justify-between gap-2">
+                      <p className="line-clamp-2 font-medium text-neutral-800 dark:text-neutral-200">{failure.title}</p>
+                      <span className="rounded-full bg-rose-100 px-2 py-0.5 text-[10.5px] text-rose-700 dark:bg-rose-950 dark:text-rose-300">{failure.count}x</span>
+                    </div>
+                    <div className="mt-1 font-mono text-[10.5px] text-neutral-400">{failure.source} · {failure.errorType}</div>
+                  </div>
+                ))}
+              </div>
+            </section>
+          </div>
+        )}
+      </div>
+    </aside>
+  );
+}
+
 export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string | null; onRulesChanged?: () => void }) {
   const [view, setView] = useState<ViewMode>("dashboard");
   const [overview, setOverview] = useState<TraceOverview>(emptyOverview);
@@ -154,16 +260,23 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
   const [selectedRuleIds, setSelectedRuleIds] = useState<string[]>([]);
   const [stagedRules, setStagedRules] = useState<TraceRuleSuggestion[]>([]);
   const [selectedEvent, setSelectedEvent] = useState<TraceEvent | null>(null);
+  const [selectedDetail, setSelectedDetail] = useState<TraceEventDetail | null>(null);
   const [timelineItems, setTimelineItems] = useState<TraceTimelineItem[]>([]);
   const [loading, setLoading] = useState(false);
+  const [detailLoading, setDetailLoading] = useState(false);
   const [ruleLoading, setRuleLoading] = useState(false);
   const [copied, setCopied] = useState(false);
+  const [detailCopied, setDetailCopied] = useState(false);
   const [writeResult, setWriteResult] = useState("");
   const [pruneRetainDays, setPruneRetainDays] = useState(30);
   const [pruning, setPruning] = useState(false);
   const [eventTypeFilter, setEventTypeFilter] = useState("all");
   const [statusFilter, setStatusFilter] = useState("all");
   const [errorTypeFilter, setErrorTypeFilter] = useState("all");
+  const [failureStatusFilter, setFailureStatusFilter] = useState<"all" | TraceFailureStatus>("all");
+  const [inspectionDays, setInspectionDays] = useState<7 | 14 | 30>(14);
+  const [inspections, setInspections] = useState<TraceInspectionFinding[]>([]);
+  const [inspectionLoading, setInspectionLoading] = useState(false);
   const [keyword, setKeyword] = useState("");
   const [error, setError] = useState("");
 
@@ -175,7 +288,7 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
       const [nextOverview, nextEvents, nextFailures, nextTrend, nextProposals, nextInjections, nextMemoryFailures] = await Promise.all([
         api.getTraceOverview(workspaceId),
         api.listTraceRecentEvents(workspaceId, 20),
-        api.listTraceFailures(workspaceId, 10),
+        api.listTraceFailures(workspaceId, 50),
         api.getTraceTrend(workspaceId, 14),
         api.listMemoryProposals(workspaceId, "pending"),
         api.listMemoryInjectionRecords(workspaceId, 20),
@@ -195,9 +308,27 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
     }
   }, [workspaceId]);
 
+  const refreshInspections = useCallback(async () => {
+    if (!workspaceId) return;
+    setInspectionLoading(true);
+    try {
+      setInspections(await api.listTraceInspectionFindings(workspaceId, inspectionDays));
+    } catch (err) {
+      setError(String(err));
+    } finally {
+      setInspectionLoading(false);
+    }
+  }, [workspaceId, inspectionDays]);
+
   useEffect(() => {
     refresh();
   }, [refresh]);
+
+  useEffect(() => {
+    if (view === "inspections") {
+      void refreshInspections();
+    }
+  }, [view, inspectionDays, refreshInspections]);
 
   const generateRules = useCallback(async () => {
     if (!workspaceId) return;
@@ -217,11 +348,20 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
   const openTimeline = useCallback(async (event: TraceEvent) => {
     if (!workspaceId) return;
     setSelectedEvent(event);
+    setSelectedDetail(null);
+    setDetailLoading(true);
     setError("");
     try {
-      setTimelineItems(await api.getTraceTimeline(workspaceId, event.targetKind, event.targetId));
+      const [timeline, detail] = await Promise.all([
+        api.getTraceTimeline(workspaceId, event.targetKind, event.targetId),
+        api.getTraceEventDetail(workspaceId, event.id),
+      ]);
+      setTimelineItems(timeline);
+      setSelectedDetail(detail);
     } catch (err) {
       setError(String(err));
+    } finally {
+      setDetailLoading(false);
     }
   }, [workspaceId]);
 
@@ -244,6 +384,19 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
     setCopied(true);
     window.setTimeout(() => setCopied(false), 1200);
   }, [selectedRules]);
+
+  const copyDiagnosticSummary = useCallback(async () => {
+    if (!selectedDetail) return;
+    const lines = [
+      selectedDetail.diagnosticSummary,
+      `event=${selectedDetail.event.type}`,
+      `target=${selectedDetail.target.targetKind}:${selectedDetail.target.targetId}`,
+      `status=${selectedDetail.event.status}`,
+    ];
+    await navigator.clipboard.writeText(lines.join("\n"));
+    setDetailCopied(true);
+    window.setTimeout(() => setDetailCopied(false), 1200);
+  }, [selectedDetail]);
 
   const submitStagedRules = useCallback(async () => {
     if (!workspaceId || stagedRules.length === 0) return;
@@ -280,6 +433,31 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
     }
   }, [pruneRetainDays, refresh, workspaceId]);
 
+  const refreshFailures = useCallback(async () => {
+    if (!workspaceId) return;
+    try {
+      const nextFailures = await api.listTraceFailures(workspaceId, 50);
+      setFailures(nextFailures);
+    } catch (err) {
+      setError(String(err));
+    }
+  }, [workspaceId]);
+
+  const handleUpdateFailureStatus = useCallback(async (failureId: string, newStatus: TraceFailureStatus, oldNote: string | null) => {
+    if (!workspaceId) return;
+    const note = window.prompt(`正在将状态标记为 ${newStatus}，可补充简短备注:`, oldNote || "");
+    if (note === null) return;
+    
+    try {
+      setFailures((current) => current.map((f) => f.id === failureId ? { ...f, status: newStatus, statusNote: note, statusUpdatedAt: Date.now() } : f));
+      await api.updateTraceFailureStatus(workspaceId, failureId, { status: newStatus, note: note || undefined });
+      await refreshFailures();
+    } catch (err) {
+      setError(String(err));
+      await refreshFailures();
+    }
+  }, [workspaceId, refreshFailures]);
+
   const eventTypes = useMemo(() => ["all", ...Array.from(new Set(events.map((event) => event.type))).sort()], [events]);
   const statuses = useMemo(() => ["all", ...Array.from(new Set(events.map((event) => event.status))).sort()], [events]);
   const errorTypes = useMemo(() => ["all", ...Array.from(new Set(failures.map((failure) => failure.errorType))).sort()], [failures]);
@@ -292,9 +470,10 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
   }), [eventTypeFilter, events, normalizedKeyword, statusFilter]);
   const filteredFailures = useMemo(() => failures.filter((failure) => {
     if (errorTypeFilter !== "all" && failure.errorType !== errorTypeFilter) return false;
+    if (failureStatusFilter !== "all" && failure.status !== failureStatusFilter) return false;
     if (!normalizedKeyword) return true;
-    return [failure.title, failure.source, failure.errorType].some((value) => value.toLowerCase().includes(normalizedKeyword));
-  }), [errorTypeFilter, failures, normalizedKeyword]);
+    return [failure.title, failure.source, failure.errorType, failure.statusNote ?? ""].some((value) => value.toLowerCase().includes(normalizedKeyword));
+  }), [errorTypeFilter, failureStatusFilter, failures, normalizedKeyword]);
   const maxTrend = Math.max(1, ...trend.flatMap((point) => [point.sessions, point.runs, point.failures, point.events]));
   const kpis = [
     { label: "今日 Sessions", value: overview.todaySessions.toLocaleString(), sub: "created today", tone: "bg-sky-500", icon: Activity },
@@ -314,8 +493,8 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
             <p className="mt-1 max-w-2xl text-[12.5px] text-neutral-500 dark:text-neutral-400">追踪 pi-xanthil 自身 DB / API / WebSocket 事件，定位 workflow、session、agent step 的运行状态与失败模式。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            {view === "dashboard" && <button onClick={refresh} disabled={!workspaceId || loading} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-2 text-[12px] font-medium text-neutral-700 shadow-sm hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新 trace</button>}
-            {view === "dashboard" && <div className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
+            {view !== "readme" && <button onClick={refresh} disabled={!workspaceId || loading} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-2 text-[12px] font-medium text-neutral-700 shadow-sm hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新 trace</button>}
+            {view !== "readme" && <div className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
               <select value={pruneRetainDays} onChange={(e) => setPruneRetainDays(Number(e.target.value))} className="h-8 rounded-l-md border-0 bg-transparent pl-2 pr-1 text-[12px] text-neutral-600 outline-none dark:text-neutral-300">
                 <option value={7}>7 天</option>
                 <option value={14}>14 天</option>
@@ -330,6 +509,10 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
         <div className="flex w-fit flex-wrap gap-1 rounded-lg border border-neutral-200 bg-white p-1 text-[12px] shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           {[
             { id: "dashboard" as const, label: "运行看板", icon: Activity },
+            { id: "failures" as const, label: "失败分析", icon: AlertTriangle },
+            { id: "inspections" as const, label: "巡检建议", icon: Lightbulb },
+            { id: "memory" as const, label: "记忆注入", icon: Bot },
+            { id: "rules" as const, label: "规则提炼", icon: Sparkles },
             { id: "readme" as const, label: "说明", icon: BookOpen },
           ].map((tab) => (
             <button
@@ -346,109 +529,266 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30">{error}</div>}
         {writeResult && <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">{writeResult}</div>}
 
-        {view === "readme" ? <TraceReadme /> : <>
-        <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
-          <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索事件 / 失败 / target..." className="h-8 min-w-56 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] outline-none dark:border-neutral-700" />
-          <select value={eventTypeFilter} onChange={(event) => setEventTypeFilter(event.target.value)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">{eventTypes.map((type) => <option key={type} value={type}>event: {type}</option>)}</select>
-          <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">{statuses.map((status) => <option key={status} value={status}>status: {status}</option>)}</select>
-          <select value={errorTypeFilter} onChange={(event) => setErrorTypeFilter(event.target.value)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">{errorTypes.map((type) => <option key={type} value={type}>error: {type}</option>)}</select>
-          <button onClick={() => { setKeyword(""); setEventTypeFilter("all"); setStatusFilter("all"); setErrorTypeFilter("all"); }} className="h-8 rounded-md px-2 text-[12px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">清空过滤</button>
-        </div>
+        {view === "readme" && <TraceReadme />}
 
-        <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{kpis.map((item) => { const Icon = item.icon; return <div key={item.label} className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-center justify-between"><div className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4 text-white" /></div><span className="text-[11px] text-neutral-400">live</span></div><div className="mt-3 text-[11px] text-neutral-500">{item.label}</div><div className="mt-1 text-2xl font-semibold tabular-nums text-neutral-950 dark:text-neutral-50">{item.value}</div><div className="mt-1 text-[11px] text-neutral-400">{item.sub}</div></div>; })}</div>
-
-        <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-          <div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><Activity className="h-4 w-4 text-indigo-500" /> Trace 趋势</h2><span className="text-[11px] text-neutral-400">最近 14 天</span></div>
-          <div className="grid min-h-44 items-end gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(1, trend.length)}, minmax(0, 1fr))` }}>{trend.map((point) => <div key={point.day} className="flex min-w-0 flex-col items-center gap-2"><div className="flex h-32 w-full max-w-10 items-end gap-0.5"><div title={`sessions ${point.sessions}`} className="w-1/4 rounded-t bg-sky-400" style={{ height: `${Math.max(3, (point.sessions / maxTrend) * 100)}%` }} /><div title={`runs ${point.runs}`} className="w-1/4 rounded-t bg-indigo-400" style={{ height: `${Math.max(3, (point.runs / maxTrend) * 100)}%` }} /><div title={`failures ${point.failures}`} className="w-1/4 rounded-t bg-rose-400" style={{ height: `${Math.max(3, (point.failures / maxTrend) * 100)}%` }} /><div title={`events ${point.events}`} className="w-1/4 rounded-t bg-emerald-400" style={{ height: `${Math.max(3, (point.events / maxTrend) * 100)}%` }} /></div><span className="truncate text-[10px] text-neutral-400">{point.day.slice(5)}</span></div>)}</div>
-          <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-neutral-500"><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-sky-400" />sessions</span><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-indigo-400" />runs</span><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-rose-400" />failures</span><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-emerald-400" />events</span></div>
-        </section>
-
-        <div className="grid gap-4 xl:grid-cols-[1.15fr_0.85fr]">
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><BellRing className="h-4 w-4 text-sky-500" /> 最近事件流</h2><span className="text-[11px] text-neutral-400">DB / API / WS</span></div><div className="overflow-hidden rounded-lg border border-neutral-100 dark:border-neutral-800">{filteredEvents.length === 0 ? <div className="px-3 py-10 text-center text-[12px] text-neutral-400">暂无匹配 trace 事件</div> : filteredEvents.map((row) => <button key={row.id} onClick={() => void openTimeline(row)} className={`grid w-full grid-cols-[5rem_8rem_minmax(0,1fr)_5rem] items-center gap-3 border-b border-neutral-100 px-3 py-2.5 text-left text-[12px] last:border-b-0 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/30 ${selectedEvent?.id === row.id ? "bg-sky-50/70 dark:bg-sky-950/20" : ""}`}><span className="font-mono text-neutral-400">{formatTime(row.time)}</span><span className="truncate font-mono text-neutral-700 dark:text-neutral-300">{row.type}</span><span className="truncate text-neutral-500" title={row.detail ?? undefined}>{row.target}</span><StatusPill status={row.status} /></button>)}</div></section>
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><AlertTriangle className="h-4 w-4 text-rose-500" /> 失败分析</h2><div className="mt-3 space-y-3">{filteredFailures.length === 0 ? <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-8 text-center text-[12px] text-neutral-400 dark:border-neutral-800 dark:bg-neutral-950/40">暂无匹配失败聚合</div> : filteredFailures.map((item) => <div key={item.id} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40"><div className="flex items-start justify-between gap-3"><p className="line-clamp-2 text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">{item.title}</p><span className="rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:bg-rose-950 dark:text-rose-300">{item.count}x</span></div><div className="mt-2 flex flex-wrap items-center gap-2"><span className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 font-mono text-[10.5px] text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900">{item.errorType}</span><span className="font-mono text-[11px] text-neutral-400">{item.source} · {new Date(item.lastSeenAt).toLocaleString()}</span></div></div>)}</div></section>
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-[0.9fr_1.1fr]">
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><ScrollText className="h-4 w-4 text-indigo-500" /> Session / Flow Timeline</h2><span className="truncate text-[11px] text-neutral-400">{selectedEvent ? selectedEvent.target : "最近事件预览"}</span></div><div className="mt-4 space-y-4">{timeline.length === 0 ? <div className="py-10 text-center text-[12px] text-neutral-400">暂无 timeline</div> : timeline.map((item, index) => { const Icon = iconForEvent(item.type); return <div key={item.id} className="relative flex gap-3">{index < timeline.length - 1 && <div className="absolute left-[15px] top-8 h-full w-px bg-neutral-200 dark:bg-neutral-800" />}<div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900"><Icon className={`h-4 w-4 ${toneForEvent(item.status)}`} /></div><div className="min-w-0 pt-0.5"><div className="font-mono text-[12px] font-medium text-neutral-800 dark:text-neutral-200">{formatTime(item.time)} · {item.type}</div><div className="mt-0.5 truncate text-[12px] text-neutral-500">{item.title}{item.detail ? ` · ${item.detail}` : ""}</div></div></div>; })}</div></section>
-          <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm dark:border-amber-900 dark:bg-amber-950/20"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-[13px] font-semibold text-amber-950 dark:text-amber-100"><Sparkles className="h-4 w-4 text-amber-500" /> 规则提炼</h2><p className="mt-1 text-[12px] text-amber-800/70 dark:text-amber-200/70">用户手动点击后，根据 trace 证据提炼规则候选；候选需通过 guardrails 并人工批准后才写入 rules。</p></div><div className="flex flex-wrap gap-2"><button onClick={copySelectedRules} disabled={selectedRules.length === 0} className="rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-[12px] font-medium text-amber-900 hover:bg-white disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950/40 dark:text-amber-100">{copied ? "已复制" : "复制选中"}</button><button onClick={stageSelectedRules} disabled={selectedRules.length === 0} className="rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-[12px] font-medium text-amber-900 hover:bg-white disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950/40 dark:text-amber-100">暂存选中</button><button onClick={generateRules} disabled={!workspaceId || ruleLoading} className="inline-flex items-center gap-1.5 rounded-md bg-amber-900 px-3 py-2 text-[12px] font-medium text-white hover:bg-amber-800 disabled:opacity-50 dark:bg-amber-200 dark:text-amber-950"><RefreshCw className={`h-3.5 w-3.5 ${ruleLoading ? "animate-spin" : ""}`} /> 更新规则提炼</button></div></div><div className="mt-4 space-y-3">{rules.length === 0 ? <div className="rounded-lg border border-amber-200 bg-white/75 p-8 text-center text-[12px] text-amber-800/70 dark:border-amber-900 dark:bg-neutral-950/50 dark:text-amber-200/70">点击“更新规则提炼”后生成基于 trace 证据的规则建议</div> : rules.map((rule) => { const selected = selectedRuleIds.includes(rule.id); return <button key={rule.id} onClick={() => toggleRule(rule.id)} className={`w-full rounded-lg border p-3 text-left transition-colors ${selected ? "border-amber-400 bg-white dark:border-amber-700 dark:bg-neutral-950/70" : "border-amber-200 bg-white/75 dark:border-amber-900 dark:bg-neutral-950/50"}`}><div className="flex gap-2"><CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${selected ? "text-emerald-500" : "text-neutral-300"}`} /><div><div className="flex flex-wrap items-center gap-2"><p className="text-[12.5px] font-medium leading-5 text-neutral-900 dark:text-neutral-100">{rule.title}</p><span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10.5px] text-amber-800 dark:border-amber-800 dark:text-amber-200">{rule.severity}</span></div><p className="mt-1 text-[11.5px] leading-5 text-neutral-500 dark:text-neutral-400">依据：{rule.evidence}</p></div></div></button>; })}</div>{stagedRules.length > 0 && <div className="mt-4 rounded-lg border border-amber-300 bg-white/80 p-3 dark:border-amber-800 dark:bg-neutral-950/60"><div className="flex items-center justify-between gap-3"><h3 className="text-[12px] font-semibold text-amber-950 dark:text-amber-100">暂存规则 ({stagedRules.length})</h3><button onClick={() => void submitStagedRules()} className="text-[11px] text-amber-700 hover:underline dark:text-amber-300">提交审批</button><button onClick={() => setStagedRules([])} className="text-[11px] text-amber-700 hover:underline dark:text-amber-300">清空</button></div><ol className="mt-2 list-decimal space-y-1 pl-4 text-[11.5px] text-neutral-600 dark:text-neutral-300">{stagedRules.map((rule) => <li key={rule.id}>{rule.title}</li>)}</ol></div>}{proposals.length > 0 && <div className="mt-4 rounded-lg border border-amber-300 bg-white/80 p-3 dark:border-amber-800 dark:bg-neutral-950/60"><h3 className="text-[12px] font-semibold text-amber-950 dark:text-amber-100">待审批候选 ({proposals.length})</h3><div className="mt-2 space-y-2">{proposals.map((proposal) => { const highRisk = proposal.riskFlags.some((flag) => flag.severity === "high"); return <div key={proposal.id} className="rounded-md border border-amber-200 bg-white p-2 dark:border-amber-900 dark:bg-neutral-950/70"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-[12px] font-medium text-neutral-900 dark:text-neutral-100">{proposal.title}</p><p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">confidence {(proposal.confidence * 100).toFixed(0)}% · {proposal.severity}</p>{proposal.riskFlags.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{proposal.riskFlags.map((flag) => <span key={`${proposal.id}-${flag.code}`} title={flag.message} className={`rounded border px-1.5 py-0.5 text-[10px] ${flag.severity === "high" ? "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"}`}>{flag.code}</span>)}</div>}</div><div className="flex shrink-0 gap-1"><button onClick={() => void approveProposal(proposal.id)} disabled={highRisk} className="rounded border border-emerald-200 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 dark:border-emerald-900 dark:text-emerald-300">批准</button><button onClick={() => void rejectProposal(proposal.id)} className="rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-500 hover:bg-neutral-50 dark:border-neutral-800">拒绝</button></div></div></div>; })}</div></div>}</section>
-        </div>
-
-        <div className="grid gap-4 xl:grid-cols-[1fr_1fr]">
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
-                <Bot className="h-4 w-4 text-sky-500" /> 记忆注入检查器
-              </h2>
-              <span className="text-[11px] text-neutral-400">最近 20 次注入快照</span>
+        {view === "dashboard" && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
+              <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索事件 / target..." className="h-8 min-w-56 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] outline-none dark:border-neutral-700" />
+              <select value={eventTypeFilter} onChange={(event) => setEventTypeFilter(event.target.value)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">{eventTypes.map((type) => <option key={type} value={type}>event: {type}</option>)}</select>
+              <select value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">{statuses.map((status) => <option key={status} value={status}>status: {status}</option>)}</select>
+              <button onClick={() => { setKeyword(""); setEventTypeFilter("all"); setStatusFilter("all"); }} className="h-8 rounded-md px-2 text-[12px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">清空过滤</button>
             </div>
-            <div className="space-y-3">
-              {injections.length === 0 ? (
-                <div className="py-8 text-center text-[12px] text-neutral-400">暂无记忆注入记录</div>
-              ) : (
-                injections.map((inj) => (
-                  <div key={inj.eventId} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
-                    <div className="flex items-start justify-between">
-                      <div className="font-mono text-[11px] text-neutral-500">{formatTime(inj.createdAt)} · {inj.target}</div>
-                      <StatusPill status={inj.status} />
-                    </div>
-                    <div className="mt-2 text-[12px] text-neutral-700 dark:text-neutral-300">
-                      Total tokens: {inj.snapshot.tokenEstimate} / {inj.snapshot.tokenBudget || 4000} (Sources: {inj.snapshot.sourceCount})
-                    </div>
-                    <div className="mt-2 space-y-1">
-                      {inj.snapshot.sources.map((src, idx) => (
-                        <div key={idx} className={`flex flex-col gap-1 rounded border px-2 py-1.5 text-[11px] ${src.selected ? 'border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/20' : 'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 opacity-60'}`}>
-                          <div className="flex items-center justify-between font-medium">
-                            <span className="text-neutral-700 dark:text-neutral-200">{src.label} ({src.kind})</span>
-                            <span className="text-neutral-500">{src.selected ? '✅ 选中' : '❌ 忽略'}</span>
+
+            <div className="grid gap-3 md:grid-cols-2 xl:grid-cols-4">{kpis.map((item) => { const Icon = item.icon; return <div key={item.label} className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-center justify-between"><div className={`flex h-9 w-9 items-center justify-center rounded-lg ${item.tone}`}><Icon className="h-4 w-4 text-white" /></div><span className="text-[11px] text-neutral-400">live</span></div><div className="mt-3 text-[11px] text-neutral-500">{item.label}</div><div className="mt-1 text-2xl font-semibold tabular-nums text-neutral-950 dark:text-neutral-50">{item.value}</div><div className="mt-1 text-[11px] text-neutral-400">{item.sub}</div></div>; })}</div>
+
+            <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><Activity className="h-4 w-4 text-indigo-500" /> Trace 趋势</h2><span className="text-[11px] text-neutral-400">最近 14 天</span></div>
+              <div className="grid min-h-44 items-end gap-2" style={{ gridTemplateColumns: `repeat(${Math.max(1, trend.length)}, minmax(0, 1fr))` }}>{trend.map((point) => <div key={point.day} className="flex min-w-0 flex-col items-center gap-2"><div className="flex h-32 w-full max-w-10 items-end gap-0.5"><div title={`sessions ${point.sessions}`} className="w-1/4 rounded-t bg-sky-400" style={{ height: `${Math.max(3, (point.sessions / maxTrend) * 100)}%` }} /><div title={`runs ${point.runs}`} className="w-1/4 rounded-t bg-indigo-400" style={{ height: `${Math.max(3, (point.runs / maxTrend) * 100)}%` }} /><div title={`failures ${point.failures}`} className="w-1/4 rounded-t bg-rose-400" style={{ height: `${Math.max(3, (point.failures / maxTrend) * 100)}%` }} /><div title={`events ${point.events}`} className="w-1/4 rounded-t bg-emerald-400" style={{ height: `${Math.max(3, (point.events / maxTrend) * 100)}%` }} /></div><span className="truncate text-[10px] text-neutral-400">{point.day.slice(5)}</span></div>)}</div>
+              <div className="mt-3 flex flex-wrap gap-3 text-[11px] text-neutral-500"><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-sky-400" />sessions</span><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-indigo-400" />runs</span><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-rose-400" />failures</span><span className="flex items-center gap-1"><span className="h-2.5 w-2.5 rounded bg-emerald-400" />events</span></div>
+            </section>
+
+            <div className="grid gap-4 xl:grid-cols-2">
+              <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><div className="mb-3 flex items-center justify-between"><h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><BellRing className="h-4 w-4 text-sky-500" /> 最近事件流</h2><span className="text-[11px] text-neutral-400">DB / API / WS</span></div><div className="overflow-hidden rounded-lg border border-neutral-100 dark:border-neutral-800">{filteredEvents.length === 0 ? <div className="px-3 py-10 text-center text-[12px] text-neutral-400">暂无匹配 trace 事件</div> : filteredEvents.map((row) => <button key={row.id} onClick={() => void openTimeline(row)} className={`grid w-full grid-cols-[5rem_8rem_minmax(0,1fr)_5rem] items-center gap-3 border-b border-neutral-100 px-3 py-2.5 text-left text-[12px] last:border-b-0 hover:bg-neutral-50 dark:border-neutral-800 dark:hover:bg-neutral-800/30 ${selectedEvent?.id === row.id ? "bg-sky-50/70 dark:bg-sky-950/20" : ""}`}><span className="font-mono text-neutral-400">{formatTime(row.time)}</span><span className="truncate font-mono text-neutral-700 dark:text-neutral-300">{row.type}</span><span className="truncate text-neutral-500" title={row.detail ?? undefined}>{row.target}</span><StatusPill status={row.status} /></button>)}</div></section>
+              <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900"><div className="flex items-center justify-between gap-3"><h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><ScrollText className="h-4 w-4 text-indigo-500" /> Session / Flow Timeline</h2><span className="truncate text-[11px] text-neutral-400">{selectedEvent ? selectedEvent.target : "最近事件预览"}</span></div><div className="mt-4 space-y-4">{timeline.length === 0 ? <div className="py-10 text-center text-[12px] text-neutral-400">暂无 timeline</div> : timeline.map((item, index) => { const Icon = iconForEvent(item.type); return <div key={item.id} className="relative flex gap-3">{index < timeline.length - 1 && <div className="absolute left-[15px] top-8 h-full w-px bg-neutral-200 dark:bg-neutral-800" />}<div className="relative z-10 flex h-8 w-8 shrink-0 items-center justify-center rounded-full border border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900"><Icon className={`h-4 w-4 ${toneForEvent(item.status)}`} /></div><div className="min-w-0 pt-0.5"><div className="font-mono text-[12px] font-medium text-neutral-800 dark:text-neutral-200">{formatTime(item.time)} · {item.type}</div><div className="mt-0.5 truncate text-[12px] text-neutral-500">{item.title}{item.detail ? ` · ${item.detail}` : ""}</div></div></div>; })}</div></section>
+            </div>
+          </div>
+        )}
+
+        {view === "failures" && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
+              <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索失败 / target..." className="h-8 min-w-56 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] outline-none dark:border-neutral-700" />
+              <select value={errorTypeFilter} onChange={(event) => setErrorTypeFilter(event.target.value)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">{errorTypes.map((type) => <option key={type} value={type}>error: {type}</option>)}</select>
+              <select value={failureStatusFilter} onChange={(event) => setFailureStatusFilter(event.target.value as any)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">
+                <option value="all">全部状态</option>
+                <option value="open">Open</option>
+                <option value="fixed">Fixed</option>
+                <option value="distilled">Distilled</option>
+                <option value="ignored">Ignored</option>
+              </select>
+              <button onClick={() => { setKeyword(""); setErrorTypeFilter("all"); setFailureStatusFilter("all"); }} className="h-8 rounded-md px-2 text-[12px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">清空过滤</button>
+            </div>
+            <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+              <h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100"><AlertTriangle className="h-4 w-4 text-rose-500" /> 失败分析</h2>
+              <div className="mt-3 space-y-3">
+                {filteredFailures.length === 0 ? (
+                  <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-8 text-center text-[12px] text-neutral-400 dark:border-neutral-800 dark:bg-neutral-950/40">暂无匹配失败聚合</div>
+                ) : (
+                  filteredFailures.map((item) => (
+                    <div key={item.id} className={`rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40 ${item.status === "ignored" ? "opacity-60" : ""}`}>
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="mb-1.5 flex items-center gap-2">
+                            <StatusPill status={item.status} />
+                            {item.statusUpdatedAt && <span className="text-[10px] text-neutral-400">{formatAgo(item.statusUpdatedAt)}前</span>}
                           </div>
-                          <div className="text-neutral-500 font-mono">
-                            Tokens: {src.tokenEstimate} | Items: {src.count}
-                            {typeof src.meta?.topScore === 'number' && ` | Score: ${src.meta.topScore.toFixed(2)}`}
-                          </div>
-                          {src.omittedReason && (
-                            <div className="text-rose-600 dark:text-rose-400">原因: {src.omittedReason}</div>
-                          )}
+                          <p className="line-clamp-2 text-[12.5px] font-medium text-neutral-800 dark:text-neutral-200">{item.title}</p>
                         </div>
-                      ))}
-                    </div>
-                  </div>
-                ))
-              )}
-            </div>
-          </section>
-
-          <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="mb-3 flex items-center justify-between">
-              <h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
-                <AlertTriangle className="h-4 w-4 text-rose-500" /> 检索失败诊断
-              </h2>
-              <span className="text-[11px] text-neutral-400">最近诊断归因</span>
-            </div>
-            <div className="space-y-3">
-              {memoryFailures.length === 0 ? (
-                <div className="py-8 text-center text-[12px] text-neutral-400">暂无失败归因记录</div>
-              ) : (
-                memoryFailures.map((failure) => (
-                  <div key={failure.id} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
-                    <div className="flex items-start justify-between">
-                      <div className="font-mono text-[11px] text-neutral-500">{formatTime(failure.createdAt)} · {failure.targetKind}:{failure.targetId}</div>
-                      <span className="rounded border border-rose-200 bg-white px-1.5 py-0.5 font-mono text-[10.5px] text-rose-500 dark:border-rose-900 dark:bg-neutral-900">{failure.cause}</span>
-                    </div>
-                    <div className="mt-2 text-[12px] text-neutral-700 dark:text-neutral-300">
-                      {failure.note}
-                    </div>
-                    {failure.sourceKind && (
-                      <div className="mt-2 text-[11px] text-neutral-500 font-mono">
-                        Source: {failure.sourceKind} {failure.sourceId ? `(${failure.sourceId})` : ""}
+                        <span className="shrink-0 rounded-full bg-rose-100 px-2 py-0.5 text-[11px] font-medium text-rose-700 dark:bg-rose-950 dark:text-rose-300">{item.count}x</span>
                       </div>
-                    )}
-                  </div>
-                ))
-              )}
+                      
+                      {item.statusNote && (
+                        <div className="mt-2 rounded border border-neutral-200 bg-white p-1.5 text-[11.5px] text-neutral-600 line-clamp-2 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-400">
+                          {item.statusNote}
+                        </div>
+                      )}
+
+                      <div className="mt-3 flex flex-wrap items-center justify-between gap-2">
+                        <div className="flex flex-wrap items-center gap-2">
+                          <span className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 font-mono text-[10.5px] text-neutral-500 dark:border-neutral-700 dark:bg-neutral-900">{item.errorType}</span>
+                          <span className="font-mono text-[11px] text-neutral-400">{item.source} · {new Date(item.lastSeenAt).toLocaleString()}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {item.status !== "fixed" && <button onClick={() => void handleUpdateFailureStatus(item.id, "fixed", item.statusNote)} className="rounded px-2 py-1 text-[11px] text-emerald-600 hover:bg-emerald-50 dark:text-emerald-400 dark:hover:bg-emerald-950/30">标记修复</button>}
+                          {item.status !== "distilled" && <button onClick={() => void handleUpdateFailureStatus(item.id, "distilled", item.statusNote)} className="rounded px-2 py-1 text-[11px] text-sky-600 hover:bg-sky-50 dark:text-sky-400 dark:hover:bg-sky-950/30">已沉淀</button>}
+                          {item.status !== "ignored" && <button onClick={() => void handleUpdateFailureStatus(item.id, "ignored", item.statusNote)} className="rounded px-2 py-1 text-[11px] text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800">忽略</button>}
+                          {item.status !== "open" && <button onClick={() => void handleUpdateFailureStatus(item.id, "open", item.statusNote)} className="rounded px-2 py-1 text-[11px] text-amber-600 hover:bg-amber-50 dark:text-amber-400 dark:hover:bg-amber-950/30">重新打开</button>}
+                        </div>
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {view === "inspections" && (
+          <div className="space-y-4">
+            <div className="flex flex-wrap items-center justify-between gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
+              <div className="flex items-center gap-2">
+                <select value={inspectionDays} onChange={(e) => setInspectionDays(Number(e.target.value) as 7 | 14 | 30)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">
+                  <option value={7}>过去 7 天</option>
+                  <option value={14}>过去 14 天</option>
+                  <option value={30}>过去 30 天</option>
+                </select>
+                {inspectionLoading && <span className="text-[12px] text-neutral-400">加载中...</span>}
+              </div>
+              <p className="text-[11px] text-neutral-500">巡检基于 trace 元数据和纯规则计算，不涉及原始业务数据内容。</p>
             </div>
-          </section>
-        </div>
-        </>}
+            
+            <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+              <h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
+                <Lightbulb className="h-4 w-4 text-amber-500" /> 自动巡检建议
+              </h2>
+              <div className="mt-4 space-y-3">
+                {inspections.length === 0 && !inspectionLoading ? (
+                  <div className="rounded-lg border border-neutral-100 bg-neutral-50 p-8 text-center text-[12px] text-neutral-400 dark:border-neutral-800 dark:bg-neutral-950/40">
+                    暂无异常峰值
+                  </div>
+                ) : (
+                  inspections.map((finding) => (
+                    <div key={finding.id} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="min-w-0">
+                          <div className="mb-1.5 flex items-center gap-2">
+                            {finding.severity === "high" ? <span className="rounded bg-rose-100 px-1.5 py-0.5 text-[10px] font-medium text-rose-700 dark:bg-rose-950 dark:text-rose-300">高风险</span> :
+                             finding.severity === "medium" ? <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] font-medium text-amber-700 dark:bg-amber-950 dark:text-amber-300">中风险</span> :
+                             <span className="rounded bg-sky-100 px-1.5 py-0.5 text-[10px] font-medium text-sky-700 dark:bg-sky-950 dark:text-sky-300">低风险</span>}
+                            <span className="font-mono text-[10.5px] text-neutral-500">{finding.kind}</span>
+                          </div>
+                          <p className="text-[13px] font-medium text-neutral-900 dark:text-neutral-100">{finding.title}</p>
+                        </div>
+                        <div className="text-right shrink-0">
+                          <div className="text-[14px] font-bold text-neutral-700 dark:text-neutral-300">{finding.count}</div>
+                          <div className="text-[10px] text-neutral-400">vs 基线 {finding.baselineCount}</div>
+                        </div>
+                      </div>
+                      
+                      <div className="mt-3 grid gap-2 sm:grid-cols-2">
+                        {finding.evidence.map((ev, i) => (
+                          <div key={i} className="flex flex-col gap-1 rounded border border-neutral-200 bg-white p-2 text-[11px] dark:border-neutral-800 dark:bg-neutral-900">
+                            <div className="flex justify-between text-neutral-500">
+                              <span>{ev.metric}</span>
+                              <span className="font-medium text-neutral-700 dark:text-neutral-300">{ev.value}</span>
+                            </div>
+                            {(ev.targetKind || ev.targetId) && (
+                              <div className="font-mono text-[10px] text-neutral-400 truncate">
+                                target: {ev.targetKind}:{ev.targetId}
+                                <button onClick={() => void navigator.clipboard.writeText(`${ev.targetKind}:${ev.targetId}`)} className="ml-1 text-sky-500 hover:underline" title="复制 Target">复制</button>
+                              </div>
+                            )}
+                            {ev.errorType && (
+                              <div className="font-mono text-[10px] text-rose-500 truncate">
+                                error: {ev.errorType}
+                                <button onClick={() => void navigator.clipboard.writeText(ev.errorType!)} className="ml-1 text-sky-500 hover:underline" title="复制 ErrorType">复制</button>
+                              </div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                      
+                      <div className="mt-3 rounded border border-indigo-100 bg-indigo-50 p-2 text-[11.5px] text-indigo-800 dark:border-indigo-900/50 dark:bg-indigo-950/30 dark:text-indigo-300">
+                        <strong className="font-semibold">建议动作：</strong>{finding.suggestedAction}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {view === "memory" && (
+          <div className="grid gap-4 xl:grid-cols-2">
+            <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
+                  <Bot className="h-4 w-4 text-sky-500" /> 记忆注入检查器
+                </h2>
+                <span className="text-[11px] text-neutral-400">最近 20 次注入快照</span>
+              </div>
+              <div className="space-y-3">
+                {injections.length === 0 ? (
+                  <div className="py-8 text-center text-[12px] text-neutral-400">暂无记忆注入记录</div>
+                ) : (
+                  injections.map((inj) => (
+                    <div key={inj.eventId} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                      <div className="flex items-start justify-between">
+                        <div className="font-mono text-[11px] text-neutral-500">{formatTime(inj.createdAt)} · {inj.target}</div>
+                        <StatusPill status={inj.status} />
+                      </div>
+                      <div className="mt-2 text-[12px] text-neutral-700 dark:text-neutral-300">
+                        Total tokens: {inj.snapshot.tokenEstimate} / {inj.snapshot.tokenBudget || 4000} (Sources: {inj.snapshot.sourceCount})
+                      </div>
+                      <div className="mt-2 space-y-1">
+                        {inj.snapshot.sources.map((src, idx) => (
+                          <div key={idx} className={`flex flex-col gap-1 rounded border px-2 py-1.5 text-[11px] ${src.selected ? 'border-sky-200 bg-sky-50 dark:border-sky-900 dark:bg-sky-950/20' : 'border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900 opacity-60'}`}>
+                            <div className="flex items-center justify-between font-medium">
+                              <span className="text-neutral-700 dark:text-neutral-200">{src.label} ({src.kind})</span>
+                              <span className="text-neutral-500">{src.selected ? '✅ 选中' : '❌ 忽略'}</span>
+                            </div>
+                            <div className="text-neutral-500 font-mono">
+                              Tokens: {src.tokenEstimate} | Items: {src.count}
+                              {typeof src.meta?.topScore === 'number' && ` | Score: ${src.meta.topScore.toFixed(2)}`}
+                            </div>
+                            {src.omittedReason && (
+                              <div className="text-rose-600 dark:text-rose-400">原因: {src.omittedReason}</div>
+                            )}
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+
+            <section className="rounded-xl border border-neutral-200 bg-white p-4 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="mb-3 flex items-center justify-between">
+                <h2 className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
+                  <AlertTriangle className="h-4 w-4 text-rose-500" /> 检索失败诊断
+                </h2>
+                <span className="text-[11px] text-neutral-400">最近诊断归因</span>
+              </div>
+              <div className="space-y-3">
+                {memoryFailures.length === 0 ? (
+                  <div className="py-8 text-center text-[12px] text-neutral-400">暂无失败归因记录</div>
+                ) : (
+                  memoryFailures.map((failure) => (
+                    <div key={failure.id} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                      <div className="flex items-start justify-between">
+                        <div className="font-mono text-[11px] text-neutral-500">{formatTime(failure.createdAt)} · {failure.targetKind}:{failure.targetId}</div>
+                        <span className="rounded border border-rose-200 bg-white px-1.5 py-0.5 font-mono text-[10.5px] text-rose-500 dark:border-rose-900 dark:bg-neutral-900">{failure.cause}</span>
+                      </div>
+                      <div className="mt-2 text-[12px] text-neutral-700 dark:text-neutral-300">
+                        {failure.note}
+                      </div>
+                      {failure.sourceKind && (
+                        <div className="mt-2 text-[11px] text-neutral-500 font-mono">
+                          Source: {failure.sourceKind} {failure.sourceId ? `(${failure.sourceId})` : ""}
+                        </div>
+                      )}
+                    </div>
+                  ))
+                )}
+              </div>
+            </section>
+          </div>
+        )}
+
+        {view === "rules" && (
+          <section className="rounded-xl border border-amber-200 bg-amber-50/70 p-4 shadow-sm dark:border-amber-900 dark:bg-amber-950/20 max-w-4xl mx-auto w-full"><div className="flex flex-wrap items-start justify-between gap-3"><div><h2 className="flex items-center gap-2 text-[13px] font-semibold text-amber-950 dark:text-amber-100"><Sparkles className="h-4 w-4 text-amber-500" /> 规则提炼</h2><p className="mt-1 text-[12px] text-amber-800/70 dark:text-amber-200/70">用户手动点击后，根据 trace 证据提炼规则候选；候选需通过 guardrails 并人工批准后才写入 rules。</p></div><div className="flex flex-wrap gap-2"><button onClick={copySelectedRules} disabled={selectedRules.length === 0} className="rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-[12px] font-medium text-amber-900 hover:bg-white disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950/40 dark:text-amber-100">{copied ? "已复制" : "复制选中"}</button><button onClick={stageSelectedRules} disabled={selectedRules.length === 0} className="rounded-md border border-amber-300 bg-white/70 px-3 py-2 text-[12px] font-medium text-amber-900 hover:bg-white disabled:opacity-50 dark:border-amber-800 dark:bg-neutral-950/40 dark:text-amber-100">暂存选中</button><button onClick={generateRules} disabled={!workspaceId || ruleLoading} className="inline-flex items-center gap-1.5 rounded-md bg-amber-900 px-3 py-2 text-[12px] font-medium text-white hover:bg-amber-800 disabled:opacity-50 dark:bg-amber-200 dark:text-amber-950"><RefreshCw className={`h-3.5 w-3.5 ${ruleLoading ? "animate-spin" : ""}`} /> 更新规则提炼</button></div></div><div className="mt-4 space-y-3">{rules.length === 0 ? <div className="rounded-lg border border-amber-200 bg-white/75 p-8 text-center text-[12px] text-amber-800/70 dark:border-amber-900 dark:bg-neutral-950/50 dark:text-amber-200/70">点击“更新规则提炼”后生成基于 trace 证据的规则建议</div> : rules.map((rule) => { const selected = selectedRuleIds.includes(rule.id); return <button key={rule.id} onClick={() => toggleRule(rule.id)} className={`w-full rounded-lg border p-3 text-left transition-colors ${selected ? "border-amber-400 bg-white dark:border-amber-700 dark:bg-neutral-950/70" : "border-amber-200 bg-white/75 dark:border-amber-900 dark:bg-neutral-950/50"}`}><div className="flex gap-2"><CheckCircle2 className={`mt-0.5 h-4 w-4 shrink-0 ${selected ? "text-emerald-500" : "text-neutral-300"}`} /><div><div className="flex flex-wrap items-center gap-2"><p className="text-[12.5px] font-medium leading-5 text-neutral-900 dark:text-neutral-100">{rule.title}</p><span className="rounded border border-amber-200 px-1.5 py-0.5 text-[10.5px] text-amber-800 dark:border-amber-800 dark:text-amber-200">{rule.severity}</span></div><p className="mt-1 text-[11.5px] leading-5 text-neutral-500 dark:text-neutral-400">依据：{rule.evidence}</p></div></div></button>; })}</div>{stagedRules.length > 0 && <div className="mt-4 rounded-lg border border-amber-300 bg-white/80 p-3 dark:border-amber-800 dark:bg-neutral-950/60"><div className="flex items-center justify-between gap-3"><h3 className="text-[12px] font-semibold text-amber-950 dark:text-amber-100">暂存规则 ({stagedRules.length})</h3><button onClick={() => void submitStagedRules()} className="text-[11px] text-amber-700 hover:underline dark:text-amber-300">提交审批</button><button onClick={() => setStagedRules([])} className="text-[11px] text-amber-700 hover:underline dark:text-amber-300">清空</button></div><ol className="mt-2 list-decimal space-y-1 pl-4 text-[11.5px] text-neutral-600 dark:text-neutral-300">{stagedRules.map((rule) => <li key={rule.id}>{rule.title}</li>)}</ol></div>}{proposals.length > 0 && <div className="mt-4 rounded-lg border border-amber-300 bg-white/80 p-3 dark:border-amber-800 dark:bg-neutral-950/60"><h3 className="text-[12px] font-semibold text-amber-950 dark:text-amber-100">待审批候选 ({proposals.length})</h3><div className="mt-2 space-y-2">{proposals.map((proposal) => { const highRisk = proposal.riskFlags.some((flag) => flag.severity === "high"); return <div key={proposal.id} className="rounded-md border border-amber-200 bg-white p-2 dark:border-amber-900 dark:bg-neutral-950/70"><div className="flex items-start justify-between gap-2"><div className="min-w-0"><p className="text-[12px] font-medium text-neutral-900 dark:text-neutral-100">{proposal.title}</p><p className="mt-1 text-[11px] text-neutral-500 dark:text-neutral-400">confidence {(proposal.confidence * 100).toFixed(0)}% · {proposal.severity}</p>{proposal.riskFlags.length > 0 && <div className="mt-1 flex flex-wrap gap-1">{proposal.riskFlags.map((flag) => <span key={`${proposal.id}-${flag.code}`} title={flag.message} className={`rounded border px-1.5 py-0.5 text-[10px] ${flag.severity === "high" ? "border-rose-300 bg-rose-50 text-rose-700 dark:border-rose-900 dark:bg-rose-950/30 dark:text-rose-300" : "border-amber-300 bg-amber-50 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200"}`}>{flag.code}</span>)}</div>}</div><div className="flex shrink-0 gap-1"><button onClick={() => void approveProposal(proposal.id)} disabled={highRisk} className="rounded border border-emerald-200 px-2 py-1 text-[11px] text-emerald-700 hover:bg-emerald-50 disabled:opacity-40 dark:border-emerald-900 dark:text-emerald-300">批准</button><button onClick={() => void rejectProposal(proposal.id)} className="rounded border border-neutral-200 px-2 py-1 text-[11px] text-neutral-500 hover:bg-neutral-50 dark:border-neutral-800">拒绝</button></div></div></div>; })}</div></div>}</section>
+        )}
+
+        {selectedEvent && (
+          <>
+            <button
+              aria-label="关闭 trace 详情遮罩"
+              className="fixed inset-0 z-30 bg-black/20 backdrop-blur-[1px]"
+              onClick={() => { setSelectedEvent(null); setSelectedDetail(null); }}
+            />
+            <TraceDetailDrawer
+              event={selectedEvent}
+              detail={selectedDetail}
+              loading={detailLoading}
+              copied={detailCopied}
+              onClose={() => { setSelectedEvent(null); setSelectedDetail(null); }}
+              onCopy={() => void copyDiagnosticSummary()}
+            />
+          </>
+        )}
       </div>
     </div>
   );

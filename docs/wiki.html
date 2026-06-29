@@ -796,7 +796,7 @@ UI 约束：
 4. D-TRACE4：failure pattern 闭环状态存储/API，支持 open、fixed、distilled、ignored。
 5. V-TRACE5：失败闭环 UI，支持状态筛选、状态更新、审计信息展示。
 6. E-TRACE6：自动巡检建议，基于 trace 元数据纯规则统计异常峰值、失败率突增、重复失败模式。
-7. X-TRACE7：全链验收、安全红线和 wiki/notes 收口。
+7. X-TRACE8：全链验收、安全红线和 wiki/notes 收口。
 
 API 口径建议：
 1. GET /api/workspaces/:id/trace/events/:eventId/detail
@@ -822,10 +822,12 @@ API 口径建议：
 - D/E/V 卡完成后，npm run typecheck 与 npm run build 必须绿。
 - 新增后端行为必须有 node:test 覆盖。
 - 若任何卡触及数据探索子树，必须执行 AGENTS.md 数据探索隔离 grep。
-- X-TRACE7 做最终安全审计与文档收口。` },
+- X-TRACE8 做最终安全审计与文档收口。` },
 
-  { dom: "V", status: "todo", created: "2026-06-29 15:01", title: "【记忆库·trace·分面视图·P1】V-TRACE1：TracePane 拆分运行/失败/记忆/提炼子视图", brief:
-`前置：X-TRACE0。
+  { dom: "V", status: "done", created: "2026-06-29 15:01", title: "【记忆库·trace·分面视图·P1】V-TRACE1：TracePane 拆分运行/失败/记忆/提炼子视图", brief:
+`完成状态（2026-06-29 · 总控收口）：代码重构已落地，TracePane 已拆成运行看板、失败分析、记忆注入、规则提炼、说明五个分面；npm run typecheck 与 npm run build 通过。浏览器点击 smoke 按用户指示跳过，由用户后续人工点检。
+
+前置：X-TRACE0。
 
 目标：把当前 TracePane 的大看板拆成更可操作的分面视图，降低首屏信息密度，同时保留现有能力不回归。
 
@@ -848,8 +850,10 @@ UI 约束：
 - 切换各分面后，现有刷新、过滤、点击事件打开 timeline、规则提炼、审批、记忆注入展示不回归。
 - 说明页仍可查看 trace 定位、已实现能力、后续方向和安全边界。` },
 
-  { dom: "D", status: "todo", created: "2026-06-29 15:02", title: "【记忆库·trace·事件详情·P1】D-TRACE2：TraceEvent detail read model + 只读 API", brief:
-`前置：X-TRACE0。建议在 V-TRACE3 前完成。
+  { dom: "D", status: "done", created: "2026-06-29 15:02", title: "【记忆库·trace·事件详情·P1】D-TRACE2：TraceEvent detail read model + 只读 API", brief:
+`完成状态（2026-06-29 · 总控收口）：已完成 TraceEventDetail 双侧类型、getTraceEventDetail read model、GET /api/workspaces/:id/trace/events/:eventId/detail 只读 API、web api client，并新增 trace-detail.test.ts 覆盖合法详情、跨 workspace 隔离、timeline limit clamp、敏感 detail 与 failure id/title 脱敏。验证：trace-detail 4/4 通过，npm run typecheck 通过，npm run build 通过（仅既有 Vite chunk/dynamic import warning）。
+
+前置：X-TRACE0。建议在 V-TRACE3 前完成。
 
 目标：为“事件详情抽屉”提供安全、结构化、可审计的只读数据，而不是让前端拼接多个粗粒度接口。
 
@@ -878,8 +882,10 @@ UI 约束：
 - node:test 覆盖：合法事件详情、跨 workspace 不可读、timeline limit clamp、敏感 detail 不直出。
 - npm run typecheck 与 npm run build 绿。` },
 
-  { dom: "V", status: "todo", created: "2026-06-29 15:03", title: "【记忆库·trace·事件抽屉·P1】V-TRACE3：点击事件打开详情抽屉 + 可复制诊断摘要", brief:
-`前置：D-TRACE2。若 D-TRACE2 尚未回流，可先做组件骨架和 loading/error/empty 状态，不接假数据。
+  { dom: "V", status: "done", created: "2026-06-29 15:03", title: "【记忆库·trace·事件抽屉·P1】V-TRACE3：点击事件打开详情抽屉 + 可复制诊断摘要", brief:
+`完成状态（2026-06-29 · 总控收口）：TracePane 最近事件流点击已接入 D-TRACE2 getTraceEventDetail，新增右侧详情抽屉、loading/未加载空态、事件基础信息、诊断摘要复制、上下游 timeline、关联 failure pattern 与安全脱敏提示。验证：npm run typecheck 通过，npm run build 通过（仅既有 Vite chunk/dynamic import warning）。浏览器点击 smoke 按用户指示跳过，由用户后续人工点检。
+
+前置：D-TRACE2。若 D-TRACE2 尚未回流，可先做组件骨架和 loading/error/empty 状态，不接假数据。
 
 目标：让用户点击 trace event 后能看到结构化详情、上下游事件和可复制诊断摘要，减少在多个列表之间来回找线索。
 
@@ -902,8 +908,10 @@ UI 约束：
 - 手动 smoke：点击事件打开抽屉，复制摘要可用，关闭后主筛选保持。
 - D-TRACE2 API 错误时前端有可读错误，不吞异常。` },
 
-  { dom: "D", status: "todo", created: "2026-06-29 15:04", title: "【记忆库·trace·失败闭环后端·P1】D-TRACE4：failure pattern 状态字段 + 更新/筛选 API", brief:
-`前置：X-TRACE0。可与 V-TRACE1 并行，需先于 V-TRACE5 完成。
+  { dom: "D", status: "done", created: "2026-06-29 15:04", title: "【记忆库·trace·失败闭环后端·P1】D-TRACE4：failure pattern 状态字段 + 更新/筛选 API", brief:
+`完成状态（2026-06-29 · 总控收口）：已完成 TraceFailureStatus / TraceFailureStatePatch 双侧类型、trace_failure_states 轻量状态表、listTraceFailures status 过滤、PATCH /api/workspaces/:id/trace/failures/:failureId/status、web api client，并新增 trace-failure-state.test.ts 覆盖默认 open、状态更新、状态筛选、跨 workspace 隔离。验证：trace-detail + trace-failure-state 共 6/6 通过，npm run typecheck 通过，npm run build 通过（仅既有 Vite chunk/dynamic import warning）。
+
+前置：X-TRACE0。可与 V-TRACE1 并行，需先于 V-TRACE5 完成。
 
 目标：让 trace failure pattern 从“只能反复看到”变成“可处理、可沉淀、可忽略、可复核”的闭环对象。
 
@@ -927,8 +935,12 @@ UI 约束：
 - npm run typecheck 与 npm run build 绿。
 - 不影响现有 TracePane 失败列表。` },
 
-  { dom: "V", status: "todo", created: "2026-06-29 15:05", title: "【记忆库·trace·失败闭环UI·P1】V-TRACE5：失败状态筛选 + 状态更新 + 审计展示", brief:
-`前置：D-TRACE4。
+  { dom: "V", status: "done", created: "2026-06-29 15:05", title: "【记忆库·trace·失败闭环UI·P1】V-TRACE5：失败状态筛选 + 状态更新 + 审计展示", brief:
+`完成状态（2026-06-29 · 总控收口）：失败分析分面已接入处理状态筛选、StatusPill、状态更新时间、状态备注摘要、四类状态流转短按钮、prompt 备注、乐观更新、API 后局部刷新和 ignored 降噪。执行 agent 回报 npm run typecheck 与 npm run build 已通过。总控只读审核通过；浏览器点击 smoke 按约定跳过，由用户后续人工点检。
+
+总控审核备注：当前 status 筛选在前端基于已加载 failure 列表过滤，超过 50 条时可能不完整；API 失败回滚依赖重新拉取 failure 列表，若网络/后端整体不可用，仍建议后续补本地 snapshot 回滚。
+
+前置：D-TRACE4。
 
 目标：在 TracePane 的失败分析分面中展示 failure pattern 闭环状态，并支持人工更新处理状态。
 
@@ -950,8 +962,12 @@ UI 约束：
 - 手动 smoke：切换状态、筛选状态、刷新后状态保留。
 - API 失败时展示错误并保持原状态。` },
 
-  { dom: "E", status: "todo", created: "2026-06-29 15:06", title: "【记忆库·trace·自动巡检·P1】E-TRACE6：纯规则 trace inspection finding API", brief:
-`前置：X-TRACE0。可在 D-TRACE4 后接入 failure status，也可先基于现有 trace overview/events/failures 实现首版。
+  { dom: "E", status: "done", created: "2026-06-29 15:06", title: "【记忆库·trace·自动巡检·P1】E-TRACE6：纯规则 trace inspection finding API", brief:
+`完成状态（2026-06-29 · 总控收口）：已完成 TraceInspectionFinding 双侧类型、listTraceInspectionFindings 纯规则巡检、GET /api/workspaces/:id/trace/inspections?days=14、web api client，并新增 trace-inspection.test.ts 覆盖空工作区、failure_spike、error_type_spike、repeated_target_failure、memory_injection_omission、stale_open_failure、fixed failure 排除和 evidence 不泄露 raw detail。执行 agent 回报 trace-inspection 7/7、trace-failure-state 2/2、npm run typecheck、npm run build 均通过（仅既有 Vite chunk warning）。
+
+总控审核结论：本卡只交付 API，不含 UI 接入；实现基于 trace 元数据、failure 状态和 memory injection omittedReason 聚合，不调用 LLM，不读取 draw_data / clean_data 文件正文，不输出 trace detail / stdout / stderr / raw row 片段。V-TRACE7 可直接消费该 API。
+
+前置：X-TRACE0。可在 D-TRACE4 后接入 failure status，也可先基于现有 trace overview/events/failures 实现首版。
 
 目标：用纯规则和已脱敏元数据发现 trace 异常峰值、失败率突增、重复失败模式，给用户提供排查入口，但不生成 LLM 解释。
 
@@ -978,8 +994,12 @@ UI 约束：
 - npm run typecheck 与 npm run build 绿。
 - 安全审计确认 finding 不含 raw row 或日志片段。` },
 
-  { dom: "V", status: "todo", created: "2026-06-29 15:07", title: "【记忆库·trace·巡检UI·P1】V-TRACE7：TracePane 自动巡检建议视图", brief:
-`前置：E-TRACE6。
+  { dom: "V", status: "done", created: "2026-06-29 15:07", title: "【记忆库·trace·巡检UI·P1】V-TRACE7：TracePane 自动巡检建议视图", brief:
+`完成状态（2026-06-29 · 总控收口）：TracePane 已新增“巡检建议”独立分面，支持 7/14/30 天窗口切换并自动刷新 E-TRACE6 listTraceInspectionFindings；列表展示 severity、kind、title、count/baselineCount、evidence、suggestedAction，支持复制 target 和 errorType，含 loading 与“暂无异常峰值”空态，并提示巡检基于 trace 元数据和纯规则、不涉及原始业务数据内容。执行 agent 回报 npm run typecheck 与 npm run build 已通过（仅既有 Vite chunk warning）；浏览器点击 smoke 按约定留给人工点检。
+
+总控审核备注：当前 API 失败时走全局 error 提示，但会保留旧巡检列表，后续可按需补错误态局部占位；UI 文案已覆盖“不涉及原始业务数据内容”，后续可再补一句“不代表业务结论”以完全贴合任务卡。
+
+前置：E-TRACE6。
 
 目标：把自动巡检 finding 以可扫描、可操作的方式展示到 trace 工作台，帮助用户先处理最明显的运行异常。
 
@@ -1001,8 +1021,16 @@ UI 约束：
 - E-TRACE6 返回空/多条/error 三种状态都可正常展示。
 - 从 finding 能定位到相关失败或复制排查线索。` },
 
-  { dom: "X", status: "todo", created: "2026-06-29 15:08", title: "【记忆库·trace·验收·P2】X-TRACE8：全链验收 + 安全红线 + wiki/notes 收口", brief:
-`前置：V-TRACE1、D-TRACE2、V-TRACE3、D-TRACE4、V-TRACE5、E-TRACE6、V-TRACE7 回流。
+  { dom: "X", status: "done", created: "2026-06-29 15:08", title: "【记忆库·trace·验收·P2】X-TRACE8：全链验收 + 安全红线 + wiki/notes 收口", brief:
+`完成状态（2026-06-29 · 总控终审）：trace 迭代专题已收口，V-TRACE1 / D-TRACE2 / V-TRACE3 / D-TRACE4 / V-TRACE5 / E-TRACE6 / V-TRACE7 / X-TRACE8 全部 done。终审确认 TracePane 已具备运行、失败、记忆注入、规则提炼、巡检建议、说明六分面；事件详情抽屉、failure 状态闭环、纯规则巡检 API/UI 均已接入。浏览器点击级 smoke 未自动执行，留给用户人工点检。
+
+验证：trace 相关 node:test 30/30 通过（trace-detail、trace-failure-state、trace-inspection、metric-injection-trace）；npm run typecheck 通过；npm run build 通过，仅既有 Echarts dynamic-import 与 chunk-size warning。git diff 未触及 DataExplorationPane 或 data-exploration 子树，因此未触发 AGENTS.md 数据探索隔离 grep。
+
+安全红线：server/web trace 类型镜像一致；trace detail 与 inspections 路由按 workspaceId 读取，beforeLimit/afterLimit、failures limit、inspection days 均有 clamp；自动巡检只读 trace 元数据、failure 状态与 memory injection omittedReason 聚合，不调用 LLM，不读取 draw_data / clean_data 文件正文；finding evidence 不输出 raw row、客户明细、订单样本、完整 prompt 正文、stdout/stderr 或未脱敏日志；状态更新只写 trace_failure_states metadata，不删除 trace_events。
+
+残留风险 / 下一波建议：真实长周期 trace 数据量下的查询与渲染性能未做压测；detail 脱敏依赖关键词与长度策略，需后续根据真实日志样本扩覆盖；巡检阈值目前固定，后续可考虑 workspace 级配置。另 V-TRACE5 status 筛选在前端基于已加载 failure 列表过滤，超量时建议改为服务端 status 查询；V-TRACE7 API 失败时保留旧列表，后续可补局部错误态。
+
+前置：V-TRACE1、D-TRACE2、V-TRACE3、D-TRACE4、V-TRACE5、E-TRACE6、V-TRACE7 回流。
 
 目标：总控终审 trace 迭代专题，确认新工作台可用、API 契约一致、安全红线不破。
 

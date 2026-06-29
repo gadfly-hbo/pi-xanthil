@@ -97,9 +97,11 @@ import {
   listMessages,
   listRuleMemories,
   getTraceOverview,
+  getTraceEventDetail,
   getTraceTimeline,
   getTraceTrend,
   generateTraceRuleSuggestions,
+  listTraceInspectionFindings,
   listTraceFailures,
   listMemoryInjectionRecords,
   listTraceRecentEvents,
@@ -126,6 +128,7 @@ import {
   updateFlowSourceName,
   updateSessionRuntime,
   updateRuleMemory,
+  updateTraceFailureStatus,
   updateWorkspacePathHash,
   createChangeProposal,
   listChangeProposals,
@@ -192,7 +195,7 @@ import { deleteKgEdge, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHi
 import { buildMemoryInjectionSnapshot, withRulesPrompt } from "./memory-injection.ts";
 import { withKnowledgePrompt } from "./knowledge-injection.ts";
 import { expandCommand } from "./command-expand.ts";
-import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, MetricSnapshot, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentBlackboardEntry, SubAgentBlackboardKind, SubAgentTemplate, TokenUsageTargetKind, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
+import type { BiDatasetSlot, ClientMessage, DecisionTreeNode, MetricSnapshot, PiEvent, PredictionResult, PredictionTierColor, PredictionVariant, ServerMessage, Session, SubAgentBlackboardEntry, SubAgentBlackboardKind, SubAgentTemplate, TokenUsageTargetKind, TraceFailureStatus, TraceRuleSuggestion, WorkspacePath } from "./types.ts";
 import type { EvaluationFlowConfig } from "./types.ts";
 import type { WorkflowAgentEntry, WorkflowRunView } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
@@ -1485,6 +1488,15 @@ app.get("/api/workspaces/:id/tool-runs", (req, res) => {
   res.json(listToolRuns(req.params.id, limit));
 });
 
+app.get("/api/workspaces/:id/trace/events/:eventId/detail", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const beforeLimit = Math.min(10, Math.max(0, Number(req.query.beforeLimit ?? 5) || 0));
+  const afterLimit = Math.min(10, Math.max(0, Number(req.query.afterLimit ?? 5) || 0));
+  const detail = getTraceEventDetail(req.params.id, req.params.eventId, { beforeLimit, afterLimit });
+  if (!detail) return res.status(404).json({ error: "trace event not found" });
+  res.json(detail);
+});
+
 app.get("/api/workspaces/:id/trace/timeline", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   const targetKind = String(req.query.targetKind ?? "");
@@ -1496,7 +1508,26 @@ app.get("/api/workspaces/:id/trace/timeline", (req, res) => {
 app.get("/api/workspaces/:id/trace/failures", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   const limit = Math.min(50, Math.max(1, Number(req.query.limit ?? 10) || 10));
-  res.json(listTraceFailures(req.params.id, limit));
+  const status = typeof req.query.status === "string" ? req.query.status : undefined;
+  if (status && !["open", "fixed", "distilled", "ignored"].includes(status)) return res.status(400).json({ error: "invalid status" });
+  res.json(listTraceFailures(req.params.id, limit, status as TraceFailureStatus | undefined));
+});
+
+app.get("/api/workspaces/:id/trace/inspections", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const days = Math.min(90, Math.max(1, Number(req.query.days ?? 14) || 14));
+  res.json(listTraceInspectionFindings(req.params.id, days));
+});
+
+app.patch("/api/workspaces/:id/trace/failures/:failureId/status", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const status = String(req.body?.status ?? "");
+  if (!["open", "fixed", "distilled", "ignored"].includes(status)) return res.status(400).json({ error: "invalid status" });
+  const note = typeof req.body?.note === "string" ? req.body.note : "";
+  const actor = typeof req.body?.actor === "string" ? req.body.actor : "manual";
+  const failure = updateTraceFailureStatus(req.params.id, req.params.failureId, status as TraceFailureStatus, note, actor);
+  if (!failure) return res.status(404).json({ error: "trace failure not found" });
+  res.json(failure);
 });
 
 app.post("/api/workspaces/:id/trace/rule-suggestions", (req, res) => {

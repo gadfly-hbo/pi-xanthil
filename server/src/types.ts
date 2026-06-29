@@ -1641,6 +1641,7 @@ export interface TraceTimelineItem {
 }
 
 export type TraceErrorType = "validation" | "path_missing" | "stream_interrupt" | "dependency_missing" | "model_config" | "runtime" | "aborted" | "unknown";
+export type TraceFailureStatus = "open" | "fixed" | "distilled" | "ignored";
 
 export interface TraceFailure {
   id: string;
@@ -1649,6 +1650,35 @@ export interface TraceFailure {
   source: string;
   errorType: TraceErrorType;
   lastSeenAt: number;
+  status: TraceFailureStatus;
+  statusNote: string | null;
+  statusActor: string | null;
+  statusUpdatedAt: number | null;
+}
+
+export interface TraceFailureStatePatch {
+  status: TraceFailureStatus;
+  note?: string;
+  actor?: string;
+}
+
+export interface TraceEventDetailTarget {
+  targetKind: TraceTargetKind;
+  targetId: string;
+  label: string;
+  status: TraceEvent["status"];
+  createdAt: number | null;
+  updatedAt: number | null;
+}
+
+export interface TraceEventDetail {
+  event: TraceEvent;
+  target: TraceEventDetailTarget;
+  timelineBefore: TraceTimelineItem[];
+  timelineAfter: TraceTimelineItem[];
+  relatedFailures: TraceFailure[];
+  diagnosticSummary: string;
+  safetyLevel: "safe_metadata" | "redacted_detail";
 }
 
 export interface TraceRuleSuggestion {
@@ -1657,6 +1687,42 @@ export interface TraceRuleSuggestion {
   evidence: string;
   severity: "low" | "medium" | "high";
   sourceEventIds: string[];
+  createdAt: number;
+}
+
+export type TraceInspectionFindingKind =
+  | "failure_spike"
+  | "error_type_spike"
+  | "repeated_target_failure"
+  | "memory_injection_omission"
+  | "stale_open_failure";
+
+export interface TraceInspectionFindingEvidence {
+  metric: string;
+  value: string | number | null;
+  targetKind?: string;
+  targetId?: string;
+  errorType?: TraceErrorType;
+  status?: TraceFailureStatus | "failed";
+  omittedReason?: string;
+}
+
+export interface TraceInspectionFinding {
+  id: string;
+  severity: "low" | "medium" | "high";
+  kind: TraceInspectionFindingKind;
+  title: string;
+  evidence: TraceInspectionFindingEvidence[];
+  window: {
+    days: number;
+    currentStart: number;
+    currentEnd: number;
+    baselineStart: number;
+    baselineEnd: number;
+  };
+  count: number;
+  baselineCount: number;
+  suggestedAction: string;
   createdAt: number;
 }
 

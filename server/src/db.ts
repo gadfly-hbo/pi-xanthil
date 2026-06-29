@@ -5,7 +5,7 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { DB_PATH, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
 import { FOLDER_DIRS, ensureStandardDirs, isInsideStandardDir, sessionDir, standardDirIn } from "./workspace-dirs.ts";
-import type { AnalysisCase, AnalysisCaseInput, AnaxGateConfig, AnalysisStandard, AnalysisStandardKind, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, BusinessContextConflict, BusinessContextImportCommitResult, BusinessContextImportConflictPolicy, BusinessContextImportFormat, BusinessContextImportPreview, BusinessContextImportPreviewRow, BusinessContextImportRow, BusinessContextInput, ChangeProposal, ChangeProposalInput, ChangeProposalStatus, CreateRuleResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, KgEdge, KgNode, KgNodeType, KgRelation, MemoryEvalVariant, MemoryEvaluation, MemoryEvaluationDetail, MemoryEvaluationResult, MemoryInjectionRecord, MemoryInjectionSnapshot, MemoryProposal, MemoryProposalRiskFlag, MemoryFailureAttribution, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, RuleConflict, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, PiUsage, PredictionResult, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, SkillCurationProposalRecord, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillEvalSet, SkillEvalTask, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, StaleNode, StaleNodeReason, StoredFlowMessage, StoredMessage, TokenUsageStats, TokenUsageTargetKind, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, TraceErrorType, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
+import type { AnalysisCase, AnalysisCaseInput, AnaxGateConfig, AnalysisStandard, AnalysisStandardKind, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, BusinessContextConflict, BusinessContextImportCommitResult, BusinessContextImportConflictPolicy, BusinessContextImportFormat, BusinessContextImportPreview, BusinessContextImportPreviewRow, BusinessContextImportRow, BusinessContextInput, ChangeProposal, ChangeProposalInput, ChangeProposalStatus, CreateRuleResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, KgEdge, KgNode, KgNodeType, KgRelation, MemoryEvalVariant, MemoryEvaluation, MemoryEvaluationDetail, MemoryEvaluationResult, MemoryInjectionRecord, MemoryInjectionSnapshot, MemoryProposal, MemoryProposalRiskFlag, MemoryFailureAttribution, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, RuleConflict, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, PiUsage, PredictionResult, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, SkillCurationProposalRecord, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillEvalSet, SkillEvalTask, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, StaleNode, StaleNodeReason, StoredFlowMessage, StoredMessage, TokenUsageStats, TokenUsageTargetKind, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, TraceErrorType, TraceEvent, TraceEventDetail, TraceEventDetailTarget, TraceFailure, TraceFailureStatus, TraceInspectionFinding, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
 import { parseEvaluationError, serializeEvaluationError } from "./evaluation-errors.ts";
 import { initSharedTables, backfillMemoryEnablements, listEnabledItemIds, enableForOrigin, setMemoryEnablement } from "./db/shared.ts";
 import { initDataTables } from "./db/data.ts";
@@ -362,6 +362,16 @@ db.exec(`
   CREATE INDEX IF NOT EXISTS idx_trace_events_ws_time ON trace_events(workspace_id, created_at DESC);
   CREATE INDEX IF NOT EXISTS idx_trace_events_target ON trace_events(target_kind, target_id);
   CREATE INDEX IF NOT EXISTS idx_trace_events_type ON trace_events(type);
+  CREATE TABLE IF NOT EXISTS trace_failure_states (
+    workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+    failure_id   TEXT NOT NULL,
+    status       TEXT NOT NULL,
+    note         TEXT,
+    actor        TEXT,
+    updated_at   INTEGER NOT NULL,
+    PRIMARY KEY (workspace_id, failure_id)
+  );
+  CREATE INDEX IF NOT EXISTS idx_trace_failure_states_ws_status ON trace_failure_states(workspace_id, status, updated_at DESC);
   CREATE TABLE IF NOT EXISTS memory_proposals (
     id               TEXT PRIMARY KEY,
     workspace_id     TEXT NOT NULL REFERENCES workspaces(id),
@@ -3018,6 +3028,132 @@ export function listTraceRecentEvents(workspaceId: string, limit = 30): TraceEve
   `).all(workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, workspaceId, limit) as unknown as TraceEvent[];
 }
 
+function coerceTraceStatus(status: string): TraceEvent["status"] {
+  if (status === "success" || status === "failed" || status === "running" || status === "idle" || status === "compacting" || status === "aborted") return status;
+  if (status === "error") return "failed";
+  return "idle";
+}
+
+function sanitizeTraceText(text: string | null | undefined, maxLength = 280): { text: string | null; redacted: boolean } {
+  if (!text) return { text: null, redacted: false };
+  const risky = /draw_data|raw row|row-level|customer[_ -]?id|user[_ -]?id|order[_ -]?id|phone|mobile|email|身份证|手机号|订单|客户明细|完整 prompt|stderr|stdout/i.test(text);
+  if (risky) return { text: null, redacted: true };
+  if (text.length <= maxLength) return { text, redacted: false };
+  return { text: `${text.slice(0, maxLength)}...`, redacted: false };
+}
+
+function sanitizeTimelineItem(item: TraceTimelineItem): { item: TraceTimelineItem; redacted: boolean } {
+  const detail = sanitizeTraceText(item.detail);
+  return { item: { ...item, detail: detail.text }, redacted: detail.redacted };
+}
+
+function sanitizeTraceFailure(failure: TraceFailure): { failure: TraceFailure; redacted: boolean } {
+  const title = sanitizeTraceText(failure.title);
+  if (!title.redacted) return { failure: { ...failure, title: title.text ?? failure.title }, redacted: false };
+  return {
+    failure: {
+      ...failure,
+      id: `redacted:${failure.source}:${failure.errorType}:${failure.lastSeenAt}`,
+      title: "[detail redacted]",
+    },
+    redacted: true,
+  };
+}
+
+function getPersistedTraceEvent(workspaceId: string, eventId: string): TraceEvent | null {
+  const row = db.prepare(`
+    SELECT id, created_at AS time, type, target, target_kind AS targetKind, target_id AS targetId, status, detail
+    FROM trace_events
+    WHERE workspace_id = ? AND id = ?
+  `).get(workspaceId, eventId) as unknown as TraceEvent | undefined;
+  if (!row) return null;
+  return { ...row, status: coerceTraceStatus(row.status) };
+}
+
+function getTraceTargetDetail(workspaceId: string, event: TraceEvent): TraceEventDetailTarget {
+  if (event.targetKind === "session" || event.targetKind === "runtime") {
+    const session = getSession(event.targetId);
+    if (session?.workspaceId === workspaceId) {
+      return { targetKind: event.targetKind, targetId: event.targetId, label: session.title, status: event.status, createdAt: session.createdAt, updatedAt: session.updatedAt };
+    }
+  }
+  if (event.targetKind === "flow") {
+    const flow = getFlow(event.targetId);
+    if (flow?.workspaceId === workspaceId) {
+      return { targetKind: event.targetKind, targetId: event.targetId, label: flow.name, status: flow.generationStatus === "failed" ? "failed" : event.status, createdAt: flow.createdAt, updatedAt: flow.updatedAt };
+    }
+  }
+  if (event.targetKind === "flow_run") {
+    const run = getFlowRun(event.targetId);
+    const flow = run ? getFlow(run.flowId) : undefined;
+    if (run && flow?.workspaceId === workspaceId) {
+      return { targetKind: event.targetKind, targetId: event.targetId, label: flow.name, status: coerceTraceStatus(run.status), createdAt: run.startedAt, updatedAt: run.endedAt ?? run.startedAt };
+    }
+  }
+  if (event.targetKind === "message") {
+    const row = db.prepare(`
+      SELECT m.created_at AS createdAt, s.updated_at AS updatedAt, s.title AS title, s.workspace_id AS workspaceId
+      FROM messages m JOIN sessions s ON s.id = m.session_id WHERE m.id = ?
+    `).get(Number(event.targetId)) as unknown as { createdAt: number; updatedAt: number; title: string; workspaceId: string } | undefined;
+    if (row?.workspaceId === workspaceId) {
+      return { targetKind: event.targetKind, targetId: event.targetId, label: row.title, status: event.status, createdAt: row.createdAt, updatedAt: row.updatedAt };
+    }
+  }
+  return { targetKind: event.targetKind, targetId: event.targetId, label: event.target, status: event.status, createdAt: event.time, updatedAt: event.time };
+}
+
+function buildTraceDiagnosticSummary(event: TraceEvent, relatedFailures: TraceFailure[], redacted: boolean): string {
+  const errorType = event.status === "failed" ? classifyTraceError(event.detail, event.type) : null;
+  const parts = [
+    `${event.targetKind}:${event.targetId}`,
+    event.type,
+    event.status,
+  ];
+  if (errorType) parts.push(errorType);
+  if (relatedFailures.length > 0) parts.push(`related_failures=${relatedFailures.length}`);
+  if (redacted) parts.push("detail_redacted");
+  return parts.join(" · ");
+}
+
+export function getTraceEventDetail(
+  workspaceId: string,
+  eventId: string,
+  options: { beforeLimit?: number; afterLimit?: number } = {},
+): TraceEventDetail | null {
+  const beforeLimit = Math.min(10, Math.max(0, Number(options.beforeLimit ?? 5) || 0));
+  const afterLimit = Math.min(10, Math.max(0, Number(options.afterLimit ?? 5) || 0));
+  const foundEvent = getPersistedTraceEvent(workspaceId, eventId) ?? listTraceRecentEvents(workspaceId, 2000).find((event) => event.id === eventId) ?? null;
+  if (!foundEvent) return null;
+
+  const sanitizedEventDetail = sanitizeTraceText(foundEvent.detail);
+  const event: TraceEvent = { ...foundEvent, detail: sanitizedEventDetail.text, status: coerceTraceStatus(foundEvent.status) };
+  const target = getTraceTargetDetail(workspaceId, event);
+  const timeline = getTraceTimeline(workspaceId, event.targetKind, event.targetId)
+    .map(sanitizeTimelineItem);
+  const eventIndex = timeline.findIndex(({ item }) => item.id === event.id);
+  const pivot = eventIndex >= 0 ? eventIndex : timeline.findIndex(({ item }) => item.time >= event.time);
+  const before = (pivot >= 0 ? timeline.slice(Math.max(0, pivot - beforeLimit), pivot) : timeline.slice(-beforeLimit))
+    .map(({ item }) => item);
+  const after = (pivot >= 0 ? timeline.slice(pivot + 1, pivot + 1 + afterLimit) : [])
+    .map(({ item }) => item);
+  const relatedFailures = listTraceFailures(workspaceId, 50)
+    .filter((failure) => failure.source === event.type || failure.title.includes(foundEvent.detail ?? event.type) || failure.title.includes(event.target))
+    .slice(0, 5)
+    .map(sanitizeTraceFailure);
+  const redacted = sanitizedEventDetail.redacted || timeline.some((entry) => entry.redacted) || relatedFailures.some((entry) => entry.redacted);
+  const failures = relatedFailures.map(({ failure }) => failure);
+
+  return {
+    event,
+    target,
+    timelineBefore: before,
+    timelineAfter: after,
+    relatedFailures: failures,
+    diagnosticSummary: buildTraceDiagnosticSummary(event, failures, redacted),
+    safetyLevel: redacted ? "redacted_detail" : "safe_metadata",
+  };
+}
+
 // tool-use 运行看板数据源：从 trace_events 取工具运行流水（含 payload 明细字段）。
 export function listToolRuns(workspaceId: string, limit = 200): ToolRunRecord[] {
   const rows = db.prepare(`
@@ -3133,7 +3269,53 @@ export function getTraceTimeline(workspaceId: string, targetKind: string, target
   return [];
 }
 
-export function listTraceFailures(workspaceId: string, limit = 10): TraceFailure[] {
+const TRACE_FAILURE_STATUSES: TraceFailureStatus[] = ["open", "fixed", "distilled", "ignored"];
+
+function isTraceFailureStatus(value: unknown): value is TraceFailureStatus {
+  return typeof value === "string" && TRACE_FAILURE_STATUSES.includes(value as TraceFailureStatus);
+}
+
+function traceFailureStates(workspaceId: string): Map<string, { status: TraceFailureStatus; statusNote: string | null; statusActor: string | null; statusUpdatedAt: number | null }> {
+  const rows = db.prepare(`
+    SELECT failure_id AS failureId, status, note AS statusNote, actor AS statusActor, updated_at AS statusUpdatedAt
+    FROM trace_failure_states
+    WHERE workspace_id = ?
+  `).all(workspaceId) as Array<{ failureId: string; status: string; statusNote: string | null; statusActor: string | null; statusUpdatedAt: number }>;
+  return new Map(rows.map((row) => [
+    row.failureId,
+    {
+      status: isTraceFailureStatus(row.status) ? row.status : "open",
+      statusNote: row.statusNote,
+      statusActor: row.statusActor,
+      statusUpdatedAt: row.statusUpdatedAt,
+    },
+  ]));
+}
+
+export function updateTraceFailureStatus(
+  workspaceId: string,
+  failureId: string,
+  status: TraceFailureStatus,
+  note = "",
+  actor = "manual",
+): TraceFailure | null {
+  if (!isTraceFailureStatus(status)) throw new Error(`invalid trace failure status: ${String(status)}`);
+  const exists = listTraceFailures(workspaceId, 500).some((failure) => failure.id === failureId);
+  if (!exists) return null;
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO trace_failure_states (workspace_id, failure_id, status, note, actor, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?)
+    ON CONFLICT(workspace_id, failure_id) DO UPDATE SET
+      status = excluded.status,
+      note = excluded.note,
+      actor = excluded.actor,
+      updated_at = excluded.updated_at
+  `).run(workspaceId, failureId, status, note.trim() || null, actor.trim() || "manual", now);
+  return listTraceFailures(workspaceId, 500).find((failure) => failure.id === failureId) ?? null;
+}
+
+export function listTraceFailures(workspaceId: string, limit = 10, status?: TraceFailureStatus): TraceFailure[] {
   const messageFailures = db.prepare(`
     SELECT 'message:' || COALESCE(error_message, 'unknown') AS id,
            COALESCE(error_message, 'unknown') AS title,
@@ -3177,10 +3359,183 @@ export function listTraceFailures(workspaceId: string, limit = 10): TraceFailure
     WHERE workspace_id = ? AND status = 'failed'
     GROUP BY type, detail, target
   `).all(workspaceId) as unknown as Omit<TraceFailure, "errorType">[];
+  const states = traceFailureStates(workspaceId);
   return [...messageFailures, ...runFailures, ...runtimeFailures, ...persistedFailures]
-    .map((failure) => ({ ...failure, errorType: classifyTraceError(failure.title, failure.source) }))
+    .map((failure) => {
+      const state = states.get(failure.id) ?? { status: "open" as const, statusNote: null, statusActor: null, statusUpdatedAt: null };
+      return { ...failure, errorType: classifyTraceError(failure.title, failure.source), ...state };
+    })
+    .filter((failure) => !status || failure.status === status)
     .sort((a, b) => b.count - a.count || b.lastSeenAt - a.lastSeenAt)
     .slice(0, limit);
+}
+
+type TraceInspectionFailureEvent = {
+  time: number;
+  targetKind: string;
+  targetId: string;
+  errorType: TraceErrorType;
+};
+
+function listTraceInspectionFailureEvents(workspaceId: string, since: number): TraceInspectionFailureEvent[] {
+  const messageFailures = db.prepare(`
+    SELECT m.created_at AS time, 'session' AS targetKind, s.id AS targetId, 'message_error' AS source
+    FROM messages m JOIN sessions s ON s.id = m.session_id
+    WHERE s.workspace_id = ? AND m.error_message IS NOT NULL AND m.created_at >= ?
+  `).all(workspaceId, since) as Array<{ time: number; targetKind: string; targetId: string; source: string }>;
+  const runFailures = db.prepare(`
+    SELECT COALESCE(fr.ended_at, fr.started_at) AS time, 'flow' AS targetKind, f.id AS targetId, 'flow_run_failed' AS source
+    FROM flow_runs fr JOIN flows f ON f.id = fr.flow_id
+    WHERE f.workspace_id = ? AND fr.status = 'failed' AND COALESCE(fr.ended_at, fr.started_at) >= ?
+  `).all(workspaceId, since) as Array<{ time: number; targetKind: string; targetId: string; source: string }>;
+  const runtimeFailures = db.prepare(`
+    SELECT sr.updated_at AS time, 'runtime' AS targetKind, sr.session_id AS targetId, 'runtime_error' AS source
+    FROM session_runtime sr JOIN sessions s ON s.id = sr.session_id
+    WHERE s.workspace_id = ? AND sr.status = 'error' AND sr.updated_at >= ?
+  `).all(workspaceId, since) as Array<{ time: number; targetKind: string; targetId: string; source: string }>;
+  const persistedFailures = db.prepare(`
+    SELECT created_at AS time, target_kind AS targetKind, target_id AS targetId, type AS source
+    FROM trace_events
+    WHERE workspace_id = ? AND status = 'failed' AND created_at >= ?
+  `).all(workspaceId, since) as Array<{ time: number; targetKind: string; targetId: string; source: string }>;
+  return [...messageFailures, ...runFailures, ...runtimeFailures, ...persistedFailures]
+    .map((event) => ({ ...event, errorType: classifyTraceError(null, event.source) }));
+}
+
+function groupCount<T extends string>(items: T[]): Map<T, number> {
+  const counts = new Map<T, number>();
+  for (const item of items) counts.set(item, (counts.get(item) ?? 0) + 1);
+  return counts;
+}
+
+function inspectionSeverity(count: number, baselineCount: number): "low" | "medium" | "high" {
+  if (count >= Math.max(8, baselineCount * 3)) return "high";
+  if (count >= 3) return "medium";
+  return "low";
+}
+
+function isSpike(count: number, baselineCount: number): boolean {
+  return count >= 3 && count >= baselineCount * 2 + 1;
+}
+
+function traceInspectionWindow(days: number): TraceInspectionFinding["window"] {
+  const safeDays = Math.min(90, Math.max(1, Math.floor(Number(days) || 14)));
+  const currentEnd = Date.now();
+  const currentStart = currentEnd - safeDays * 86400000;
+  const baselineEnd = currentStart;
+  const baselineStart = baselineEnd - safeDays * 86400000;
+  return { days: safeDays, currentStart, currentEnd, baselineStart, baselineEnd };
+}
+
+export function listTraceInspectionFindings(workspaceId: string, days = 14): TraceInspectionFinding[] {
+  const now = Date.now();
+  const window = traceInspectionWindow(days);
+  const events = listTraceInspectionFailureEvents(workspaceId, window.baselineStart);
+  const current = events.filter((event) => event.time >= window.currentStart && event.time <= window.currentEnd);
+  const baseline = events.filter((event) => event.time >= window.baselineStart && event.time < window.baselineEnd);
+  const findings: TraceInspectionFinding[] = [];
+  const push = (finding: Omit<TraceInspectionFinding, "createdAt" | "window">) => findings.push({ ...finding, window, createdAt: now });
+
+  if (isSpike(current.length, baseline.length)) {
+    push({
+      id: `failure-spike:${window.days}`,
+      kind: "failure_spike",
+      severity: inspectionSeverity(current.length, baseline.length),
+      title: "Trace failure count increased in the current window",
+      evidence: [
+        { metric: "currentFailures", value: current.length, status: "failed" },
+        { metric: "baselineFailures", value: baseline.length, status: "failed" },
+      ],
+      count: current.length,
+      baselineCount: baseline.length,
+      suggestedAction: "Open trace failures filtered to the current window, inspect the newest failed targets first, then mark resolved items fixed or ignored.",
+    });
+  }
+
+  const currentByErrorType = groupCount(current.map((event) => event.errorType));
+  const baselineByErrorType = groupCount(baseline.map((event) => event.errorType));
+  for (const [errorType, count] of currentByErrorType) {
+    const baselineCount = baselineByErrorType.get(errorType) ?? 0;
+    if (!isSpike(count, baselineCount)) continue;
+    push({
+      id: `error-type-spike:${errorType}:${window.days}`,
+      kind: "error_type_spike",
+      severity: inspectionSeverity(count, baselineCount),
+      title: `Trace error type spike: ${errorType}`,
+      evidence: [
+        { metric: "currentFailures", value: count, errorType, status: "failed" },
+        { metric: "baselineFailures", value: baselineCount, errorType, status: "failed" },
+      ],
+      count,
+      baselineCount,
+      suggestedAction: "Open recent trace events for this errorType and verify the deterministic guard, dependency, or runtime path before retrying.",
+    });
+  }
+
+  const currentByTarget = groupCount(current.map((event) => `${event.targetKind}:${event.targetId}`));
+  for (const [target, count] of currentByTarget) {
+    if (count < 3) continue;
+    const [targetKind, ...targetIdParts] = target.split(":");
+    const targetId = targetIdParts.join(":");
+    push({
+      id: `repeated-target-failure:${targetKind}:${targetId}:${window.days}`,
+      kind: "repeated_target_failure",
+      severity: count >= 5 ? "high" : "medium",
+      title: `Repeated failures for ${targetKind}:${targetId}`,
+      evidence: [{ metric: "targetFailures", value: count, targetKind, targetId, status: "failed" }],
+      count,
+      baselineCount: 0,
+      suggestedAction: "Open the target timeline and stop blind retries until the first failed event and upstream dependency are checked.",
+    });
+  }
+
+  const memoryRecords = listMemoryInjectionRecords(workspaceId, 2000)
+    .filter((record) => record.createdAt >= window.baselineStart);
+  const omittedReasons = memoryRecords.flatMap((record) => record.snapshot.sources
+    .filter((source) => !source.injected && source.omittedReason)
+    .map((source) => ({ reason: source.omittedReason!, createdAt: record.createdAt, targetKind: record.targetKind, targetId: record.targetId })));
+  const currentOmissions = omittedReasons.filter((item) => item.createdAt >= window.currentStart && item.createdAt <= window.currentEnd);
+  const baselineOmissions = omittedReasons.filter((item) => item.createdAt >= window.baselineStart && item.createdAt < window.baselineEnd);
+  const currentByReason = groupCount(currentOmissions.map((item) => item.reason));
+  const baselineByReason = groupCount(baselineOmissions.map((item) => item.reason));
+  for (const [omittedReason, count] of currentByReason) {
+    const baselineCount = baselineByReason.get(omittedReason) ?? 0;
+    if (count < 3 && !isSpike(count, baselineCount)) continue;
+    const sample = currentOmissions.find((item) => item.reason === omittedReason);
+    push({
+      id: `memory-injection-omission:${omittedReason}:${window.days}`,
+      kind: "memory_injection_omission",
+      severity: inspectionSeverity(count, baselineCount),
+      title: `Repeated memory injection omission: ${omittedReason}`,
+      evidence: [{ metric: "omissions", value: count, targetKind: sample?.targetKind, targetId: sample?.targetId, omittedReason }],
+      count,
+      baselineCount,
+      suggestedAction: "Open memory injection records and adjust enablement, negative feedback, or token budget before relying on memory context.",
+    });
+  }
+
+  const staleCutoff = now - 7 * 86400000;
+  for (const failure of listTraceFailures(workspaceId, 500, "open")) {
+    if (failure.lastSeenAt > staleCutoff) continue;
+    push({
+      id: `stale-open-failure:${failure.errorType}:${failure.lastSeenAt}`,
+      kind: "stale_open_failure",
+      severity: failure.count >= 3 ? "high" : "medium",
+      title: `Open trace failure is stale: ${failure.errorType}`,
+      evidence: [
+        { metric: "openFailureCount", value: failure.count, errorType: failure.errorType, status: "open" },
+        { metric: "lastSeenAt", value: failure.lastSeenAt, errorType: failure.errorType, status: "open" },
+      ],
+      count: failure.count,
+      baselineCount: 0,
+      suggestedAction: "Review the open failure state and mark it fixed, ignored, or distilled after confirming the latest target timeline.",
+    });
+  }
+
+  return findings.sort((a, b) => {
+    const severityRank = { high: 3, medium: 2, low: 1 } as const;
+    return severityRank[b.severity] - severityRank[a.severity] || b.count - a.count || a.kind.localeCompare(b.kind);
+  });
 }
 
 export function getTraceTrend(workspaceId: string, days = 14): TraceTrendPoint[] {
