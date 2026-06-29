@@ -290,6 +290,241 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【记忆库·知识图谱优化专题】（Infra 总控拆卡 2026-06-29；来源=KnowledgeGraphPane 说明页“后续值得优化的方向”：关系筛选、节点质量评分、提取预览、变更历史）。定位：把知识图谱从基础可视化升级为可筛选、可评估、可预览、可追溯的知识治理工作台。红线：不读 draw_data 原始行；提取预览只读且不触发 LLM；变更历史只记元数据摘要，不记录报告正文、prompt 正文、客户明细、订单样本或数据探索结果。本组 KG wiki 任务卡即专题派发真源。════
+  { dom: "X", status: "done", created: "2026-06-29 18:00", title: "【记忆库·知识图谱·契约·P0】X-KG0：关系筛选/质量提示/提取预览/变更历史专题契约 + 派发", brief:
+`完成状态（2026-06-29 · 总控）：专题契约与红线已冻结，KG wiki 任务卡已创建；本专题后续卡已全部完成并通过 X-KG5 终审。
+
+总控自持。前置：知识图谱说明页已上线，用户确认启动后续优化拆卡。
+
+目标：冻结知识图谱下一波迭代的产品边界、字段/API、安全红线和域分工，避免 D/V 各自按直觉扩展导致知识图谱变成不受控内容仓库。
+
+产品边界：
+1. 知识图谱是规则记忆的结构化治理视图，不是原始数据探索工具。
+2. 允许使用 rules、业务环境、指标定义、报告产物和经授权的语义提取结果。
+3. 不允许读取 draw_data 原始行级内容、客户明细、订单样本或 data_exploration 结果进入 AI 提取/注入链路。
+4. 提取预览必须只读，不触发 LLM，不写入 kg_nodes / kg_edges。
+5. 变更历史只记录元数据摘要，不记录报告正文、prompt 正文、原始明细或日志样本。
+6. 节点质量提示首版为前端启发式，不作为业务真值或最终置信度。
+
+冻结任务：
+1. V-KG1：图谱关系筛选，按 relation 类型和自动/手工来源过滤边。
+2. V-KG2：节点质量提示，基于现有 rawNodes/rawEdges 做前端启发式低置信提示。
+3. D-KG3：AI 语义提取预览，只读返回预计处理报告列表和跳过原因。
+4. D-KG4：知识图谱变更历史，记录 sync/extract/hide/recover/manual edge add/delete。
+5. X-KG5：全链验收、安全红线和 wiki/notes 收口。
+
+共享 API 口径建议：
+1. GET /api/workspaces/:id/knowledge-graph/extract-preview
+2. GET /api/workspaces/:id/knowledge-graph/history?limit=50
+
+共享类型建议：
+1. KgExtractPreviewReport = { id; path; title; status; reason; updatedAt? }。
+2. KgExtractPreview = { reports; processLimit; estimatedProcessCount; skippedCount; generatedAt }。
+3. KgHistoryEvent = { id; workspaceId; eventType; targetKind; targetId; title; summary; metadata; createdAt }。
+4. KgHistoryEventType = sync_summary | extract_summary | node_hidden | node_recovered | manual_edge_added | edge_deleted。
+
+验收口径：
+- D/V 卡完成后，npm run typecheck 与 npm run build 必须绿。
+- 新增后端行为必须有 node:test 或最小 smoke 覆盖。
+- 数据探索隔离 grep 必须无匹配。
+- 本组 KG wiki 任务卡是本专题派发真源。` },
+
+  { dom: "V", status: "done", created: "2026-06-29 18:01", title: "【记忆库·知识图谱·关系筛选·P1】V-KG1：图谱视图 relation / 自动手工来源筛选", brief:
+`完成状态（2026-06-29 · 总控验收）：已在 KnowledgeGraphPane 图谱视图 toolbar 增加 relation 与自动/手工来源筛选；过滤只作用于传给 GraphCanvas 的 edges，nodes 不因边过滤消失。验证：npm -w web run typecheck ✅；npm -w web run build ✅（仅既有 Vite chunk/dynamic import warning）；数据探索红线 grep 无匹配 ✅。
+
+前置：X-KG0。可与 V-KG2 并行。
+
+目标：在知识图谱图谱视图中增加边关系筛选能力，便于排查引用链、支撑链和人工维护关系。
+
+范围：
+1. 在图谱视图 toolbar 增加 relation 筛选：全部、related_to、references、supports、derived_from。
+2. 增加边来源筛选：全部、自动、手工。
+3. 筛选只影响传给 GraphCanvas 的 edges。
+4. nodes 仍按隐藏状态展示，不应因为边过滤而消失。
+5. 保持搜索高亮、节点点击、边点击、人工连边和删除所选边能力不回归。
+
+建议改动范围：
+- web/src/components/KnowledgeGraphPane.tsx
+- 尽量不改 GraphCanvas.tsx
+- 不改 server / db / types
+
+UI 约束：
+- 沿用现有 toolbar 风格，使用紧凑 select 或 segmented control。
+- 筛选控件只在图谱视图显示，说明页不显示运行操作。
+- 文案保持短句，避免解释型大段文字。
+
+安全红线：
+- 不新增 LLM 调用。
+- 不读取或处理 draw_data / data_exploration 原始内容。
+
+验收：
+- web typecheck 绿。
+- 能跑 build 则同步跑。
+- 图谱边可按 relation 和来源过滤。
+- 节点不因边过滤消失。
+- 现有图谱交互不回归。` },
+
+  { dom: "V", status: "done", created: "2026-06-29 18:02", title: "【记忆库·知识图谱·节点质量·P1】V-KG2：前端启发式节点质量提示", brief:
+`完成状态（2026-06-29 · 总控验收）：已在 KnowledgeGraphPane 增加前端启发式 getNodeQualityHints，基于 rawNodes/rawEdges 展示孤立、低关联、无入边、无出边、较久未更新等提示；节点详情与节点浏览列表均可见。未新增后端字段，未新增 LLM 调用。验证同 V-KG1。
+
+前置：X-KG0。可与 V-KG1 并行。
+
+目标：基于当前前端已有节点和边数据，为知识图谱节点增加第一版质量提示，帮助用户快速发现噪声节点和需要复核的节点。
+
+范围：
+1. 基于 rawNodes / rawEdges 计算节点质量提示。
+2. 可覆盖以下信号：孤立节点、无入边、无出边、隐藏节点、更新时间较久、关联边过少。
+3. 在节点详情面板展示紧凑提示。
+4. 在节点浏览列表中增加质量 badge 或质量列，便于扫视。
+5. 不新增后端字段，不持久化评分。
+
+建议改动范围：
+- web/src/components/KnowledgeGraphPane.tsx
+
+表达口径：
+- 这是前端启发式提示，不是业务置信度。
+- 文案使用“建议检查”“低关联”“较久未更新”等表达，避免“错误”“无效”等绝对判断。
+
+验收：
+- web typecheck 绿。
+- 节点详情能看到质量提示。
+- 节点浏览可快速扫视低置信节点。
+- 隐藏 / 恢复节点功能不回归。
+- 不新增 LLM 调用。` },
+
+  { dom: "D", status: "done", created: "2026-06-29 18:03", title: "【记忆库·知识图谱·提取预览·P1】D-KG3：AI 语义提取 preview 只读接口", brief:
+`完成状态（2026-06-29 · 总控验收）：已新增 GET /api/workspaces/:id/knowledge-graph/extract-preview 与 previewKgExtraction()，返回 report id/path/title/status/reason/updatedAt、processLimit、estimatedProcessCount、skippedCount。preview 只用现有 KG report 元数据和 existsSync 判断文件存在性，不读取报告正文、不调用 LLM、不写 kg_nodes / kg_edges。验证：knowledge-graph-preview.test 2/2 ✅；npm run typecheck ✅；npm run build ✅；数据探索红线 grep 无匹配 ✅。
+
+前置：X-KG0。尽量避免修改 KnowledgeGraphPane.tsx，供前端后续接入。
+
+目标：在执行 AI 语义提取前，提供只读预览接口，展示将处理哪些报告、哪些会跳过、预计处理数量，减少误触发成本。
+
+范围：
+1. 新增只读 preview 接口，建议 GET /api/workspaces/:id/knowledge-graph/extract-preview。
+2. 返回本次预计处理报告列表。
+3. 返回跳过原因，例如内容未变化、已处理、无有效报告、达到处理上限等。
+4. 返回预计处理数量和上限。
+5. preview 接口不得触发 LLM。
+6. preview 接口不得写入 kg_nodes / kg_edges。
+7. 补齐 server/web 类型和 web API wrapper。
+
+建议返回结构：
+- report id
+- path
+- title
+- status
+- reason
+- updatedAt
+- processLimit
+- estimatedProcessCount
+- skippedCount
+
+建议改动范围：
+- server/src/knowledge-graph.ts
+- server/src/index.ts
+- server/src/types.ts
+- web/src/types.ts
+- web/src/lib/api 相关文件
+
+安全红线：
+- 不返回报告正文。
+- 不返回原始数据样本。
+- 不读取 draw_data 原始行级内容。
+- 不调用 LLM。
+
+验收：
+- npm -w server run typecheck 绿。
+- 如改 web 类型/API，npm -w web run typecheck 绿。
+- 有最小测试或 smoke 证明 preview 不写库、不触发提取。` },
+
+  { dom: "D", status: "done", created: "2026-06-29 18:04", title: "【记忆库·知识图谱·变更历史·P1】D-KG4：KG history 记录与查询 API", brief:
+`完成状态（2026-06-29 · 总控验收）：已新增 kg_history_events 表、recordKgHistoryEvent / listKgHistoryEvents、GET /api/workspaces/:id/knowledge-graph/history?limit=50；limit clamp 1–200。已记录 sync、extract、node_hidden、node_recovered、edge_added、edge_deleted。history 只存元数据摘要，不存报告正文、prompt 正文、客户明细、订单样本或原始明细。验证同 D-KG3。
+
+前置：X-KG0。可与 D-KG3 并行或顺序执行。
+
+目标：记录知识图谱关键变更，方便回看节点、边、隐藏状态和提取行为的演进。
+
+范围：
+1. 新增 workspace 维度的 KG history 记录。
+2. 记录 sync summary。
+3. 记录 AI extract summary。
+4. 记录 node hidden / recovered。
+5. 记录 manual edge added。
+6. 记录 edge deleted。
+7. 新增 list history 只读接口，建议 GET /api/workspaces/:id/knowledge-graph/history?limit=50。
+8. limit 必须 clamp。
+
+建议事件字段：
+- id
+- workspaceId
+- eventType
+- targetKind
+- targetId
+- title
+- summary
+- metadata
+- createdAt
+
+建议改动范围：
+- server/src/db.ts 或现有 db 分层
+- server/src/knowledge-graph.ts
+- server/src/index.ts
+- server/src/types.ts
+- web/src/types.ts
+- web/src/lib/api 相关文件
+
+安全红线：
+- history 只记录元数据摘要。
+- 不记录报告正文、prompt 正文、客户明细、订单样本、原始明细或日志样本。
+- 所有查询按 workspaceId 隔离。
+
+验收：
+- npm -w server run typecheck 绿。
+- 如改 web 类型/API，npm -w web run typecheck 绿。
+- 关键 KG 操作后能查到 history。
+- 跨 workspace 不可读取或写入对方 history。` },
+
+  { dom: "X", status: "done", created: "2026-06-29 18:05", title: "【记忆库·知识图谱·验收·P2】X-KG5：全链验收 + 安全红线 + wiki/notes 收口", brief:
+`完成状态（2026-06-29 · 总控终审）：KG 优化专题已收口，X-KG0 / V-KG1 / V-KG2 / D-KG3 / D-KG4 / X-KG5 全部 done。当前交付包括：知识图谱说明页、图谱边 relation + 自动/手工来源筛选、前端启发式节点质量提示、AI 语义提取只读 preview API、KG history 记录与查询 API。
+
+验证：knowledge-graph-preview.test 2/2 通过；npm run typecheck 通过；npm run build 通过，仅既有 Echarts dynamic-import 与 chunk-size warning；数据探索隔离 grep 无匹配；docs/wiki.html 主脚本 parse 通过。
+
+安全红线：preview 不读报告正文、不调用 LLM、不写 kg_nodes / kg_edges；history 仅记录元数据摘要，不记录报告正文、prompt 正文、客户明细、订单样本、原始行或 data_exploration 结果；history 查询按 workspaceId 隔离，limit clamp 1–200；前端质量提示只基于 rawNodes/rawEdges，不新增后端字段。
+
+残留风险 / 后续建议：preview 与 history 本轮只提供 API wrapper，尚未接入 KnowledgeGraphPane UI；KG 既有 node/edge mutation API 仍是 legacy id-scoped 端点，后续如要强化跨 workspace 写隔离，可新增 workspace-scoped patch/delete 路由并迁移前端调用；eventType 实装为 sync/extract/edge_added 等短枚举，与最初 wiki 建议的 sync_summary/extract_summary 命名略有不同，已按实际类型验收。
+
+前置：V-KG1、V-KG2、D-KG3、D-KG4 回流。
+
+目标：总控终审知识图谱优化专题，确认关系筛选、节点质量提示、提取预览、变更历史可用且安全边界不破。
+
+验收场景：
+1. 图谱视图可按 relation 和自动/手工来源过滤边。
+2. 边过滤不导致节点消失。
+3. 节点详情和节点浏览能展示启发式质量提示。
+4. 提取预览接口只读返回预计处理报告列表和跳过原因。
+5. 提取预览不触发 LLM，不写入 kg_nodes / kg_edges。
+6. KG history 能记录 sync、extract、隐藏、恢复、人工连边和删边摘要。
+7. history 查询按 workspaceId 隔离。
+8. preview / history 不返回报告正文、prompt 正文、客户明细、订单样本、原始行或数据探索结果。
+
+必须运行：
+- npm run typecheck
+- npm run build
+- 知识图谱相关 node:test 或 smoke
+- grep -rE "(generate|chat|extract|clarify|sink|distill).*api\\." web/src/components/DataExplorationPane.tsx web/src/components/data-exploration/
+
+终审重点：
+- server/web types 镜像一致。
+- API limit clamp。
+- preview 零 LLM、零写库。
+- history 只记元数据摘要。
+- 前端启发式质量提示不被写成业务结论。
+
+收口：
+- 更新 docs/wiki.html 任务卡状态。
+- 更新 docs/notes-viz.md 或相关域 notes 的当前状态。
+- 如专题完成，按 docs/wiki.html 归档规则进入版本历史。` },
+
   // ════ 【记忆库·onto-knowhow 迭代专题】（Infra 总控拆卡 2026-06-29；来源=onto-knowhow 说明页审视后的六个优化方向：指标模板、口径冲突、标准文件体检、使用痕迹、导入导出、onto-xanthil 联动）。定位：把 onto-knowhow 从“手工维护指标和标准文件”升级为“指标模板 + 口径治理 + 标准体检 + 使用追踪 + 本体联动”的指标知识工作台。红线：不读 draw_data 原始行，不把标准文件正文送 LLM，不保存用户级明细。专题真源即本组 OKH wiki 任务卡。════
   { dom: "X", status: "done", created: "2026-06-29 08:00", title: "【记忆库·onto-knowhow·契约·P0】X-OKH0：迭代专题契约 + 数据安全边界 + API 口径", brief:
 `目标：作为 Infra 总控，审定 onto-knowhow 迭代专题的类型、API、迁移、红线和分阶段验收口径，避免 D/E/V 自由发挥导致漂移。

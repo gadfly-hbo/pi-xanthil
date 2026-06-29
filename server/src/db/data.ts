@@ -56,6 +56,9 @@ import type {
   OkhTemplateApplyResult,
   OkhTemplateScenario,
   MetricDefinitionInput,
+  KgHistoryEvent,
+  KgHistoryEventType,
+  KgHistoryTargetKind,
 } from "../types.ts";
 // 规则记忆 v2 跨 server/web 契约统一在 types.ts（总控终审 D-PANEL 时收敛）；
 // 下游（routes/data.ts·memory-injection.ts）仍从本文件 import，故此处再导出保持兼容。
@@ -162,6 +165,22 @@ export function initDataTables(): void {
   // scope 索引在 ALTER 之后无条件建（IF NOT EXISTS 幂等）：旧库此时已补列、新库列已在 CREATE TABLE。
   // 不可放进上方 CREATE TABLE 的 db.exec 块——那会早于 ALTER 执行，对旧库报 no such column: scope。
   db.exec("CREATE INDEX IF NOT EXISTS idx_knowledge_docs_scope ON knowledge_docs(scope)");
+
+  // D-KG4: KG history only stores metadata summaries. No report body, prompt body, raw rows, or samples.
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS kg_history_events (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      event_type   TEXT NOT NULL,
+      target_kind  TEXT NOT NULL,
+      target_id    TEXT,
+      title        TEXT NOT NULL DEFAULT '',
+      summary      TEXT NOT NULL DEFAULT '',
+      metadata     TEXT NOT NULL DEFAULT '{}',
+      created_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_kg_history_ws_created ON kg_history_events(workspace_id, created_at DESC);
+  `);
 
   // D-KB2: summary 列（LLM 异步生成摘要，nullable）。同 scope 列范式，PRAGMA+ALTER 幂等。
   {
@@ -2500,6 +2519,18 @@ interface CrowdProfileFeedbackRow {
   status: string; created_at: number; reviewed_at: number | null;
 }
 
+interface KgHistoryEventRow {
+  id: string;
+  workspace_id: string;
+  event_type: string;
+  target_kind: string;
+  target_id: string | null;
+  title: string;
+  summary: string;
+  metadata: string;
+  created_at: number;
+}
+
 // ---- helpers ----
 
 function parseJsonField<T>(s: string, fallback: T): T {
@@ -2512,6 +2543,58 @@ function parseJsonStrArray(s: string): string[] {
 
 function parseJsonStrMap(s: string): Record<string, string> {
   try { const v = JSON.parse(s) as unknown; return typeof v === "object" && v !== null && !Array.isArray(v) ? Object.fromEntries(Object.entries(v as Record<string, unknown>).filter(([, val]) => typeof val === "string").map(([k, val]) => [k, val as string])) : {}; } catch { return {}; }
+}
+
+function rowToKgHistoryEvent(row: KgHistoryEventRow): KgHistoryEvent {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    eventType: row.event_type as KgHistoryEventType,
+    targetKind: row.target_kind as KgHistoryTargetKind,
+    targetId: row.target_id,
+    title: row.title,
+    summary: row.summary,
+    metadata: parseJsonField<Record<string, unknown>>(row.metadata, {}),
+    createdAt: row.created_at,
+  };
+}
+
+export interface KgHistoryEventInput {
+  workspaceId: string;
+  eventType: KgHistoryEventType;
+  targetKind: KgHistoryTargetKind;
+  targetId?: string | null;
+  title: string;
+  summary: string;
+  metadata?: Record<string, unknown>;
+}
+
+export function recordKgHistoryEvent(input: KgHistoryEventInput): KgHistoryEvent {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(
+    `INSERT INTO kg_history_events (id, workspace_id, event_type, target_kind, target_id, title, summary, metadata, created_at)
+     VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    input.workspaceId,
+    input.eventType,
+    input.targetKind,
+    input.targetId ?? null,
+    input.title.slice(0, 160),
+    input.summary.slice(0, 500),
+    JSON.stringify(input.metadata ?? {}),
+    now,
+  );
+  return rowToKgHistoryEvent(db.prepare("SELECT * FROM kg_history_events WHERE id = ?").get(id) as unknown as KgHistoryEventRow);
+}
+
+export function listKgHistoryEvents(workspaceId: string, limit = 50): KgHistoryEvent[] {
+  const safeLimit = Math.max(1, Math.min(200, Math.floor(Number.isFinite(limit) ? limit : 50)));
+  const rows = db.prepare(
+    "SELECT * FROM kg_history_events WHERE workspace_id = ? ORDER BY created_at DESC LIMIT ?",
+  ).all(workspaceId, safeLimit) as unknown as KgHistoryEventRow[];
+  return rows.map(rowToKgHistoryEvent);
 }
 
 // ---- crowd_datasets ----

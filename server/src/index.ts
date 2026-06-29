@@ -190,8 +190,9 @@ import { listBusinessContextInjectionTraces, recordBusinessContextInjectionTrace
 import { retrieveSkills } from "./skill-retrieval.ts";
 import { runAutonomousTask } from "./autonomous-runner.ts";
 import { getSessionTokenStats, getWorkspaceTodayTokenStats, getWorkspaceTokenStats, listWorkspaceTokenUsageStats, trackSessionWorkspaceUsage, trackUsageEvent } from "./cache.ts";
-import { buildKgPrompt, extractKgEntitiesFromReports, syncKnowledgeGraph } from "./knowledge-graph.ts";
-import { deleteKgEdge, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHidden } from "./db.ts";
+import { buildKgPrompt, extractKgEntitiesFromReports, previewKgExtraction, syncKnowledgeGraph } from "./knowledge-graph.ts";
+import { deleteKgEdge, getKgEdge, getKgNode, insertManualKgEdge, listKgEdges, listKgNodes, setKgNodeHidden } from "./db.ts";
+import { listKgHistoryEvents, recordKgHistoryEvent } from "./db/data.ts";
 import { buildMemoryInjectionSnapshot, withRulesPrompt } from "./memory-injection.ts";
 import { withKnowledgePrompt } from "./knowledge-injection.ts";
 import { expandCommand } from "./command-expand.ts";
@@ -5510,6 +5511,20 @@ app.get("/api/workspaces/:id/kg/prompt", (req, res) => {
   res.json(buildKgPrompt(req.params.id));
 });
 
+app.get("/api/workspaces/:id/knowledge-graph/extract-preview", (req, res) => {
+  const ws = getWorkspace(req.params.id);
+  if (!ws) return res.status(404).json({ error: "workspace not found" });
+  res.json(previewKgExtraction(ws.id));
+});
+
+app.get("/api/workspaces/:id/knowledge-graph/history", (req, res) => {
+  const ws = getWorkspace(req.params.id);
+  if (!ws) return res.status(404).json({ error: "workspace not found" });
+  const requested = Number(req.query.limit ?? 50);
+  const limit = Number.isFinite(requested) ? requested : 50;
+  res.json(listKgHistoryEvents(ws.id, limit));
+});
+
 app.post("/api/workspaces/:id/kg/sync", async (req, res) => {
   const ws = getWorkspace(req.params.id);
   if (!ws) return res.status(404).json({ error: "workspace not found" });
@@ -5540,8 +5555,19 @@ app.get("/api/workspaces/:id/kg/nodes", (req, res) => {
 app.patch("/api/kg/nodes/:id", (req, res) => {
   const { hidden } = req.body as { hidden?: boolean };
   if (typeof hidden !== "boolean") return res.status(400).json({ error: "hidden (boolean) required" });
+  const node = getKgNode(req.params.id);
+  if (!node) return res.status(404).json({ error: "node not found" });
   const ok = setKgNodeHidden(req.params.id, hidden);
   if (!ok) return res.status(404).json({ error: "node not found" });
+  recordKgHistoryEvent({
+    workspaceId: node.workspaceId,
+    eventType: hidden ? "node_hidden" : "node_recovered",
+    targetKind: "node",
+    targetId: node.id,
+    title: node.title,
+    summary: hidden ? "隐藏知识图谱节点" : "恢复知识图谱节点",
+    metadata: { type: node.type },
+  });
   res.json({ ok: true });
 });
 
@@ -5552,13 +5578,38 @@ app.post("/api/workspaces/:id/kg/edges", (req, res) => {
   if (!fromId || !toId || !relation) return res.status(400).json({ error: "fromId, toId, relation required" });
   const validRelations = ["related_to", "references", "supports", "derived_from"];
   if (!validRelations.includes(relation)) return res.status(400).json({ error: "invalid relation" });
+  const fromNode = getKgNode(fromId);
+  const toNode = getKgNode(toId);
+  if (!fromNode || !toNode || fromNode.workspaceId !== ws.id || toNode.workspaceId !== ws.id) {
+    return res.status(400).json({ error: "edge nodes must belong to workspace" });
+  }
   const edge = insertManualKgEdge(ws.id, fromId, toId, relation as import("./types.ts").KgRelation);
+  recordKgHistoryEvent({
+    workspaceId: ws.id,
+    eventType: "edge_added",
+    targetKind: "edge",
+    targetId: edge.id,
+    title: `${fromNode.title} → ${toNode.title}`,
+    summary: `新增手工关系：${relation}`,
+    metadata: { fromId, toId, relation },
+  });
   res.json(edge);
 });
 
 app.delete("/api/kg/edges/:id", (req, res) => {
+  const edge = getKgEdge(req.params.id);
+  if (!edge) return res.status(404).json({ error: "edge not found" });
   const ok = deleteKgEdge(req.params.id);
   if (!ok) return res.status(404).json({ error: "edge not found" });
+  recordKgHistoryEvent({
+    workspaceId: edge.workspaceId,
+    eventType: "edge_deleted",
+    targetKind: "edge",
+    targetId: edge.id,
+    title: "删除知识图谱关系",
+    summary: `删除关系：${edge.relation}`,
+    metadata: { fromId: edge.fromId, toId: edge.toId, relation: edge.relation, auto: edge.auto },
+  });
   res.json({ ok: true });
 });
 

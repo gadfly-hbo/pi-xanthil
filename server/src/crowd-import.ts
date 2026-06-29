@@ -8,6 +8,96 @@ export interface ComputeFieldProfilesInput {
   normalizeEnums?: boolean;
 }
 
+interface TagDetailColumns {
+  type: string;
+  tag: string;
+  ratio: string;
+}
+
+function normalizeHeader(header: string): string {
+  return header.trim().replace(/^\uFEFF/, "").toLowerCase();
+}
+
+function findTagDetailColumns(columns: string[]): TagDetailColumns | null {
+  const byNormalized = new Map(columns.map((column) => [normalizeHeader(column), column]));
+  const type = byNormalized.get("标签类型") ?? byNormalized.get("tag_type") ?? byNormalized.get("label_type") ?? byNormalized.get("type");
+  const tag = byNormalized.get("标签") ?? byNormalized.get("tag") ?? byNormalized.get("label") ?? byNormalized.get("value");
+  const ratio = byNormalized.get("占比") ?? byNormalized.get("ratio") ?? byNormalized.get("pct") ?? byNormalized.get("percentage");
+  if (!type || !tag || !ratio) return null;
+  return { type, tag, ratio };
+}
+
+function parseRatio(value: unknown): number | null {
+  if (value == null || value === "") return null;
+  const raw = String(value).trim().replace(/%$/, "");
+  const n = Number(raw);
+  if (!Number.isFinite(n)) return null;
+  return n > 1 ? n / 100 : n;
+}
+
+export function computeTagDetailFieldProfiles(input: ComputeFieldProfilesInput): CrowdFieldProfile[] | null {
+  const cols = findTagDetailColumns(input.columns);
+  if (!cols) return null;
+  const byType = new Map<string, Array<{ tag: string; ratio: number }>>();
+  for (const row of input.rows) {
+    const type = String(row[cols.type] ?? "").trim();
+    const tag = String(row[cols.tag] ?? "").trim();
+    const ratio = parseRatio(row[cols.ratio]);
+    if (!type || !tag || ratio == null) continue;
+    const current = byType.get(type) ?? [];
+    current.push({ tag, ratio });
+    byType.set(type, current);
+  }
+  if (byType.size === 0) return null;
+
+  return [...byType.entries()].map(([type, items]) => {
+    const merged = new Map<string, number>();
+    for (const item of items) {
+      merged.set(item.tag, (merged.get(item.tag) ?? 0) + item.ratio);
+    }
+    const ranked = [...merged.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([tag, ratio]) => ({ tag, ratio }));
+    const take = ranked.length > 3 ? 3 : 1;
+    return {
+      field: type,
+      inferredType: "string" as const,
+      missingCount: 0,
+      uniqueCount: ranked.length,
+      topValues: ranked.slice(0, take).map((item) => ({
+        value: item.tag,
+        count: Math.max(1, Math.round(item.ratio * input.rows.length)),
+        ratio: item.ratio,
+      })),
+    };
+  });
+}
+
+function csvCell(value: string): string {
+  if (!/[",\n\r]/.test(value)) return value;
+  return `"${value.replace(/"/g, '""')}"`;
+}
+
+function formatRatioForCsv(ratio: number): string {
+  if (!Number.isFinite(ratio)) return "";
+  const percentage = ratio * 100;
+  return Number.isInteger(percentage) ? `${percentage}%` : `${Number(percentage.toFixed(4))}%`;
+}
+
+export function crowdFieldProfilesToLlmAggregateCsv(fieldProfiles: CrowdFieldProfile[]): string {
+  const lines = [["标签类型", "标签", "占比"].map(csvCell).join(",")];
+  for (const profile of fieldProfiles) {
+    for (const value of profile.topValues) {
+      lines.push([
+        profile.field,
+        value.value,
+        formatRatioForCsv(value.ratio),
+      ].map(csvCell).join(","));
+    }
+  }
+  return `${lines.join("\n")}\n`;
+}
+
 function canExposeTopValues(rowCount: number, uniqueCount: number): boolean {
   if (rowCount === 0 || uniqueCount === 0) return false;
   const maxCategoricalUnique = Math.min(50, Math.max(20, Math.ceil(rowCount * 0.2)));

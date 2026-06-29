@@ -1,19 +1,25 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import * as baseDb from "./db.ts";
-import { setMemoryEnablement } from "./db/shared.ts";
-import {
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+process.env.XANTHIL_DATA_DIR = mkdtempSync(join(tmpdir(), "pi-xanthil-okh-metric-ontology-link-test-"));
+
+const baseDb = await import("./db.ts");
+const { setMemoryEnablement } = await import("./db/shared.ts");
+const {
   createMetric,
   createObjectType,
   createOntology,
-} from "./db/viz.ts";
-import {
+} = await import("./db/viz.ts");
+const {
   deleteOkhMetricOntologyLink,
   listOkhMetricOntologyLinks,
   listOkhMetricOntologyLinksByOntology,
   listOkhMetricOntologyLinksByTarget,
   replaceOkhMetricOntologyLinks,
-} from "./db/data.ts";
+} = await import("./db/data.ts");
 
 let workspace: ReturnType<typeof baseDb.createWorkspace>;
 let otherWorkspace: ReturnType<typeof baseDb.createWorkspace>;

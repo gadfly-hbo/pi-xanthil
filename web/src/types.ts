@@ -1472,6 +1472,7 @@ export interface CrowdProfileGenerationInput {
   segmentId: string;
   model: string;
   businessContext?: string;
+  profileTemplate?: string;
 }
 
 export interface CrowdProfileGenerationResult {
@@ -3213,6 +3214,47 @@ export interface KgExtractResult {
   processedReports: number;
   skippedReports: number;
   extractedAt: number;
+}
+
+export type KgExtractPreviewStatus = "will_process" | "skipped";
+export type KgExtractPreviewReason =
+  | "pending"
+  | "content_unchanged"
+  | "already_processed"
+  | "missing_file"
+  | "missing_hash"
+  | "process_limit";
+
+export interface KgExtractPreviewReport {
+  id: string;
+  path: string;
+  title: string;
+  status: KgExtractPreviewStatus;
+  reason: KgExtractPreviewReason;
+  updatedAt: number;
+}
+
+export interface KgExtractPreview {
+  reports: KgExtractPreviewReport[];
+  processLimit: number;
+  estimatedProcessCount: number;
+  skippedCount: number;
+  generatedAt: number;
+}
+
+export type KgHistoryEventType = "sync" | "extract" | "node_hidden" | "node_recovered" | "edge_added" | "edge_deleted";
+export type KgHistoryTargetKind = "graph" | "node" | "edge";
+
+export interface KgHistoryEvent {
+  id: string;
+  workspaceId: string;
+  eventType: KgHistoryEventType;
+  targetKind: KgHistoryTargetKind;
+  targetId: string | null;
+  title: string;
+  summary: string;
+  metadata: Record<string, unknown>;
+  createdAt: number;
 }
 
 /** Helper: extract concatenated text from pi content blocks. */

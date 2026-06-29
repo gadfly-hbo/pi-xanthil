@@ -3857,6 +3857,13 @@ export function listKgNodes(workspaceId: string, includeHidden = false): KgNode[
   return (db.prepare(sql).all(workspaceId) as unknown as KgNodeRow[]).map(parseKgNode);
 }
 
+export function getKgNode(id: string): KgNode | undefined {
+  const row = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, type, source_key AS sourceKey, title, summary, tags, content_hash AS contentHash, ai_extracted_hash AS aiExtractedHash, hidden, created_at AS createdAt, updated_at AS updatedAt FROM kg_nodes WHERE id = ?",
+  ).get(id) as unknown as KgNodeRow | undefined;
+  return row ? parseKgNode(row) : undefined;
+}
+
 export function setKgNodeHidden(id: string, hidden: boolean): boolean {
   return db.prepare("UPDATE kg_nodes SET hidden = ?, updated_at = ? WHERE id = ?").run(hidden ? 1 : 0, Date.now(), id).changes > 0;
 }
@@ -3913,6 +3920,13 @@ export function listKgEdges(workspaceId: string): KgEdge[] {
     "SELECT id, workspace_id AS workspaceId, from_id AS fromId, to_id AS toId, relation, weight, auto, created_at AS createdAt FROM kg_edges WHERE workspace_id = ? ORDER BY weight DESC",
   ).all(workspaceId) as unknown as Array<Omit<KgEdge, "auto"> & { auto: number }>;
   return rows.map((r) => ({ ...r, auto: r.auto === 1 }));
+}
+
+export function getKgEdge(id: string): KgEdge | undefined {
+  const row = db.prepare(
+    "SELECT id, workspace_id AS workspaceId, from_id AS fromId, to_id AS toId, relation, weight, auto, created_at AS createdAt FROM kg_edges WHERE id = ?",
+  ).get(id) as (Omit<KgEdge, "auto"> & { auto: number }) | undefined;
+  return row ? { ...row, auto: row.auto === 1 } : undefined;
 }
 
 export function deleteKgData(workspaceId: string): void {

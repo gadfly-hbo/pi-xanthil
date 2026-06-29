@@ -1,12 +1,18 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import * as baseDb from "./db.ts";
-import {
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+process.env.XANTHIL_DATA_DIR = mkdtempSync(join(tmpdir(), "pi-xanthil-okh-metric-import-test-"));
+
+const baseDb = await import("./db.ts");
+const {
   commitOkhMetricImport,
   exportOkhMetrics,
   listOkhMetrics,
   previewOkhMetricImport,
-} from "./db/data.ts";
+} = await import("./db/data.ts");
 
 let workspace: ReturnType<typeof baseDb.createWorkspace>;
 

@@ -891,6 +891,10 @@ const legacyApi = {
     fetch(`/api/workspaces/${workspaceId}/kg/edges`).then(json<KgEdge[]>),
   syncKnowledgeGraph: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/kg/sync`, { method: "POST" }).then(json<KgSyncResult>),
+  previewKgExtraction: (workspaceId: string) =>
+    fetch(`/api/workspaces/${workspaceId}/knowledge-graph/extract-preview`).then(json<import("@/types").KgExtractPreview>),
+  listKgHistoryEvents: (workspaceId: string, limit = 50) =>
+    fetch(`/api/workspaces/${workspaceId}/knowledge-graph/history?limit=${encodeURIComponent(String(limit))}`).then(json<import("@/types").KgHistoryEvent[]>),
   extractKgEntities: (workspaceId: string) =>
     fetch(`/api/workspaces/${workspaceId}/kg/extract`, { method: "POST", headers: { "content-type": "application/json" }, body: JSON.stringify({}) }).then(json<import("@/types").KgExtractResult>),
   setKgNodeHidden: (nodeId: string, hidden: boolean) =>

@@ -9,21 +9,27 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-29 · **V-TRACE1（TracePane 分面视图）+ V-TRACE5（失败状态更新）+ V-TRACE7（巡检建议视图）done**。
+- 最近更新：2026-06-29 · **V-KG1（图谱边关系与来源筛选）+ V-KG2（前端启发式节点质量提示）done**。
 - 进度：
+  - **V-KG1**（done，本次）：在图谱视图 toolbar 增加边 relation 筛选与来源（自动/手工）筛选，基于前端内存 `rawEdges` 过滤，确保不影响节点显示（`gcNodes` 不变）。
+  - **V-KG2**（done，本次）：增加纯前端的启发式节点质量提示，计算逻辑涵盖无入边、无出边、孤立节点、低关联、以及久未更新等维度的判断；列表页与详情面板新增提示区。
   - **V-TRACE1**（done，本次）：重构 `TracePane.tsx` 为分面视图模式（运行看板、失败分析、巡检建议、记忆注入、规则提炼、说明），降低信息密度，分离职责。
   - **V-TRACE5**（done，本次）：在失败分析页增加状态过滤与标记（全部、open、fixed、distilled、ignored）。卡片集成 inline 按钮支持快速填写 note，并做乐观本地渲染+局部 API 更新回滚。
   - **V-TRACE7**（done，本次）：新增独立的“巡检建议” Tab。接入 E-TRACE6 端点（`listTraceInspectionFindings`），展示 7/14/30 天异常窗口（如失败峰值）并附带一键复制 targetId/errorType 快捷操作及修复建议的闭环操作 UI。
 - 校验：
-  - `npm -w web run typecheck` ✅
-  - `npm -w web run build` ✅
-  - 数据探索 LLM 隔离 grep ✅（未修改探索模块）
+  - `node --experimental-strip-types --test server/src/knowledge-graph-preview.test.ts` ✅ 2/2
+  - `npm run typecheck` ✅
+  - `npm run build` ✅（仅既有 Echarts dynamic-import / chunk-size warning）
+  - 数据探索 LLM 隔离 grep ✅ 0 匹配
 - 下一步：
   - 用户 review 后手动 `git add/commit`。
-  - 等待 D 域接口（D-TRACE4 端点就绪）或直接进行失败状态闭环与巡检建议的端到端浏览器人工实跑点检。
+  - 知识图谱 preview / history 本轮只接 API wrapper，后续如需要可单开前端接入卡，在 `KnowledgeGraphPane` 说明页或独立历史抽屉中展示。
+  - 等待用户进行 KG 图谱筛选、节点质量提示、trace 失败状态闭环与巡检建议的浏览器人工实跑点检。
   - 推进 `KICKOFF-P0.md` 其他项。
 - 阻塞 / 待总控：无。
 - 开放问题：
+  - KG 既有 node/edge mutation API 仍是 legacy id-scoped 端点；如需强化跨 workspace 写隔离，后续应新增 workspace-scoped patch/delete 路由并迁移前端调用。
+  - KG history eventType 实装为 `sync` / `extract` / `edge_added` 等短枚举，与最初 wiki 建议的 `sync_summary` / `extract_summary` 命名不同；已按实际类型验收，后续不要混用。
   - V-TRACE5 的失败状态更新动作目前为了快速处理，设计成免二次确认的短按钮 + prompt() 形式，并依赖后端或本地重刷回滚；若后续发生大面积误触问题，再考虑补齐二次弹窗确认流程。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
@@ -86,6 +92,7 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - onto-xanthil 文档抽取分批方案：CSV 按行切分、普通文本按字符窗口切分；每批顺序调用既有 `processExtractionOutput`。**不要重造跨批合并逻辑**，因为 `processExtractionOutput` 每批都会重读库 `listObjectTypes`，并通过 `resolveId` 模糊解析让后批看见前批实体、正确连边。
 - `extract_jobs` 表属于 V 域 schema，放 `db/viz.ts:initVizTables`，字段口径以 `ExtractJob` 为准；与 `onto_*` / `action_*` 同模式走 `CREATE TABLE IF NOT EXISTS`，不 ALTER 他域表、不加 FK。
 - 大文档抽取前端进度应复用长任务续跑范式：后台 REST 起 job，DB 持久化进度，前端轮询 `ExtractJob`；切 tab / unmount 后重新 mount 仍可恢复进度。
+- **图谱视图过滤与质量提示**（2026-06-29）：知识图谱关系筛选（V-KG1）与质量提示（V-KG2）全部基于前端 `rawNodes` / `rawEdges` 在内存计算。为防页面变卡并维持组件整洁，质量提示主要作为辅助视觉信号（不进入数据库）；边过滤不引起独立节点隐身，从而维持稳定视角。
 
 **规则记忆 4 Pane · 全局池化 UI 范式**
 - 列表数据源 = 全局池（`api.listRules/Standards/Cases/BusinessContexts/Metrics` 返回所有 ws 的条目，`workspaceId` 字段表示 origin）；启用态 = `sharedApi.listMemoryEnablements(ws, kind)` 索引 Map。两路独立拉取、独立更新。

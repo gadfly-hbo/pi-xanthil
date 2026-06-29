@@ -71,6 +71,9 @@ export function parseCrowdProfileRequest(body: unknown): CrowdProfileGenerationI
   if (typeof src.businessContext === "string" && src.businessContext.trim()) {
     result.businessContext = src.businessContext.trim();
   }
+  if (typeof src.profileTemplate === "string" && src.profileTemplate.trim()) {
+    result.profileTemplate = src.profileTemplate.trim().slice(0, 12000);
+  }
   return result;
 }
 
@@ -146,8 +149,9 @@ export function buildCrowdProfilePrompts(args: {
   fieldProfiles: CrowdFieldProfile[];
   tagDictionary: CrowdTagDictionaryEntry[];
   businessContext?: string;
+  profileTemplate?: string;
 }): { systemPrompt: string; userPrompt: string } {
-  const { segment, fieldProfiles, tagDictionary, businessContext } = args;
+  const { segment, fieldProfiles, tagDictionary, businessContext, profileTemplate } = args;
 
   const systemPrompt = `你是人群画像专家。请基于提供的聚合数据摘要，生成结构化的人群侧写（Persona Draft）。
 
@@ -157,7 +161,9 @@ export function buildCrowdProfilePrompts(args: {
 3. evidenceSummary 中的每条证据必须是聚合口径描述（如"高消费占比32%"），禁止引用行级个体数据或原始标签值。
 4. traits/motivations/decisionTriggers/objections/riskNotes 每项至少 2 条，最多 8 条。
 5. contentPreference 每项至少 1 条，最多 5 条。
-6. persona 是一段 100-300 字的人群侧写文字。`;
+6. persona 是主输出，必须写成 300-500 字中文典型用户侧写，像描述一个可运营的典型个体/人群原型，而不是数据报告。
+7. persona 正文尽量少写数字，最多引用 2-3 个关键占比；数字、缺失、风险放到 evidenceSummary/riskNotes。
+8. 如用户提供侧写模板，优先遵循模板的结构、语气和关注点；但不得违反以上安全与输出 JSON 规则。`;
 
   const fieldSummary = summarizeFieldProfiles(fieldProfiles);
   const tagDictSummary = summarizeTagDictionary(tagDictionary);
@@ -180,6 +186,8 @@ ${tagDictSummary}
 
 ## 核心标签分布摘要
 ${tagDistSummary}
+
+${profileTemplate ? `## 用户侧写提示词/模板（优先遵循，但安全规则优先）\n${profileTemplate}` : ""}
 
 ${businessContext ? `## 业务场景说明\n${businessContext}` : ""}
 
@@ -247,7 +255,7 @@ async function repairProfileJson(
   "contentPreference": ["string"],
   "riskNotes": ["string"],
   "evidenceSummary": ["string (聚合口径，禁止行级引用)"],
-  "persona": "string (100-300字人群侧写)"
+  "persona": "string (300-500字典型用户侧写)"
 }`;
   const repaired = await runPi({
     workspaceRoot,
@@ -300,6 +308,7 @@ export async function runCrowdProfileGeneration(
     fieldProfiles,
     tagDictionary,
     businessContext: input.businessContext,
+    profileTemplate: input.profileTemplate,
   });
 
   // 4. Call LLM

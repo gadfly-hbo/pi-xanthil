@@ -1,10 +1,8 @@
-import { useRef, useState, useCallback, useEffect } from "react";
+import { useRef, useState, useCallback } from "react";
 import { Upload, Loader2, AlertTriangle, Download, FileSpreadsheet, Shield, Check, Loader } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
-import type { CrowdDataset, CrowdSegment, PiModel } from "@/types";
-
-const DEFAULT_MODEL = "minimax-cn/MiniMax-M3";
+import type { CrowdDataset } from "@/types";
 
 interface Props {
   workspaceId: string;
@@ -27,9 +25,49 @@ const TEMPLATE_BUTTONS: { label: string; fileName: string; isDemo: boolean; chan
   { label: "试用聚合示例", fileName: "demo-aggregate.csv", isDemo: true, channel: "aggregate" },
 ];
 
+const STEP_TIMEOUT_MS = {
+  template: 30_000,
+  import: 60_000,
+  segment: 30_000,
+} as const;
+
+function withTimeout<T>(promise: Promise<T>, timeoutMs: number, label: string): Promise<T> {
+  return new Promise((resolve, reject) => {
+    const timer = window.setTimeout(() => {
+      reject(new Error(`${label}超时，请稍后刷新列表确认是否已完成，或重试。`));
+    }, timeoutMs);
+    promise
+      .then(resolve, reject)
+      .finally(() => window.clearTimeout(timer));
+  });
+}
+
+function formatImportError(error: unknown, isAggregate: boolean): string {
+  const raw = error instanceof Error ? error.message : String(error);
+  const jsonStart = raw.indexOf("{");
+  if (jsonStart >= 0) {
+    try {
+      const parsed = JSON.parse(raw.slice(jsonStart)) as { error?: unknown };
+      if (typeof parsed.error === "string") {
+        const missing = /missing required v2 column: "([^"]+)"/.exec(parsed.error);
+        if (missing?.[1]) {
+          return isAggregate
+            ? `聚合上传缺少必填列 ${missing[1]}。请使用「下载聚合模板」的表头，或确认第一列是 segment_name。`
+            : `上传文件缺少必填列 ${missing[1]}。`;
+        }
+        return parsed.error;
+      }
+    } catch {
+      // Fall through to raw message.
+    }
+  }
+  return raw || "导入失败";
+}
+
 function Stepper({ steps }: { steps: WorkflowStep[] }) {
   const doneCount = steps.filter((s) => s.status === "done").length;
   const total = steps.length;
+  const failedSteps = steps.filter((step) => step.status === "failed" && step.error);
   return (
     <div className="space-y-1.5">
       <div className="flex items-center gap-1 text-[11px] text-muted-foreground">
@@ -58,6 +96,13 @@ function Stepper({ steps }: { steps: WorkflowStep[] }) {
           </div>
         ))}
       </div>
+      {failedSteps.length > 0 && (
+        <div className="pt-1 text-[11px] leading-4 text-destructive">
+          {failedSteps.map((step) => (
+            <div key={step.id}>{step.label}：{step.error}</div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -65,22 +110,10 @@ function Stepper({ steps }: { steps: WorkflowStep[] }) {
 export function DatasetImporter({ workspaceId, onImported }: Props) {
   const inputRef = useRef<HTMLInputElement>(null);
   const [channel, setChannel] = useState<ImportChannel>("detail");
-  const [autoGenerate, setAutoGenerate] = useState(true);
   const [importing, setImporting] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [dragOver, setDragOver] = useState(false);
   const [steps, setSteps] = useState<WorkflowStep[]>([]);
-  const [models, setModels] = useState<PiModel[]>([]);
-
-  // Fetch models list on mount
-  useEffect(() => {
-    void api.listModels().then(setModels).catch(() => {});
-  }, []);
-
-  const defaultModel = models.find((m) => m.id === DEFAULT_MODEL)?.id
-    ?? models.find((m) => m.isDefault)?.id
-    ?? models[0]?.id
-    ?? DEFAULT_MODEL;
 
   const updateStep = useCallback((id: string, patch: Partial<WorkflowStep>) => {
     setSteps((prev) => prev.map((s) => (s.id === id ? { ...s, ...patch } : s)));
@@ -90,85 +123,56 @@ export function DatasetImporter({ workspaceId, onImported }: Props) {
     setImporting(true);
     setError(null);
 
-    // Detail: 4 steps (import, dict, segment, profile)
-    // Aggregate: 2 steps (import, segment) - profile is user-triggered per §8.3.2 v2
+    // Detail: import produces the local aggregate summary; LLM generation is user-triggered after CSV inspection.
     const workflowSteps: WorkflowStep[] = [
       { id: "import", label: "导入", status: "pending" },
-      ...(!isAggregate ? [{ id: "dict", label: "字典", status: "pending" } as WorkflowStep] : []),
+      ...(!isAggregate ? [{ id: "aggregate", label: "聚合", status: "pending" } as WorkflowStep] : []),
       { id: "segment", label: "分群", status: "pending" },
-      ...(isAggregate ? [] : autoGenerate ? [{ id: "profile", label: "画像", status: "pending" } as WorkflowStep] : []),
     ];
     setSteps(workflowSteps);
 
     let dataset: CrowdDataset | null = null;
-    let segments: CrowdSegment[] = [];
+    let activeStepId = "import";
 
     try {
       // Step 1: Import
+      activeStepId = "import";
       updateStep("import", { status: "running" });
       if (isAggregate) {
-        const result = await api.importCrowdAggregate(workspaceId, file);
+        const result = await withTimeout(api.importCrowdAggregate(workspaceId, file), STEP_TIMEOUT_MS.import, "聚合导入");
         dataset = result.dataset;
         updateStep("import", { status: "done" });
-        // Aggregate import returns segments directly
-        segments = result.segments || [];
       } else {
-        dataset = await api.importCrowdDataset(workspaceId, file);
+        dataset = await withTimeout(api.importCrowdDataset(workspaceId, file), STEP_TIMEOUT_MS.import, "明细导入");
         updateStep("import", { status: "done" });
-
-        // Step 2: Auto tag dictionary (detail only)
-        if (autoGenerate) {
-          updateStep("dict", { status: "running" });
-          try {
-            await api.autoTagDictionary(workspaceId, dataset.id);
-            updateStep("dict", { status: "done" });
-          } catch {
-            updateStep("dict", { status: "failed", error: "字典生成失败，已切换手动模式" });
-          }
-        }
+        updateStep("aggregate", { status: "running" });
+        updateStep("aggregate", { status: "done" });
       }
 
       // Step 3: Default segment (for detail only; aggregate already has segments from import)
       if (!isAggregate) {
+        activeStepId = "segment";
         updateStep("segment", { status: "running" });
         try {
-          const seg = await api.createDefaultCrowdSegment(workspaceId, dataset.id);
-          segments = [seg];
+          await withTimeout(api.createDefaultCrowdSegment(workspaceId, dataset.id), STEP_TIMEOUT_MS.segment, "分群创建");
           updateStep("segment", { status: "done" });
-        } catch {
-          updateStep("segment", { status: "failed", error: "分群创建失败" });
+        } catch (err) {
+          updateStep("segment", { status: "failed", error: formatImportError(err, isAggregate) || "分群创建失败" });
         }
       } else {
         // Aggregate: segments already created by import
         updateStep("segment", { status: "done" });
       }
 
-      // Step 4: Generate profile (detail only, per §8.3.1)
-      // Aggregate: NO auto profile per §8.3.2 v2 (user triggers manually)
-      if (!isAggregate && autoGenerate && segments.length > 0 && dataset) {
-        const seg = segments[0];
-        if (seg) {
-          updateStep("profile", { status: "running" });
-          try {
-            await api.generateCrowdProfile(workspaceId, {
-              segmentId: seg.id,
-              model: defaultModel,
-              businessContext: "",
-            });
-            updateStep("profile", { status: "done" });
-          } catch {
-            updateStep("profile", { status: "failed", error: "画像生成失败，可手动重试" });
-          }
-        }
-      }
-
       onImported(dataset);
     } catch (err) {
-      setError(err instanceof Error ? err.message : "导入失败");
+      const message = formatImportError(err, isAggregate);
+      updateStep(activeStepId, { status: "failed", error: message });
+      setError(message);
     } finally {
       setImporting(false);
     }
-  }, [workspaceId, autoGenerate, defaultModel, onImported, updateStep]);
+  }, [workspaceId, onImported, updateStep]);
 
   const doImport = useCallback(async (file: File) => {
     void runWorkflow(file, channel === "aggregate");
@@ -192,7 +196,7 @@ export function DatasetImporter({ workspaceId, onImported }: Props) {
     setImporting(true);
     setError(null);
     try {
-      const resp = await api.getCrowdTemplate(fileName);
+      const resp = await withTimeout(api.getCrowdTemplate(fileName), STEP_TIMEOUT_MS.template, "模板下载");
       if (!resp.ok) throw new Error("download failed");
       const blob = await resp.blob();
       const file = new File([blob], fileName, { type: "text/csv" });
@@ -205,9 +209,10 @@ export function DatasetImporter({ workspaceId, onImported }: Props) {
         a.download = fileName;
         a.click();
         URL.revokeObjectURL(url);
+        setImporting(false);
       }
     } catch (err) {
-      setError(err instanceof Error ? err.message : "download failed");
+      setError(formatImportError(err, tplChannel === "aggregate"));
       setImporting(false);
     }
   }, [runWorkflow]);
@@ -242,16 +247,7 @@ export function DatasetImporter({ workspaceId, onImported }: Props) {
             聚合上传
           </button>
         </div>
-        <label className="flex items-center gap-1.5 text-xs text-muted-foreground cursor-pointer select-none">
-          <input
-            type="checkbox"
-            checked={autoGenerate}
-            onChange={(e) => setAutoGenerate(e.target.checked)}
-            disabled={importing}
-            className="h-3.5 w-3.5 rounded border-input"
-          />
-          上传后自动生成画像
-        </label>
+        <span className="text-xs text-muted-foreground">上传后先检查聚合结果，再手动生成画像</span>
       </div>
 
       {/* Aggregate security banner */}

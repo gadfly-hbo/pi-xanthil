@@ -262,7 +262,7 @@ export function ProfileViewer({ workspaceId, profile, onUpdated, onClose }: Prop
 
           {/* current version content */}
           {currentVersion && (
-            <div className="rounded-md border bg-card p-3 space-y-2">
+            <div className="rounded-md border bg-card p-3 space-y-3">
               <div className="flex items-center gap-2 text-xs text-muted-foreground">
                 <GitBranch className="h-3 w-3" />
                 <span>当前版本 v{currentVersion.version}</span>
@@ -272,15 +272,34 @@ export function ProfileViewer({ workspaceId, profile, onUpdated, onClose }: Prop
                 <span>{formatTime(currentVersion.createdAt)}</span>
               </div>
               {currentVersion.content.persona && (
-                <div className="text-sm whitespace-pre-wrap">{currentVersion.content.persona}</div>
-              )}
-              {currentVersion.content.traits.length > 0 && (
-                <div className="flex flex-wrap gap-1">
-                  {currentVersion.content.traits.map((t, i) => (
-                    <span key={i} className="rounded bg-muted px-1.5 py-0.5 text-xs">{t}</span>
-                  ))}
+                <div>
+                  <div className="mb-1 text-xs font-medium text-muted-foreground">人群侧写</div>
+                  <div className="whitespace-pre-wrap text-[14px] leading-7">{currentVersion.content.persona}</div>
                 </div>
               )}
+              <details className="group rounded-md bg-muted/30 p-2">
+                <summary className="cursor-pointer select-none text-xs text-muted-foreground hover:text-foreground">
+                  依据与风险
+                </summary>
+                <div className="mt-2 space-y-2 text-xs text-muted-foreground">
+                  {currentVersion.content.traits.length > 0 && (
+                    <div>
+                      <span className="font-medium text-foreground">特征：</span>
+                      <div className="mt-1 flex flex-wrap gap-1">
+                        {currentVersion.content.traits.map((t, i) => (
+                          <span key={i} className="rounded bg-muted px-1.5 py-0.5">{t}</span>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                  {currentVersion.content.evidenceSummary.length > 0 && (
+                    <div>证据：{currentVersion.content.evidenceSummary.join(" · ")}</div>
+                  )}
+                  {currentVersion.content.riskNotes.length > 0 && (
+                    <div>风险：{currentVersion.content.riskNotes.join(" · ")}</div>
+                  )}
+                </div>
+              </details>
             </div>
           )}
 

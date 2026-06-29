@@ -1,7 +1,13 @@
 import { afterEach, beforeEach, describe, it } from "node:test";
 import { strict as assert } from "node:assert";
-import * as baseDb from "./db.ts";
-import {
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+process.env.XANTHIL_DATA_DIR = mkdtempSync(join(tmpdir(), "pi-xanthil-okh-full-acceptance-test-"));
+
+const baseDb = await import("./db.ts");
+const {
   applyMetricTemplates,
   commitOkhMetricImport,
   detectMetricConflicts,
@@ -11,13 +17,13 @@ import {
   listOkhMetricOntologyLinksByTarget,
   previewOkhMetricImport,
   replaceOkhMetricOntologyLinks,
-} from "./db/data.ts";
-import {
+} = await import("./db/data.ts");
+const {
   createObjectType,
   createOntology,
   listMetricInjectionTraces,
   recordMetricInjectionTraces,
-} from "./db/viz.ts";
+} = await import("./db/viz.ts");
 
 let workspace: ReturnType<typeof baseDb.createWorkspace>;
 

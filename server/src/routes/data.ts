@@ -68,6 +68,7 @@ import {
 } from "../db/data.ts";
 import { searchKnowledgeChunks, searchKnowledgeDocs } from "../knowledge-retrieval.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
+import { decodeUploadOriginalName } from "../upload-filename.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { buildMemoryPrompt } from "../memory-injection.ts";
 import { judgeSemanticDuplicate, type JudgeFn } from "../memory-dedup.ts";
@@ -124,7 +125,7 @@ import {
   type CrowdProfileFeedbackCreateInput,
 } from "../db/data.ts";
 import { evaluateSegment, validateSegmentRule } from "../crowd-segment.ts";
-import { computeFieldProfiles } from "../crowd-import.ts";
+import { computeFieldProfiles, computeTagDetailFieldProfiles, crowdFieldProfilesToLlmAggregateCsv } from "../crowd-import.ts";
 import { importAggregateDataset, autoTagDictionary, createDefaultSegment } from "../crowd-aggregate.ts";
 import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
 import { PORT } from "../config.ts";
@@ -2103,7 +2104,7 @@ dataRouter.post("/api/workspaces/:id/crowd/datasets/import", crowdUpload.single(
   if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
   const file = req.file;
   if (!file) return res.status(400).json({ error: "file is required" });
-  const originalName = file.originalname || "upload";
+  const originalName = decodeUploadOriginalName(file.originalname);
   const lower = originalName.toLowerCase();
   if (!lower.endsWith(".csv") && !lower.endsWith(".tsv") && !lower.endsWith(".xlsx") && !lower.endsWith(".xls")) {
     return res.status(400).json({ error: "unsupported file type, expected .csv/.tsv/.xlsx/.xls" });
@@ -2111,7 +2112,7 @@ dataRouter.post("/api/workspaces/:id/crowd/datasets/import", crowdUpload.single(
   try {
     const { columns, rows } = parseAggregationBuffer(file.buffer, originalName);
     if (columns.length === 0) return res.status(400).json({ error: "file has no columns" });
-    const fieldProfiles = computeFieldProfiles({ columns, rows, normalizeEnums: true });
+    const fieldProfiles = computeTagDetailFieldProfiles({ columns, rows }) ?? computeFieldProfiles({ columns, rows, normalizeEnums: true });
     const name = typeof req.body?.name === "string" && req.body.name.trim() ? req.body.name.trim() : originalName.replace(/\.[^.]+$/, "");
     const source: CrowdDatasetCreateInput["source"] = lower.endsWith(".xlsx") || lower.endsWith(".xls") ? "upload_excel" : "upload_csv";
     const dataset = createCrowdDataset(workspaceId, {
@@ -2194,6 +2195,19 @@ dataRouter.get("/api/workspaces/:id/crowd/datasets/:datasetId", (req, res) => {
   if (!dataset) return res.status(404).json({ error: "dataset not found" });
   if (dataset.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
   res.json(dataset);
+});
+
+dataRouter.get("/api/workspaces/:id/crowd/datasets/:datasetId/llm-aggregate.csv", (req, res) => {
+  const workspaceId = req.params.id;
+  if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
+  const dataset = getCrowdDataset(req.params.datasetId);
+  if (!dataset) return res.status(404).json({ error: "dataset not found" });
+  if (dataset.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  const csv = crowdFieldProfilesToLlmAggregateCsv(dataset.fieldProfiles);
+  const filename = `${dataset.name.replace(/[\\/:*?"<>|]/g, "_")}-llm-aggregate.csv`;
+  res.setHeader("Content-Type", "text/csv; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename*=UTF-8''${encodeURIComponent(filename)}`);
+  res.send(`\uFEFF${csv}`);
 });
 
 dataRouter.patch("/api/workspaces/:id/crowd/datasets/:datasetId", (req, res) => {
@@ -2416,7 +2430,7 @@ dataRouter.post("/api/workspaces/:id/crowd/datasets/import-aggregate", crowdUplo
   if (!getWorkspace(workspaceId)) return res.status(404).json({ error: "workspace not found" });
   const file = req.file;
   if (!file) return res.status(400).json({ error: "file is required" });
-  const originalName = file.originalname || "upload";
+  const originalName = decodeUploadOriginalName(file.originalname);
   const lower = originalName.toLowerCase();
   if (!lower.endsWith(".csv") && !lower.endsWith(".tsv") && !lower.endsWith(".xlsx") && !lower.endsWith(".xls")) {
     return res.status(400).json({ error: "unsupported file type, expected .csv/.tsv/.xlsx/.xls" });

@@ -1,6 +1,12 @@
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import {
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+process.env.XANTHIL_DATA_DIR = mkdtempSync(join(tmpdir(), "pi-xanthil-business-context-governance-test-"));
+
+const {
   archiveWorkspace,
   buildEnabledBusinessContextPrompt,
   commitBusinessContextImport,
@@ -10,7 +16,7 @@ import {
   listBusinessContextConflicts,
   listBusinessContexts,
   previewBusinessContextImport,
-} from "./db.ts";
+} = await import("./db.ts");
 
 let workspace: ReturnType<typeof createWorkspace>;
 

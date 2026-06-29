@@ -115,7 +115,7 @@ export function PreviewPane({ sessionId, report, running, refreshKey, onCollapse
   }, [sessionId]);
 
   return (
-    <aside className="flex h-full w-[26rem] shrink-0 flex-col border-l border-neutral-200 dark:border-neutral-800">
+    <aside className="hidden h-full w-[26rem] shrink-0 flex-col border-l border-neutral-200 dark:border-neutral-800">
       <div className="flex h-12 shrink-0 items-center justify-between px-4">
         <div className="flex items-center gap-2 text-[13px] font-medium text-neutral-900 dark:text-neutral-100">
           <FileText className="h-3.5 w-3.5 text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />

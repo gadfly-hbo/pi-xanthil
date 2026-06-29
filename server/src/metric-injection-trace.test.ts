@@ -1,8 +1,14 @@
 // E-OKH3：指标注入引用痕迹单元测试
 import { describe, it, beforeEach, afterEach } from "node:test";
 import { strict as assert } from "node:assert";
-import * as db from "./db.ts";
-import * as viz from "./db/viz.ts";
+import { mkdtempSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
+
+process.env.XANTHIL_DATA_DIR = mkdtempSync(join(tmpdir(), "pi-xanthil-metric-injection-trace-test-"));
+
+const db = await import("./db.ts");
+const viz = await import("./db/viz.ts");
 
 let workspace: ReturnType<typeof db.createWorkspace>;
 let otherWorkspace: ReturnType<typeof db.createWorkspace>;

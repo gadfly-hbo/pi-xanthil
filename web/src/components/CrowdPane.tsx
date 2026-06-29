@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, useMemo } from "react";
+import { useState, useEffect, useCallback, useMemo, useRef } from "react";
 import {
   Database,
   RefreshCw,
@@ -14,6 +14,7 @@ import {
   Sparkles,
   BookOpen,
   X,
+  Download,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
@@ -33,6 +34,8 @@ import type {
 interface Props {
   workspaceId: string;
 }
+
+const DEFAULT_CROWD_PROFILE_MODEL = "minimax-cn/MiniMax-M3";
 
 function formatCount(n: number): string {
   if (n >= 10000) return `${(n / 10000).toFixed(1)}万`;
@@ -59,6 +62,8 @@ function ZoneHeader({ icon: Icon, title, count, action }: {
 }
 
 export function CrowdPane({ workspaceId }: Props) {
+  const profileDocInputRef = useRef<HTMLInputElement>(null);
+  const profileTemplateInputRef = useRef<HTMLInputElement>(null);
   const [datasets, setDatasets] = useState<CrowdDataset[]>([]);
   const [loading, setLoading] = useState(true);
   const [selectedDataset, setSelectedDataset] = useState<CrowdDataset | null>(null);
@@ -69,6 +74,10 @@ export function CrowdPane({ workspaceId }: Props) {
   const [editingSegment, setEditingSegment] = useState<CrowdSegment | undefined>(undefined);
   const [viewingProfile, setViewingProfile] = useState<CrowdProfile | null>(null);
   const [showReadme, setShowReadme] = useState(false);
+  const [uploadingProfileDoc, setUploadingProfileDoc] = useState(false);
+  const [generatingProfileSegmentId, setGeneratingProfileSegmentId] = useState<string | null>(null);
+  const [profileTemplate, setProfileTemplate] = useState("");
+  const [profileTemplateName, setProfileTemplateName] = useState("");
 
   const loadDatasets = useCallback(async () => {
     setLoading(true);
@@ -127,6 +136,104 @@ export function CrowdPane({ workspaceId }: Props) {
       setSegments(await api.listCrowdSegments(workspaceId, selectedDataset.id));
     }
   }, [workspaceId, selectedDataset]);
+
+  const handleProfileDocUpload = useCallback(async (file: File | undefined) => {
+    if (!file || !selectedDataset || segments.length === 0) return;
+    if (file.size > 512 * 1024) {
+      window.alert("侧写文档超过 512KB，请精简后再上传。");
+      return;
+    }
+    setUploadingProfileDoc(true);
+    try {
+      const persona = (await file.text()).trim();
+      if (!persona) throw new Error("侧写文档为空");
+      const segment = segments[0];
+      if (!segment) throw new Error("请先创建分群");
+      const name = file.name.replace(/\.[^.]+$/, "") || `${segment.name} 侧写`;
+      const profile = await api.createCrowdProfile(workspaceId, {
+        segmentId: segment.id,
+        name,
+        status: "draft",
+      });
+      const version = await api.createCrowdProfileVersion(workspaceId, profile.id, {
+        source: "manual_edit",
+        content: {
+          persona,
+          traits: [],
+          motivations: [],
+          decisionTriggers: [],
+          objections: [],
+          tone: "",
+          contentPreference: [],
+          riskNotes: ["用户上传侧写文档，未经过 LLM 生成。"],
+          evidenceSummary: ["来源：用户上传的人群侧写文档。"],
+        },
+      });
+      const updated = await api.updateCrowdProfile(workspaceId, profile.id, { currentVersionId: version.id });
+      setProfiles((prev) => [updated, ...prev]);
+      setViewingProfile(updated);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "侧写文档上传失败");
+    } finally {
+      setUploadingProfileDoc(false);
+    }
+  }, [workspaceId, selectedDataset, segments]);
+
+  const handleDownloadLlmAggregate = useCallback(async () => {
+    if (!selectedDataset) return;
+    const resp = await fetch(
+      `/api/workspaces/${encodeURIComponent(workspaceId)}/crowd/datasets/${encodeURIComponent(selectedDataset.id)}/llm-aggregate.csv`,
+    );
+    if (!resp.ok) {
+      window.alert("聚合结果下载失败");
+      return;
+    }
+    const blob = await resp.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = `${selectedDataset.name}-llm-aggregate.csv`;
+    a.click();
+    URL.revokeObjectURL(url);
+  }, [workspaceId, selectedDataset]);
+
+  const handleProfileTemplateUpload = useCallback(async (file: File | undefined) => {
+    if (!file) return;
+    if (file.size > 256 * 1024) {
+      window.alert("侧写提示词/模板超过 256KB，请精简后再上传。");
+      return;
+    }
+    try {
+      setProfileTemplate(await file.text());
+      setProfileTemplateName(file.name);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "侧写提示词/模板读取失败");
+    }
+  }, []);
+
+  const handleGenerateProfile = useCallback(async (segment: CrowdSegment) => {
+    setGeneratingProfileSegmentId(segment.id);
+    try {
+      const result = await api.generateCrowdProfile(workspaceId, {
+        segmentId: segment.id,
+        model: DEFAULT_CROWD_PROFILE_MODEL,
+        businessContext: "",
+        ...(profileTemplate.trim() ? { profileTemplate: profileTemplate.trim() } : {}),
+      });
+      const updated = await api.getCrowdProfile(workspaceId, result.profile.id);
+      setProfiles((prev) => {
+        const exists = prev.some((profile) => profile.id === updated.id);
+        return exists
+          ? prev.map((profile) => (profile.id === updated.id ? updated : profile))
+          : [updated, ...prev];
+      });
+      setViewingProfile(updated);
+    } catch (err) {
+      window.alert(err instanceof Error ? err.message : "画像生成失败");
+    } finally {
+      setGeneratingProfileSegmentId(null);
+    }
+  }, [workspaceId, profileTemplate]);
 
   const overview = useMemo(() => ({
     datasetCount: datasets.length,
@@ -277,16 +384,86 @@ export function CrowdPane({ workspaceId }: Props) {
               </button>
             </div>
 
+            {!selectedDataset.isAggregate && (
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/60 p-3 text-xs dark:border-emerald-900/60 dark:bg-emerald-950/20">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 space-y-1">
+                    <div className="flex items-center gap-1.5 font-semibold text-emerald-700 dark:text-emerald-300">
+                      <Shield className="h-3.5 w-3.5" />
+                      聚合结果检查
+                    </div>
+                    <div className="text-muted-foreground">
+                      原始明细行不会传给 LLM。请先下载检查聚合 CSV，确认无误后再使用聚合结果生成画像。
+                    </div>
+                    <div className="text-muted-foreground/80">
+                      标签类型 {selectedDataset.fieldProfiles.length} 个 · 聚合标签 {selectedDataset.fieldProfiles.reduce((sum, profile) => sum + profile.topValues.length, 0)} 条
+                    </div>
+                  </div>
+                  <div className="flex shrink-0 items-center gap-2">
+                    <input
+                      ref={profileTemplateInputRef}
+                      type="file"
+                      accept=".txt,.md,.markdown"
+                      className="hidden"
+                      onChange={(event) => {
+                        void handleProfileTemplateUpload(event.currentTarget.files?.[0]);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                    <button
+                      onClick={() => profileTemplateInputRef.current?.click()}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-background px-2.5 py-1.5 font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                      title="上传人群侧写提示词或模板；生成时优先遵循模板"
+                    >
+                      <BookOpen className="h-3.5 w-3.5" />
+                      {profileTemplateName ? `模板：${profileTemplateName}` : "上传侧写模板"}
+                    </button>
+                    {profileTemplateName && (
+                      <button
+                        onClick={() => { setProfileTemplate(""); setProfileTemplateName(""); }}
+                        className="rounded-md px-1.5 py-1 text-muted-foreground hover:bg-emerald-100 hover:text-foreground dark:hover:bg-emerald-950/40"
+                      >
+                        清除
+                      </button>
+                    )}
+                    <button
+                      onClick={() => void handleDownloadLlmAggregate()}
+                      className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-background px-2.5 py-1.5 font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                    >
+                      <Download className="h-3.5 w-3.5" />
+                      下载聚合 CSV
+                    </button>
+                    {segments[0] && (
+                      <button
+                        onClick={() => void handleGenerateProfile(segments[0]!)}
+                        disabled={generatingProfileSegmentId === segments[0]!.id}
+                        className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
+                      >
+                        {generatingProfileSegmentId === segments[0]!.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}
+                        使用聚合结果生成画像
+                      </button>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
             {/* ── Zone 3: Tag Dictionary ── */}
-            <div className="space-y-2">
-              <ZoneHeader icon={Tags} title="标签字典" count={tagDict.length} />
-              <TagDictionaryEditor
-                workspaceId={workspaceId}
-                dataset={selectedDataset}
-                entries={tagDict}
-                onSaved={setTagDict}
-              />
-            </div>
+            <details className="group rounded-md border bg-card p-3">
+              <summary className="flex cursor-pointer select-none items-center gap-1.5 text-xs font-semibold text-muted-foreground hover:text-foreground">
+                <Tags className="h-3.5 w-3.5" />
+                <span>标签字典（高级，可选）</span>
+                <span className="text-muted-foreground/60">({tagDict.length})</span>
+              </summary>
+              <div className="mt-3">
+                <TagDictionaryEditor
+                  workspaceId={workspaceId}
+                  dataset={selectedDataset}
+                  entries={tagDict}
+                  onSaved={setTagDict}
+                />
+              </div>
+            </details>
 
             {/* ── Zone 4: Segments ── */}
             <div className="space-y-2">
@@ -368,7 +545,34 @@ export function CrowdPane({ workspaceId }: Props) {
 
             {/* ── Zone 5: Profiles + DLF Publish ── */}
             <div className="space-y-2">
-              <ZoneHeader icon={User} title="画像侧写" count={profiles.length} />
+              <ZoneHeader
+                icon={User}
+                title="画像侧写"
+                count={profiles.length}
+                action={segments.length > 0 ? (
+                  <>
+                    <input
+                      ref={profileDocInputRef}
+                      type="file"
+                      accept=".txt,.md,.markdown"
+                      className="hidden"
+                      onChange={(event) => {
+                        void handleProfileDocUpload(event.currentTarget.files?.[0]);
+                        event.currentTarget.value = "";
+                      }}
+                    />
+                    <button
+                      onClick={() => profileDocInputRef.current?.click()}
+                      disabled={uploadingProfileDoc}
+                      className="flex items-center gap-1 rounded-md border border-input bg-background px-2 py-1 text-xs hover:bg-muted disabled:opacity-50"
+                      title="直接上传已经写好的人群侧写文档，不调用 LLM"
+                    >
+                      {uploadingProfileDoc ? <Loader2 className="h-3 w-3 animate-spin" /> : <Plus className="h-3 w-3" />}
+                      上传侧写文档
+                    </button>
+                  </>
+                ) : undefined}
+              />
 
               {viewingProfile ? (
                 <ProfileViewer

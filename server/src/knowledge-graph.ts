@@ -18,10 +18,10 @@ import {
 import type { KgEdgeInput, KgNodeInput } from "./db.ts";
 import { listMetrics } from "./db/viz.ts";
 import { listEnabledItemIds } from "./db/shared.ts";
-import { listEnabledMemoryItems, listProjectedFacts } from "./db/data.ts";
+import { listEnabledMemoryItems, listProjectedFacts, recordKgHistoryEvent } from "./db/data.ts";
 import { runPiPrompt } from "./pi-adapter.ts";
 import { DIRECT_LLM_ROOT } from "./config.ts";
-import type { KgEdge, KgExtractResult, KgNode, KgRelation, KgSyncResult } from "./types.ts";
+import type { KgEdge, KgExtractPreview, KgExtractPreviewReport, KgExtractResult, KgNode, KgRelation, KgSyncResult } from "./types.ts";
 
 function hashContent(text: string): string {
   return createHash("sha256").update(text).digest("hex").slice(0, 16);
@@ -191,11 +191,20 @@ export function syncKnowledgeGraph(workspaceId: string): KgSyncResult {
   const edges = inferEdges(nodes, workspaceId);
   if (edges.length > 0) insertKgEdges(edges);
 
-  return {
+  const result = {
     nodeCount: nodes.length,
     edgeCount: edges.length,
     syncedAt: Date.now(),
   };
+  recordKgHistoryEvent({
+    workspaceId,
+    eventType: "sync",
+    targetKind: "graph",
+    title: "知识图谱同步",
+    summary: `同步 ${result.nodeCount} 个节点、${result.edgeCount} 条自动边`,
+    metadata: { nodeCount: result.nodeCount, edgeCount: result.edgeCount },
+  });
+  return result;
 }
 
 const RELATION_ZH: Record<KgRelation, string> = {
@@ -339,6 +348,40 @@ const DEFAULT_EXTRACT_MODEL = "minimax-cn/MiniMax-M3";
 const MAX_REPORTS_PER_RUN = 5;
 const REPORT_CONTENT_LIMIT = 3000;
 
+function reportPathOf(node: KgNode): string {
+  return node.sourceKey.replace(/^report:/, "");
+}
+
+export function previewKgExtraction(workspaceId: string): KgExtractPreview {
+  const reportNodes = listKgNodes(workspaceId).filter((n) => n.type === "report");
+  let queued = 0;
+  const reports: KgExtractPreviewReport[] = reportNodes.map((node) => {
+    const path = reportPathOf(node);
+    if (!node.contentHash) {
+      return { id: node.id, path, title: node.title, status: "skipped", reason: "missing_hash", updatedAt: node.updatedAt };
+    }
+    if (!existsSync(path)) {
+      return { id: node.id, path, title: node.title, status: "skipped", reason: "missing_file", updatedAt: node.updatedAt };
+    }
+    if (node.aiExtractedHash === node.contentHash) {
+      return { id: node.id, path, title: node.title, status: "skipped", reason: node.aiExtractedHash ? "content_unchanged" : "already_processed", updatedAt: node.updatedAt };
+    }
+    queued += 1;
+    if (queued > MAX_REPORTS_PER_RUN) {
+      return { id: node.id, path, title: node.title, status: "skipped", reason: "process_limit", updatedAt: node.updatedAt };
+    }
+    return { id: node.id, path, title: node.title, status: "will_process", reason: "pending", updatedAt: node.updatedAt };
+  });
+
+  return {
+    reports,
+    processLimit: MAX_REPORTS_PER_RUN,
+    estimatedProcessCount: reports.filter((r) => r.status === "will_process").length,
+    skippedCount: reports.filter((r) => r.status === "skipped").length,
+    generatedAt: Date.now(),
+  };
+}
+
 function parseExtractJson(text: string): { entities: unknown[]; relations: unknown[] } | null {
   try {
     const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
@@ -387,7 +430,7 @@ export async function extractKgEntitiesFromReports(
 
   for (const reportNode of reports) {
     // sourceKey = "report:/abs/path/to/file.md"
-    const filePath = reportNode.sourceKey.replace(/^report:/, "");
+    const filePath = reportPathOf(reportNode);
     if (!existsSync(filePath)) continue;
 
     let content = "";
@@ -505,5 +548,19 @@ ${content}
     }
   }
 
-  return { newNodes, newEdges, processedReports: reports.length, skippedReports, extractedAt: Date.now() };
+  const result = { newNodes, newEdges, processedReports: reports.length, skippedReports, extractedAt: Date.now() };
+  recordKgHistoryEvent({
+    workspaceId,
+    eventType: "extract",
+    targetKind: "graph",
+    title: "AI 语义提取",
+    summary: `处理 ${result.processedReports} 份报告，新增 ${result.newNodes} 个节点、${result.newEdges} 条边`,
+    metadata: {
+      newNodes: result.newNodes,
+      newEdges: result.newEdges,
+      processedReports: result.processedReports,
+      skippedReports: result.skippedReports,
+    },
+  });
+  return result;
 }

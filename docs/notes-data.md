@@ -10,47 +10,26 @@
 
 > **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-06-29 · **trace 迭代专题 X-TRACE8 收口完成**
+- 最近更新：2026-06-29 · **KG 优化专题 D-KG3 / D-KG4 完成并待 X-KG5 总控终审**
 - 进度：
-  - **X-TRACE8（trace 专题数据红线终审）**：本专题未触及 `web/src/components/DataExplorationPane.tsx` 或 `web/src/components/data-exploration/` 子树，未触发 AGENTS.md 数据探索隔离 grep。trace 巡检只消费 `trace_events`、failure 聚合状态和 memory injection snapshot 元数据，不读取 `draw_data` / `clean_data` 文件正文，不输出 raw row、客户明细、订单样本、完整 prompt 正文或未脱敏日志。
-  - **数据侧残留风险**：detail 脱敏是关键词/长度规则，后续遇到新的日志格式需扩规则；真实长周期 trace 数据量可能需要分页、索引或按 workspace 配置巡检窗口/阈值；failure status UI 当前基于已加载列表过滤，超量时建议改走服务端 status 查询。
-  - **X-BC4（业务环境专题总控验收）**：业务环境迭代专题已收口，`X-BC0 / D-BC1 / E-BC2 / D-BC3 / X-BC4` 全部 done。静态门禁、业务环境治理后端回归、业务环境使用痕迹回归、数据探索隔离 grep 与 wiki/notes 收口已完成。浏览器 smoke 按用户指示跳过，由用户后续自行点检。
-  - **D-BC3（业务环境工作台 UI）**：`BusinessContextPane` 已从「管理/说明」升级为五视图工作台：管理、冲突治理、导入导出、使用痕迹、说明。管理表单支持 source/owner/validFrom/validUntil，列表展示来源、负责人和过期/即将过期状态；冲突治理页展示 D-BC1 conflict 结果并给出人工处理建议；导入导出页支持 CSV/JSON 文件 preview→commit 与导出；使用痕迹页接 `business_context_injection_traces` API，支持空态/有数据态。新增最小 viz route 与 `vizApi.listBusinessContextInjectionTraces`，复用 E-BC2 已落地 DB 真源。
-  - **D-BC1（业务环境治理后端 P1）**：`business_contexts` 的 `source/owner/valid_from/valid_until` 字段已接入 CRUD 与旧 payload 兼容；`buildEnabledBusinessContextPrompt` 会过滤 `validUntil < now` 的过期条目，并在 prompt 中仅简洁附带来源/负责人。新增确定性冲突检测（重复标题、相似 title/content、约束/目标互斥线索）与 CSV/JSON import preview/commit/export API；全程不读 draw_data、不调用 LLM、不碰数据探索子树。
-  - **V-OKH7 & V-OKH5（前端工作台 + 本体联动全面实现）**：`IndicatorsPane` 的指标详情增加了 `MetricOntologyLinks` UI，支持可视化选择已有的本体及对应的实体/关系/逻辑对象，进行 memory metric 的关联，并提供指向 `OntologyPane` 的跳转徽章。`OntologyPane` 的 `MetricsSection` 支持基于归属 `objectTypeId` 反向联动展示同对象上挂载的全局 memory metric（跨组件读取 `AnalysisStandard`），实现双向交叉导航。所有选择为纯前端操作，不新增 LLM 调用。
-  - **D-OKH6 API 增强**：在 `server/src/db/data.ts` 与对应的 `routes/data.ts` 扩展了 `listOkhMetricOntologyLinksByOntology` 方法，支持通过 `ontologyId` 批量读取关联映射表，支撑 UI 高效读取，解决前端 N+1 请求瓶颈。
-  - **D-OKH1（指标模板池 + 一键启用 API）返修完成**：API 改为 canonical `GET /api/workspaces/:id/onto-knowhow/templates?scenario=member` 与 `POST /api/workspaces/:id/onto-knowhow/templates/apply`。首批 4 个 pack 共 8 个聚合指标模板；apply 支持 `packId`/`templateIds`/`enable`，已有同名/近似指标进入 `skipped`，不覆盖。
-  - **D-OKH2（口径冲突检查 + 标准文件体检）返修完成**：API 改为 `GET /api/workspaces/:id/onto-knowhow/conflicts` 与 `GET /api/workspaces/:id/onto-knowhow/standard-health`。conflict severity 对齐 `info|warn|critical`，standard health 仅做本地 `stat/access` 与路径元数据检查，不读取正文、不调用 LLM。
-  - **D-OKH4（指标导入导出 + 批量校验）**：新增 canonical API `POST /api/workspaces/:id/onto-knowhow/import/preview`（CSV/JSON 解析并校验）、`POST /api/workspaces/:id/onto-knowhow/import/commit` 与 `GET /api/workspaces/:id/onto-knowhow/export`。
-  - **the-crowd 主线状态**：X-CROWD12 验收完成（涵盖双通道上传、一键画像、规则引擎、分群），所有 12 个任务卡全线绿。
-  - **非 the-crowd/OKH 历史改动仍在工作区**：D-AGING2、D-EVOLVE2、D-QEVAL3、D-QEVAL1 等卡涉及的代码仍在等待 review 后手动提交；本次未清理或回滚。
+  - **D-KG3（AI 语义提取 preview 只读接口）**：新增 `previewKgExtraction()` 与 `GET /api/workspaces/:id/knowledge-graph/extract-preview`，返回 report id/path/title/status/reason/updatedAt、processLimit、estimatedProcessCount、skippedCount。preview 只基于现有 `kg_nodes` report 元数据和文件存在性判断，不读取报告正文、不调用 LLM、不写 `kg_nodes` / `kg_edges`。
+  - **D-KG4（KG history 记录与查询 API）**：新增 `kg_history_events` 表（落 D slot `db/data.ts`）与 `recordKgHistoryEvent` / `listKgHistoryEvents`；新增 `GET /api/workspaces/:id/knowledge-graph/history?limit=50`，limit clamp 1–200。已记录 `sync`、`extract`、`node_hidden`、`node_recovered`、`edge_added`、`edge_deleted`；history 仅存元数据摘要，不存报告正文/prompt 正文/客户明细/订单样本/原始明细。
+  - **接缝注意**：本任务按 wiki brief 接入了现有 legacy KG 路由所在的 `server/src/index.ts`、现有 KG 表所在的 `server/src/db.ts`、双侧 `types.ts` 与 legacy `web/src/lib/api.ts`；这些属于接缝/legacy 文件，需总控按 X-KG5 加重终审。
 - 校验：
-  - `XANTHIL_DATA_DIR=/tmp/pi-xanthil-xbc4-bc1 node --test server/src/business-context-governance.test.ts`：✅ 6/6 通过
-  - `XANTHIL_DATA_DIR=/tmp/pi-xanthil-xbc4-ebc2 node --experimental-strip-types --test server/src/metric-injection-trace.test.ts`：✅ 17/17 通过
+  - `node --experimental-strip-types --test server/src/knowledge-graph-preview.test.ts`：✅ 2/2 通过（preview 不写库；history workspace 隔离）
   - `npm run typecheck`：✅ server + web 0 错
-  - `npm run build`：✅ web 正常构建通过（仅含既有 Echarts/dynamic import/chunk warning）
-  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/` 等）：✅ 0 匹配
+  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning）
+  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/` + `insights/joins/profiling`）：✅ 0 匹配
 - 下一步（接续优先级）：
-  - ① 用户自行 browser smoke 业务环境工作台：新增带 owner/validUntil 的条目、查看冲突、导入 preview/commit、导出、使用痕迹空态/有数据态；review 后手动 commit。
-  - ② 浏览器人工点检 OKH 双向跳转 UI 交互体验；评估是否需要在 `OntologyPane` 的 `ObjectsSection`（对象页）也直接加入 memory metric 的跨页面展示（目前遵循原始需求挂载在 `MetricsSection`）。
-  - ③ 处理后续开放问题（subagent evaluation 持久化向后兼容等）。
+  - ① 回流总控做 X-KG5：重点审 `index.ts` / `db.ts` / 双侧 `types.ts` / `web/src/lib/api.ts` 的接缝改动是否接受，确认 KG history schema 与 preview reason 枚举是否冻结。
+  - ② 若总控接受，前端后续可在 KG 面板接 `api.previewKgExtraction` 与 `api.listKgHistoryEvents`；建议仍尽量保持 `KnowledgeGraphPane.tsx` 主体结构不大改。
+  - ③ 浏览器 smoke：先同步 KG，再调用 preview，执行 extract 后确认 history 有 sync/extract；隐藏/恢复节点、添加/删除边后确认 history 按 workspace 隔离可查。
 - 阻塞 / 待确认：
   - 无硬阻塞。
 - 开放问题：
-  - **① 持久化向后兼容缺口（必须解）**：旧 `subagent_evaluations.case_summaries` JSON 列反序列化得到的 summary 缺 4 个新字段。修在 `db/engine.ts:644` 附近，需总控派 E 或允许跨域。
-  - **② archive MD 渲染未加新字段**：`evaluation-archive.ts` 的 subagent 报告仍按旧 schema 输出。是否本期补由总控决定。
-  - **③ outputVariance cv 阈值化**：需总控审定阈值。
-  - **④ "总控卡委派" 终审加重**：需总控逐行核 D-QEVAL3 的双侧 types.ts 改动。
-  - **⑤ D-QEVAL1 R01-R15 关键词包待校准**。
-  - **⑥ D-QEVAL1 DocumentSessionMetrics 来源**。
-  - **⑦ D-EVOLVE2 eval 候选 UI 无批量操作**：当前每个 finding/annotation 独立提交，无「全选→批量提为候选」按钮。
-  - **⑧ D-AGING2 与 E-AGING1 算法重叠**：E `memory-aging-inspector.ts` 同样实现了 detectInterferenceFindings / detectRevisionFindings（且 import D 域 `listMemoryItems`），违反"D 真源 + E HTTP 消费"契约。
-  - **⑨ D-SAFEDISTILL1 scan 触发方式**：当前仅手动按钮，无后台定时扫描。若 backlog Phase 3「后台轻量提炼」要全自动，需总控审定 cron 频率 + 用户感知策略（推送/badge）。
-  - **⑩ D-SAFEDISTILL1 skill body 模板可读性**：当前纯模板拼接（无 LLM 包装），用户审阅时 body 偏机械。若总控认可"输入仍是脱敏骨架 → 调 LLM 包装 body 文笔"不违反红线，可后续升级为方案 B（pi-adapter 调用，输入零 draw_data 字面量）。
-  - **⑪ D-MONITOR-TARGET3 前端 UI 缺失**：API 已就绪，但 HealthDataPane 尚无目标测算板块（创建计划表单 +列表 + adopt 按钮）。需等 E-MONITOR-TARGET1 公式稳定后接 UI。
-  - **⑬ V-DLF2 UI 文案"persona 模拟 ≠ 子 agent 委派"是否需更显眼**：当前在顶部副标题（hint 一行）与模板候选区两处用次级文字提示。若总控认为需首次进入时浮层强提示一次，可补 onboarding tip。
-  - **⑭ the-crowd `stagingRef` 列暂未加**：D-CROWD1 决策不加（X-CROWD0 `CrowdDataset` 未暴露该字段）。当前导入只落 dataset 聚合画像，不保存 staging 原始行；若后续要做增量刷新/重算，需要重新审定 stagingRef 与原始行红线。
-  - ~~⑮ D-CROWD4 `adoptFeedbackToVersion` 生成的 version content 当前为空壳~~：已修复为基于反馈源版本派生，保留 persona/traits/motivations，并追加 objections/riskNotes/decisionTriggers/evidenceSummary；X-CROWD9 smoke 覆盖采纳后 persona 不丢。
+  - **① 接缝层加重终审**：本次 KG 既有实现仍在 legacy `index.ts` / `db.ts` / `api.ts` / `types.ts`，D-KG3/D-KG4 为最小落地触及这些文件；需总控确认是否接受本次最小补丁，还是后续迁入 data/viz slot。
+  - **② history schema 是否升级**：当前 metadata 为 `Record<string, unknown>` JSON，未做 event-specific 结构化子类型；如 X-KG5 要用于 UI 强展示，需总控决定是否冻结更细 schema。
+  - **③ preview reason 口径**：当前 `content_unchanged` 与 `already_processed` 均表示无需处理，实际 `aiExtractedHash === contentHash` 时返回 `content_unchanged`；是否保留两个 reason 或收敛为一个需总控拍板。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -229,6 +208,10 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
   - snapshot.sources 恒定 6 项，每条 source 含 `selected/omittedReason/itemIds`；`memory_item.meta` 暴露 `candidateCount/survivedCount/filteredCount/topK/topScore` 供 V-OBS 观测。
   - `ScoredCandidate.signals` 已计算但未暴露到 snapshot.meta——V-OBS 阶段3 注入检查器需要 per-candidate 分数时补。
   - source 级负反馈压制与 item 级统一用 `SUPPRESS_NEG_DELTA` 常量（=3）。
+- **知识图谱 preview/history（D-KG3/D-KG4, 2026-06-29）**：
+  - **extract preview 必须只读**：`previewKgExtraction()` 只读 `kg_nodes` report 元数据与文件存在性，不读报告正文、不调用 LLM、不写 `kg_nodes` / `kg_edges`。reason 首版为 `pending/content_unchanged/already_processed/missing_file/missing_hash/process_limit`，用于 UI 预览，不作为业务真值。
+  - **history 只存元数据摘要**：`kg_history_events` 记录 sync/extract/node hide/recover/manual edge add/delete，`metadata` 只放计数、id、relation、auto 等结构化元数据；禁止写报告正文、prompt 正文、客户明细、订单样本、原始明细或日志样本。
+  - **legacy KG 接缝现实**：现有 KG API/DB 仍在 `server/src/index.ts` / `server/src/db.ts` / `web/src/lib/api.ts` legacy 区域；本次为最小补丁沿既有位置接入，后续若总控要求 slot 化迁移，再整体迁出，避免本卡顺手重构。
 
 **Xan数据库**
 - 天气直连 Open-Meteo 公开 API（CORS 开放，无需后端代理/Key）；`echarts-for-react` 出图；预置城市 + Geocoding 双模式选城。
@@ -338,6 +321,7 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **数据底座设计原则**：6 表全 `workspace_id REFERENCES workspaces(id)` + 索引；`fieldProfiles`/`tagDistribution`/`rule`/`version.content` 全 JSON 列（与项目既有风格一致）；`stagingRef` 列暂不加（X-CROWD0 `CrowdDataset` 未暴露该字段，D-CROWD2 真接 staging 时由总控审定加列）。
 - **分群规则引擎纯聚合估算**：`evaluateSegment` 基于 `CrowdFieldProfile`（topValues/numericRange/missingCount）估算样本量/覆盖率，不接触原始行。7 种 operator（eq/neq/in/not_in/range/exists/missing）+ AND/OR 组合。`range` 按数值区间比例估算（`overlap/range * rowCount`），`eq`/`in` 从 topValues 匹配计数。**已知上限**：topValues 只取 TopN（默认 10），不在 TopN 的值 eq 返回 0；AND 逻辑用 min 估算（假设条件独立，实际可能高估或低估）。这些是工程近似，真精确分群需 D-CROWD2 的 staging 表做 SQL 级过滤。
 - **导入安全三层**：① `computeFieldProfiles` 只产出聚合摘要（类型/缺失率/唯一值/TopN/数值范围），不存原始行；② 导入失败 catch 只返回 `err.message`，不含整行数据；③ SQL 导入复用 `validateSql` 安全门，不改变现有只读 query 口径。
+- **明细上传两段式安全流程（2026-06-29）**：明细上传后先按标签类型在本地聚合，并导出 LLM 输入 CSV 供用户检查；用户确认后再手动点击生成画像。原始明细行永不进入 LLM，`tgi` 不参与聚合与传送。
 - **标签字典全量替换式 PUT**：`saveCrowdTagDictionary` 事务内 DELETE+INSERT 全量替换（与 hooks.json/commands.json 同范式），不拆 entry 级 CRUD（YAGNI）。
 - **画像版本生命周期**：`adoptFeedbackToVersion` 事务内三步（采纳 feedback → 创建新 version → 更新 currentVersionId → 标记 adopted），不自动覆盖当前版本；`rollbackProfileToVersion` 仅改 currentVersionId 指针，不删版本。**已知缺口**：采纳生成的 version content 当前为空壳（仅填 objections），实际内容填充应由 E-CROWD5（画像生成 LLM）或人工编辑完成，本卡只建生命周期管道。
 - **CrowdPane 前端架构**：数据集列表 → 详情四 tab（字段画像/标签字典/分群/画像）。SegmentBuilder 嵌入分群 tab（内联创建/编辑/预览/复制），ProfileViewer 嵌入画像 tab（版本历史/反馈/回滚）。与 `DataTabs.tsx` 接缝仅替换 the-crowd Placeholder → `<CrowdPane workspaceId={...} />`，零接缝层改动。

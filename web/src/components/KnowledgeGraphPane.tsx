@@ -2,6 +2,7 @@ import React, { useCallback, useEffect, useMemo, useState } from "react";
 import {
   AlertCircle, BarChart2, BookOpen, EyeOff, Eye, FileText,
   Globe, Network, RefreshCw, Search, Sparkles, Tag, X, Trash2,
+  ShieldAlert,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
@@ -75,6 +76,118 @@ const KG_LEGEND = (Object.entries(TYPE_LABELS) as [KgNodeType, string][]).map(([
   group, label, color: TYPE_COLORS[group],
 }));
 
+const KG_FEATURES = [
+  { title: "多来源节点", body: "从 rules、指标体系、业务环境、workflow 报告和语义提取结果中沉淀规则、指标、事实、概念、经验等节点。" },
+  { title: "关联边", body: "支持 related_to、references、supports、derived_from 四类关系，自动同步边和人工拖拽添加的边会用不同样式展示。" },
+  { title: "图谱视图", body: "按节点类型聚类展示，可搜索高亮、点击节点看详情、点击边后删除人工维护的关系。" },
+  { title: "节点浏览", body: "用列表方式按类型、关键词、隐藏状态筛选节点，适合快速检查图谱内容和管理注入范围。" },
+  { title: "AI 语义提取", body: "从报告输出中提取概念、事实、经验、情景等补充节点，每次处理有限数量，已处理且内容未变化的报告会跳过。" },
+  { title: "注入控制", body: "隐藏节点不会进入 AI 注入链路，可用于临时排除噪声节点或不稳定经验。" },
+];
+
+const KG_USAGE_STEPS = [
+  { title: "先更新图谱", body: "点击“更新图谱”同步结构化来源，确认 rules、指标、业务环境和报告节点是否齐全。" },
+  { title: "再做语义提取", body: "需要从报告正文沉淀概念和经验时，再点击“AI 语义提取”，并关注新增节点、边和跳过数量。" },
+  { title: "最后收敛注入", body: "在图谱视图或节点浏览里检查噪声节点，必要时隐藏，避免后续对话注入无关知识。" },
+];
+
+const KG_ITERATION_IDEAS = [
+  { title: "关系筛选", body: "增加按 relation 类型和自动 / 手工来源过滤边，便于排查引用链和支撑链。" },
+  { title: "节点质量评分", body: "结合来源数量、最近更新时间、被隐藏状态和引用次数，给出低置信节点提示。" },
+  { title: "提取预览", body: "AI 语义提取前先展示将处理的报告列表和预计范围，减少误触发成本。" },
+  { title: "变更历史", body: "记录节点新增、隐藏、恢复和人工连边操作，方便回看图谱演进。" },
+];
+
+function getNodeQualityHints(node: KgNode, edges: KgEdge[]) {
+  const hints: string[] = [];
+  let incoming = 0;
+  let outgoing = 0;
+  for (const e of edges) {
+    if (e.toId === node.id) incoming++;
+    if (e.fromId === node.id) outgoing++;
+  }
+  const total = incoming + outgoing;
+
+  if (total === 0) {
+    hints.push("孤立节点（建议检查）");
+  } else {
+    if (total === 1) hints.push("低关联（仅1条边）");
+    if (incoming === 0 && total > 0) hints.push("无入边");
+    if (outgoing === 0 && total > 0) hints.push("无出边");
+  }
+
+  const thirtyDays = Date.now() - 30 * 86400 * 1000;
+  if (node.updatedAt < thirtyDays) {
+    hints.push("较久未更新");
+  }
+
+  return hints;
+}
+
+function KnowledgeGraphReadme() {
+  return (
+    <div className="h-full overflow-y-auto bg-neutral-50 p-5 dark:bg-neutral-950">
+      <div className="mx-auto max-w-6xl space-y-4">
+        <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <div className="flex items-start gap-3">
+            <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700 dark:text-neutral-200" />
+            <div className="min-w-0">
+              <h2 className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">知识图谱是什么</h2>
+              <p className="mt-2 text-[13px] leading-6 text-neutral-600 dark:text-neutral-300">
+                知识图谱是规则记忆的结构化视图，用节点和关系把规则、指标、业务环境、报告产物和从报告中提取的语义知识串起来。它服务于后续 AI 注入和人工治理，不是原始数据探索工具。
+              </p>
+            </div>
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">现在已经实现了什么</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+            {KG_FEATURES.map((item) => (
+              <div key={item.title} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{item.title}</h3>
+                <p className="mt-1 text-[11.5px] leading-5 text-neutral-600 dark:text-neutral-300">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">怎么用</h2>
+          <div className="mt-3 grid gap-2 sm:grid-cols-3">
+            {KG_USAGE_STEPS.map((item) => (
+              <div key={item.title} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{item.title}</h3>
+                <p className="mt-1 text-[11.5px] leading-5 text-neutral-600 dark:text-neutral-300">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">后续值得优化的方向</h2>
+          <p className="mt-1 text-[12px] text-neutral-500">下面是本次检查发现的迭代建议，不表示已经上线。</p>
+          <div className="mt-3 grid gap-2 sm:grid-cols-2">
+            {KG_ITERATION_IDEAS.map((item) => (
+              <div key={item.title} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{item.title}</h3>
+                <p className="mt-1 text-[11.5px] leading-5 text-neutral-600 dark:text-neutral-300">{item.body}</p>
+              </div>
+            ))}
+          </div>
+        </section>
+
+        <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+          <h2 className="flex items-center gap-2 text-[14px] font-semibold"><ShieldAlert className="h-4 w-4" /> 安全边界</h2>
+          <p className="mt-2 text-[12px] leading-5">
+            知识图谱可以使用 rules、业务环境、指标定义、报告产物和经授权的语义提取结果；不要把 draw_data 原始行级内容、客户明细、订单样本或数据探索结果直接送入 AI 提取或注入链路。
+          </p>
+        </section>
+      </div>
+    </div>
+  );
+}
+
 // ---- connection modal ----
 
 function ConnectionModal({
@@ -119,7 +232,7 @@ function ConnectionModal({
 
 // ---- detail panel ----
 
-function DetailPanel({ node, onClose, onToggleHidden }: { node: KgNode; onClose: () => void; onToggleHidden: (hidden: boolean) => void }) {
+function DetailPanel({ node, rawEdges, onClose, onToggleHidden }: { node: KgNode; rawEdges: KgEdge[]; onClose: () => void; onToggleHidden: (hidden: boolean) => void }) {
   const color = TYPE_COLORS[node.type];
   return (
     <div className="absolute right-0 top-0 z-20 flex h-full w-72 flex-col border-l border-neutral-200 bg-white shadow-lg dark:border-neutral-800 dark:bg-neutral-900">
@@ -147,6 +260,27 @@ function DetailPanel({ node, onClose, onToggleHidden }: { node: KgNode; onClose:
           </div>
         )}
         <p className="mt-4 text-[11px] text-neutral-400">{new Date(node.updatedAt).toLocaleString()}</p>
+        
+        {(() => {
+          const hints = getNodeQualityHints(node, rawEdges);
+          if (hints.length > 0) {
+            return (
+              <div className="mt-4 flex flex-col gap-1.5 rounded-lg border border-amber-200 bg-amber-50 p-3 dark:border-amber-900/30 dark:bg-amber-900/10">
+                <div className="flex items-center gap-1.5 text-[11.5px] font-semibold text-amber-800 dark:text-amber-400">
+                  <AlertCircle className="h-3.5 w-3.5" /> 质量提示
+                </div>
+                <div className="mt-1 flex flex-wrap gap-1.5">
+                  {hints.map((h, i) => (
+                    <span key={i} className="rounded bg-amber-100/50 px-1.5 py-0.5 text-[11px] text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">
+                      {h}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            );
+          }
+          return null;
+        })()}
       </div>
       <div className="border-t border-neutral-200 p-3 dark:border-neutral-800">
         <button
@@ -168,7 +302,7 @@ function DetailPanel({ node, onClose, onToggleHidden }: { node: KgNode; onClose:
 
 // ---- node list view ----
 
-function NodeListView({ nodes, onSelectNode, onToggleHidden }: { nodes: KgNode[]; onSelectNode: (n: KgNode) => void; onToggleHidden: (n: KgNode, hidden: boolean) => void }) {
+function NodeListView({ nodes, rawEdges, onSelectNode, onToggleHidden }: { nodes: KgNode[]; rawEdges: KgEdge[]; onSelectNode: (n: KgNode) => void; onToggleHidden: (n: KgNode, hidden: boolean) => void }) {
   const [filterType, setFilterType] = useState<KgNodeType | "all">("all");
   const [query, setQuery] = useState("");
   const [showHidden, setShowHidden] = useState(false);
@@ -219,6 +353,7 @@ function NodeListView({ nodes, onSelectNode, onToggleHidden }: { nodes: KgNode[]
                 <th className="px-4 py-2.5 font-medium">标题</th>
                 <th className="px-3 py-2.5 font-medium">类型</th>
                 <th className="px-3 py-2.5 font-medium">标签</th>
+                <th className="px-3 py-2.5 font-medium">质量提示</th>
                 <th className="px-3 py-2.5 font-medium">状态</th>
               </tr>
             </thead>
@@ -239,6 +374,21 @@ function NodeListView({ nodes, onSelectNode, onToggleHidden }: { nodes: KgNode[]
                     </span>
                   </td>
                   <td className="max-w-[8rem] truncate px-3 py-2.5 text-neutral-500">{n.tags.join(", ")}</td>
+                  <td className="px-3 py-2.5">
+                    {(() => {
+                      const hints = getNodeQualityHints(n, rawEdges);
+                      if (hints.length === 0) return <span className="text-neutral-400">-</span>;
+                      return (
+                        <div className="flex flex-wrap gap-1">
+                          {hints.map((h, i) => (
+                            <span key={i} className="rounded border border-amber-200 bg-amber-50 px-1.5 py-0.5 text-[10px] text-amber-700 dark:border-amber-900/30 dark:bg-amber-900/20 dark:text-amber-400">
+                              {h}
+                            </span>
+                          ))}
+                        </div>
+                      );
+                    })()}
+                  </td>
                   <td className="px-3 py-2.5">
                     <button
                       onClick={(e) => { e.stopPropagation(); onToggleHidden(n, !n.hidden); }}
@@ -270,8 +420,10 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
   const [error, setError] = useState<string | null>(null);
   const [selectedNode, setSelectedNode] = useState<KgNode | null>(null);
   const [selectedEdge, setSelectedEdge] = useState<KgEdge | null>(null);
-  const [view, setView] = useState<"graph" | "list">("graph");
+  const [view, setView] = useState<"graph" | "list" | "readme">("graph");
   const [searchQuery, setSearchQuery] = useState("");
+  const [edgeRelationFilter, setEdgeRelationFilter] = useState<KgRelation | "all">("all");
+  const [edgeSourceFilter, setEdgeSourceFilter] = useState<"all" | "auto" | "manual">("all");
   const [pendingConn, setPendingConn] = useState<{ fromId: string; toId: string } | null>(null);
 
   const load = useCallback(async (includeHidden = false) => {
@@ -301,7 +453,15 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
     groupLabel: TYPE_LABELS[n.type],
   })), [rawNodes]);
 
-  const gcEdges = useMemo<GraphCanvasEdge[]>(() => rawEdges.map((e) => ({
+  const gcEdges = useMemo<GraphCanvasEdge[]>(() => rawEdges.filter((e) => {
+    if (edgeRelationFilter !== "all" && e.relation !== edgeRelationFilter) return false;
+    if (edgeSourceFilter !== "all") {
+      const isAuto = e.auto;
+      if (edgeSourceFilter === "auto" && !isAuto) return false;
+      if (edgeSourceFilter === "manual" && isAuto) return false;
+    }
+    return true;
+  }).map((e) => ({
     id: e.id,
     from: e.fromId,
     to: e.toId,
@@ -310,7 +470,7 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
     dashed: !e.auto,
     animated: e.relation === "references",
     width: Math.max(1, e.weight * 0.8),
-  })), [rawEdges]);
+  })), [rawEdges, edgeRelationFilter, edgeSourceFilter]);
 
   const hiddenIds = useMemo(() => new Set(rawNodes.filter((n) => n.hidden).map((n) => n.id)), [rawNodes]);
 
@@ -407,40 +567,64 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
         <Network className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.5} />
         <h1 className="shrink-0 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">知识图谱</h1>
         <div className="flex rounded-md border border-neutral-200 dark:border-neutral-700">
-          {(["graph", "list"] as const).map((v) => (
+          {([
+            { id: "graph" as const, label: "图谱视图" },
+            { id: "list" as const, label: "节点浏览" },
+            { id: "readme" as const, label: "说明" },
+          ]).map((tab, index, tabs) => (
             <button
-              key={v}
-              onClick={() => setView(v)}
+              key={tab.id}
+              onClick={() => setView(tab.id)}
               className={cn(
                 "px-3 py-1 text-[12px] transition-colors",
-                view === v ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900" : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800",
-                v === "graph" ? "rounded-l-md" : "rounded-r-md",
+                view === tab.id ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900" : "text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800",
+                index === 0 && "rounded-l-md",
+                index === tabs.length - 1 && "rounded-r-md",
               )}
             >
-              {v === "graph" ? "图谱视图" : "节点浏览"}
+              {tab.label}
             </button>
           ))}
         </div>
 
-        {/* search — only in graph view */}
+        {/* search & filters — only in graph view */}
         {view === "graph" && (
-          <div className="relative">
-            <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-400" />
-            <input
-              value={searchQuery}
-              onChange={(e) => setSearchQuery(e.target.value)}
-              placeholder="搜索高亮…"
-              className="h-7 w-40 rounded-md border border-neutral-300 bg-white pl-6 pr-2.5 text-[12px] outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
-            />
-            {searchQuery && (
-              <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700">
-                <X className="h-3 w-3" />
-              </button>
-            )}
+          <div className="flex flex-wrap items-center gap-2">
+            <div className="relative">
+              <Search className="absolute left-2 top-1/2 h-3 w-3 -translate-y-1/2 text-neutral-400" />
+              <input
+                value={searchQuery}
+                onChange={(e) => setSearchQuery(e.target.value)}
+                placeholder="搜索高亮…"
+                className="h-7 w-40 rounded-md border border-neutral-300 bg-white pl-6 pr-2.5 text-[12px] outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-100"
+              />
+              {searchQuery && (
+                <button onClick={() => setSearchQuery("")} className="absolute right-2 top-1/2 -translate-y-1/2 text-neutral-400 hover:text-neutral-700">
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </div>
+            <select
+              value={edgeRelationFilter}
+              onChange={(e) => setEdgeRelationFilter(e.target.value as KgRelation | "all")}
+              className="h-7 rounded-md border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
+            >
+              <option value="all">关系：全部</option>
+              {ALL_RELATIONS.map(r => <option key={r} value={r}>关系：{RELATION_LABELS[r]}</option>)}
+            </select>
+            <select
+              value={edgeSourceFilter}
+              onChange={(e) => setEdgeSourceFilter(e.target.value as "all" | "auto" | "manual")}
+              className="h-7 rounded-md border border-neutral-300 bg-white px-2 text-[12px] text-neutral-700 outline-none focus:border-neutral-500 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"
+            >
+              <option value="all">来源：全部</option>
+              <option value="auto">来源：自动同步</option>
+              <option value="manual">来源：人工维护</option>
+            </select>
           </div>
         )}
 
-        <div className="ml-auto flex items-center gap-3">
+        {view !== "readme" && <div className="ml-auto flex items-center gap-3">
           {lastExtract ? (
             <span className="text-[11.5px] text-violet-500">
               +{lastExtract.newNodes} 概念 · +{lastExtract.newEdges} 边 · 处理 {lastExtract.processedReports} 篇{lastExtract.skippedReports > 0 ? ` · 跳过 ${lastExtract.skippedReports} 篇（内容未变）` : ""}
@@ -478,7 +662,7 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
             <RefreshCw className={cn("h-3.5 w-3.5", syncing && "animate-spin")} />
             {syncing ? "同步中…" : "更新图谱"}
           </button>
-        </div>
+        </div>}
       </div>
 
       {error && (
@@ -488,7 +672,9 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
       )}
 
       <div className="relative flex-1 overflow-hidden">
-        {view === "graph" ? (
+        {view === "readme" ? (
+          <KnowledgeGraphReadme />
+        ) : view === "graph" ? (
           <GraphCanvas
             nodes={gcNodes}
             edges={gcEdges}
@@ -508,18 +694,19 @@ export function KnowledgeGraphPane({ workspaceId, onSynced }: { workspaceId: str
             }
           />
         ) : (
-          <NodeListView nodes={rawNodes} onSelectNode={setSelectedNode} onToggleHidden={handleToggleHidden} />
+          <NodeListView nodes={rawNodes} rawEdges={rawEdges} onSelectNode={setSelectedNode} onToggleHidden={handleToggleHidden} />
         )}
 
-        {selectedNode && (
+        {view !== "readme" && selectedNode && (
           <DetailPanel
             node={selectedNode}
+            rawEdges={rawEdges}
             onClose={() => setSelectedNode(null)}
             onToggleHidden={(hidden) => handleToggleHidden(selectedNode, hidden)}
           />
         )}
 
-        {pendingConn && fromNode && toNode && (
+        {view !== "readme" && pendingConn && fromNode && toNode && (
           <ConnectionModal
             fromNode={fromNode}
             toNode={toNode}

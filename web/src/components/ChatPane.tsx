@@ -1,5 +1,5 @@
-import { useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Archive, ArrowUp, Bot, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, Paperclip, RefreshCw, Square, WandSparkles, Wrench, X } from "lucide-react";
+import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
+import { Archive, ArrowUp, Bot, CheckCircle2, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, Paperclip, RefreshCw, Square, WandSparkles, Wrench, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
@@ -11,7 +11,7 @@ import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
-import { textOf, type PiModel, type PromptDraft, type PromptTemplateInput, type SessionRuntime, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
+import { textOf, type FlowTreeNode, type PiModel, type PromptDraft, type PromptTemplateInput, type SessionArtifactTree, type SessionRuntime, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
 
 type FolderScope =
   | { type: "workspace"; workspaceId: string }
@@ -19,8 +19,9 @@ type FolderScope =
   | { type: "flow"; flowId: string };
 
 const DRAWER_MIN = 360;
-const DRAWER_DEFAULT = 460;
-const DRAWER_WIDTH_KEY = "chatpane.assistDrawerWidth";
+const DRAWER_DEFAULT_FALLBACK = 560;
+const DRAWER_DEFAULT_RATIO = 0.5;
+const DRAWER_WIDTH_KEY = "chatpane.assistDrawerWidth.v2";
 const COMMAND_QUERY_RE = /^\/([^\s/]*)$/;
 
 interface Props {
@@ -78,6 +79,73 @@ const TEXT_UPLOAD_EXTENSIONS = new Set([
 ]);
 const TEXT_UPLOAD_ACCEPT = Array.from(TEXT_UPLOAD_EXTENSIONS).join(",");
 const MAX_COMPOSER_FILE_BYTES = 2 * 1024 * 1024;
+const EXECUTION_STAGES = ["准备任务", "读取上下文", "分析数据", "生成报告", "整理产物", "完成"] as const;
+
+type ExecutionStageStatus = "done" | "active" | "pending";
+
+interface ExecutionStage {
+  label: typeof EXECUTION_STAGES[number];
+  status: ExecutionStageStatus;
+}
+
+interface ArtifactFileItem {
+  path: string;
+  name: string;
+  mtime: number;
+}
+
+function summarizeExecutionText(text: string): string {
+  const withoutThinking = text.replace(/<think>[\s\S]*?<\/think>/gi, " ");
+  const compact = withoutThinking
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#*_>`~\-[\]()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!compact) return "";
+  return compact.length > 260 ? `${compact.slice(0, 260)}…` : compact;
+}
+
+function countArtifactFiles(node: FlowTreeNode | null): number {
+  if (!node) return 0;
+  if (node.kind === "file") return 1;
+  return (node.children ?? []).reduce((sum, child) => sum + countArtifactFiles(child), 0);
+}
+
+function collectArtifactFiles(node: FlowTreeNode | null, limit: number): ArtifactFileItem[] {
+  if (!node || limit <= 0) return [];
+  if (node.kind === "file") return [{ path: node.path, name: node.name, mtime: node.mtime }];
+  const files: ArtifactFileItem[] = [];
+  for (const child of node.children ?? []) {
+    if (files.length >= limit) break;
+    files.push(...collectArtifactFiles(child, limit - files.length));
+  }
+  return files;
+}
+
+function getExecutionStageIndex(options: {
+  running: boolean;
+  hasUserMessage: boolean;
+  hasAssistantText: boolean;
+  hasToolActivity: boolean;
+  artifactCount: number;
+}): number {
+  if (!options.hasUserMessage && !options.running) return 0;
+  if (!options.running && options.hasUserMessage) return EXECUTION_STAGES.length - 1;
+  if (options.artifactCount > 0) return 4;
+  if (options.hasAssistantText) return 3;
+  if (options.hasToolActivity) return 2;
+  if (options.hasUserMessage) return 1;
+  return 0;
+}
+
+function getExecutionStages(activeIndex: number, running: boolean): ExecutionStage[] {
+  return EXECUTION_STAGES.map((label, index) => {
+    if (!running && activeIndex === EXECUTION_STAGES.length - 1) return { label, status: "done" };
+    if (index < activeIndex) return { label, status: "done" };
+    if (index === activeIndex) return { label, status: "active" };
+    return { label, status: "pending" };
+  });
+}
 
 function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (v: string) => void }) {
   // Group by provider
@@ -108,6 +176,10 @@ function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: st
 function clampDrawerWidth(width: number, containerWidth: number): number {
   const max = Math.max(DRAWER_MIN, containerWidth * 0.6);
   return Math.min(Math.max(width, DRAWER_MIN), max);
+}
+
+function defaultDrawerWidth(containerWidth: number): number {
+  return clampDrawerWidth(containerWidth * DRAWER_DEFAULT_RATIO, containerWidth);
 }
 
 function commandHasParams(command: XanCommand): boolean {
@@ -320,11 +392,11 @@ export function ChatPane(p: Props) {
   const [promptDistillError, setPromptDistillError] = useState("");
   const [promptNotice, setPromptNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [drawerWidth, setDrawerWidth] = useState(() => {
-    if (typeof window === "undefined") return DRAWER_DEFAULT;
+    if (typeof window === "undefined") return DRAWER_DEFAULT_FALLBACK;
     const raw = window.localStorage.getItem(DRAWER_WIDTH_KEY);
-    if (!raw) return DRAWER_DEFAULT;
+    if (!raw) return DRAWER_DEFAULT_FALLBACK;
     const stored = Number(raw);
-    return Number.isFinite(stored) ? stored : DRAWER_DEFAULT;
+    return Number.isFinite(stored) ? stored : DRAWER_DEFAULT_FALLBACK;
   });
   const {
     contexts: businessRequirementContexts,
@@ -338,6 +410,11 @@ export function ChatPane(p: Props) {
   const taRef = useRef<HTMLTextAreaElement>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const activeSessionId = p.sessionId || (p.folderScope?.type === "session" ? p.folderScope.sessionId : "");
+  const [artifacts, setArtifacts] = useState<SessionArtifactTree | null>(null);
+  const [artifactsLoading, setArtifactsLoading] = useState(false);
+  const [artifactsError, setArtifactsError] = useState("");
+  const [currentRoundStartedAt, setCurrentRoundStartedAt] = useState<number | null>(null);
+  const [currentRoundMessageStartIndex, setCurrentRoundMessageStartIndex] = useState<number | null>(null);
   const canUseSessionTools = Boolean(activeSessionId) && !p.disabled;
   const commandQueryText = commandQuery(input);
   const commandCandidates = useMemo(() => {
@@ -357,10 +434,54 @@ export function ChatPane(p: Props) {
     () => (selectedCommand?.params ?? []).filter((param) => param.type === "file" && param.source === "clean_data"),
     [selectedCommand],
   );
+  const artifactCount = countArtifactFiles(artifacts?.tree ?? null);
+  const allArtifactFiles = useMemo(() => collectArtifactFiles(artifacts?.tree ?? null, Number.POSITIVE_INFINITY), [artifacts]);
+  const currentRoundArtifactFiles = useMemo(() => {
+    if (currentRoundStartedAt == null) return [];
+    const threshold = currentRoundStartedAt - 2000;
+    return allArtifactFiles.filter((file) => file.mtime >= threshold);
+  }, [allArtifactFiles, currentRoundStartedAt]);
+  const shouldShowCurrentRoundArtifacts = currentRoundStartedAt != null && (p.running || currentRoundArtifactFiles.length > 0);
+  const visibleArtifactFiles = shouldShowCurrentRoundArtifacts ? currentRoundArtifactFiles : allArtifactFiles;
+  const visibleArtifactCount = shouldShowCurrentRoundArtifacts ? currentRoundArtifactFiles.length : artifactCount;
+  const artifactFiles = visibleArtifactFiles.slice(0, 4);
+  const artifactScopeLabel = shouldShowCurrentRoundArtifacts ? "本轮产物" : "产物";
+
+  const loadArtifacts = useCallback(() => {
+    if (!activeSessionId) {
+      setArtifacts(null);
+      setArtifactsError("");
+      return;
+    }
+    setArtifactsLoading(true);
+    setArtifactsError("");
+    api.sessionArtifactTree(activeSessionId)
+      .then(setArtifacts)
+      .catch((error) => {
+        setArtifacts(null);
+        setArtifactsError(error instanceof Error ? error.message : String(error));
+      })
+      .finally(() => setArtifactsLoading(false));
+  }, [activeSessionId]);
 
   useEffect(() => {
     bottomRef.current?.scrollIntoView({ behavior: "smooth" });
   }, [p.messages, p.running]);
+
+  useEffect(() => {
+    setCurrentRoundStartedAt(null);
+    setCurrentRoundMessageStartIndex(null);
+  }, [activeSessionId]);
+
+  useEffect(() => {
+    loadArtifacts();
+  }, [loadArtifacts, p.messages.length]);
+
+  useEffect(() => {
+    if (!p.running || !activeSessionId) return;
+    const timer = window.setInterval(loadArtifacts, 4000);
+    return () => window.clearInterval(timer);
+  }, [activeSessionId, loadArtifacts, p.running]);
 
   useEffect(() => {
     if (!canUseSessionTools) setActiveAssistPanel(null);
@@ -505,7 +626,8 @@ export function ChatPane(p: Props) {
       const containerWidth = rootRef.current?.clientWidth;
       if (!containerWidth) return;
       setDrawerWidth((current) => {
-        const next = clampDrawerWidth(current, containerWidth);
+        const stored = window.localStorage.getItem(DRAWER_WIDTH_KEY);
+        const next = stored ? clampDrawerWidth(current, containerWidth) : defaultDrawerWidth(containerWidth);
         window.localStorage.setItem(DRAWER_WIDTH_KEY, String(next));
         return next;
       });
@@ -555,6 +677,8 @@ export function ChatPane(p: Props) {
     const trimmed = text.trim();
     if ((!trimmed && attachments.length === 0) || p.running || p.disabled) return;
     const textWithAttachments = `${trimmed}${attachmentBlock(attachments)}`.trim();
+    setCurrentRoundStartedAt(Date.now());
+    setCurrentRoundMessageStartIndex(p.messages.length);
     p.onSend(
       textWithAttachments,
       selectedSkillPaths.length > 0 ? selectedSkillPaths : undefined,
@@ -700,6 +824,32 @@ export function ChatPane(p: Props) {
   });
   const hiddenCount = p.messages.length - businessMessages.length;
   const visibleMessages = showTrace ? p.messages : businessMessages;
+  const currentRoundMessages = currentRoundMessageStartIndex == null ? [] : p.messages.slice(currentRoundMessageStartIndex);
+  const latestCurrentRoundAssistantMessage = [...currentRoundMessages]
+    .reverse()
+    .find((message) => message.role === "assistant" && textOf(message.content).trim().length > 0 && !hasTraceBlocks(message));
+  const latestSessionAssistantMessage = [...businessMessages]
+    .reverse()
+    .find((message) => message.role === "assistant" && textOf(message.content).trim().length > 0);
+  const latestAssistantMessage = currentRoundStartedAt != null ? latestCurrentRoundAssistantMessage : latestSessionAssistantMessage;
+  const latestAssistantSummary = summarizeExecutionText(latestAssistantMessage ? textOf(latestAssistantMessage.content) : "");
+  const waitingForCurrentRoundSummary = currentRoundStartedAt != null && !latestCurrentRoundAssistantMessage;
+  const hasUserMessage = p.messages.some((message) => message.role === "user");
+  const hasCurrentRound = currentRoundStartedAt != null;
+  const hasAssistantText = hasCurrentRound
+    ? currentRoundMessages.some((message) => message.role === "assistant" && textOf(message.content).trim().length > 0 && !hasTraceBlocks(message))
+    : businessMessages.some((message) => message.role === "assistant" && textOf(message.content).trim().length > 0);
+  const hasToolActivity = (hasCurrentRound ? currentRoundMessages : p.messages).some((message) => message.role === "tool" || hasToolBlocks(message));
+  const activeStageIndex = getExecutionStageIndex({
+    running: p.running,
+    hasUserMessage,
+    hasAssistantText,
+    hasToolActivity,
+    artifactCount: visibleArtifactCount,
+  });
+  const executionStages = getExecutionStages(activeStageIndex, p.running);
+  const activeStageLabel = executionStages[activeStageIndex]?.label ?? EXECUTION_STAGES[0];
+  const showExecutionOverview = p.messages.length > 0 || p.running || artifactCount > 0;
   const contextPercent = p.runtime?.contextPercent;
   const contextTone = p.runtime?.status === "error"
     ? "text-rose-600 dark:text-rose-400"
@@ -800,6 +950,97 @@ export function ChatPane(p: Props) {
                 上传数据 · 描述口径 · 生成报告
               </p>
             </div>
+          )}
+
+          {showExecutionOverview && (
+            <>
+              <div className="sticky top-0 z-20 -mx-6 bg-white/95 px-6 py-2 backdrop-blur dark:bg-neutral-950/95">
+                <div className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+                  <div className="flex flex-wrap items-center justify-between gap-3">
+                    <div className="min-w-0 flex-1">
+                      <div className="flex min-w-0 items-center gap-2">
+                        {p.running ? (
+                          <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />
+                        ) : (
+                          <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={1.75} />
+                        )}
+                        <span className="truncate text-[13px] font-medium text-neutral-900 dark:text-neutral-100">
+                          {p.running ? "任务执行中" : "任务已完成"} · {activeStageLabel}阶段
+                        </span>
+                        <span className="hidden text-[12px] text-neutral-400 sm:inline">
+                          当前阶段：{activeStageLabel}
+                        </span>
+                      </div>
+                      {(latestAssistantSummary || waitingForCurrentRoundSummary) && (
+                        <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-neutral-600 dark:text-neutral-400">
+                          <span className="font-medium text-neutral-800 dark:text-neutral-200">最新摘要：</span>
+                          {latestAssistantSummary || "等待本轮输出…"}
+                        </p>
+                      )}
+                    </div>
+                    <div className="flex shrink-0 items-center gap-1.5 rounded-md bg-neutral-100 px-2 py-1 text-[11.5px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                      {artifactsLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <FileText className="h-3 w-3" strokeWidth={1.75} />}
+                      {artifactScopeLabel}：{visibleArtifactCount} 个文件
+                    </div>
+                  </div>
+
+                  <div className="mt-2 flex gap-1">
+                    {executionStages.map((stage) => (
+                      <div
+                        key={stage.label}
+                        className={cn(
+                          "h-1.5 flex-1 rounded-full",
+                          stage.status === "done" && "bg-emerald-500/80",
+                          stage.status === "active" && "bg-neutral-900 dark:bg-neutral-100",
+                          stage.status === "pending" && "bg-neutral-200 dark:bg-neutral-800",
+                        )}
+                        title={stage.label}
+                      />
+                    ))}
+                  </div>
+                  <div className="mt-1.5 grid grid-cols-6 gap-1 text-center text-[10.5px] leading-4">
+                    {executionStages.map((stage) => (
+                      <span
+                        key={stage.label}
+                        className={cn(
+                          "truncate",
+                          stage.status === "done" && "text-emerald-600 dark:text-emerald-400",
+                          stage.status === "active" && "font-medium text-neutral-900 dark:text-neutral-100",
+                          stage.status === "pending" && "text-neutral-400 dark:text-neutral-500",
+                        )}
+                        title={stage.label}
+                      >
+                        {stage.label}
+                      </span>
+                    ))}
+                  </div>
+
+                  {artifactsError && (
+                    <p className="mt-2 text-[11.5px] text-rose-500">产物加载失败：{artifactsError}</p>
+                  )}
+                </div>
+              </div>
+
+              {!p.running && artifactFiles.length > 0 && (
+                <div className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+                  <div className="mb-1.5 text-[12px] font-medium text-neutral-900 dark:text-neutral-100">{artifactScopeLabel}文件</div>
+                  <div className="grid gap-1.5">
+                    {artifactFiles.map((file) => (
+                      <div key={file.path} className="flex min-w-0 items-center gap-1.5 text-[11.5px] text-neutral-600 dark:text-neutral-300" title={file.path}>
+                        <FileText className="h-3.5 w-3.5 shrink-0 text-neutral-400" strokeWidth={1.75} />
+                        <span className="truncate font-mono">{file.name}</span>
+                      </div>
+                    ))}
+                  </div>
+                  {visibleArtifactCount > artifactFiles.length && (
+                    <div className="mt-1 text-[11px] text-neutral-400">另有 {visibleArtifactCount - artifactFiles.length} 个文件</div>
+                  )}
+                  {shouldShowCurrentRoundArtifacts && artifactCount > visibleArtifactCount && (
+                    <div className="mt-1 text-[11px] text-neutral-400">历史产物 {artifactCount - visibleArtifactCount} 个暂收起</div>
+                  )}
+                </div>
+              )}
+            </>
           )}
 
           {visibleMessages.map((m) => (
