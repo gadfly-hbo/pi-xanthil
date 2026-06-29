@@ -10,7 +10,26 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。2.3 发布后增量（Harness 全专题等）见 `Orchestration.md §八「2.3 阶段进展」`。详见发布节点。
 
-- 最近更新：2026-06-27 · 总控（监测·目标测算全链 QA 完成 + Harness 自进化专题 P0 全交付）
+- 最近更新：2026-06-29 · 总控（业务环境迭代专题 X-BC4 已收口）
+- 本批（2026-06-29 · 业务环境迭代专题，总控规划/派发）：
+  - ✅ **X-BC0 已完成拆卡**：围绕业务环境说明页列出的 4 个优化方向，拆为 `X-BC0`（契约/派发，done）→ `D-BC1`（元数据字段、冲突检测、CSV/JSON 导入导出、过期过滤）→ `E-BC2`（business_context 注入痕迹采集）→ `D-BC3`（BusinessContextPane 工作台 UI）→ `X-BC4`（全链验收）。
+  - ✅ **D-BC1 已回流并通过总控复核**：后端已接入 `source` / `owner` / `validFrom` / `validUntil`、旧库幂等迁移、create/update 校验、prompt 过期过滤、确定性冲突检测、CSV/JSON import preview/commit/export API、双侧类型/API client 与治理单测；导入导出 UI 未做，留给 `D-BC3`。
+  - ✅ **D-BC1 验证**：`XANTHIL_DATA_DIR=/tmp/pi-xanthil-bc1-review node --test server/src/business-context-governance.test.ts` 6/6，通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 `echarts` dynamic-import 与 chunk-size warning；数据探索隔离 grep 无输出。
+  - ✅ **E-BC2 已回流并通过总控复核**：已新增/接通 `business_context_injection_traces`，从 `MemoryInjectionSnapshot.sources(kind='businessContext')` 提取当前工作区启用/可见条目，记录 title/category/targetScope/targetKind/targetId/injected/tokenEstimate/omittedReason，并在日常 chat、workflow chat、multi-agent run 三处注入点接线；查询 API 为 `GET /api/workspaces/:id/business-contexts/traces`。
+  - ✅ **E-BC2 验证**：`XANTHIL_DATA_DIR=/tmp/pi-xanthil-ebc2-review node --experimental-strip-types --test server/src/metric-injection-trace.test.ts` 17/17，通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 `echarts` dynamic-import 与 chunk-size warning；数据探索隔离 grep 无输出。
+  - ✅ **D-BC3 已回流并通过总控静态复核**：`BusinessContextPane` 升级为管理、冲突治理、导入导出、使用痕迹、说明五视图；管理表单接入 `source/owner/validFrom/validUntil`；冲突页接 D-BC1 API；导入导出支持 CSV/JSON preview→commit 与 export；使用痕迹页接 E-BC2 trace 数据并提供空态/有数据态。另新增 `vizApi.listBusinessContextInjectionTraces` 与 `/api/workspaces/:id/business-context-injection-traces` 便于 viz 域前端消费。
+  - ✅ **D-BC3 验证**：`npm run typecheck` 通过；`npm run build` 通过，仅既有 `echarts` dynamic-import 与 chunk-size warning；数据探索隔离 grep 无输出；回归复跑 `XANTHIL_DATA_DIR=/tmp/pi-xanthil-dbc3-bc1-review node --test server/src/business-context-governance.test.ts` 6/6、`XANTHIL_DATA_DIR=/tmp/pi-xanthil-dbc3-ebc2-review node --experimental-strip-types --test server/src/metric-injection-trace.test.ts` 17/17。
+  - ✅ **X-BC4 已完成总控收口**：专题状态为 `X-BC0 / D-BC1 / E-BC2 / D-BC3 / X-BC4` 全部 done；静态门禁、治理/痕迹回归、数据探索红线与 wiki/notes 收口已完成。浏览器 smoke 原计划覆盖新增 source/owner/validUntil、过期过滤、冲突治理、导入 preview/commit/export 与使用痕迹；按用户指示跳过，由用户后续自行点检。
+  - ✅ **X-BC4 验证**：`XANTHIL_DATA_DIR=/tmp/pi-xanthil-xbc4-bc1 node --test server/src/business-context-governance.test.ts` 6/6，通过；`XANTHIL_DATA_DIR=/tmp/pi-xanthil-xbc4-ebc2 node --experimental-strip-types --test server/src/metric-injection-trace.test.ts` 17/17，通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 `echarts` dynamic-import 与 chunk-size warning；数据探索隔离 grep 无输出。
+  - 📌 **总控口径**：业务环境会进入 LLM prompt，只能保存可共享业务背景；禁止 draw_data 原始行、个人敏感信息、订单样本、客户明细或未脱敏日志。冲突检测、导入校验、痕迹采集全部确定性，不新增 LLM 调用。
+  - 📌 **残留风险 / 下一波建议**：浏览器点击级验收由用户手动执行；trace 查询存在 `business-contexts/traces` 与 `business-context-injection-traces` 两个入口，功能不阻断，后续可收敛到 canonical 路径。下一波增强维持三项：Markdown 导入、冲突处理 workflow、基于使用痕迹/反馈/老化信号的评分降权。
+- 本批（2026-06-29 · onto-knowhow 迭代专题，总控终审）：
+  - ✅ **X-OKH8 全链验收通过**：新增 `server/src/okh-full-acceptance.test.ts`，一条确定性验收覆盖 6 个用户场景：空工作区启用 member 模板、同名指标冲突检测、缺失标准文件体检、metric injection trace 记录、CSV preview/commit/export、metric ↔ ontology object 关联与反查。
+  - ✅ **专题状态**：X-OKH0 / D-OKH1 / D-OKH2 / E-OKH3 / D-OKH4 / V-OKH5 / D-OKH6 / V-OKH7 / X-OKH8 全部 done；`docs/wiki.html` OKH 专题已收口。
+  - ✅ **长期口径**：OKH API 只处理指标口径、标准文件元数据、启用关系、痕迹和 ontology 关联；标准文件体检只做 `stat/access` 与路径元数据判断，不读取正文、不走 LLM；本体联动首版全部人工选择，不做自动抽取/自动匹配。
+  - ✅ **验证**：OKH 相关测试串行 20/20（OKH8 1、import/export 4、ontology link 4、metric injection trace 11）、`npm run typecheck`、`npm run build` 通过；数据探索隔离 grep 无匹配。build 仅既有 `echarts` dynamic-import 与 chunk-size warning。
+  - ⚠️ **残留风险**：真实浏览器点击级验收未自动化；真实 LLM 日常对话触发痕迹未实跑，当前用 deterministic `recordMetricInjectionTraces` 覆盖存储与查询闭环。下一波建议优先补 Playwright 冒烟与真实对话 smoke，再考虑用户自定义模板、冲突处理工作流、Excel/Markdown 导入。
+- 历史批次（2026-06-27 · 监测目标测算专题，总控规划/派发）：
 - 本批（2026-06-27 · 监测目标测算专题，总控规划/派发）：
   - ✅ **X-MONITOR-TARGET0 总控契约完成**：双侧 `types.ts` 镜像新增 `TargetScenarioKind`/`TargetMetricKind`/`TargetCase`/`TargetPlanStatus` + `TargetAssumptions`/`TargetCalculationInput`/`TargetCaseResult`/`TargetBreakdownItem`/`TargetCalculationResult`/`TargetPlan`。详见 §十三。
   - ✅ **E-MONITOR-TARGET1 终审通过（含总控两处收口）**：`web/src/lib/monitor-target-calculator.ts:calculateTarget()` 纯函数 + 9 个 node:test 用例。总控收口：① 改从 `@/types` import X 契约类型，避免 calculator 本地重声明；② `upliftFactor` 接入 GMV/订单链路并补回归测试。因工作树已提前接入 `health_target` 但缺组件，总控补 `HealthTargetPane.tsx` 最小编译占位（仅为恢复门禁，不代表 F 卡完成）。

@@ -33,6 +33,16 @@ let uid = 0;
 const nextId = () => `m${++uid}`;
 
 const DEFAULT_CHAT_MODEL = "minimax-cn/MiniMax-M3";
+
+function readDeepLinkParams(): { workspaceId: string | null; tab: Tab | null; subTab: SubTab | null } {
+  const params = new URLSearchParams(window.location.search);
+  const workspaceId = params.get("workspaceId");
+  const rawTab = params.get("tab");
+  const tab = rawTab && TABS.some((item) => item.id === rawTab) ? rawTab as Tab : null;
+  const rawSubTab = params.get("subTab");
+  const subTab = tab && rawSubTab && getSubTabsForTab(tab).some((item) => item.id === rawSubTab) ? rawSubTab as SubTab : null;
+  return { workspaceId, tab, subTab };
+}
 const STREAM_END_ERROR = "Stream ended without finish_reason";
 const SESSION_RUNNING_ERROR = "session already has a running turn";
 
@@ -289,9 +299,14 @@ export default function App() {
 
   useEffect(() => {
     gateway.connect();
+    const deepLink = readDeepLinkParams();
     api.listWorkspaces().then((ws) => {
       setWorkspaces(ws);
-      if (ws[0]) setActiveWorkspaceId(ws[0].id);
+      const requestedWorkspace = deepLink.workspaceId ? ws.find((item) => item.id === deepLink.workspaceId) : null;
+      const selectedWorkspace = requestedWorkspace ?? ws[0];
+      if (selectedWorkspace) setActiveWorkspaceId(selectedWorkspace.id);
+      if (deepLink.tab) setActiveTab(deepLink.tab);
+      if (deepLink.subTab) setActiveSubTab(deepLink.subTab);
     });
     api.listArchivedWorkspaces().then(setArchivedWorkspaces);
     void refreshModels().then((list) => {

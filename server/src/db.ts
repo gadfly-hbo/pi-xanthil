@@ -5,13 +5,15 @@ import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { DB_PATH, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
 import { FOLDER_DIRS, ensureStandardDirs, isInsideStandardDir, sessionDir, standardDirIn } from "./workspace-dirs.ts";
-import type { AnalysisCase, AnalysisCaseInput, AnaxGateConfig, AnalysisStandard, AnalysisStandardKind, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, ChangeProposal, ChangeProposalInput, ChangeProposalStatus, CreateRuleResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, KgEdge, KgNode, KgNodeType, KgRelation, MemoryEvalVariant, MemoryEvaluation, MemoryEvaluationDetail, MemoryEvaluationResult, MemoryInjectionRecord, MemoryInjectionSnapshot, MemoryProposal, MemoryProposalRiskFlag, MemoryFailureAttribution, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, RuleConflict, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, PiUsage, PredictionResult, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, SkillCurationProposalRecord, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillEvalSet, SkillEvalTask, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, StaleNode, StaleNodeReason, StoredFlowMessage, StoredMessage, TokenUsageStats, TokenUsageTargetKind, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, TraceErrorType, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
+import type { AnalysisCase, AnalysisCaseInput, AnaxGateConfig, AnalysisStandard, AnalysisStandardKind, BiDatasetDetail, BiDatasetSlot, BiDatasetSummary, BusinessContext, BusinessContextCategory, BusinessContextConflict, BusinessContextImportCommitResult, BusinessContextImportConflictPolicy, BusinessContextImportFormat, BusinessContextImportPreview, BusinessContextImportPreviewRow, BusinessContextImportRow, BusinessContextInput, ChangeProposal, ChangeProposalInput, ChangeProposalStatus, CreateRuleResult, HypothesisEntry, HypothesisEntryInput, EvaluationFlowConfig, EvaluationResultStatus, EvaluationStatus, FileAnalysis, Flow, FlowGenerationStatus, FlowKind, FlowRun, FlowRunStatus, KgEdge, KgNode, KgNodeType, KgRelation, MemoryEvalVariant, MemoryEvaluation, MemoryEvaluationDetail, MemoryEvaluationResult, MemoryInjectionRecord, MemoryInjectionSnapshot, MemoryProposal, MemoryProposalRiskFlag, MemoryFailureAttribution, MemoryProposalStatus, MemorySourceKind, MemoryUsageStats, RuleConflict, ModelLabRunDetail, ModelLabRunSummary, ModelLabStats, PiUsage, PredictionResult, Role, RuleMemory, Session, SessionRuntime, SessionRuntimeStatus, SessionTokenStats, SkillCurationProposalRecord, SkillEvaluation, SkillEvaluationDetail, SkillEvaluationRunResult, SkillEvalSet, SkillEvalTask, SkillPairwiseResult, SkillPairwiseSummary, SkillTaskSummary, SkillVariant, SkillVariantSummary, StaleNode, StaleNodeReason, StoredFlowMessage, StoredMessage, TokenUsageStats, TokenUsageTargetKind, ToolCaseSet, ToolCaseSummary, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, TraceErrorType, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint, WorkflowEvaluation, WorkflowEvaluationDetail, WorkflowEvaluationResult, WorkflowFavorite, Workspace, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "./types.ts";
 import { parseEvaluationError, serializeEvaluationError } from "./evaluation-errors.ts";
-import { initSharedTables, backfillMemoryEnablements, listEnabledItemIds, enableForOrigin } from "./db/shared.ts";
+import { initSharedTables, backfillMemoryEnablements, listEnabledItemIds, enableForOrigin, setMemoryEnablement } from "./db/shared.ts";
 import { initDataTables } from "./db/data.ts";
 import { initEngineTables } from "./db/engine.ts";
 import { initVizTables } from "./db/viz.ts";
 import type { MetricDefinition, MemoryItemKind, ToolRunRecord, CollectSession } from "./types.ts";
+
+export type { BusinessContextInput } from "./types.ts";
 
 // 全局池模型：按本工作区启用集合过滤池条目（共享单实例；启用关系见 db/shared.ts）。
 function enabledIds(workspaceId: string, kind: MemoryItemKind): Set<string> {
@@ -456,6 +458,10 @@ db.exec(`
     category     TEXT NOT NULL,
     title        TEXT NOT NULL,
     content      TEXT NOT NULL DEFAULT '',
+    source       TEXT NOT NULL DEFAULT '',
+    owner        TEXT NOT NULL DEFAULT '',
+    valid_from   INTEGER,
+    valid_until  INTEGER,
     enabled      INTEGER NOT NULL DEFAULT 1,
     created_at   INTEGER NOT NULL,
     updated_at   INTEGER NOT NULL
@@ -645,6 +651,24 @@ try {
   }
   if (!hcols.some((c) => c.name === "partial_count")) {
     db.exec("ALTER TABLE hypothesis_library ADD COLUMN partial_count INTEGER NOT NULL DEFAULT 0");
+  }
+} catch {
+  // ignore
+}
+
+try {
+  const cols = db.prepare("PRAGMA table_info(business_contexts)").all() as Array<{ name: string }>;
+  if (cols.length > 0 && !cols.some((c) => c.name === "source")) {
+    db.exec("ALTER TABLE business_contexts ADD COLUMN source TEXT NOT NULL DEFAULT ''");
+  }
+  if (cols.length > 0 && !cols.some((c) => c.name === "owner")) {
+    db.exec("ALTER TABLE business_contexts ADD COLUMN owner TEXT NOT NULL DEFAULT ''");
+  }
+  if (cols.length > 0 && !cols.some((c) => c.name === "valid_from")) {
+    db.exec("ALTER TABLE business_contexts ADD COLUMN valid_from INTEGER");
+  }
+  if (cols.length > 0 && !cols.some((c) => c.name === "valid_until")) {
+    db.exec("ALTER TABLE business_contexts ADD COLUMN valid_until INTEGER");
   }
 } catch {
   // ignore
@@ -2284,38 +2308,32 @@ const BUSINESS_CONTEXT_LABELS: Record<BusinessContextCategory, string> = {
 };
 
 function mapBusinessContext(row: Omit<BusinessContext, "enabled"> & { enabled: number }): BusinessContext {
-  return { ...row, enabled: Boolean(row.enabled) };
+  return { ...row, validFrom: row.validFrom ?? null, validUntil: row.validUntil ?? null, enabled: Boolean(row.enabled) };
 }
 
 // 全局池：返回所有工作区的业务环境定义。"本工作区是否启用" 见 enablement 表(kind='business_context')。
 export function listBusinessContexts(_workspaceId?: string): BusinessContext[] {
   const rows = db.prepare(`
-    SELECT id, workspace_id AS workspaceId, category, title, content, enabled, created_at AS createdAt, updated_at AS updatedAt
+    SELECT id, workspace_id AS workspaceId, category, title, content, source, owner, valid_from AS validFrom, valid_until AS validUntil, enabled, created_at AS createdAt, updated_at AS updatedAt
     FROM business_contexts ORDER BY updated_at DESC
   `).all() as unknown as Array<Omit<BusinessContext, "enabled"> & { enabled: number }>;
   return rows.map(mapBusinessContext);
-}
-
-export interface BusinessContextInput {
-  category: BusinessContextCategory;
-  title: string;
-  content: string;
 }
 
 export function createBusinessContext(workspaceId: string, input: BusinessContextInput): BusinessContext {
   const id = randomUUID();
   const now = Date.now();
   db.prepare(`
-    INSERT INTO business_contexts (id, workspace_id, category, title, content, enabled, created_at, updated_at)
-    VALUES (?, ?, ?, ?, ?, 1, ?, ?)
-  `).run(id, workspaceId, input.category, input.title, input.content, now, now);
+    INSERT INTO business_contexts (id, workspace_id, category, title, content, source, owner, valid_from, valid_until, enabled, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, 1, ?, ?)
+  `).run(id, workspaceId, input.category, input.title, input.content, input.source ?? "", input.owner ?? "", input.validFrom ?? null, input.validUntil ?? null, now, now);
   enableForOrigin(workspaceId, "business_context", id); // 新池条目：origin 工作区默认启用
-  return { id, workspaceId, ...input, enabled: true, createdAt: now, updatedAt: now };
+  return { id, workspaceId, ...input, source: input.source ?? "", owner: input.owner ?? "", validFrom: input.validFrom ?? null, validUntil: input.validUntil ?? null, enabled: true, createdAt: now, updatedAt: now };
 }
 
 export function updateBusinessContext(id: string, input: BusinessContextInput): void {
-  db.prepare("UPDATE business_contexts SET category = ?, title = ?, content = ?, updated_at = ? WHERE id = ?")
-    .run(input.category, input.title, input.content, Date.now(), id);
+  db.prepare("UPDATE business_contexts SET category = ?, title = ?, content = ?, source = ?, owner = ?, valid_from = ?, valid_until = ?, updated_at = ? WHERE id = ?")
+    .run(input.category, input.title, input.content, input.source ?? "", input.owner ?? "", input.validFrom ?? null, input.validUntil ?? null, Date.now(), id);
 }
 
 export function deleteBusinessContext(id: string): void {
@@ -2324,7 +2342,8 @@ export function deleteBusinessContext(id: string): void {
 
 export function buildEnabledBusinessContextPrompt(workspaceId: string): { prompt: string; count: number; updatedAt: number | null } {
   const ids = enabledIds(workspaceId, "business_context");
-  const enabled = listBusinessContexts().filter((c) => ids.has(c.id));
+  const now = Date.now();
+  const enabled = listBusinessContexts().filter((c) => ids.has(c.id) && (c.validUntil === null || c.validUntil >= now));
   if (enabled.length === 0) return { prompt: "", count: 0, updatedAt: null };
 
   const order: BusinessContextCategory[] = ["org", "status", "glossary", "constraint", "history", "goal"];
@@ -2337,7 +2356,8 @@ export function buildEnabledBusinessContextPrompt(workspaceId: string): { prompt
     if (items.length === 0) continue;
     lines.push("", `[${BUSINESS_CONTEXT_LABELS[category]}]`);
     items.forEach((item) => {
-      lines.push(`- ${item.title}${item.content ? `：${item.content}` : ""}`);
+      const meta = [item.source ? `来源:${item.source}` : "", item.owner ? `负责人:${item.owner}` : ""].filter(Boolean).join(" · ");
+      lines.push(`- ${item.title}${item.content ? `：${item.content}` : ""}${meta ? `（${meta}）` : ""}`);
     });
   }
   lines.push("</xanthil-business-context>");
@@ -2346,6 +2366,209 @@ export function buildEnabledBusinessContextPrompt(workspaceId: string): { prompt
     count: enabled.length,
     updatedAt: Math.max(...enabled.map((c) => c.updatedAt)),
   };
+}
+
+function normalizeBusinessText(value: string): string {
+  return value.toLowerCase().replace(/[\s\p{P}\p{S}]+/gu, "");
+}
+
+function businessTokens(value: string): Set<string> {
+  const compact = normalizeBusinessText(value);
+  const tokens = new Set<string>();
+  for (const part of value.toLowerCase().split(/[^a-z0-9\u4e00-\u9fff]+/u)) {
+    if (part.length >= 2) tokens.add(part);
+  }
+  for (let i = 0; i < compact.length - 1; i += 1) tokens.add(compact.slice(i, i + 2));
+  return tokens;
+}
+
+function tokenOverlap(a: string, b: string): number {
+  const left = businessTokens(a);
+  const right = businessTokens(b);
+  if (left.size === 0 || right.size === 0) return 0;
+  let shared = 0;
+  for (const token of left) if (right.has(token)) shared += 1;
+  return shared / Math.min(left.size, right.size);
+}
+
+function hasOpposingGoalConstraint(constraint: BusinessContext, goal: BusinessContext): boolean {
+  const c = `${constraint.title} ${constraint.content}`;
+  const g = `${goal.title} ${goal.content}`;
+  if (!/(禁止|不得|不能|不允许|避免|暂停|停止|冻结|严禁)/u.test(c)) return false;
+  if (!/(提升|增加|扩大|增长|提高|上线|推进|开放|允许|扩张)/u.test(g)) return false;
+  return tokenOverlap(c.replace(/禁止|不得|不能|不允许|避免|暂停|停止|冻结|严禁/gu, ""), g) >= 0.35;
+}
+
+function pushBusinessConflict(out: BusinessContextConflict[], conflict: BusinessContextConflict): void {
+  const key = `${conflict.reason}:${[...conflict.itemIds].sort().join("|")}:${conflict.fields.join("|")}`;
+  if (!out.some((c) => `${c.reason}:${[...c.itemIds].sort().join("|")}:${c.fields.join("|")}` === key)) out.push(conflict);
+}
+
+export function detectBusinessContextConflicts(items: BusinessContext[]): BusinessContextConflict[] {
+  const conflicts: BusinessContextConflict[] = [];
+  for (let i = 0; i < items.length; i += 1) {
+    for (let j = i + 1; j < items.length; j += 1) {
+      const a = items[i]!;
+      const b = items[j]!;
+      const titleA = normalizeBusinessText(a.title);
+      const titleB = normalizeBusinessText(b.title);
+      if (a.category === b.category && titleA && titleA === titleB) {
+        pushBusinessConflict(conflicts, { severity: "high", reason: "duplicate", message: `同分类「${BUSINESS_CONTEXT_LABELS[a.category]}」存在重复标题「${a.title}」`, itemIds: [a.id, b.id], fields: ["title"] });
+        continue;
+      }
+      if (a.category === b.category) {
+        const titleSimilar = titleA.length >= 4 && titleB.length >= 4 && (titleA.includes(titleB) || titleB.includes(titleA) || tokenOverlap(a.title, b.title) >= 0.72);
+        const contentSimilar = a.content.length >= 8 && b.content.length >= 8 && tokenOverlap(a.content, b.content) >= 0.72;
+        if (titleSimilar && contentSimilar) pushBusinessConflict(conflicts, { severity: "high", reason: "similar_title_content", message: `同分类「${BUSINESS_CONTEXT_LABELS[a.category]}」存在标题和内容高度相似的业务环境`, itemIds: [a.id, b.id], fields: ["title", "content"] });
+        else if (titleSimilar) pushBusinessConflict(conflicts, { severity: "medium", reason: "similar_title", message: `同分类「${BUSINESS_CONTEXT_LABELS[a.category]}」存在相似标题`, itemIds: [a.id, b.id], fields: ["title"] });
+        else if (contentSimilar) pushBusinessConflict(conflicts, { severity: "medium", reason: "similar_content", message: `同分类「${BUSINESS_CONTEXT_LABELS[a.category]}」存在相似内容`, itemIds: [a.id, b.id], fields: ["content"] });
+      }
+      const constraint = a.category === "constraint" ? a : b.category === "constraint" ? b : null;
+      const goal = a.category === "goal" ? a : b.category === "goal" ? b : null;
+      if (constraint && goal && hasOpposingGoalConstraint(constraint, goal)) {
+        pushBusinessConflict(conflicts, { severity: "medium", reason: "opposing_goal_constraint", message: "约束与目标存在互斥线索，请人工确认是否同时有效", itemIds: [constraint.id, goal.id], fields: ["title", "content"] });
+      }
+    }
+  }
+  return conflicts;
+}
+
+function parseBusinessCsv(content: string): Record<string, string>[] {
+  const rows: string[][] = [];
+  let row: string[] = [];
+  let cell = "";
+  let quoted = false;
+  for (let i = 0; i < content.length; i += 1) {
+    const ch = content[i]!;
+    if (quoted) {
+      if (ch === '"' && content[i + 1] === '"') { cell += '"'; i += 1; }
+      else if (ch === '"') quoted = false;
+      else cell += ch;
+    } else if (ch === '"') quoted = true;
+    else if (ch === ',') { row.push(cell); cell = ""; }
+    else if (ch === '\n') { row.push(cell); rows.push(row); row = []; cell = ""; }
+    else if (ch !== '\r') cell += ch;
+  }
+  row.push(cell);
+  rows.push(row);
+  const [header, ...body] = rows.filter((r) => r.some((c) => c.trim()));
+  if (!header) return [];
+  const keys = header.map((h) => h.trim());
+  return body.map((r) => Object.fromEntries(keys.map((k, idx) => [k, r[idx]?.trim() ?? ""])));
+}
+
+function parseBusinessImportRows(content: string, format: BusinessContextImportFormat): Record<string, unknown>[] {
+  if (format === "csv") return parseBusinessCsv(content);
+  const parsed = JSON.parse(content) as unknown;
+  if (!Array.isArray(parsed)) throw new Error("json must be an array");
+  return parsed.filter((row): row is Record<string, unknown> => row !== null && typeof row === "object" && !Array.isArray(row));
+}
+
+const BUSINESS_CONTEXT_CATEGORIES_SET = new Set<BusinessContextCategory>(["org", "status", "glossary", "constraint", "history", "goal"]);
+
+function readBusinessDate(value: unknown): number | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function coerceBusinessImportRow(raw: Record<string, unknown>, row: number): BusinessContextImportPreviewRow {
+  const errors: BusinessContextImportPreviewRow["errors"] = [];
+  const category = String(raw.category ?? "status").trim() as BusinessContextCategory;
+  if (!BUSINESS_CONTEXT_CATEGORIES_SET.has(category)) errors.push({ field: "category", message: "category invalid" });
+  const title = String(raw.title ?? "").trim();
+  if (!title) errors.push({ field: "title", message: "title required" });
+  const validFrom = readBusinessDate(raw.validFrom ?? raw.valid_from);
+  const validUntil = readBusinessDate(raw.validUntil ?? raw.valid_until);
+  if (validFrom === undefined) errors.push({ field: "validFrom", message: "validFrom invalid" });
+  if (validUntil === undefined) errors.push({ field: "validUntil", message: "validUntil invalid" });
+  return {
+    row,
+    category: BUSINESS_CONTEXT_CATEGORIES_SET.has(category) ? category : "status",
+    title,
+    content: String(raw.content ?? "").trim(),
+    source: String(raw.source ?? "").trim(),
+    owner: String(raw.owner ?? "").trim(),
+    validFrom: validFrom ?? null,
+    validUntil: validUntil ?? null,
+    valid: errors.length === 0,
+    errors,
+    conflicts: [],
+  };
+}
+
+function visibleBusinessContexts(workspaceId: string, enabledOnly: boolean): BusinessContext[] {
+  const ids = enabledIds(workspaceId, "business_context");
+  return listBusinessContexts().filter((c) => !enabledOnly || ids.has(c.id));
+}
+
+export function listBusinessContextConflicts(workspaceId: string): BusinessContextConflict[] {
+  return detectBusinessContextConflicts(visibleBusinessContexts(workspaceId, true));
+}
+
+export function previewBusinessContextImport(workspaceId: string, content: string, format: BusinessContextImportFormat): BusinessContextImportPreview {
+  let rows: BusinessContextImportPreviewRow[];
+  try {
+    rows = parseBusinessImportRows(content, format).map((raw, idx) => coerceBusinessImportRow(raw, idx + 1));
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "parse failed";
+    rows = [{ row: 1, category: "status", title: "", content: "", source: "", owner: "", validFrom: null, validUntil: null, valid: false, errors: [{ field: "content", message }], conflicts: [] }];
+  }
+  const pseudoExisting = visibleBusinessContexts(workspaceId, true);
+  const pseudoRows: BusinessContext[] = rows.filter((r) => r.valid).map((r) => ({ id: `row:${r.row}`, workspaceId, category: r.category, title: r.title, content: r.content, source: r.source ?? "", owner: r.owner ?? "", validFrom: r.validFrom ?? null, validUntil: r.validUntil ?? null, enabled: true, createdAt: 0, updatedAt: 0 }));
+  const conflicts = detectBusinessContextConflicts([...pseudoExisting, ...pseudoRows]);
+  rows = rows.map((r) => ({ ...r, conflicts: conflicts.filter((c) => c.itemIds.includes(`row:${r.row}`)) }));
+  return { totalRows: rows.length, validRows: rows.filter((r) => r.valid).length, invalidRows: rows.filter((r) => !r.valid).length, rows, conflicts };
+}
+
+export function commitBusinessContextImport(input: { workspaceId: string; rows: BusinessContextImportRow[]; enable?: boolean; conflictPolicy?: BusinessContextImportConflictPolicy }): BusinessContextImportCommitResult {
+  const created: BusinessContext[] = [];
+  const skipped: BusinessContextImportCommitResult["skipped"] = [];
+  const errors: BusinessContextImportCommitResult["errors"] = [];
+  const enable = input.enable ?? true;
+  for (const row of input.rows) {
+    const preview = coerceBusinessImportRow(row as unknown as Record<string, unknown>, row.row);
+    if (!preview.valid) {
+      errors.push(...preview.errors.map((e) => ({ row: row.row, field: e.field, message: e.message })));
+      continue;
+    }
+    const candidate: BusinessContext = { id: `row:${row.row}`, workspaceId: input.workspaceId, category: preview.category, title: preview.title, content: preview.content, source: preview.source ?? "", owner: preview.owner ?? "", validFrom: preview.validFrom ?? null, validUntil: preview.validUntil ?? null, enabled: true, createdAt: 0, updatedAt: 0 };
+    const conflicts = detectBusinessContextConflicts([...visibleBusinessContexts(input.workspaceId, true), candidate]).filter((c) => c.itemIds.includes(candidate.id));
+    if ((input.conflictPolicy ?? "skip") === "skip" && conflicts.length > 0) {
+      skipped.push({ row: row.row, title: preview.title, reason: "conflict", conflicts });
+      continue;
+    }
+    const item = createBusinessContext(input.workspaceId, preview);
+    if (!enable) setMemoryEnablement(input.workspaceId, "business_context", item.id, false);
+    created.push({ ...item, enabled: enable });
+  }
+  return { created, skipped, errors };
+}
+
+function csvEscape(value: unknown): string {
+  const text = value === null || value === undefined ? "" : String(value);
+  return /[",\n\r]/.test(text) ? `"${text.replaceAll('"', '""')}"` : text;
+}
+
+export function exportBusinessContexts(workspaceId: string, enabledOnly = true, format: BusinessContextImportFormat = "json"): string {
+  const rows = visibleBusinessContexts(workspaceId, enabledOnly).map((item) => ({
+    category: item.category,
+    title: item.title,
+    content: item.content,
+    source: item.source,
+    owner: item.owner,
+    validFrom: item.validFrom,
+    validUntil: item.validUntil,
+    enabled: enabledIds(workspaceId, "business_context").has(item.id),
+  }));
+  if (format === "json") return JSON.stringify(rows, null, 2);
+  const header = ["category", "title", "content", "source", "owner", "validFrom", "validUntil", "enabled"];
+  return [header.join(","), ...rows.map((row) => header.map((key) => csvEscape(row[key as keyof typeof row])).join(","))].join("\n");
 }
 
 // ---- analysis cases (分析案例库) ----

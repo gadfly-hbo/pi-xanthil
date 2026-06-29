@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { Box, Database, GitBranch, Calculator, Plus, Trash2, Network, RefreshCw, Download, Upload } from "lucide-react";
 import { api } from "@/lib/api";
+import { dataApi } from "@/lib/api/data";
 import { GraphCanvas, type GraphCanvasNode, type GraphCanvasEdge } from "@/components/GraphCanvas";
 import type { OntoPrompt, ExtractJob } from "@/types";
 import type {
@@ -14,6 +15,8 @@ import type {
   OntoAction,
   OntologyGraph,
   BiAggregationDataset,
+  AnalysisStandard,
+  OkhMetricOntologyLink,
 } from "@/types";
 
 type Section = "onto_readme" | "onto_objects" | "onto_links" | "onto_metrics" | "onto_logic" | "onto_actions" | "onto_graph" | "onto_import";
@@ -26,6 +29,10 @@ const btnPrimary =
   "rounded-md bg-neutral-900 px-3 py-2 text-[12px] text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900";
 const btnGhost =
   "rounded-md border border-neutral-200 px-3 py-2 text-[12px] text-neutral-600 hover:text-neutral-900 dark:border-neutral-700 dark:text-neutral-300";
+
+function readRequestedOntologyId(): string | null {
+  return new URLSearchParams(window.location.search).get("ontologyId");
+}
 
 export function OntologyPane({ workspaceId, section }: { workspaceId: string | null; section: Section }) {
   const [ontologies, setOntologies] = useState<Ontology[]>([]);
@@ -42,7 +49,11 @@ export function OntologyPane({ workspaceId, section }: { workspaceId: string | n
       ]);
       setOntologies(list);
       setEnablements(new Set(ens.filter((e) => e.enabled).map((e) => e.itemId)));
-      setActiveOid((cur) => cur || list[0]?.id || "");
+      const requestedOntologyId = readRequestedOntologyId();
+      setActiveOid((cur) => {
+        if (requestedOntologyId && list.some((item) => item.id === requestedOntologyId)) return requestedOntologyId;
+        return cur || list[0]?.id || "";
+      });
     } catch (e) {
       setError(String(e));
     }
@@ -477,12 +488,22 @@ function LinksSection({ oid, onError }: { oid: string; onError: (s: string) => v
 function MetricsSection({ workspaceId, oid, onError }: { workspaceId: string; oid: string; onError: (s: string) => void }) {
   const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
   const [objects, setObjects] = useState<ObjectType[]>([]);
+  const [memoryMetrics, setMemoryMetrics] = useState<AnalysisStandard[]>([]);
+  const [metricLinks, setMetricLinks] = useState<OkhMetricOntologyLink[]>([]);
   const [form, setForm] = useState({ name: "", category: "", formula: "", caliber: "", unit: "", objectTypeId: "" });
 
   const load = useCallback(async () => {
     try {
-      const [ms, objs] = await Promise.all([api.listMetrics(workspaceId), oid ? api.listObjects(oid) : Promise.resolve([])]);
-      setMetrics(ms); setObjects(objs);
+      const [ms, objs, memoryMs, mLinks] = await Promise.all([
+        api.listMetrics(workspaceId), 
+        oid ? api.listObjects(oid) : Promise.resolve([]),
+        api.listStandards(workspaceId),
+        oid ? dataApi.listOkhMetricOntologyLinksByOntology(workspaceId, oid) : Promise.resolve([])
+      ]);
+      setMetrics(ms); 
+      setObjects(objs);
+      setMemoryMetrics(memoryMs.filter(m => m.kind === "metric"));
+      setMetricLinks(mLinks);
     } catch (e) { onError(String(e)); }
   }, [workspaceId, oid, onError]);
   useEffect(() => { void load(); }, [load]);
@@ -551,6 +572,23 @@ function MetricsSection({ workspaceId, oid, onError }: { workspaceId: string; oi
             </div>
             <button onClick={() => void remove(m.id)} className="rounded-md border border-neutral-200 p-1.5 text-neutral-500 hover:text-red-600 dark:border-neutral-700"><Trash2 className="h-3.5 w-3.5" /></button>
           </div>
+          {m.objectTypeId && (() => {
+            const linkedIds = metricLinks.filter(l => l.targetKind === "object" && l.targetId === m.objectTypeId).map(l => l.metricId);
+            const linkedMems = memoryMetrics.filter(x => linkedIds.includes(x.id));
+            if (linkedMems.length === 0) return null;
+            return (
+              <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800/60">
+                <div className="text-[11px] text-neutral-400 mb-1.5">已关联全局 memory metric (来自同一对象):</div>
+                <div className="flex flex-wrap gap-1.5">
+                  {linkedMems.map(lm => (
+                    <a key={lm.id} href={`/?workspaceId=${encodeURIComponent(workspaceId)}&tab=rule_memory&subTab=indicators&metricId=${encodeURIComponent(lm.id)}`} target="_blank" rel="noreferrer" className="inline-flex items-center px-1.5 py-0.5 rounded border border-neutral-200 bg-neutral-50 text-[10.5px] text-neutral-600 hover:text-blue-600 hover:border-blue-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:text-blue-400">
+                      {lm.name} ↗
+                    </a>
+                  ))}
+                </div>
+              </div>
+            );
+          })()}
         </div>
       ))}
     </div>

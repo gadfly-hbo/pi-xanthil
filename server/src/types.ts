@@ -1751,6 +1751,21 @@ export interface MemoryInjectionRecord {
   snapshot: MemoryInjectionSnapshot;
 }
 
+/** E-OKH3：单次注入中某个指标的引用痕迹 */
+export interface MetricInjectionTrace {
+  id: string;
+  workspaceId: string;
+  metricId: string;
+  metricName: string;
+  targetScope: "chat" | "workflow";
+  targetKind: string;       // "session" | "flow" | "flow_run"
+  targetId: string;         // sessionId / flowId / runId
+  injected: boolean;        // 是否成功注入（未超出 token 预算）
+  tokenEstimate: number;    // 该 source 的 token 估算
+  omittedReason: string | null;
+  createdAt: number;
+}
+
 export type MemoryEvalVariant = "baseline" | "memory";
 
 export interface MemoryEvaluation {
@@ -2124,9 +2139,60 @@ export interface BusinessContext {
   category: BusinessContextCategory;
   title: string;
   content: string;
+  source: string;
+  owner: string;
+  validFrom: number | null;
+  validUntil: number | null;
   enabled: boolean;
   createdAt: number;
   updatedAt: number;
+}
+
+export interface BusinessContextInput {
+  category: BusinessContextCategory;
+  title: string;
+  content: string;
+  source?: string;
+  owner?: string;
+  validFrom?: number | null;
+  validUntil?: number | null;
+}
+
+export type BusinessContextConflictSeverity = "low" | "medium" | "high";
+
+export interface BusinessContextConflict {
+  severity: BusinessContextConflictSeverity;
+  reason: "duplicate" | "similar_title" | "similar_content" | "similar_title_content" | "opposing_goal_constraint";
+  message: string;
+  itemIds: string[];
+  fields: Array<"title" | "content">;
+}
+
+export type BusinessContextImportFormat = "csv" | "json";
+export type BusinessContextImportConflictPolicy = "skip" | "create_version";
+
+export interface BusinessContextImportRow extends BusinessContextInput {
+  row: number;
+}
+
+export interface BusinessContextImportPreviewRow extends BusinessContextImportRow {
+  valid: boolean;
+  errors: Array<{ field: string; message: string }>;
+  conflicts: BusinessContextConflict[];
+}
+
+export interface BusinessContextImportPreview {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  rows: BusinessContextImportPreviewRow[];
+  conflicts: BusinessContextConflict[];
+}
+
+export interface BusinessContextImportCommitResult {
+  created: BusinessContext[];
+  skipped: Array<{ row: number; title: string; reason: string; conflicts: BusinessContextConflict[] }>;
+  errors: Array<{ row: number; field: string; message: string }>;
 }
 
 // ---- analysis cases (分析案例库) ----
@@ -3231,6 +3297,114 @@ export interface SkillRegistryConflict {
 export interface SkillRegistryConflictsResult {
   querySlug: string | null;
   conflicts: SkillRegistryConflict[];
+}
+
+// onto-knowhow · X-OKH0 冻结契约。模板/治理只存聚合指标定义和元数据，不含样本明细。
+export type OkhTemplateScenario = "retail" | "member" | "ecommerce" | "supply_chain" | "finance" | "custom";
+
+export interface OkhMetricTemplatePack {
+  id: string;
+  scenario: OkhTemplateScenario;
+  title: string;
+  description: string;
+  metricCount: number;
+  tags: string[];
+  updatedAt: number;
+}
+
+export interface OkhMetricTemplate {
+  id: string;
+  packId: string;
+  scenario: OkhTemplateScenario;
+  name: string;
+  category: string;
+  description: string;
+  formula: string;
+  caliber: string;
+  unit: string;
+  tags: string[];
+  displayName?: string;
+  aggregation?: string;
+  periodGrain?: string;
+  filters?: string;
+  denominator?: string;
+  version?: number;
+}
+
+export interface OkhTemplateApplyResult {
+  created: MetricDefinition[];
+  skipped: Array<{ templateId: string; name: string; reason: string; existingMetricId?: string }>;
+}
+
+export type OkhConflictSeverity = "info" | "warn" | "critical";
+export type OkhMetricConflictReason =
+  | "same_name_formula_mismatch"
+  | "same_name_caliber_mismatch"
+  | "same_category_near_name"
+  | "denominator_mismatch"
+  | "period_window_mismatch";
+
+export interface OkhMetricConflict {
+  id: string;
+  severity: OkhConflictSeverity;
+  reason: OkhMetricConflictReason;
+  metricIds: string[];
+  fields: string[];
+  message: string;
+  generatedAt: number;
+}
+
+export type OkhStandardHealthRiskFlag =
+  | "missing"
+  | "unreadable"
+  | "directory"
+  | "binary_like"
+  | "too_large"
+  | "unsupported_ext"
+  | "raw_like_path";
+
+export interface OkhStandardHealth {
+  standardId: string;
+  status: "ok" | "warn" | "error";
+  exists: boolean;
+  readable: boolean;
+  entryKind: "file" | "directory" | "missing" | "unknown";
+  fileSize: number | null;
+  extension: string;
+  riskFlags: OkhStandardHealthRiskFlag[];
+  checkedAt: number;
+  message: string;
+}
+
+export interface OkhMetricImportPreview {
+  totalRows: number;
+  validRows: number;
+  invalidRows: number;
+  rows: Array<{
+    rowNumber: number;
+    valid: boolean;
+    input: Record<string, string>;
+    normalized?: MetricDefinitionInput;
+    errors: string[];
+    existingMetricId?: string;
+  }>;
+}
+
+export interface OkhMetricImportCommitResult {
+  created: MetricDefinition[];
+  skipped: Array<{ rowNumber: number; name: string; reason: string; existingMetricId?: string }>;
+  errors: Array<{ rowNumber: number; name?: string; errors: string[] }>;
+}
+
+export interface OkhMetricOntologyLink {
+  id: string;
+  workspaceId: string;
+  metricId: string;
+  ontologyId: string;
+  targetKind: "object" | "link" | "logic";
+  targetId: string;
+  createdAt: number;
+  updatedAt: number;
 }
 
 // 汇报可视化契约（2026-06-19 冻结 · 2026-06-20 校准对齐实现）—— 接 BI dataset + 复用 echarts，LLM 不喂明细行

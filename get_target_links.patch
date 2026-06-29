@@ -1,0 +1,17 @@
+--- server/src/db/data.ts
++++ server/src/db/data.ts
+@@ -1071,6 +1071,15 @@
+     ORDER BY updated_at DESC
+   `).all(workspaceId, metricId) as unknown as OkhMetricOntologyLinkRow[]).map(rowToOkhMetricOntologyLink);
+ }
++
++export function listOkhMetricOntologyLinksByTarget(workspaceId: string, ontologyId: string, targetKind: OkhMetricOntologyLink["targetKind"], targetId: string): OkhMetricOntologyLink[] {
++  if (!ontologyVisibleInWorkspace(workspaceId, ontologyId)) return [];
++  return (db.prepare(`
++    SELECT * FROM okh_metric_ontology_links
++    WHERE workspace_id = ? AND ontology_id = ? AND target_kind = ? AND target_id = ?
++    ORDER BY updated_at DESC
++  `).all(workspaceId, ontologyId, targetKind, targetId) as unknown as OkhMetricOntologyLinkRow[]).map(rowToOkhMetricOntologyLink);
++}
+ 
+ export function replaceOkhMetricOntologyLinks(

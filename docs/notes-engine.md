@@ -9,8 +9,16 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新:2026-06-28 · **E-CROWD11 v2 返修 R5+R6 完成：归一化接入主链路 + 映射值修正**
+- 最近更新:2026-06-29 · **E-OKH3 完成：指标使用痕迹采集 + 注入引用统计**
 - 进度:
+  - **E-OKH3**（`server/src/db/viz.ts` + `server/src/routes/viz.ts` + `server/src/index.ts` + `server/src/routes/engine.ts` + `web/src/lib/api/viz.ts` + `web/src/types.ts` + `server/src/types.ts` + `server/src/metric-injection-trace.test.ts`）:
+    - 新建 `metric_injection_traces` 表（`initVizTables`），记录每次注入中哪些 metric 被引用。
+    - `extractInjectedMetricIds(snapshot)` 从 MemoryInjectionSnapshot 的 standards source 中分离 metric ID（排除 reference_file ID）。
+    - `recordMetricInjectionTraces()` 在三个注入点接线：chat（targetKind="session"）、flow chat（"flow"）、multi-agent（"flow_run"）。
+    - `listMetricInjectionTraces()` 支持按 metricId/targetKind/targetId/limit 过滤查询。
+    - API：`GET /api/workspaces/:id/metric-injection-traces`；前端 client：`vizApi.listMetricInjectionTraces()`。
+    - 测试 9 用例全绿（提取/记录/查询/边界）。
+    - 不新增 LLM 调用，不读取原始数据。
   - **E-CROWD11 v2**（`server/src/crowd-aggregate.ts` + `crowd-normalize.ts` + `crowd-import.ts` + `crowd-aggregate.test.ts` + `routes/data.ts` + `db/data.ts` + 双侧 `types.ts` + `web/src/lib/api/data.ts`）:
     - **R1 致命修复**：`importAggregateDataset` 重写适配 X-CROWD10 v2 §8.2.2 的 27 列宽表固定结构。每行 = 1 CrowdSegment，按列前缀映射 dimension，返回 `{ dataset, tagDictionary, segments }`。
     - **R2+R5 归一化层 + 主链路接入**（`crowd-normalize.ts` + `crowd-import.ts`）：`computeFieldProfiles` 新增 `normalizeEnums` 选项，`routes/data.ts` 的 file import 和 SQL import 两条 D-CROWD2 主路径均传 `normalizeEnums: true`。中→英枚举映射（gender→F/M/O, city_tier→T1/T1_NEW/..., discount→coupon/flash_sale/..., channel→xhs/douyin/wechat_mp/offline/..., lifecycle→new/active/churned/..., scenario→weekend_outing/self_reward/...）。未命中→原文+normalizationFailed:true。slash 多值逐段归一化。
@@ -31,16 +39,19 @@
 - 校验:
   - `npm run typecheck` ✅(server + web)
   - `npm run build` ✅(仅既有 Vite chunk warning)
+  - `node --experimental-strip-types --test server/src/metric-injection-trace.test.ts` ✅(**9/9**)
   - `node --experimental-strip-types --test server/src/crowd-aggregate.test.ts` ✅(**23/23**)
   - `node --experimental-strip-types --test server/src/simulation-lab.test.ts` ✅(**28/28**)
   - `node --experimental-strip-types --test server/src/crowd-profile-runner.test.ts` ✅(**20/20**)
   - `node --experimental-strip-types --test server/src/crowd-segment.test.ts server/src/crowd-import.test.ts` ✅(**50/50**)
   - 数据探索隔离 grep ✅(no match)
 - 下一步:
+  - E-OKH3 后端已完成；D 域前端可接入指标引用统计 UI（如 `MetricManagementPane` 中展示"最近引用"）。
   - E-CROWD11 后端已完成；D 域前端需接入一键串联编排（D-CROWD11）。
   - E-CROWD8 前端已完成（需 D 域确认 `workspaceId` 传入是否在所有 scope 下可用）。
   - E-CROWD5 后端已完成；D 域前端需接入画像生成按钮（`CrowdPane` / `ProfileViewer`）。
   - 仍未开工：E-SKILLINJECT1 真实 workflow smoke、E-SKILLOPT1 浏览器 smoke。
+  - KICKOFF-P0.md 的 E 域 P0-C「E2E 验证补课」仍待执行（AnaX 8 阶段真跑 / skill 蒸馏全链路 smoke / SQL 连接真实库）。
 - 阻塞:无硬阻塞。
 - 开放问题(需总控):
   - 沿用前序开放项（动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等）。
@@ -395,3 +406,5 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 类型自包含：计算器文件内联所有 Target* 类型（不 import `@/types`），确保 `node --experimental-strip-types --test` 可独立运行，不受 web tsconfig paths 别名限制。
 - 测试文件 `@ts-nocheck` 模式：`node --experimental-strip-types` 要求 import 带 `.ts` 扩展名，但 `tsc` 不允许；`@ts-nocheck` 是兼容两者的最小方案。ponytail: 若后续 web 端测试增多，可考虑 vitest 或 tsconfig 排除 test 文件，避免每文件 `@ts-nocheck`。
 - `safeDiv`/`safeMul` 必须同时防 `null` 和 `NaN` 输入：`isFinite(null)` 返回 `true`（`Number(null)=0`），仅靠 `isFinite` 不够，必须先 `== null` 检查。
+
+- **指标注入引用痕迹采集（E-OKH3，2026-06-29）**：复用 `MemoryInjectionSnapshot.sources[].itemIds`（`kind="standards"`）中已有的 metric ID 数据。关键设计：① standards source 的 `itemIds` 混合 metric ID 与 reference_file ID，通过 `listMetrics` 查 `metric_definitions` 表区分；② 记录在三个记忆注入点同位置接线（chat→session、flow chat→flow、multi-agent→flow_run），紧跟 `recordMemoryInjectionUsage` 之后；③ `metric_injection_traces` 表一行一个 metric 一次注入（便于按 metricId 查询），含 targetScope/targetKind/targetId/injected/tokenEstimate/omittedReason；④ 不新增 LLM 调用、不读原始数据。API 查询支持按 metricId/targetKind/targetId/limit 过滤。

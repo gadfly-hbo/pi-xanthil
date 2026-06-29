@@ -290,6 +290,747 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【记忆库·onto-knowhow 迭代专题】（Infra 总控拆卡 2026-06-29；来源=onto-knowhow 说明页审视后的六个优化方向：指标模板、口径冲突、标准文件体检、使用痕迹、导入导出、onto-xanthil 联动）。定位：把 onto-knowhow 从“手工维护指标和标准文件”升级为“指标模板 + 口径治理 + 标准体检 + 使用追踪 + 本体联动”的指标知识工作台。红线：不读 draw_data 原始行，不把标准文件正文送 LLM，不保存用户级明细。专题真源即本组 OKH wiki 任务卡。════
+  { dom: "X", status: "done", created: "2026-06-29 08:00", title: "【记忆库·onto-knowhow·契约·P0】X-OKH0：迭代专题契约 + 数据安全边界 + API 口径", brief:
+`目标：作为 Infra 总控，审定 onto-knowhow 迭代专题的类型、API、迁移、红线和分阶段验收口径，避免 D/E/V 自由发挥导致漂移。
+
+背景：
+onto-knowhow 当前已能维护指标口径与参照标准文件，并进入记忆库注入链路；下一步要补指标模板、口径冲突检查、标准文件体检、使用痕迹、导入导出、onto-xanthil 联动。
+
+必须审定：
+1. 指标模板、冲突检查、标准文件体检、使用痕迹、导入导出、本体关联的类型口径。
+2. 新增表或字段是否落 data 域，迁移由谁实施。
+3. API 命名和返回结构。
+4. 安全红线：不读 draw_data，不把标准文件正文送 LLM，不把原始行写进指标说明。
+5. 本轮实现范围与 future direction 边界。
+
+交付：
+- wiki 本组 OKH 任务卡作为专题派发真源。
+- 如需更长方案，可在总控终审后并入已跟踪 notes，不新增会被 docs/ ignore 吃掉的孤儿文件。
+- 如需共享类型，server/web 双侧类型以总控审定为准，禁止本地重声明。
+
+验收：
+- D/E/V 后续卡可按本卡施工。
+- 所有跨域类型单一真源。
+- typecheck/build 绿。
+
+铁律：
+- 本卡是唯一可调整接缝口径的卡。
+- 不触碰数据探索子树，不读取 draw_data / clean_data 明细。
+
+✅ 总控契约 done（2026-06-29）：
+
+一、共享类型口径（server/web types.ts，按需由后续卡一次性镜像；禁止在组件/API client 本地重声明）
+1. OkhTemplateScenario = retail | member | ecommerce | supply_chain | finance | custom。
+2. OkhMetricTemplatePack = { id; scenario; title; description; metricCount; tags; updatedAt }。
+3. OkhMetricTemplate = { id; packId; scenario; name; category; description; formula; caliber; unit; tags; displayName?; aggregation?; periodGrain?; filters?; denominator?; version? }。字段直接映射 MetricDefinitionInput 超集，模板不持有 workspaceId。
+4. OkhTemplateApplyResult = { created: MetricDefinition[]; skipped: Array<{ templateId; name; reason; existingMetricId? }> }。
+5. OkhConflictSeverity = info | warn | critical；OkhMetricConflict = { id; severity; reason; metricIds; fields; message; generatedAt }。reason 首版枚举：same_name_formula_mismatch、same_name_caliber_mismatch、same_category_near_name、denominator_mismatch、period_window_mismatch。
+6. OkhStandardHealth = { standardId; status: ok | warn | error; exists; readable; entryKind: file | directory | missing | unknown; fileSize; extension; riskFlags; checkedAt; message }。riskFlags 首版：missing、unreadable、directory、binary_like、too_large、unsupported_ext、raw_like_path。
+7. OkhUsageEvent = { id; workspaceId; itemKind: metric | standard; itemId; targetScope: chat | workflow; sessionId?; flowId?; runId?; snapshotId?; selected; tokenEstimate; omittedReason?; createdAt }。仅记元数据，不记 prompt 正文。
+8. OkhMetricImportPreview = { totalRows; validRows; invalidRows; rows: Array<{ rowNumber; valid; input; normalized?; errors; existingMetricId? }> }。
+9. OkhMetricImportCommitResult = { created; skipped; errors }。
+10. OkhMetricOntologyLink = { id; workspaceId; metricId; ontologyId; targetKind: object | link | logic; targetId; createdAt; updatedAt }。
+
+二、存储与迁移口径
+1. 指标模板 P1 不建表，先用 server 侧静态模板源（如 server/src/onto-knowhow-templates.ts），避免为内置模板引入迁移；后续“用户自定义模板”另开表。
+2. 口径冲突 P1 不持久化，每次 GET 按 metric_definitions + enablement 现场计算。
+3. 标准文件体检 P1 不持久化，GET/POST check 时本地 stat/access 判断；如需缓存，后续可加 okh_standard_health_cache，但不在 P1。
+4. 使用痕迹需要持久化：由 E 卡新增 okh_usage_events（或等价 engine 域表）写入注入元数据，表必须按 workspace_id 过滤，可带 session_id/flow_id/run_id/snapshot_id；不得保存 prompt 正文、文件正文、原始数据样本。
+5. 导入导出不新增业务表，preview 纯校验不落库，commit 写 metric_definitions，启用关系仍走 workspace_memory_enablements(itemKind=metric)。
+6. 本体关联需要新表 okh_metric_ontology_links（D 域）：workspace_id、metric_id、ontology_id、target_kind、target_id、created_at、updated_at；删除关联不删除 metric 或 ontology 节点。
+
+三、API 口径（统一挂在现有 data/engine route 下；路径命名先冻结）
+Data 域：
+1. GET /api/workspaces/:id/onto-knowhow/templates?scenario=member
+2. POST /api/workspaces/:id/onto-knowhow/templates/apply
+   body: { packId?: string; templateIds?: string[]; enable?: boolean }
+   返回 OkhTemplateApplyResult。已有同名/近似指标不得覆盖，进入 skipped。
+3. GET /api/workspaces/:id/onto-knowhow/conflicts
+   返回 OkhMetricConflict[]，默认只看本工作区启用指标；可用 query includeDisabled=true 扩展。
+4. GET /api/workspaces/:id/onto-knowhow/standard-health
+   返回 OkhStandardHealth[]，对当前 reference_file 标准做本地元数据体检。
+5. POST /api/workspaces/:id/onto-knowhow/standard-health/check
+   body: { standardIds?: string[] }，强制重查一批标准文件。
+6. POST /api/workspaces/:id/onto-knowhow/import/preview
+   body: { content; format: csv | json; filename? }，只解析指标口径，不写库。
+7. POST /api/workspaces/:id/onto-knowhow/import/commit
+   body: { rows; enable?: boolean; conflictPolicy: skip | create_version }。首版禁 overwrite。
+8. GET /api/workspaces/:id/onto-knowhow/export?format=csv|json&enabledOnly=true
+   导出当前工作区启用指标清单。
+9. GET /api/workspaces/:id/onto-knowhow/metrics/:metricId/ontology-links
+10. PUT /api/workspaces/:id/onto-knowhow/metrics/:metricId/ontology-links
+    body: { links: Array<{ ontologyId; targetKind; targetId }> }，全量替换该 metric 的人工关联。
+11. DELETE /api/workspaces/:id/onto-knowhow/metric-ontology-links/:linkId
+
+Engine 域：
+12. GET /api/workspaces/:id/onto-knowhow/usage?itemKind=metric&itemId=...&limit=50
+    返回 OkhUsageEvent[]，读取 E 写入的注入使用痕迹。
+
+四、安全红线
+1. 所有 OKH API 不读取 draw_data 原始行，不返回 raw row，不记录样本值列表。
+2. 标准文件体检只做本地路径、stat/access、扩展名、大小、raw_like_path 检测；不读取正文进 LLM，不生成语义摘要，不把文件片段写入日志。
+3. 导入导出仅处理“指标口径表”，不是业务数据表；导入文件大小首版建议 <= 2MB，超过直接拒绝。
+4. 使用痕迹只存 itemId、scope、session/flow/run、token 估算、selected/omittedReason；不得保存 prompt 正文。
+5. 本体关联首版全部人工选择，不做 LLM 自动抽取。
+6. 任何后续想做“标准文件语义摘要/自动本体抽取”的需求，必须另开 X 契约卡。
+
+五、域分工和解锁
+1. X-OKH0 完成后，D-OKH1 / D-OKH2 / D-OKH4 / D-OKH6 与 E-OKH3 可开工。
+2. V-OKH5 等 D-OKH1/2/4 API 稳定后开工；E-OKH3 可后接 usage 区块。
+3. V-OKH7 等 D-OKH6 API 稳定后开工。
+4. X-OKH8 最后总控实跑终审。
+
+六、本轮 MVP 与 future 切分
+MVP 必做：模板启用、冲突检查、标准文件体检、使用痕迹、CSV 导入导出、人工本体关联。
+暂不做：用户自定义模板库、标准文件正文摘要、LLM 自动补口径、LLM 自动本体抽取、自动覆盖旧指标、跨工作区批量治理。` },
+
+  { dom: "D", status: "done", created: "2026-06-29 08:01", title: "【记忆库·onto-knowhow·模板·P1】D-OKH1：指标模板池 + 一键启用 API", brief:
+`✅ 总控终审通过（2026-06-29）：API 已按 X-OKH0 收口到 /api/workspaces/:id/onto-knowhow/templates 与 /templates/apply；共享类型已上提 server/web types.ts；首批 retail/member/ecommerce/supply_chain 4 个 pack 共 8 个模板；同名/近似指标进入 skipped，不覆盖。typecheck/build 绿。
+
+前置：X-OKH0。
+
+目标：让用户能按场景启用一批常用指标模板，而不是每个项目手填。
+
+范围：
+1. 增加指标模板数据源，首批覆盖零售、会员、电商、供应链四类。
+2. 模板字段至少包括名称、分类、含义、公式、口径、单位、标签、适用场景。
+3. 提供按模板创建 metric_definition 的 API。
+4. 支持批量启用到当前工作区。
+5. 已有同名指标时不得静默覆盖，返回冲突提示。
+
+落点建议：
+- server/src/db/data.ts
+- server/src/routes/data.ts
+- web/src/lib/api/data.ts
+- 如需类型，等 X-OKH0 定稿后同步。
+
+验收：
+- 空工作区可一键启用“会员运营”指标模板。
+- 启用后 prompt 预览能看到新增指标。
+- server/web typecheck + build 绿。
+
+红线：
+- 模板只包含口径说明和聚合指标定义，不包含样本明细。
+- 不碰数据探索子树。` },
+
+  { dom: "D", status: "done", created: "2026-06-29 08:02", title: "【记忆库·onto-knowhow·治理·P1】D-OKH2：口径冲突检查 + 标准文件体检", brief:
+`✅ 总控终审通过（2026-06-29）：API 已按 X-OKH0 收口到 /api/workspaces/:id/onto-knowhow/conflicts、/standard-health、/standard-health/check；conflicts 默认只查本工作区 enabled metric，includeDisabled=true 仅扩展到本工作区可见指标；standard-health 只做本地 stat/access/路径元数据检查，不读正文、不走 LLM。typecheck/build 绿。
+
+前置：X-OKH0。
+
+目标：让用户能看到指标口径是否打架、标准文件是否可用。
+
+范围：
+1. 实现指标冲突检测：同名、近似名、同分类下公式不同、分母不同、时间窗口不同。
+2. 返回冲突严重度、冲突原因、涉及指标 ID。
+3. 实现标准文件体检：路径是否存在、是否可读、扩展名、文件大小、是否疑似目录或二进制。
+4. 标准文件体检不读取正文进 LLM，不做语义摘要。
+5. 提供列表 API 给前端展示。
+
+落点建议：
+- server/src/db/data.ts
+- server/src/routes/data.ts
+- web/src/lib/api/data.ts
+
+验收：
+- 构造两个“复购率”不同公式指标，能返回冲突。
+- 登记不存在的标准文件，能返回不可读状态。
+- typecheck/build 绿。
+
+红线：
+- 不把标准文件正文送 LLM。
+- 体检只做本地元数据和安全状态检查。` },
+
+  { dom: "E", status: "done", created: "2026-06-29 08:03", title: "【记忆库·onto-knowhow·追踪·P1】E-OKH3：指标使用痕迹采集 + 注入引用统计", brief:
+`✅ 总控终审通过（2026-06-29）：新增 metric_injection_traces 元数据表与查询 API；chat / flow chat / multi-agent 三条注入链路均在 recordMemoryInjectionUsage 后记录 metric 引用痕迹；只复用 MemoryInjectionSnapshot.sources[].itemIds，不读原始数据、不新增 LLM 调用。总控加固：指标 ID 拆分仅使用本工作区 enabled metric 白名单，查询 limit clamp 到 1-500。typecheck/build/server tests/数据探索隔离 grep 通过。
+
+前置：X-OKH0。
+
+目标：用户能知道一个指标有没有真的被注入、在哪些 session 或 workflow 里被用过。
+
+范围：
+1. 在记忆注入或 prompt 拼装链路中记录被注入的 metric / standard ID。
+2. 记录 targetScope、sessionId、flowId、runId、timestamp、token 估算、是否被裁剪。
+3. 尽量复用现有 trace / memory injection snapshot，不重复造一套无关日志。
+4. 提供查询 API 或复用现有 trace API，供前端按指标查看最近使用。
+5. 不读取原始数据，不新增 LLM 调用。
+
+落点建议：
+- server/src/memory-injection.ts
+- server/src/routes/engine.ts 或现有 trace 相关模块
+- web/src/lib/api/engine.ts 如需 client 封装
+
+验收：
+- 启用一个指标并发送一次日常对话后，能查到该指标注入痕迹。
+- workflow 注入路径也能记录。
+- typecheck/build 绿。
+
+边界：
+- 只记录“指标被注入/引用”的元数据，不记录用户原始数据内容。` },
+
+  { dom: "D", status: "done", created: "2026-06-29 08:04", title: "【记忆库·onto-knowhow·导入导出·P1】D-OKH4：指标导入导出 + 批量校验", brief:
+`✅ 总控终审通过（2026-06-29）：新增 canonical import/export API：/onto-knowhow/import/preview、/import/commit、/export；CSV/JSON preview 只解析校验不写库，commit 写 metric_definitions 且 enable=true 时写 workspace_memory_enablements(kind='metric')，export 支持 csv/json 与 enabledOnly。总控补 okh-metric-import.test.ts 覆盖 preview 只读、commit 启用、重复名 skip/create_version、enabledOnly export。typecheck/build/server tests/数据探索隔离 grep 通过。
+
+前置：X-OKH0。
+
+目标：支持从表格或 Markdown 批量导入指标口径，并导出当前工作区启用清单。
+
+范围：
+1. 支持 CSV 导入首版；Excel 如复用现有依赖成本低可一起做，否则留 follow-up。
+2. 导入 preview 先校验列名、必填字段、重复名称、公式空缺、单位空缺。
+3. commit 才写入 metric_definitions，不允许 preview 直接改库。
+4. 导出当前工作区启用指标清单，格式 CSV 或 JSON。
+5. 错误逐行返回，便于前端提示。
+
+落点建议：
+- server/src/routes/data.ts
+- server/src/db/data.ts
+- web/src/lib/api/data.ts
+
+验收：
+- 上传一份 10 行指标 CSV，preview 能显示成功/失败行。
+- commit 后新增指标并可启用。
+- 导出能拿到当前工作区启用指标。
+- typecheck/build 绿。
+
+红线：
+- 导入的是指标口径，不是原始业务明细。
+- 不读取 draw_data。` },
+
+  { dom: "V", status: "done", created: "2026-06-29 08:05", title: "【记忆库·onto-knowhow·前端工作台·P1】V-OKH5：模板/冲突/体检/导入导出/使用痕迹 UI 汇总", brief:
+`✅ 总控终审通过（2026-06-29）：IndicatorsPane 已从“维护/说明”扩展为 onto-knowhow 工作台，包含口径维护、模板库、冲突与体检、导入/导出、使用痕迹、说明六区。总控收口：导入 commit 只提交 preview 有效行并展示 created/skipped/errors；导出检查 HTTP 状态；各新区块补错误态；导入文件限制 5MB；说明页已把已上线能力从“未来方向”挪到“已实现”。验证：typecheck/build 绿，数据探索隔离 grep 无匹配。
+
+前置：D-OKH1、D-OKH2、D-OKH4；E-OKH3 可并行。
+
+目标：把模板、冲突、体检、导入导出、使用痕迹整合到 onto-knowhow 面板里。
+
+范围：
+1. IndicatorsPane 内部从“维护 / 说明”扩展为工作台式分区或子 tab。
+2. 模板区：按场景展示模板包，一键启用。
+3. 治理区：展示口径冲突和标准文件体检状态。
+4. 导入导出区：上传 CSV 预览、错误行展示、commit、导出。
+5. 使用痕迹区：展示指标最近注入 session / workflow。
+6. 保留现有新增指标、新增标准文件、prompt 预览能力。
+
+UI 约束：
+- 工作型界面，信息密度适中，不做营销式说明页。
+- 移动端不溢出，按钮文字不挤压。
+- 不新增 LLM 调用。
+
+验收：
+- 旧的手工维护流程不回归。
+- 用户能完成模板启用、冲突查看、文件体检、导入导出。
+- web typecheck/build 绿。` },
+
+  { dom: "D", status: "done", created: "2026-06-29 08:06", title: "【记忆库·onto-knowhow·本体关联·P2】D-OKH6：metric_definitions 与 onto-xanthil 关联表 + API", brief:
+`✅ 总控终审通过（2026-06-29）：新增 okh_metric_ontology_links 独立表与 canonical API：GET/PUT /onto-knowhow/metrics/:metricId/ontology-links、DELETE /onto-knowhow/metric-ontology-links/:linkId；metric_definitions 继续作为指标真源，删除关联不删除 metric/ontology/object/link/logic。总控收口：PUT body 必须显式传 links 数组并校验 ontologyId/targetKind/targetId，补 okh-metric-ontology-link.test.ts 覆盖替换/去重/删除、非法 target 不破坏已有关联、跨工作区 metric+ontology 需显式启用后才可关联。验证：typecheck/build/OKH6 单测绿。
+
+前置：X-OKH0。
+
+目标：让指标能和 onto-xanthil 的对象、关系、逻辑规则建立结构化连接。
+
+范围：
+1. 定义 metric 到 ontology object / relation / logic rule 的关联表或字段。
+2. API 支持读取、创建、删除关联。
+3. 关联必须按 workspace 或 ontology 作用域隔离，不能跨工作区误连。
+4. 不改变 metric_definitions 作为指标真源的地位。
+5. 与 OntologyPane 现有 metrics 入口保持兼容。
+
+落点建议：
+- server/src/db/data.ts 或 ontology 相关数据层，按 X-OKH0 最终口径。
+- server/src/routes/data.ts 或 viz route，避免跨域重复定义。
+
+验收：
+- 一个指标可以关联到一个本体对象和一条逻辑规则。
+- 删除关联不删除指标和本体对象。
+- typecheck/build 绿。
+
+边界：
+- 首版全部人工关联，不做 LLM 自动抽取。` },
+
+  { dom: "V", status: "done", created: "2026-06-29 08:07", title: "【记忆库·onto-knowhow·本体联动UI·P2】V-OKH7：onto-xanthil 与 onto-knowhow 双向联动 UI", brief:
+`✅ 总控终审通过（2026-06-29）：IndicatorsPane 指标卡已支持人工关联 ontology object/link/logic，OntologyPane 指标页可反向展示同对象关联的 memory metric。总控收口：添加器补齐对象/关系/逻辑三类目标，删除关联改走 dataApi 并显示错误；跳转 URL 改为现有 tab/subTab 口径（rule_memory/indicators 与 onto_xanthil/onto_*）；App.tsx 仅补一次性 deep-link 读取，OntologyPane 支持 ontologyId 定位；OKH 说明页把本体联动移入已实现能力。补 OKH metric ontology link 单测覆盖 byOntology/byTarget 反查。验证：typecheck/build/OKH 单测绿，数据探索隔离 grep 无匹配。
+
+前置：D-OKH6。
+
+目标：用户在指标面板和本体面板都能看见并维护指标关联。
+
+范围：
+1. IndicatorsPane 指标详情增加“关联本体”区域。
+2. OntologyPane 指标页显示已关联的 memory metric。
+3. 支持从指标跳到本体对象，从本体对象跳回指标。
+4. UI 明确说明：指标真源仍是 metric_definitions，本体是关系和语义视图。
+5. 不新增 LLM 自动抽取，首版全部人工选择。
+
+落点建议：
+- web/src/components/IndicatorsPane.tsx
+- web/src/components/OntologyPane.tsx
+- 必要时补 web/src/lib/api 读取关联。
+
+验收：
+- 能在 UI 上完成一次指标到本体对象的关联。
+- 跳转和回跳路径可用。
+- web typecheck/build 绿。` },
+
+  { dom: "X", status: "done", created: "2026-06-29 08:08", title: "【记忆库·onto-knowhow·验收·P3】X-OKH8：全链路验收 + wiki/notes 收口", brief:
+`✅ 总控全链验收通过（2026-06-29）：新增 okh-full-acceptance.test.ts 固化 6 个验收场景：空工作区启用 member 模板、制造同名冲突并检测、登记不存在标准文件并体检 missing、记录 chat metric injection trace、CSV preview→commit→export、metric ↔ ontology object 关联与反查。门禁：OKH 相关测试串行 20/20（OKH8 1、import/export 4、ontology link 4、metric injection trace 11）、typecheck/build 全绿；build 仅既有 echarts dynamic-import 与 chunk-size warning；数据探索隔离 grep 无匹配。文档已收口 notes-infra/notes-data。残留风险：真实浏览器点击级验收与真实 LLM 对话触发痕迹未自动化，当前用 deterministic DB/API 验收替代。
+
+前置：D/E/V 全部实现卡。
+
+目标：总控终审 onto-knowhow 迭代专题是否真正可用，并收口文档和 wiki 状态。
+
+验收场景：
+1. 新建空工作区，一键启用会员指标模板。
+2. 手工新增一个冲突指标，确认冲突检测可见。
+3. 登记一个不存在标准文件，确认体检提示可见。
+4. 通过日常对话触发记忆注入，确认指标使用痕迹可见。
+5. 批量导入一份指标 CSV，再导出启用清单。
+6. 把一个指标关联到 onto-xanthil 对象，并完成 UI 跳转。
+
+门禁：
+- npm run typecheck
+- npm run build
+- 如任何卡误触数据探索子树，追加 AGENTS.md 数据探索隔离 grep。
+
+收口：
+- 更新 docs/wiki.html 任务卡状态。
+- 必要时补充 docs/notes-infra.md 的长期约束和踩坑。
+- 输出残留风险和下一波建议。` },
+
+  { dom: "X", status: "todo", created: "2026-06-29 08:09", title: "【记忆库·onto-knowhow·后续增强·P2】X-OKH9：自定义模板 / 冲突处理 / 导入扩展 / 使用评分专题契约", brief:
+`总控自持。前置：X-OKH8 已验收通过。
+
+目标：把 X-OKH8 留下的下一波产品增强整理成可派发专题，先由总控冻结契约、红线、验收口径，再拆给 D/E/V 执行。
+
+增强方向：
+1. 用户自定义模板：允许团队把常用指标组合保存为模板包，支持复制、启用、停用、重命名；不得覆盖内置模板真源。
+2. 冲突处理工作流：冲突检测后支持合并、重命名、停用、生成新版指标；每个动作必须显式确认并保留审计信息。
+3. Excel / Markdown 导入：在现有 CSV/JSON preview→commit 口径上扩展格式；仍必须 preview 先行，commit 才写库。
+4. 使用效果评分：结合使用痕迹、正负反馈、老化信号和注入成功率，给指标提供保留 / 降权 / 复核建议。
+
+总控需先审定：
+1. 新表是否需要：自定义模板包、冲突处理记录、指标评分快照是否独立建表。
+2. API 口径是否继续挂 /api/workspaces/:id/onto-knowhow/...，避免重新造旧路径。
+3. 数据红线：不读 draw_data 原始行；标准文件导入不把正文送 LLM；Excel/Markdown 导入只处理用户显式上传的口径文件，不扫目录。
+4. UI 边界：增强仍落在 IndicatorsPane 工作台，不新增孤立入口；危险动作要可撤销或至少可追溯。
+
+验收建议：
+1. 自定义模板包可从当前工作区指标生成，并能在新工作区启用。
+2. 冲突工作流能把同名公式冲突处理为新版或停用旧版。
+3. Excel/Markdown 导入能 preview 错误行，commit 只写合法行。
+4. 使用评分能展示最近使用、成功注入、反馈和老化信号，不自动删除指标。
+
+边界：
+- 本卡只做后续专题契约与拆卡，不直接实现功能。
+- 若任一增强触及数据探索子树，必须执行 AGENTS.md 数据探索隔离 grep。` },
+
+  // ════ 【记忆库·业务环境迭代专题】（Infra 总控拆卡 2026-06-29；来源=BusinessContextPane 说明页中“后续值得优化的方向”：冲突与重复检测、时效与负责人、批量导入导出、使用痕迹）。定位：把业务环境从“手工维护背景条目”升级为“可治理、可追踪、可批量维护的业务事实池”。红线：业务环境会进 LLM prompt，只能保存可共享业务背景；禁止 draw_data 原始行、个人敏感信息、订单样本、客户明细或未脱敏日志。════
+  { dom: "X", status: "done", created: "2026-06-29 11:00", title: "【记忆库·业务环境·契约·P0】X-BC0：元数据/治理/导入导出/痕迹专题契约 + 派发", brief:
+`总控自持。前置：业务环境说明页已上线，用户确认启动后续迭代。
+
+目标：冻结业务环境下一波迭代的字段、API、安全边界和验收口径，并将任务派发给 D/E 域执行。
+
+产品边界：
+1. 业务环境是“agent 不知道但做决策必须知道”的业务事实池，会进入 LLM prompt。
+2. 本专题只处理可被 LLM 读取的业务背景、约束、术语、历史、目标，不处理 raw row 或明细数据。
+3. 全局池 + workspace enablement 机制保持不变；同一条业务环境可跨工作区复用并分别启停。
+
+X 契约：
+1. BusinessContext 增加治理元数据：source、owner、validFrom、validUntil。旧记录兼容：source/owner 为空、validFrom/validUntil 为 null。
+2. 注入 prompt 时必须跳过 validUntil 已过期条目；未过期但快到期的条目只在 UI 提醒，不自动降权。
+3. 冲突检测只做确定性算法：同 category 内 title/content 相似、目标/约束互斥、重复标题；不调用 LLM。
+4. 导入导出第一版支持 CSV/JSON；Markdown 导入列为后续增强，除非 D 卡实现成本很低。preview 先行，commit 才写库。
+5. 使用痕迹复用 MemoryInjectionSnapshot 的 businessContext source itemIds，在 chat / workflow / multi-agent 注入点记录。
+
+API 口径：
+1. GET /api/workspaces/:id/business-contexts/conflicts
+2. POST /api/workspaces/:id/business-contexts/import/preview
+3. POST /api/workspaces/:id/business-contexts/import/commit
+4. GET /api/workspaces/:id/business-contexts/export?format=csv|json
+5. GET /api/workspaces/:id/business-contexts/traces?businessContextId=&targetKind=&targetId=&limit=
+
+派发：
+1. D-BC1：后端字段、冲突检测、导入导出、prompt 过期过滤。
+2. E-BC2：注入使用痕迹采集与查询。
+3. D-BC3：BusinessContextPane 工作台 UI 汇总。
+4. X-BC4：全链验收与 wiki/notes 收口。
+
+红线：
+- 不读 draw_data；不保存 raw row；不把样本值、用户级明细、订单列表、错误日志片段写进业务环境。
+- 不新增 LLM 调用；冲突、体检、导入校验全部确定性。
+- 删除/覆盖/批量 commit 必须可预览，危险动作显式确认。
+
+当前状态：总控已完成拆卡并写入 wiki；D-BC1、E-BC2、D-BC3 已回流并通过总控复核；X-BC4 待总控浏览器 smoke 与全链收口。` },
+
+  { dom: "D", status: "done", created: "2026-06-29 11:01", title: "【记忆库·业务环境·治理后端·P1】D-BC1：元数据字段 + 冲突检测 + CSV/JSON 导入导出 + 过期过滤", brief:
+`前置：X-BC0 契约。
+
+完成状态（2026-06-29 · 总控复核）：已完成并验收通过。交付包括 business_contexts 治理字段与旧库 ALTER、create/update 新字段校验、prompt 过期过滤、确定性冲突检测、CSV/JSON import preview/commit/export API、双侧类型/API client、治理单测与 D 域 notes 更新。未包含导入导出 UI，后续由 D-BC3 接入。
+
+目标：补齐业务环境后端治理能力，让业务事实池可维护、可批量迁移、可避免过期背景长期注入。
+
+范围：
+1. business_contexts 增加 source、owner、valid_from、valid_until 字段；旧库幂等 ALTER；server/web BusinessContext 类型镜像。
+2. create/update 解析上述字段；validFrom/validUntil 允许 null，非法时间返回 400。
+3. buildEnabledBusinessContextPrompt 过滤 validUntil < now 的条目；prompt 里可带来源/负责人但保持简洁，不泄露系统内部字段。
+4. 新增 conflict 检测函数与 API：同 category 内重复标题、相似 title/content、约束/目标互斥线索；返回 severity/reason/message/itemIds/fields。
+5. 新增 import preview/commit/export API：
+   - preview：CSV/JSON 解析、列名校验、category 合法性、标题必填、重复/冲突提示，不写库。
+   - commit：只写 preview 合法行；enable=true 时写 workspace_memory_enablements(kind='business_context')；conflictPolicy=skip|create_version。
+   - export：导出当前工作区可见/启用业务环境清单，支持 csv/json。
+
+约束：
+- 不读 draw_data、不调用 LLM。
+- 不碰数据探索子树。
+- 不删除旧字段或旧 API；旧 create/update payload 继续可用。
+
+验收：
+- server/web typecheck + build 绿。
+- 单测覆盖：旧记录兼容、过期条目不注入、冲突检测、preview 不写库、commit enable、export enabledOnly。
+- 数据探索隔离 grep 无匹配。` },
+
+  { dom: "E", status: "done", created: "2026-06-29 11:02", title: "【记忆库·业务环境·使用痕迹·P1】E-BC2：business_context 注入痕迹采集 + 查询", brief:
+`前置：X-BC0 契约；可与 D-BC1 并行。
+
+完成状态（2026-06-29 · 总控复核）：已完成并验收通过。交付包括 business_context_injection_traces 表、businessContext source itemIds 提取、当前工作区启用/可见过滤、trace record/query 函数、chat / workflow chat / multi-agent run 三处注入点接线、GET /api/workspaces/:id/business-contexts/traces 查询 API，以及 metric-injection-trace 回归测试扩展。
+
+目标：记录业务环境条目在哪些 chat / workflow / multi-agent run 中被注入，帮助判断条目是否有实际价值。
+
+范围：
+1. 参考 metric_injection_traces，新增 business_context_injection_traces 表与 CRUD/query 函数。
+2. 从 MemoryInjectionSnapshot.sources 中提取 kind='businessContext' 的 itemIds；记录 title/category/targetScope/targetKind/targetId/injected/tokenEstimate/omittedReason/createdAt。
+3. 接线三处现有注入点：日常 chat、flow chat、multi-agent run；位置紧跟 recordMemoryInjectionUsage 与 recordMetricInjectionTraces。
+4. 提供查询 API 或复用业务环境 route：GET /api/workspaces/:id/business-contexts/traces。
+5. 补测试：无 businessContext source 返回空；只记录当前工作区启用/可见条目；target filter 生效。
+
+约束：
+- 不新增 LLM 调用；不读 draw_data。
+- 不改变 MemoryInjectionSnapshot 结构。
+- 不影响指标痕迹现有逻辑。
+
+验收：
+- 相关 node:test 绿，npm run typecheck/build 绿。
+- 业务环境有注入时 traces 可查；无注入时空列表。` },
+
+  { dom: "D", status: "done", created: "2026-06-29 11:03", title: "【记忆库·业务环境·工作台 UI·P1】D-BC3：BusinessContextPane 增治理/导入导出/痕迹视图", brief:
+`前置：D-BC1 API；E-BC2 traces API。可先用 loading/error 空态接线，等后端回流后总控集成。
+
+完成状态（2026-06-29 · 总控复核）：已完成并通过静态验收。交付包括 BusinessContextPane 五视图工作台、source/owner/validFrom/validUntil 管理表单与列表状态、冲突治理、CSV/JSON preview→commit 与导出、使用痕迹空态/有数据态、说明页能力同步，以及 vizApi.listBusinessContextInjectionTraces 与对应 viz route。浏览器点击级 smoke 未实跑，留给 X-BC4 全链验收。
+
+目标：把 BusinessContextPane 从“管理/说明”升级为“管理/治理/导入导出/使用痕迹/说明”的业务环境工作台。
+
+范围：
+1. 内部 view 扩展：管理、冲突治理、导入/导出、使用痕迹、说明。
+2. 管理表单增加 source、owner、validFrom、validUntil；列表展示来源、负责人、过期/即将过期状态。
+3. 冲突治理页展示 D-BC1 conflict 结果，首版只提示合并/停用/改写建议，不自动处理。
+4. 导入导出页支持选择 CSV/JSON 文件 preview→commit；commit 前展示 valid/invalid/skipped/errors；导出支持 csv/json。
+5. 使用痕迹页展示 E-BC2 traces：最近注入位置、targetKind、时间、tokenEstimate、是否 injected。
+6. 说明页同步把已上线能力从“后续方向”移到“现在已经实现了什么”，留下 Markdown 导入、冲突处理 workflow、评分降权等下一波方向。
+
+UI 约束：
+- 沿用 onto-knowhow 的工作台范式和 neutral 风格。
+- 按钮用 icon+短文案；表格/卡片密度适合反复管理。
+- 移动端不溢出；错误不吞。
+
+验收：
+- web typecheck/build 绿。
+- 浏览器 smoke：新增带 owner/validUntil 的条目、查看冲突、导入 preview/commit、导出、查看使用痕迹空态/有数据态。
+- 数据探索隔离 grep 无匹配。` },
+
+  { dom: "X", status: "done", created: "2026-06-29 11:04", title: "【记忆库·业务环境·验收·P2】X-BC4：全链验收 + 安全红线 + wiki/notes 收口", brief:
+`前置：D-BC1、E-BC2、D-BC3 回流。
+
+完成状态（2026-06-29 · 总控收口）：已完成静态门禁、业务环境治理/痕迹回归、数据探索安全 grep 与 wiki/notes 收口。浏览器 smoke 原计划覆盖新增 source/owner/validUntil、过期过滤、冲突治理、导入 preview/commit/export 与使用痕迹；执行中按用户指示跳过，由用户后续自行手动点检。
+
+验证结果：
+1. XANTHIL_DATA_DIR=/tmp/pi-xanthil-xbc4-bc1 node --test server/src/business-context-governance.test.ts：6/6 通过。
+2. XANTHIL_DATA_DIR=/tmp/pi-xanthil-xbc4-ebc2 node --experimental-strip-types --test server/src/metric-injection-trace.test.ts：17/17 通过。
+3. npm run typecheck：通过。
+4. npm run build：通过，仅既有 Echarts dynamic import 与 chunk-size warning。
+5. 数据探索隔离 grep：无输出。
+
+目标：总控终审业务环境迭代专题，确保功能可用、契约一致、红线不破。
+
+验收场景：
+1. 新建业务环境，填写 source/owner/validUntil，刷新后字段保留。
+2. 设置 validUntil 为过去，确认 prompt 预览与业务环境 prompt API 不再注入该条。
+3. 新增两个相似业务环境，确认冲突治理页和 conflict API 可见。
+4. CSV/JSON preview 不写库；commit 写库并可 enable；export 能导出当前工作区清单。
+5. 触发一次 chat 或 workflow 记忆注入，确认业务环境使用痕迹可查。
+6. 旧 create/update payload 不带新字段仍兼容。
+
+必须运行：
+- npm run typecheck
+- npm run build
+- 业务环境相关 node:test
+- 如任何卡触及数据探索子树，执行 AGENTS.md 指定隔离 grep。
+
+终审重点：
+- server/web types 镜像一致，无本地重声明漂移。
+- DB ALTER 幂等，旧库可启动。
+- traces 不记录 raw 内容，只记录 itemId/title/category/target。
+- import/export 不读取 draw_data、不扫目录、不调用 LLM。
+
+收口：
+- wiki 卡状态回填。
+- docs/notes-infra.md / docs/notes-data.md §0 记录业务环境专题结果、残留风险与下一波建议。
+- 输出残留风险：Markdown 导入、冲突自动处理、评分降权是否进入下一波。` },
+
+  // ════ 【记忆库·trace 迭代专题】（Infra 总控拆卡 2026-06-29；来源=TracePane 说明页“后续值得优化的方向”：分面视图、事件详情抽屉、失败闭环状态、自动巡检建议）。定位：把 trace 从“大看板 + 人工查看”升级为“可分面排查、可钻取详情、可闭环处理、可纯规则巡检”的运行证据工作台。红线：trace 只处理运行元数据和脱敏 detail；禁止 draw_data 原始行、客户明细、订单样本、未脱敏日志进入 LLM；自动巡检必须纯规则/元数据统计，不调用 LLM。════
+  { dom: "X", status: "done", created: "2026-06-29 15:00", title: "【记忆库·trace·契约·P0】X-TRACE0：分面/详情/闭环/巡检专题契约 + 派发", brief:
+`总控自持。前置：TracePane 说明页已上线，用户确认启动后续优化拆卡。
+
+目标：冻结 trace 下一波迭代的产品边界、字段/API、安全红线和域分工，避免 D/E/V 各自按直觉扩展导致 trace 变成不受控日志仓库。
+
+产品边界：
+1. trace 是运行证据层，不是业务数据仓库。
+2. 允许展示 session、flow、flow_run、runtime、message 的状态、时间、target、错误类型、脱敏 detail 和关联元数据。
+3. 允许基于 trace 元数据做失败归因、巡检建议和规则候选，但不得读取 draw_data 原始行或未脱敏日志片段。
+4. 规则提炼仍走现有人工审批链路；本专题不允许自动把巡检建议写入记忆。
+
+冻结任务：
+1. V-TRACE1：TracePane 分面视图，把运行、失败、记忆注入、规则提炼、说明拆成子视图，降低首屏密度。
+2. D-TRACE2：事件详情 read model + API，只读返回结构化 event detail、target、上下游 timeline 摘要和安全诊断字段。
+3. V-TRACE3：事件详情抽屉 UI，点击事件后展示详情、上下游、可复制诊断摘要。
+4. D-TRACE4：failure pattern 闭环状态存储/API，支持 open、fixed、distilled、ignored。
+5. V-TRACE5：失败闭环 UI，支持状态筛选、状态更新、审计信息展示。
+6. E-TRACE6：自动巡检建议，基于 trace 元数据纯规则统计异常峰值、失败率突增、重复失败模式。
+7. X-TRACE7：全链验收、安全红线和 wiki/notes 收口。
+
+API 口径建议：
+1. GET /api/workspaces/:id/trace/events/:eventId/detail
+2. GET /api/workspaces/:id/trace/failures?status=&errorType=&limit=
+3. PATCH /api/workspaces/:id/trace/failures/:failureId/status
+4. GET /api/workspaces/:id/trace/inspections?days=14
+
+共享类型建议：
+1. TracePaneView = dashboard | runs | failures | memory | distill | readme。
+2. TraceEventDetail = { event; target; timelineBefore; timelineAfter; relatedFailures; diagnosticSummary; safetyLevel }。
+3. TraceFailureStatus = open | fixed | distilled | ignored。
+4. TraceFailureStatePatch = { status; note?; actor? }。
+5. TraceInspectionFinding = { id; severity; kind; title; evidence; window; count; baselineCount; targetKind?; targetId?; suggestedAction }。
+
+安全红线：
+1. detail API 不返回 draw_data 原始行、客户明细、订单样本、完整 prompt 正文或未脱敏错误日志。
+2. diagnosticSummary 只能由确定性模板拼接，不调用 LLM。
+3. 自动巡检只能读 trace_events / failure 聚合 / memory injection snapshot 元数据，不读文件内容和业务数据。
+4. 所有查询必须按 workspaceId 过滤，limit clamp，避免一次性返回全量 trace。
+5. 状态更新只改 failure pattern 元数据，不删除 trace event。
+
+验收口径：
+- D/E/V 卡完成后，npm run typecheck 与 npm run build 必须绿。
+- 新增后端行为必须有 node:test 覆盖。
+- 若任何卡触及数据探索子树，必须执行 AGENTS.md 数据探索隔离 grep。
+- X-TRACE7 做最终安全审计与文档收口。` },
+
+  { dom: "V", status: "todo", created: "2026-06-29 15:01", title: "【记忆库·trace·分面视图·P1】V-TRACE1：TracePane 拆分运行/失败/记忆/提炼子视图", brief:
+`前置：X-TRACE0。
+
+目标：把当前 TracePane 的大看板拆成更可操作的分面视图，降低首屏信息密度，同时保留现有能力不回归。
+
+范围：
+1. 在 TracePane 内增加 view 状态：运行看板、失败分析、记忆注入、规则提炼、说明。
+2. 运行看板保留 KPI、趋势、最近事件、timeline。
+3. 失败分析集中展示 failure 聚合、错误类型筛选和后续 D-TRACE4 状态筛选入口；D-TRACE4 未完成前可先保留空态/兼容旧字段。
+4. 记忆注入集中展示“记忆注入检查器”和“检索失败诊断”。
+5. 规则提炼集中展示生成建议、复制、暂存、提交审批、候选审批。
+6. 顶部刷新/清理旧事件只在需要 trace 数据的视图显示，说明页不显示运行操作。
+
+UI 约束：
+- 沿用当前 TracePane 视觉风格，不重做整站导航。
+- 工作台式信息密度，避免营销页式大 hero。
+- 移动端不横向溢出；表格或列表至少可滚动。
+- 不新增 LLM 调用，不改后端 API。
+
+验收：
+- web typecheck/build 绿。
+- 切换各分面后，现有刷新、过滤、点击事件打开 timeline、规则提炼、审批、记忆注入展示不回归。
+- 说明页仍可查看 trace 定位、已实现能力、后续方向和安全边界。` },
+
+  { dom: "D", status: "todo", created: "2026-06-29 15:02", title: "【记忆库·trace·事件详情·P1】D-TRACE2：TraceEvent detail read model + 只读 API", brief:
+`前置：X-TRACE0。建议在 V-TRACE3 前完成。
+
+目标：为“事件详情抽屉”提供安全、结构化、可审计的只读数据，而不是让前端拼接多个粗粒度接口。
+
+范围：
+1. 新增 TraceEventDetail 类型和查询函数。
+2. 通过 eventId 读取单条 trace event，校验 workspaceId 隔离。
+3. 返回 target 信息：targetKind、targetId、target label、status、createdAt。
+4. 返回上下游 timeline 摘要：同一 target 最近 N 条前后事件，N 需 clamp，默认 before/after 各 5。
+5. 返回 relatedFailures：与 event type、target、errorType 相关的 failure pattern 摘要。
+6. 返回 diagnosticSummary：由确定性模板拼接，例如“flow_run 在 run_end 前出现 path_missing”，不得调用 LLM。
+7. detail 字段必须经现有脱敏/截断口径处理；如现有 trace detail 不可信，先返回 metadata 摘要并隐藏原 detail。
+8. 提供 GET /api/workspaces/:id/trace/events/:eventId/detail。
+
+落点建议：
+- server/src/db.ts 或 server/src/db/data.ts 中 trace 相关 read model。
+- server/src/routes/engine.ts 或现有 trace route，按当前路由归属选择最小接线。
+- server/web types.ts 镜像 TraceEventDetail。
+- web/src/lib/api/engine.ts 或统一 api facade 增 client 方法。
+
+安全红线：
+- 不返回 draw_data 原始行、客户明细、订单样本、完整 prompt 正文、未脱敏 stderr/stdout。
+- 不新增 LLM 调用。
+- 所有 limit clamp，所有查询按 workspaceId 过滤。
+
+验收：
+- node:test 覆盖：合法事件详情、跨 workspace 不可读、timeline limit clamp、敏感 detail 不直出。
+- npm run typecheck 与 npm run build 绿。` },
+
+  { dom: "V", status: "todo", created: "2026-06-29 15:03", title: "【记忆库·trace·事件抽屉·P1】V-TRACE3：点击事件打开详情抽屉 + 可复制诊断摘要", brief:
+`前置：D-TRACE2。若 D-TRACE2 尚未回流，可先做组件骨架和 loading/error/empty 状态，不接假数据。
+
+目标：让用户点击 trace event 后能看到结构化详情、上下游事件和可复制诊断摘要，减少在多个列表之间来回找线索。
+
+范围：
+1. 最近事件流每行点击打开右侧 drawer 或 modal drawer。
+2. 抽屉展示 event 基本信息：type、status、targetKind、targetId、time、detail 摘要。
+3. 展示上下游 timeline before/after，按状态给出视觉区分。
+4. 展示 relatedFailures 与 errorType。
+5. 展示 diagnosticSummary，并提供“复制诊断摘要”按钮。
+6. 支持 loading、error、not found、无权限/跨 workspace 空态。
+7. 抽屉关闭不清空主列表筛选；重新点击另一条事件刷新详情。
+
+UI 约束：
+- 抽屉宽度要有移动端 clamp，不挤没主内容。
+- 不出现边框套边框和重复标题。
+- 长文本必须可滚动/换行，不撑破布局。
+
+验收：
+- web typecheck/build 绿。
+- 手动 smoke：点击事件打开抽屉，复制摘要可用，关闭后主筛选保持。
+- D-TRACE2 API 错误时前端有可读错误，不吞异常。` },
+
+  { dom: "D", status: "todo", created: "2026-06-29 15:04", title: "【记忆库·trace·失败闭环后端·P1】D-TRACE4：failure pattern 状态字段 + 更新/筛选 API", brief:
+`前置：X-TRACE0。可与 V-TRACE1 并行，需先于 V-TRACE5 完成。
+
+目标：让 trace failure pattern 从“只能反复看到”变成“可处理、可沉淀、可忽略、可复核”的闭环对象。
+
+范围：
+1. 为 failure pattern 增加状态：open、fixed、distilled、ignored。
+2. 设计幂等迁移，旧 failure 默认 open。
+3. 增加状态更新时间、状态备注、更新者字段；如果当前无用户体系，actor 可为 manual 或 system。
+4. listTraceFailures 支持 status 过滤，默认不隐藏 ignored，前端可选择过滤。
+5. PATCH /api/workspaces/:id/trace/failures/:failureId/status 更新状态和备注。
+6. 若当前 failure pattern 是实时聚合无持久表，则新增轻量 failure_state 表，用 failure signature 关联，不改原 trace event。
+7. 状态更新不得删除、覆盖 trace_events。
+
+落点建议：
+- server/src/db.ts / server/src/db/data.ts trace failure 聚合处。
+- server/src/routes/engine.ts 或 trace route。
+- server/web types.ts 镜像 TraceFailureStatus 和 patch payload。
+- web API client 补 update/list 参数。
+
+验收：
+- node:test 覆盖：旧 failure 默认 open、更新状态、按状态筛选、跨 workspace 不能更新。
+- npm run typecheck 与 npm run build 绿。
+- 不影响现有 TracePane 失败列表。` },
+
+  { dom: "V", status: "todo", created: "2026-06-29 15:05", title: "【记忆库·trace·失败闭环UI·P1】V-TRACE5：失败状态筛选 + 状态更新 + 审计展示", brief:
+`前置：D-TRACE4。
+
+目标：在 TracePane 的失败分析分面中展示 failure pattern 闭环状态，并支持人工更新处理状态。
+
+范围：
+1. 失败分析区增加 status 筛选：全部、open、fixed、distilled、ignored。
+2. 每个 failure card 展示状态、更新时间、备注摘要。
+3. 提供状态更新控件：标记已修复、已沉淀、忽略、重新打开。
+4. 更新状态时允许填写简短 note；危险动作无需二次确认但要可重新打开。
+5. 更新成功后局部刷新失败列表，不强制刷新整个 TracePane。
+6. ignored 状态视觉上降噪，但不从数据中删除。
+
+UI 约束：
+- 控件使用短按钮或 menu，不让 failure card 过高。
+- 长标题/备注必须 line clamp 或可展开，不撑破布局。
+- 与 V-TRACE1 分面视图兼容。
+
+验收：
+- web typecheck/build 绿。
+- 手动 smoke：切换状态、筛选状态、刷新后状态保留。
+- API 失败时展示错误并保持原状态。` },
+
+  { dom: "E", status: "todo", created: "2026-06-29 15:06", title: "【记忆库·trace·自动巡检·P1】E-TRACE6：纯规则 trace inspection finding API", brief:
+`前置：X-TRACE0。可在 D-TRACE4 后接入 failure status，也可先基于现有 trace overview/events/failures 实现首版。
+
+目标：用纯规则和已脱敏元数据发现 trace 异常峰值、失败率突增、重复失败模式，给用户提供排查入口，但不生成 LLM 解释。
+
+范围：
+1. 新增 TraceInspectionFinding 类型。
+2. 统计窗口支持 days=7/14/30，默认 14，clamp 到 1-90。
+3. 规则首版至少覆盖：
+   - failure_spike：最近窗口失败数较前一窗口显著上升。
+   - error_type_spike：某 errorType 突增。
+   - repeated_target_failure：同一 target 多次失败。
+   - memory_injection_omission：记忆注入中 omittedReason 重复出现。
+   - stale_open_failure：open failure 长时间未处理，若 D-TRACE4 已完成则接入 status。
+4. 每条 finding 包含 severity、kind、title、evidence、window、count、baselineCount、suggestedAction。
+5. evidence 只能引用聚合数字、targetKind/targetId、errorType、状态，不带 raw detail。
+6. 提供 GET /api/workspaces/:id/trace/inspections?days=14。
+
+约束：
+- 不调用 LLM。
+- 不读取 draw_data、clean_data 文件正文、prompt 正文、stderr/stdout 原文。
+- suggestedAction 使用固定模板，不做自然语言生成。
+
+验收：
+- node:test 覆盖各规则的正例/负例，含空工作区返回空列表。
+- npm run typecheck 与 npm run build 绿。
+- 安全审计确认 finding 不含 raw row 或日志片段。` },
+
+  { dom: "V", status: "todo", created: "2026-06-29 15:07", title: "【记忆库·trace·巡检UI·P1】V-TRACE7：TracePane 自动巡检建议视图", brief:
+`前置：E-TRACE6。
+
+目标：把自动巡检 finding 以可扫描、可操作的方式展示到 trace 工作台，帮助用户先处理最明显的运行异常。
+
+范围：
+1. 在 TracePane 增加“巡检建议”分面，或在运行看板顶部增加可折叠巡检区；若 V-TRACE1 已完成，优先作为独立分面。
+2. 支持选择窗口：7 天、14 天、30 天。
+3. 展示 finding severity、kind、title、evidence、suggestedAction。
+4. finding 可跳转或筛选到相关 failure / event / target；D/E API 不足时先提供复制 targetId 和 errorType。
+5. 空态说明“暂无异常峰值”，错误态可读。
+6. 明确 UI 文案：巡检基于 trace 元数据和纯规则，不代表业务结论。
+
+UI 约束：
+- 不使用夸张告警色铺满页面；severity 只做局部提示。
+- findings 列表适合反复扫描。
+- 不新增 LLM 调用。
+
+验收：
+- web typecheck/build 绿。
+- E-TRACE6 返回空/多条/error 三种状态都可正常展示。
+- 从 finding 能定位到相关失败或复制排查线索。` },
+
+  { dom: "X", status: "todo", created: "2026-06-29 15:08", title: "【记忆库·trace·验收·P2】X-TRACE8：全链验收 + 安全红线 + wiki/notes 收口", brief:
+`前置：V-TRACE1、D-TRACE2、V-TRACE3、D-TRACE4、V-TRACE5、E-TRACE6、V-TRACE7 回流。
+
+目标：总控终审 trace 迭代专题，确认新工作台可用、API 契约一致、安全红线不破。
+
+验收场景：
+1. TracePane 能在运行、失败、记忆注入、规则提炼、巡检建议、说明之间切换，旧能力不回归。
+2. 点击最近事件打开详情抽屉，能看到结构化 detail、上下游 timeline、relatedFailures，并能复制诊断摘要。
+3. failure pattern 能标记 fixed、distilled、ignored、reopen，刷新后状态保留。
+4. failure status 筛选生效，ignored 不删除原 trace event。
+5. 自动巡检在构造 failure spike / repeated target failure / memory omission 后返回 finding，空工作区为空列表。
+6. finding 不包含 raw row、客户明细、订单样本、完整 prompt 正文或未脱敏日志。
+
+必须运行：
+- npm run typecheck
+- npm run build
+- trace 相关 node:test
+- 若任何卡触及数据探索子树，执行 AGENTS.md 指定隔离 grep。
+
+终审重点：
+- server/web types 镜像一致。
+- API 全部按 workspaceId 隔离，limit clamp。
+- 自动巡检零 LLM 调用。
+- 状态更新只改 failure metadata，不删除 trace event。
+
+收口：
+- 更新 docs/wiki.html 任务卡状态。
+- docs/notes-infra.md / docs/notes-engine.md / docs/notes-data.md 按实际归属记录结果、残留风险和下一波建议。
+- 输出残留风险：真实长周期 trace 数据量、detail 脱敏覆盖率、巡检阈值是否需要工作区级配置。` },
+
   // ════ 【数据库·the-crowd 人群画像资产库】（总控拆卡 2026-06-28；来源=用户需求：数据库/the-crowd 打造成“人群画像标签数据 → 人群侧写 → 数字生命体画像侧写”的资产库，并与 subagents 管理、日常/模拟实验深度联动）。首版决策：the-crowd 不做普通表浏览器，而做人群画像资产库；LLM 只可读取聚合摘要/标签解释/画像衍生产物，禁止原始行级标签明细进 LLM。════
   { dom: "X", status: "done", created: "2026-06-28 14:00", title: "【数据库·the-crowd·契约·P0】X-CROWD0：人群画像资产库类型契约 + 数据红线 + 发布口径", brief:
 `目标：定义 the-crowd 的总控契约，把当前数据库 tab 下的占位页升级为“人群画像资产库”。

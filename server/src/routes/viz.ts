@@ -66,6 +66,8 @@ import {
   listTargetPlans,
   getTargetPlan,
   adoptTargetPlan,
+  listMetricInjectionTraces,
+  listBusinessContextInjectionTraces,
 } from "../db/viz.ts";
 import { getWorkspacePath, getWorkspace, addWorkspacePath } from "../db.ts";
 import { parseAggregationBuffer } from "../bi-dataset-parser.ts";
@@ -483,6 +485,28 @@ vizRouter.delete("/api/metrics/:metricId", (req, res) => {
 vizRouter.post("/api/workspaces/:id/metrics/backfill-from-standards", (req, res) => {
   try { res.json(backfillMetricsFromStandards(req.params.id)); }
   catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// E-OKH3：按工作区/指标查看注入引用痕迹
+vizRouter.get("/api/workspaces/:id/metric-injection-traces", (req, res) => {
+  try {
+    const metricId = typeof req.query.metricId === "string" ? req.query.metricId : undefined;
+    const targetKind = typeof req.query.targetKind === "string" ? req.query.targetKind : undefined;
+    const targetId = typeof req.query.targetId === "string" ? req.query.targetId : undefined;
+    const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) || 50 : 50;
+    res.json(listMetricInjectionTraces(req.params.id, { metricId, targetKind, targetId, limit }));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
+});
+
+// E-BC2：按工作区/业务环境查看注入引用痕迹
+vizRouter.get("/api/workspaces/:id/business-context-injection-traces", (req, res) => {
+  try {
+    const businessContextId = typeof req.query.businessContextId === "string" ? req.query.businessContextId : undefined;
+    const targetKind = typeof req.query.targetKind === "string" ? req.query.targetKind : undefined;
+    const targetId = typeof req.query.targetId === "string" ? req.query.targetId : undefined;
+    const limit = typeof req.query.limit === "string" ? parseInt(req.query.limit, 10) || 50 : 50;
+    res.json(listBusinessContextInjectionTraces(req.params.id, { businessContextId, targetKind, targetId, limit }));
+  } catch (err) { res.status(500).json({ error: String(err) }); }
 });
 
 // ---- LogicRule（本体形式化规则层，P6）----

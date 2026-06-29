@@ -1,6 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { db } from "../db.ts";
-import { enableForOrigin } from "./shared.ts";
+import { enableForOrigin, listEnabledItemIds } from "./shared.ts";
 import type {
   Ontology,
   ObjectType,
@@ -11,6 +11,7 @@ import type {
   LinkKind,
   MetricDefinition,
   MetricDefinitionInput,
+  MetricInjectionTrace,
   LogicRule,
   LogicRuleInput,
   OntoAction,
@@ -192,6 +193,33 @@ function initOntoTables(): void {
       enabled        INTEGER NOT NULL DEFAULT 1,
       created_at     INTEGER NOT NULL,
       updated_at     INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS metric_injection_traces (
+      id              TEXT PRIMARY KEY,
+      workspace_id    TEXT NOT NULL REFERENCES workspaces(id),
+      metric_id       TEXT NOT NULL,
+      metric_name     TEXT NOT NULL,
+      target_scope    TEXT NOT NULL,
+      target_kind     TEXT NOT NULL,
+      target_id       TEXT NOT NULL,
+      injected        INTEGER NOT NULL DEFAULT 1,
+      token_estimate  INTEGER NOT NULL DEFAULT 0,
+      omitted_reason  TEXT,
+      created_at      INTEGER NOT NULL
+    );
+    CREATE TABLE IF NOT EXISTS business_context_injection_traces (
+      id                     TEXT PRIMARY KEY,
+      workspace_id           TEXT NOT NULL REFERENCES workspaces(id),
+      business_context_id    TEXT NOT NULL,
+      business_context_title TEXT NOT NULL,
+      category               TEXT NOT NULL DEFAULT '',
+      target_scope           TEXT NOT NULL,
+      target_kind            TEXT NOT NULL,
+      target_id              TEXT NOT NULL,
+      injected               INTEGER NOT NULL DEFAULT 1,
+      token_estimate         INTEGER NOT NULL DEFAULT 0,
+      omitted_reason         TEXT,
+      created_at             INTEGER NOT NULL
     );
     CREATE TABLE IF NOT EXISTS logic_rules (
       id                TEXT PRIMARY KEY,
@@ -1433,4 +1461,242 @@ export function adoptTargetPlan(planId: string, goalDatasetPathId: string): Targ
     "UPDATE target_plans SET status = 'adopted', goal_dataset_path_id = ?, adopted_at = ?, updated_at = ? WHERE id = ?",
   ).run(goalDatasetPathId, now, now, planId);
   return getTargetPlan(planId)!;
+}
+
+// ─── E-OKH3：指标注入引用痕迹 ───
+
+interface MetricInjectionTraceRow {
+  id: string;
+  workspace_id: string;
+  metric_id: string;
+  metric_name: string;
+  target_scope: string;
+  target_kind: string;
+  target_id: string;
+  injected: number;
+  token_estimate: number;
+  omitted_reason: string | null;
+  created_at: number;
+}
+
+function rowToMetricInjectionTrace(r: MetricInjectionTraceRow): MetricInjectionTrace {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    metricId: r.metric_id,
+    metricName: r.metric_name,
+    targetScope: r.target_scope as "chat" | "workflow",
+    targetKind: r.target_kind,
+    targetId: r.target_id,
+    injected: r.injected === 1,
+    tokenEstimate: r.token_estimate,
+    omittedReason: r.omitted_reason,
+    createdAt: r.created_at,
+  };
+}
+
+/**
+ * 从 MemoryInjectionSnapshot 的 standards source 中提取已注入的 metric ID 列表。
+ * standards source 的 itemIds 混合了 metric ID 和 reference_file ID，
+ * 本函数通过与 workspace 已启用的 metric 定义交集来分离。
+ */
+export function extractInjectedMetricIds(
+  workspaceId: string,
+  snapshot: { sources: Array<{ kind: string; itemIds?: string[]; injected: boolean; tokenEstimate: number; omittedReason?: string | null }> },
+): Array<{ metricId: string; injected: boolean; tokenEstimate: number; omittedReason: string | null }> {
+  const standardsSource = snapshot.sources.find((s) => s.kind === "standards");
+  if (!standardsSource?.itemIds?.length) return [];
+  const metricIds = new Set(listEnabledItemIds(workspaceId, "metric"));
+  return standardsSource.itemIds
+    .filter((id) => metricIds.has(id))
+    .map((metricId) => ({
+      metricId,
+      injected: standardsSource.injected,
+      tokenEstimate: standardsSource.tokenEstimate,
+      omittedReason: standardsSource.omittedReason ?? null,
+    }));
+}
+
+export function recordMetricInjectionTraces(
+  workspaceId: string,
+  targetScope: "chat" | "workflow",
+  targetKind: string,
+  targetId: string,
+  snapshot: { sources: Array<{ kind: string; itemIds?: string[]; injected: boolean; tokenEstimate: number; omittedReason?: string | null }> },
+): MetricInjectionTrace[] {
+  const metricIds = extractInjectedMetricIds(workspaceId, snapshot);
+  if (metricIds.length === 0) return [];
+  const now = Date.now();
+  const traces: MetricInjectionTrace[] = [];
+  const insert = db.prepare(
+    "INSERT INTO metric_injection_traces (id, workspace_id, metric_id, metric_name, target_scope, target_kind, target_id, injected, token_estimate, omitted_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const m of metricIds) {
+    const metric = getMetric(m.metricId);
+    const id = randomUUID();
+    insert.run(
+      id, workspaceId, m.metricId, metric?.name ?? m.metricId,
+      targetScope, targetKind, targetId,
+      m.injected ? 1 : 0, m.tokenEstimate, m.omittedReason, now,
+    );
+    traces.push({
+      id, workspaceId, metricId: m.metricId, metricName: metric?.name ?? m.metricId,
+      targetScope, targetKind, targetId,
+      injected: m.injected, tokenEstimate: m.tokenEstimate, omittedReason: m.omittedReason, createdAt: now,
+    });
+  }
+  return traces;
+}
+
+export function listMetricInjectionTraces(
+  workspaceId: string,
+  opts?: { metricId?: string; targetKind?: string; targetId?: string; limit?: number },
+): MetricInjectionTrace[] {
+  const rawLimit = opts?.limit ?? 100;
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 500) : 100;
+  let sql = "SELECT * FROM metric_injection_traces WHERE workspace_id = ?";
+  const params: (string | number)[] = [workspaceId];
+  if (opts?.metricId) { sql += " AND metric_id = ?"; params.push(opts.metricId); }
+  if (opts?.targetKind) { sql += " AND target_kind = ?"; params.push(opts.targetKind); }
+  if (opts?.targetId) { sql += " AND target_id = ?"; params.push(opts.targetId); }
+  sql += " ORDER BY created_at DESC LIMIT ?";
+  params.push(limit);
+  const rows = db.prepare(sql).all(...params) as unknown as MetricInjectionTraceRow[];
+  return rows.map(rowToMetricInjectionTrace);
+}
+
+export interface BusinessContextInjectionTrace {
+  id: string;
+  workspaceId: string;
+  businessContextId: string;
+  businessContextTitle: string;
+  category: string;
+  targetScope: "chat" | "workflow";
+  targetKind: string;
+  targetId: string;
+  injected: boolean;
+  tokenEstimate: number;
+  omittedReason: string | null;
+  createdAt: number;
+}
+
+interface BusinessContextInjectionTraceRow {
+  id: string;
+  workspace_id: string;
+  business_context_id: string;
+  business_context_title: string;
+  category: string;
+  target_scope: string;
+  target_kind: string;
+  target_id: string;
+  injected: number;
+  token_estimate: number;
+  omitted_reason: string | null;
+  created_at: number;
+}
+
+interface BusinessContextTraceSourceSnapshot {
+  kind: string;
+  itemIds?: string[];
+  injected: boolean;
+  tokenEstimate: number;
+  omittedReason?: string | null;
+}
+
+function rowToBusinessContextInjectionTrace(r: BusinessContextInjectionTraceRow): BusinessContextInjectionTrace {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    businessContextId: r.business_context_id,
+    businessContextTitle: r.business_context_title,
+    category: r.category,
+    targetScope: r.target_scope as "chat" | "workflow",
+    targetKind: r.target_kind,
+    targetId: r.target_id,
+    injected: r.injected === 1,
+    tokenEstimate: r.token_estimate,
+    omittedReason: r.omitted_reason,
+    createdAt: r.created_at,
+  };
+}
+
+export function extractInjectedBusinessContextIds(
+  workspaceId: string,
+  snapshot: { sources: BusinessContextTraceSourceSnapshot[] },
+): Array<{ businessContextId: string; injected: boolean; tokenEstimate: number; omittedReason: string | null }> {
+  const businessContextSource = snapshot.sources.find((s) => s.kind === "businessContext");
+  if (!businessContextSource?.itemIds?.length) return [];
+  const enabledContextIds = new Set(listEnabledItemIds(workspaceId, "business_context"));
+  return businessContextSource.itemIds
+    .filter((id) => enabledContextIds.has(id))
+    .map((businessContextId) => ({
+      businessContextId,
+      injected: businessContextSource.injected,
+      tokenEstimate: businessContextSource.tokenEstimate,
+      omittedReason: businessContextSource.omittedReason ?? null,
+    }));
+}
+
+function getBusinessContextTraceMeta(businessContextId: string): { title: string; category: string } | undefined {
+  return db.prepare("SELECT title, category FROM business_contexts WHERE id = ?")
+    .get(businessContextId) as { title: string; category: string } | undefined;
+}
+
+export function recordBusinessContextInjectionTraces(
+  workspaceId: string,
+  targetScope: "chat" | "workflow",
+  targetKind: string,
+  targetId: string,
+  snapshot: { sources: BusinessContextTraceSourceSnapshot[] },
+): BusinessContextInjectionTrace[] {
+  const businessContextIds = extractInjectedBusinessContextIds(workspaceId, snapshot);
+  if (businessContextIds.length === 0) return [];
+  const now = Date.now();
+  const traces: BusinessContextInjectionTrace[] = [];
+  const insert = db.prepare(
+    "INSERT INTO business_context_injection_traces (id, workspace_id, business_context_id, business_context_title, category, target_scope, target_kind, target_id, injected, token_estimate, omitted_reason, created_at) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)",
+  );
+  for (const context of businessContextIds) {
+    const meta = getBusinessContextTraceMeta(context.businessContextId);
+    const id = randomUUID();
+    const title = meta?.title ?? context.businessContextId;
+    const category = meta?.category ?? "";
+    insert.run(
+      id, workspaceId, context.businessContextId, title, category,
+      targetScope, targetKind, targetId,
+      context.injected ? 1 : 0, context.tokenEstimate, context.omittedReason, now,
+    );
+    traces.push({
+      id,
+      workspaceId,
+      businessContextId: context.businessContextId,
+      businessContextTitle: title,
+      category,
+      targetScope,
+      targetKind,
+      targetId,
+      injected: context.injected,
+      tokenEstimate: context.tokenEstimate,
+      omittedReason: context.omittedReason,
+      createdAt: now,
+    });
+  }
+  return traces;
+}
+
+export function listBusinessContextInjectionTraces(
+  workspaceId: string,
+  opts?: { businessContextId?: string; targetKind?: string; targetId?: string; limit?: number },
+): BusinessContextInjectionTrace[] {
+  const rawLimit = opts?.limit ?? 100;
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 500) : 100;
+  let sql = "SELECT * FROM business_context_injection_traces WHERE workspace_id = ?";
+  const params: (string | number)[] = [workspaceId];
+  if (opts?.businessContextId) { sql += " AND business_context_id = ?"; params.push(opts.businessContextId); }
+  if (opts?.targetKind) { sql += " AND target_kind = ?"; params.push(opts.targetKind); }
+  if (opts?.targetId) { sql += " AND target_id = ?"; params.push(opts.targetId); }
+  sql += " ORDER BY created_at DESC LIMIT ?";
+  params.push(limit);
+  const rows = db.prepare(sql).all(...params) as unknown as BusinessContextInjectionTraceRow[];
+  return rows.map(rowToBusinessContextInjectionTrace);
 }

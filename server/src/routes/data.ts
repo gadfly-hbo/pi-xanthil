@@ -30,6 +30,18 @@ import {
   deleteMemoryItem,
   recordMemoryItemFeedback,
   listProjectedFacts,
+  listMetricTemplates,
+  applyMetricTemplates,
+  detectMetricConflicts,
+  inspectStandardFiles,
+  previewOkhMetricImport,
+  commitOkhMetricImport,
+  exportOkhMetrics,
+  listOkhMetricOntologyLinks,
+  listOkhMetricOntologyLinksByTarget,
+  listOkhMetricOntologyLinksByOntology,
+  replaceOkhMetricOntologyLinks,
+  deleteOkhMetricOntologyLink,
   coerceRiskFlags,
   ingestMemoryCandidate,
   findMemoryItemDuplicate,
@@ -134,6 +146,8 @@ import type {
   KnowledgeDocPatch,
   PromptTemplatePatch,
   CrowdSegmentRuleGroup,
+  OkhMetricOntologyLink,
+  OkhTemplateScenario,
 } from "../types.ts";
 
 /**
@@ -1005,6 +1019,163 @@ dataRouter.get("/api/workspaces/:id/memory/aging-signals", (req, res) => {
   } catch (err) {
     res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }
+});
+
+// ── onto-knowhow · 指标模板池 + 治理（D-OKH1 / D-OKH2）──
+// 模板/冲突/体检均为确定性本地逻辑；标准文件体检只做 stat/access/扩展名，不读取正文，不走 LLM。
+
+const OKH_SCENARIOS = new Set(["retail", "member", "ecommerce", "supply_chain", "finance", "custom"]);
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/templates", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const rawScenario = typeof req.query.scenario === "string" ? req.query.scenario : undefined;
+  const scenario = rawScenario && OKH_SCENARIOS.has(rawScenario) ? rawScenario as OkhTemplateScenario : undefined;
+  res.json(listMetricTemplates(scenario));
+});
+
+dataRouter.post("/api/workspaces/:id/onto-knowhow/templates/apply", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const packId = typeof req.body?.packId === "string" ? req.body.packId : undefined;
+  const templateIds = Array.isArray(req.body?.templateIds)
+    ? req.body.templateIds.filter((x: unknown): x is string => typeof x === "string")
+    : undefined;
+  if (!packId && (!templateIds || templateIds.length === 0)) return res.status(400).json({ error: "packId or templateIds required" });
+  try {
+    res.json(applyMetricTemplates({ workspaceId: req.params.id, packId, templateIds, enable: req.body?.enable !== false }));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/conflicts", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const includeDisabled = req.query.includeDisabled === "true" || req.query.includeDisabled === "1";
+    res.json(detectMetricConflicts(req.params.id, includeDisabled));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/ontologies/:ontologyId/targets/:targetKind/:targetId/metric-links", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const targetKind = req.params.targetKind as OkhMetricOntologyLink["targetKind"];
+    if (targetKind !== "object" && targetKind !== "link" && targetKind !== "logic") {
+      return res.status(400).json({ error: "invalid targetKind" });
+    }
+    res.json(listOkhMetricOntologyLinksByTarget(req.params.id, req.params.ontologyId, targetKind, req.params.targetId));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/ontologies/:ontologyId/metric-links", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    res.json(listOkhMetricOntologyLinksByOntology(req.params.id, req.params.ontologyId));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/standard-health", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    res.json(inspectStandardFiles(req.params.id));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.post("/api/workspaces/:id/onto-knowhow/standard-health/check", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const standardIds = Array.isArray(req.body?.standardIds)
+    ? req.body.standardIds.filter((x: unknown): x is string => typeof x === "string")
+    : undefined;
+  try {
+    res.json(inspectStandardFiles(req.params.id, standardIds));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.post("/api/workspaces/:id/onto-knowhow/import/preview", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const content = typeof req.body?.content === "string" ? req.body.content : "";
+  const format = req.body?.format === "json" ? "json" : req.body?.format === "csv" ? "csv" : null;
+  if (!format) return res.status(400).json({ error: "format must be csv or json" });
+  if (!content.trim()) return res.status(400).json({ error: "content required" });
+  try {
+    res.json(previewOkhMetricImport(req.params.id, content, format));
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.post("/api/workspaces/:id/onto-knowhow/import/commit", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const rows = Array.isArray(req.body?.rows) ? req.body.rows : [];
+  const conflictPolicy = req.body?.conflictPolicy === "create_version" ? "create_version" : "skip";
+  try {
+    res.json(commitOkhMetricImport({ workspaceId: req.params.id, rows, enable: req.body?.enable !== false, conflictPolicy }));
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/export", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const format = req.query.format === "json" ? "json" : "csv";
+  const enabledOnly = req.query.enabledOnly !== "false" && req.query.enabledOnly !== "0";
+  try {
+    const content = exportOkhMetrics(req.params.id, enabledOnly, format);
+    res.setHeader("Content-Type", format === "json" ? "application/json; charset=utf-8" : "text/csv; charset=utf-8");
+    res.setHeader("Content-Disposition", `attachment; filename="onto-knowhow-metrics.${format}"`);
+    res.send(content);
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/metrics/:metricId/ontology-links", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    res.json(listOkhMetricOntologyLinks(req.params.id, req.params.metricId));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+function parseOkhMetricOntologyLinksBody(body: unknown): Array<{ ontologyId: string; targetKind: OkhMetricOntologyLink["targetKind"]; targetId: string }> {
+  const maybeLinks = typeof body === "object" && body !== null && "links" in body
+    ? (body as { links?: unknown }).links
+    : undefined;
+  if (!Array.isArray(maybeLinks)) throw new Error("links must be an array");
+  return maybeLinks.map((raw, index) => {
+    if (typeof raw !== "object" || raw === null) throw new Error(`links[${index}] must be an object`);
+    const link = raw as { ontologyId?: unknown; targetKind?: unknown; targetId?: unknown };
+    if (typeof link.ontologyId !== "string" || !link.ontologyId.trim()) throw new Error(`links[${index}].ontologyId is required`);
+    if (link.targetKind !== "object" && link.targetKind !== "link" && link.targetKind !== "logic") throw new Error(`links[${index}].targetKind is invalid`);
+    if (typeof link.targetId !== "string" || !link.targetId.trim()) throw new Error(`links[${index}].targetId is required`);
+    return { ontologyId: link.ontologyId, targetKind: link.targetKind, targetId: link.targetId };
+  });
+}
+
+dataRouter.put("/api/workspaces/:id/onto-knowhow/metrics/:metricId/ontology-links", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const links = parseOkhMetricOntologyLinksBody(req.body);
+    res.json(replaceOkhMetricOntologyLinks(req.params.id, req.params.metricId, links));
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.delete("/api/workspaces/:id/onto-knowhow/metric-ontology-links/:linkId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json({ ok: deleteOkhMetricOntologyLink(req.params.id, req.params.linkId) });
 });
 
 

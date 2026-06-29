@@ -1,0 +1,73 @@
+--- web/src/components/IndicatorsPane.tsx
++++ web/src/components/IndicatorsPane.tsx
+@@ -806,26 +806,62 @@
+ 
+ function MetricOntologyLinks({ workspaceId, metricId }: { workspaceId: string | null; metricId: string }) {
+   const [links, setLinks] = useState<OkhMetricOntologyLink[]>([]);
++  const [adding, setAdding] = useState(false);
++  const [ontologies, setOntologies] = useState<any[]>([]);
++  const [objects, setObjects] = useState<any[]>([]);
++  const [selOntologyId, setSelOntologyId] = useState("");
++  const [selTargetId, setSelTargetId] = useState("");
+   
+   const load = useCallback(() => {
+     if (!workspaceId) return;
+     dataApi.listOkhMetricOntologyLinks(workspaceId, metricId).then(setLinks).catch(e => console.error(e));
+   }, [workspaceId, metricId]);
+ 
+   useEffect(() => { load(); }, [load]);
++  useEffect(() => { if (adding && workspaceId) vizApi.listOntologies(workspaceId).then(setOntologies).catch(e=>console.error(e)); }, [adding, workspaceId]);
++  useEffect(() => { if (selOntologyId) vizApi.listObjects(selOntologyId).then(setObjects).catch(e=>console.error(e)); else setObjects([]); }, [selOntologyId]);
+ 
+   if (!workspaceId) return null;
+ 
++  const handleAdd = async () => {
++    if (!selOntologyId || !selTargetId) return;
++    try {
++      const newLinks = [...links, { ontologyId: selOntologyId, targetKind: "object" as const, targetId: selTargetId }];
++      await dataApi.replaceOkhMetricOntologyLinks(workspaceId, metricId, newLinks);
++      setAdding(false); setSelOntologyId(""); setSelTargetId("");
++      load();
++    } catch (e) { window.alert(String(e)); }
++  };
++
++  const handleRemove = async (linkId: string) => {
++    try {
++      await fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/metric-ontology-links/${encodeURIComponent(linkId)}`, { method: "DELETE" });
++      load();
++    } catch(e) { window.alert(String(e)); }
++  };
++
+   return (
+     <div className="mt-3 pt-3 border-t border-neutral-100 dark:border-neutral-800/60 flex items-start gap-2">
+       <span className="text-[11px] text-neutral-400 font-medium whitespace-nowrap mt-1">关联本体对象:</span>
+-      <div className="flex flex-wrap gap-1.5">
+-        {links.length === 0 ? (
+-          <span className="text-[11px] text-neutral-400 mt-1">无</span>
+-        ) : links.map(link => (
+-          <a key={link.id} href={`/?workspaceId=${workspaceId}&tab=ontology&ontologyId=${link.ontologyId}&targetId=${link.targetId}`} target="_blank" rel="noreferrer" className="inline-flex items-center px-1.5 py-0.5 rounded border border-neutral-200 bg-neutral-50 text-[10.5px] text-neutral-600 hover:text-blue-600 hover:border-blue-200 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300 dark:hover:text-blue-400">
+-            {link.targetKind === "object" ? "实体" : link.targetKind === "link" ? "关系" : "逻辑"} {link.targetId.slice(0, 6)} ↗
+-          </a>
++      <div className="flex flex-wrap items-center gap-1.5">
++        {links.map(link => (
++          <div key={link.id} className="inline-flex items-center gap-1 px-1.5 py-0.5 rounded border border-neutral-200 bg-neutral-50 text-[10.5px] text-neutral-600 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
++            <a href={`/?workspaceId=${workspaceId}&tab=ontology&ontologyId=${link.ontologyId}&targetId=${link.targetId}`} target="_blank" rel="noreferrer" className="hover:text-blue-600 hover:underline dark:hover:text-blue-400">
++              {link.targetKind === "object" ? "实体" : link.targetKind === "link" ? "关系" : "逻辑"} {link.targetId.slice(0, 6)} ↗
++            </a>
++            <button onClick={() => void handleRemove(link.id)} className="text-neutral-400 hover:text-red-500 ml-0.5">&times;</button>
++          </div>
+         ))}
++        {!adding ? (
++          <button onClick={() => setAdding(true)} className="inline-flex items-center gap-1 rounded border border-dashed border-neutral-300 bg-white px-2 py-0.5 text-[10.5px] text-neutral-500 hover:border-neutral-400 hover:text-neutral-700 dark:border-neutral-700 dark:bg-transparent dark:hover:border-neutral-500 dark:hover:text-neutral-300">
++            + 添加关联
++          </button>
++        ) : (
++          <div className="flex items-center gap-1 ml-1">
++            <select className="rounded border border-neutral-200 bg-white px-1 py-0.5 text-[10.5px] outline-none dark:border-neutral-700 dark:bg-neutral-900" value={selOntologyId} onChange={e => { setSelOntologyId(e.target.value); setSelTargetId(""); }}><option value="">选本体...</option>{ontologies.map(o => <option key={o.id} value={o.id}>{o.name}</option>)}</select>
++            <select className="rounded border border-neutral-200 bg-white px-1 py-0.5 text-[10.5px] outline-none dark:border-neutral-700 dark:bg-neutral-900" value={selTargetId} onChange={e => setSelTargetId(e.target.value)} disabled={!selOntologyId}><option value="">选对象...</option>{objects.map(o => <option key={o.id} value={o.id}>{o.nameCn}</option>)}</select>
++            <button onClick={() => void handleAdd()} disabled={!selOntologyId || !selTargetId} className="rounded bg-blue-50 px-2 py-0.5 text-[10.5px] text-blue-600 hover:bg-blue-100 disabled:opacity-50 dark:bg-blue-900/30 dark:text-blue-400 dark:hover:bg-blue-900/50">确定</button>
++            <button onClick={() => setAdding(false)} className="rounded px-2 py-0.5 text-[10.5px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800">取消</button>
++          </div>
++        )}
+       </div>
+     </div>

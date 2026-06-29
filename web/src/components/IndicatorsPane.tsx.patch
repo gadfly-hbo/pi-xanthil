@@ -1,0 +1,48 @@
+--- web/src/components/IndicatorsPane.tsx
++++ web/src/components/IndicatorsPane.tsx
+@@ -1,5 +1,6 @@
+ import { useCallback, useEffect, useMemo, useState } from "react";
+-import { BookOpen, Calculator, CheckCircle2, FileText, Pencil, Plus, RefreshCw, Trash2 } from "lucide-react";
++import { BookOpen, Calculator, CheckCircle2, FileText, Pencil, Plus, RefreshCw, Trash2, Library, ShieldAlert, Upload, Download, History, AlertTriangle } from "lucide-react";
+ import { api } from "@/lib/api";
+ import { sharedApi } from "@/lib/api/shared";
++import { dataApi } from "@/lib/api/data";
++import { vizApi } from "@/lib/api/viz";
+ import { cn } from "@/lib/cn";
+ import type { AnalysisStandard, AnalysisStandardInput, AnalysisStandardKind, MetricDefinition } from "@/types";
++import type { OkhMetricTemplatePack, OkhMetricTemplate, OkhMetricConflict, OkhStandardHealth, OkhMetricImportPreview, MetricInjectionTrace } from "@/types";
+ 
+@@ -148,3 +153,3 @@
+ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceId: string | null; onStandardsChanged?: () => void }) {
+-  const [view, setView] = useState<"manage" | "readme">("manage");
++  const [view, setView] = useState<"manage" | "templates" | "governance" | "import_export" | "traces" | "readme">("manage");
+   const [standards, setStandards] = useState<AnalysisStandard[]>([]);
+@@ -300,4 +305,8 @@
+           {[
+-            { id: "manage" as const, label: "维护" },
+-            { id: "readme" as const, label: "说明" },
++            { id: "manage" as const, label: "口径维护", icon: Calculator },
++            { id: "templates" as const, label: "模板库", icon: Library },
++            { id: "governance" as const, label: "冲突与体检", icon: ShieldAlert },
++            { id: "import_export" as const, label: "导入/导出", icon: Upload },
++            { id: "traces" as const, label: "使用痕迹", icon: History },
++            { id: "readme" as const, label: "说明", icon: BookOpen },
+           ].map((tab) => (
+@@ -314,3 +323,3 @@
+             >
+-              {tab.label}
++              <span className="flex items-center gap-1.5"><tab.icon className="h-3.5 w-3.5" />{tab.label}</span>
+             </button>
+@@ -322,4 +331,12 @@
+         {view === "readme" ? (
+           <OntoKnowhowReadme />
++        ) : view === "templates" ? (
++          <MetricTemplatesSection workspaceId={workspaceId} onApply={refresh} />
++        ) : view === "governance" ? (
++          <GovernanceSection workspaceId={workspaceId} />
++        ) : view === "import_export" ? (
++          <ImportExportSection workspaceId={workspaceId} onCommit={refresh} />
++        ) : view === "traces" ? (
++          <UsageTracesSection workspaceId={workspaceId} />
+         ) : (<>
+         {form && (

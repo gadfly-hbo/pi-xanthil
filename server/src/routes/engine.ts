@@ -99,6 +99,7 @@ import {
   deleteCollectFolder,
 } from "../db/engine.ts";
 import { finishFlowNodeRun, startFlowNodeRun } from "../db/shared.ts";
+import { recordBusinessContextInjectionTraces, recordMetricInjectionTraces } from "../db/viz.ts";
 import { readTree, readFlowFile, writeFlowFile, copyLocalFolderIntoFlow, copyFlowSnapshot, inferWorkflow, moveAllFiles } from "../flow-fs.ts";
 import { normalizeWorkflowModels, normalizeWorkflowSkills, type WorkflowLike } from "../workflow-config.ts";
 import { withWorkspacePathStatuses } from "../workspace-path-status.ts";
@@ -3367,6 +3368,8 @@ export async function handleSendFlow(
   const memoryRetrievalContext = buildFlowMemoryRetrievalContext(flow.id, commandExpansion.expandedText);
   const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow", {}, memoryRetrievalContext);
   recordMemoryInjectionUsage(flow.workspaceId, memoryInjection);
+  recordMetricInjectionTraces(flow.workspaceId, "workflow", "flow", flow.id, memoryInjection);
+  recordBusinessContextInjectionTraces(flow.workspaceId, "workflow", "flow", flow.id, memoryInjection);
 
   addFlowMessage(flow.id, "user", [{ type: "text", text: msg.text }]);
   traceFlowEvent(flow.id, "run_start", "running", msg.text.slice(0, 240), { model: msg.model, memoryInjection });
@@ -3526,6 +3529,8 @@ export async function handleExecuteMultiAgent(
   const memoryRetrievalContext = buildFlowMemoryRetrievalContext(flow.id, memoryQuery || flow.name);
   const memoryInjection = buildMemoryInjectionSnapshot(flow.workspaceId, msg.injectRulesPrompt, "workflow", {}, memoryRetrievalContext);
   recordMemoryInjectionUsage(flow.workspaceId, memoryInjection);
+  recordMetricInjectionTraces(flow.workspaceId, "workflow", "flow_run", runRow.id, memoryInjection);
+  recordBusinessContextInjectionTraces(flow.workspaceId, "workflow", "flow_run", runRow.id, memoryInjection);
   traceFlowEvent(flow.id, "run_start", "running", "multi-agent execution", { model: msg.model, inputs: msg.inputs, memoryInjection, resumeFromNodeId: msg.resumeFromNodeId }, runRow.id);
   send(ws, { type: "run_start", flowId: flow.id, runId: clientRunId });
 
@@ -4177,4 +4182,3 @@ engineRouter.post("/api/simulation-lab/run", async (req, res) => {
     }
   }
 });
-

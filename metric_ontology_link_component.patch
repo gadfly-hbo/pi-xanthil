@@ -1,0 +1,8 @@
+--- web/src/components/IndicatorsPane.tsx
++++ web/src/components/IndicatorsPane.tsx
+@@ -382,7 +382,9 @@
+         </div>
+ 
+-        <StandardSection title="指标口径" icon={Calculator} items={metrics} enablements={enablements} workspaceId={workspaceId} onToggle={toggleMetric} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={removeMetric} />
++        <StandardSection title="指标口径" icon={Calculator} items={metrics} enablements={enablements} workspaceId={workspaceId} onToggle={toggleMetric} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={removeMetric} renderExtra={(s) => s.kind === "metric" ? <MetricOntologyLinks workspaceId={workspaceId} metricId={s.id} /> : null} />
+         <StandardSection title="参照标准文件" icon={FileText} items={files} enablements={enablements} workspaceId={workspaceId} onToggle={toggle} onEdit={(s) => { setError(""); setForm(toForm(s)); }} onDelete={remove} />

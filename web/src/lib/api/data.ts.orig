@@ -422,14 +422,6 @@ export const dataApi = {
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/metrics/${encodeURIComponent(metricId)}/ontology-links`)
       .then(json<OkhMetricOntologyLink[]>),
 
-  listOkhMetricOntologyLinksByTarget: (workspaceId: string, ontologyId: string, targetKind: OkhMetricOntologyLink["targetKind"], targetId: string) =>
-    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/ontologies/${encodeURIComponent(ontologyId)}/targets/${encodeURIComponent(targetKind)}/${encodeURIComponent(targetId)}/metric-links`)
-      .then(json<OkhMetricOntologyLink[]>),
-
-  listOkhMetricOntologyLinksByOntology: (workspaceId: string, ontologyId: string) =>
-    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/ontologies/${encodeURIComponent(ontologyId)}/metric-links`)
-      .then(json<OkhMetricOntologyLink[]>),
-
   replaceOkhMetricOntologyLinks: (
     workspaceId: string,
     metricId: string,

@@ -1,7 +1,9 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Activity, AlertTriangle, BellRing, Bot, CheckCircle2, Clock3, GitBranch, ListTree, MousePointerClick, RefreshCw, Route, ScrollText, ServerCrash, Sparkles, Workflow, XCircle } from "lucide-react";
+import { Activity, AlertTriangle, BellRing, BookOpen, Bot, CheckCircle2, Clock3, GitBranch, ListTree, MousePointerClick, RefreshCw, Route, ScrollText, ServerCrash, ShieldAlert, Sparkles, Workflow, XCircle } from "lucide-react";
 import { api } from "@/lib/api";
 import type { MemoryFailureAttribution, MemoryInjectionRecord, MemoryProposal, TraceEvent, TraceFailure, TraceOverview, TraceRuleSuggestion, TraceTimelineItem, TraceTrendPoint } from "@/types";
+
+type ViewMode = "dashboard" | "readme";
 
 const emptyOverview: TraceOverview = {
   todaySessions: 0,
@@ -53,7 +55,94 @@ function toneForEvent(status: string) {
   return "text-neutral-400";
 }
 
+const TRACE_FEATURES = [
+  { title: "运行总览", body: "汇总当天 session、workflow run、运行中任务、失败 run 与最近活动时间。" },
+  { title: "事件流", body: "按 DB / API / WebSocket 记录展示最近 trace event，支持按 event、status 和关键词过滤。" },
+  { title: "失败聚合", body: "把同类失败聚合成 failure pattern，按 errorType、来源和最近发生时间辅助定位问题。" },
+  { title: "Timeline 回放", body: "点击事件后按 targetKind / targetId 拉取 session 或 flow run 的上下文时间线。" },
+  { title: "规则提炼", body: "从 trace 证据生成规则候选，经过暂存、提交审批、人工批准后才写入记忆库。" },
+  { title: "记忆注入检查器", body: "查看最近注入快照中的来源、token 估算、是否选中以及被忽略原因。" },
+  { title: "检索失败诊断", body: "展示记忆检索没有命中或被省略的归因，帮助判断是缺少记忆、检索弱还是 token 预算问题。" },
+  { title: "留存清理", body: "支持按 7 / 14 / 30 / 90 天保留窗口清理旧 trace event。" },
+];
+
+const TRACE_USAGE_STEPS = [
+  { title: "先看失败", body: "优先查看“失败事件”和“失败分析”，确认是 workflow 失败、runtime 异常还是记忆注入问题。" },
+  { title: "再看时间线", body: "点击最近事件流中的一条记录，回放同一 target 下的上下文，避免只看单点报错。" },
+  { title: "最后沉淀规则", body: "只有当失败模式可复用、证据明确时，才生成规则候选并提交审批。" },
+];
+
+const TRACE_ITERATION_IDEAS = [
+  { title: "分面视图", body: "把当前大看板拆成运行、失败、记忆注入、规则提炼等子视图，降低首屏信息密度。" },
+  { title: "事件详情抽屉", body: "点击事件后展示结构化 detail、关联 target、上下游事件和可复制的诊断摘要。" },
+  { title: "失败闭环状态", body: "为 failure pattern 增加待处理、已修复、已沉淀、忽略等状态，减少重复排查。" },
+  { title: "自动巡检建议", body: "用纯规则或已脱敏元数据统计提示异常峰值，但不读取 draw_data 原始明细。" },
+];
+
+function TraceReadme() {
+  return (
+    <div className="space-y-4">
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="flex items-start gap-3">
+          <BookOpen className="mt-0.5 h-4 w-4 shrink-0 text-neutral-700 dark:text-neutral-200" />
+          <div className="min-w-0">
+            <h2 className="text-[15px] font-semibold text-neutral-900 dark:text-neutral-100">trace 是什么</h2>
+            <p className="mt-2 text-[13px] leading-6 text-neutral-600 dark:text-neutral-300">
+              trace 是 pi-xanthil 的运行追踪层，记录 session、workflow、runtime、message 等目标的关键事件。它不是业务数据仓库，而是排查系统运行、失败归因和记忆注入效果的证据面。
+            </p>
+          </div>
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">现在已经实现了什么</h2>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-4">
+          {TRACE_FEATURES.map((item) => (
+            <div key={item.title} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+              <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{item.title}</h3>
+              <p className="mt-1 text-[11.5px] leading-5 text-neutral-600 dark:text-neutral-300">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">怎么用</h2>
+        <div className="mt-3 grid gap-2 sm:grid-cols-3">
+          {TRACE_USAGE_STEPS.map((item) => (
+            <div key={item.title} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+              <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{item.title}</h3>
+              <p className="mt-1 text-[11.5px] leading-5 text-neutral-600 dark:text-neutral-300">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h2 className="text-[14px] font-semibold text-neutral-900 dark:text-neutral-100">后续值得优化的方向</h2>
+        <p className="mt-1 text-[12px] text-neutral-500">下面是本次检查发现的迭代建议，不表示已经上线。</p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2">
+          {TRACE_ITERATION_IDEAS.map((item) => (
+            <div key={item.title} className="rounded-lg border border-neutral-200 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+              <h3 className="text-[12px] font-semibold text-neutral-900 dark:text-neutral-100">{item.title}</h3>
+              <p className="mt-1 text-[11.5px] leading-5 text-neutral-600 dark:text-neutral-300">{item.body}</p>
+            </div>
+          ))}
+        </div>
+      </section>
+
+      <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
+        <h2 className="flex items-center gap-2 text-[14px] font-semibold"><ShieldAlert className="h-4 w-4" /> 安全边界</h2>
+        <p className="mt-2 text-[12px] leading-5">
+          trace 模块只应展示运行元数据、状态、错误类型、target 信息和经后端控制的脱敏 detail。规则提炼和记忆诊断可以使用 trace 证据，但禁止把 draw_data 原始行级内容、客户明细、订单样本或未脱敏日志送入 LLM。
+        </p>
+      </section>
+    </div>
+  );
+}
+
 export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string | null; onRulesChanged?: () => void }) {
+  const [view, setView] = useState<ViewMode>("dashboard");
   const [overview, setOverview] = useState<TraceOverview>(emptyOverview);
   const [events, setEvents] = useState<TraceEvent[]>([]);
   const [failures, setFailures] = useState<TraceFailure[]>([]);
@@ -225,8 +314,8 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
             <p className="mt-1 max-w-2xl text-[12.5px] text-neutral-500 dark:text-neutral-400">追踪 pi-xanthil 自身 DB / API / WebSocket 事件，定位 workflow、session、agent step 的运行状态与失败模式。</p>
           </div>
           <div className="flex flex-wrap items-center gap-2">
-            <button onClick={refresh} disabled={!workspaceId || loading} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-2 text-[12px] font-medium text-neutral-700 shadow-sm hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新 trace</button>
-            <div className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
+            {view === "dashboard" && <button onClick={refresh} disabled={!workspaceId || loading} className="inline-flex items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-3 py-2 text-[12px] font-medium text-neutral-700 shadow-sm hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300"><RefreshCw className={`h-3.5 w-3.5 ${loading ? "animate-spin" : ""}`} /> 刷新 trace</button>}
+            {view === "dashboard" && <div className="inline-flex items-center gap-1 rounded-md border border-neutral-200 bg-white shadow-sm dark:border-neutral-700 dark:bg-neutral-900">
               <select value={pruneRetainDays} onChange={(e) => setPruneRetainDays(Number(e.target.value))} className="h-8 rounded-l-md border-0 bg-transparent pl-2 pr-1 text-[12px] text-neutral-600 outline-none dark:text-neutral-300">
                 <option value={7}>7 天</option>
                 <option value={14}>14 天</option>
@@ -234,13 +323,30 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
                 <option value={90}>90 天</option>
               </select>
               <button onClick={() => void handlePrune()} disabled={!workspaceId || pruning} className="h-8 rounded-r-md border-l border-neutral-200 px-2.5 text-[12px] font-medium text-neutral-600 hover:bg-neutral-50 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800">{pruning ? "清理中…" : "清理旧事件"}</button>
-            </div>
+            </div>}
           </div>
+        </div>
+
+        <div className="flex w-fit flex-wrap gap-1 rounded-lg border border-neutral-200 bg-white p-1 text-[12px] shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+          {[
+            { id: "dashboard" as const, label: "运行看板", icon: Activity },
+            { id: "readme" as const, label: "说明", icon: BookOpen },
+          ].map((tab) => (
+            <button
+              key={tab.id}
+              onClick={() => setView(tab.id)}
+              className={`flex items-center gap-1.5 rounded-md px-3 py-1.5 transition-colors ${view === tab.id ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900" : "text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"}`}
+            >
+              <tab.icon className="h-3.5 w-3.5" />
+              {tab.label}
+            </button>
+          ))}
         </div>
 
         {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30">{error}</div>}
         {writeResult && <div className="rounded-md border border-emerald-200 bg-emerald-50 px-3 py-2 text-[12px] text-emerald-700 dark:border-emerald-900 dark:bg-emerald-950/30 dark:text-emerald-300">{writeResult}</div>}
 
+        {view === "readme" ? <TraceReadme /> : <>
         <div className="flex flex-wrap items-center gap-2 rounded-xl border border-neutral-200 bg-white/80 p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-900/70">
           <input value={keyword} onChange={(event) => setKeyword(event.target.value)} placeholder="搜索事件 / 失败 / target..." className="h-8 min-w-56 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] outline-none dark:border-neutral-700" />
           <select value={eventTypeFilter} onChange={(event) => setEventTypeFilter(event.target.value)} className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] dark:border-neutral-700">{eventTypes.map((type) => <option key={type} value={type}>event: {type}</option>)}</select>
@@ -342,6 +448,7 @@ export function TracePane({ workspaceId, onRulesChanged }: { workspaceId: string
             </div>
           </section>
         </div>
+        </>}
       </div>
     </div>
   );

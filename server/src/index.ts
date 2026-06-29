@@ -51,6 +51,10 @@ import {
   createBusinessContext,
   updateBusinessContext,
   deleteBusinessContext,
+  listBusinessContextConflicts,
+  previewBusinessContextImport,
+  commitBusinessContextImport,
+  exportBusinessContexts,
   buildEnabledCasesPrompt,
   listAnalysisCases,
   createAnalysisCase,
@@ -179,6 +183,7 @@ import { buildModelLabPrompt, SUPPORTED_MODELS, type ModelLabId } from "./model-
 import { buildRegisteredPathContext, resolveOutputTarget } from "./output-paths.ts";
 import { listSkills, parseRequestedSkillPaths, validateSkillPaths } from "./skills.ts";
 import { recordSkillActivationForRun } from "./db/engine.ts";
+import { listBusinessContextInjectionTraces, recordBusinessContextInjectionTraces, recordMetricInjectionTraces } from "./db/viz.ts";
 import { retrieveSkills } from "./skill-retrieval.ts";
 import { runAutonomousTask } from "./autonomous-runner.ts";
 import { getSessionTokenStats, getWorkspaceTodayTokenStats, getWorkspaceTokenStats, listWorkspaceTokenUsageStats, trackSessionWorkspaceUsage, trackUsageEvent } from "./cache.ts";
@@ -1241,12 +1246,94 @@ function parseBusinessContextInput(body: unknown): { ok: true; value: import("./
   const category = BUSINESS_CONTEXT_CATEGORIES.includes(b.category as never)
     ? (b.category as import("./db.ts").BusinessContextInput["category"])
     : "status";
-  return { ok: true, value: { category, title, content: String(b.content ?? "").trim() } };
+  const validFrom = parseBusinessContextDate(b.validFrom ?? b.valid_from);
+  if (validFrom === undefined) return { ok: false, error: "validFrom invalid" };
+  const validUntil = parseBusinessContextDate(b.validUntil ?? b.valid_until);
+  if (validUntil === undefined) return { ok: false, error: "validUntil invalid" };
+  return {
+    ok: true,
+    value: {
+      category,
+      title,
+      content: String(b.content ?? "").trim(),
+      source: String(b.source ?? "").trim(),
+      owner: String(b.owner ?? "").trim(),
+      validFrom: validFrom ?? null,
+      validUntil: validUntil ?? null,
+    },
+  };
+}
+
+function parseBusinessContextDate(value: unknown): number | null | undefined {
+  if (value === undefined || value === null || value === "") return null;
+  if (typeof value === "number" && Number.isFinite(value)) return value;
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  if (!trimmed) return null;
+  if (/^\d+$/.test(trimmed)) return Number(trimmed);
+  const parsed = Date.parse(trimmed);
+  return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseBusinessContextFormat(value: unknown): import("./types.ts").BusinessContextImportFormat {
+  return value === "csv" ? "csv" : "json";
+}
+
+function parseBusinessContextRows(value: unknown): import("./types.ts").BusinessContextImportRow[] {
+  return Array.isArray(value) ? value as import("./types.ts").BusinessContextImportRow[] : [];
 }
 
 app.get("/api/workspaces/:id/business-contexts", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   res.json(listBusinessContexts(req.params.id));
+});
+
+app.get("/api/workspaces/:id/business-contexts/traces", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const { businessContextId, targetKind, targetId, limit } = req.query;
+  res.json(listBusinessContextInjectionTraces(
+    req.params.id,
+    {
+      businessContextId: typeof businessContextId === "string" ? businessContextId : undefined,
+      targetKind: typeof targetKind === "string" ? targetKind : undefined,
+      targetId: typeof targetId === "string" ? targetId : undefined,
+      limit: typeof limit === "string" ? parseInt(limit, 10) : undefined,
+    }
+  ));
+});
+
+
+app.get("/api/workspaces/:id/business-contexts/conflicts", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  res.json(listBusinessContextConflicts(req.params.id));
+});
+
+app.post("/api/workspaces/:id/business-contexts/import/preview", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const content = String(req.body?.content ?? "");
+  if (!content.trim()) return res.status(400).json({ error: "content required" });
+  res.json(previewBusinessContextImport(req.params.id, content, parseBusinessContextFormat(req.body?.format)));
+});
+
+app.post("/api/workspaces/:id/business-contexts/import/commit", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const conflictPolicy = req.body?.conflictPolicy === "create_version" ? "create_version" : "skip";
+  res.json(commitBusinessContextImport({
+    workspaceId: req.params.id,
+    rows: parseBusinessContextRows(req.body?.rows),
+    enable: req.body?.enable !== false,
+    conflictPolicy,
+  }));
+});
+
+app.get("/api/workspaces/:id/business-contexts/export", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const format = parseBusinessContextFormat(req.query.format);
+  const enabledOnly = req.query.enabledOnly !== "false";
+  const out = exportBusinessContexts(req.params.id, enabledOnly, format);
+  res.setHeader("content-type", format === "csv" ? "text/csv; charset=utf-8" : "application/json; charset=utf-8");
+  res.setHeader("Content-Disposition", `attachment; filename="business-contexts.${format}"`);
+  res.send(out);
 });
 
 app.post("/api/workspaces/:id/business-contexts", (req, res) => {
@@ -5266,6 +5353,8 @@ async function handleSend(
   };
   const memoryInjection = buildMemoryInjectionSnapshot(session.workspaceId, msg.injectRulesPrompt, "chat", {}, chatRetrievalCtx);
   recordMemoryInjectionUsage(session.workspaceId, memoryInjection);
+  recordMetricInjectionTraces(session.workspaceId, "chat", "session", session.id, memoryInjection);
+  recordBusinessContextInjectionTraces(session.workspaceId, "chat", "session", session.id, memoryInjection);
 
   // Persist the user turn immediately (original text, without injected context).
   addMessage(session.id, "user", [{ type: "text", text: msg.text }]);

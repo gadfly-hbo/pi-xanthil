@@ -1,0 +1,13 @@
+--- web/src/lib/api/data.ts
++++ web/src/lib/api/data.ts
+@@ -423,6 +423,10 @@
+     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/metrics/${encodeURIComponent(metricId)}/ontology-links`)
+       .then(json<OkhMetricOntologyLink[]>),
+ 
++  listOkhMetricOntologyLinksByTarget: (workspaceId: string, ontologyId: string, targetKind: OkhMetricOntologyLink["targetKind"], targetId: string) =>
++    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/ontologies/${encodeURIComponent(ontologyId)}/targets/${encodeURIComponent(targetKind)}/${encodeURIComponent(targetId)}/metric-links`)
++      .then(json<OkhMetricOntologyLink[]>),
++
+   replaceOkhMetricOntologyLinks: (
+     workspaceId: string,
+     metricId: string,

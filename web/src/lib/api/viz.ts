@@ -8,6 +8,7 @@ import type {
   LinkKind,
   MetricDefinition,
   MetricDefinitionInput,
+  MetricInjectionTrace,
   OntologyGraph,
   LogicRule,
   LogicRuleInput,
@@ -60,6 +61,21 @@ export interface OntoExtractResult {
     totalIssues: number;
     issues: Array<{ severity: "fatal" | "error" | "warning" | "info"; code: string; message: string }>;
   };
+}
+
+export interface BusinessContextInjectionTrace {
+  id: string;
+  workspaceId: string;
+  businessContextId: string;
+  businessContextTitle: string;
+  category: string;
+  targetScope: "chat" | "workflow";
+  targetKind: string;
+  targetId: string;
+  injected: boolean;
+  tokenEstimate: number;
+  omittedReason: string | null;
+  createdAt: number;
 }
 
 const jsonBody = (method: string, body?: unknown): RequestInit => ({
@@ -136,6 +152,28 @@ export const vizApi = {
     fetch(`/api/metrics/${encodeURIComponent(metricId)}`, jsonBody("DELETE")).then(json<{ success: boolean }>),
   backfillMetricsFromStandards: (workspaceId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/metrics/backfill-from-standards`, jsonBody("POST")).then(json<{ migrated: number; skipped: number }>),
+
+  // E-OKH3：指标注入引用痕迹
+  listMetricInjectionTraces: (workspaceId: string, opts?: { metricId?: string; targetKind?: string; targetId?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.metricId) params.set("metricId", opts.metricId);
+    if (opts?.targetKind) params.set("targetKind", opts.targetKind);
+    if (opts?.targetId) params.set("targetId", opts.targetId);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/metric-injection-traces${qs ? `?${qs}` : ""}`).then(json<MetricInjectionTrace[]>);
+  },
+
+  // E-BC2：业务环境注入引用痕迹
+  listBusinessContextInjectionTraces: (workspaceId: string, opts?: { businessContextId?: string; targetKind?: string; targetId?: string; limit?: number }) => {
+    const params = new URLSearchParams();
+    if (opts?.businessContextId) params.set("businessContextId", opts.businessContextId);
+    if (opts?.targetKind) params.set("targetKind", opts.targetKind);
+    if (opts?.targetId) params.set("targetId", opts.targetId);
+    if (opts?.limit) params.set("limit", String(opts.limit));
+    const qs = params.toString();
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/business-context-injection-traces${qs ? `?${qs}` : ""}`).then(json<BusinessContextInjectionTrace[]>);
+  },
 
   // ---- Logic Rule（本体形式化规则层，P6）----
   listLogicRules: (oid: string) =>
