@@ -6,6 +6,7 @@
   "entry": "market_basket.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["basket", "association", "affinity", "python-analysis"],
   "input": {
     "accept": [
       ".csv"

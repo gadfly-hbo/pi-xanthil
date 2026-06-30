@@ -10,7 +10,7 @@ const db = await import("./db.ts");
 const data = await import("./db/data.ts");
 const { importAggregateDataset, autoTagDictionary, createDefaultSegment } = await import("./crowd-aggregate.ts");
 const { normalizeEnumValue, normalizeRow } = await import("./crowd-normalize.ts");
-const { computeFieldProfiles, computeTagDetailFieldProfiles, crowdFieldProfilesToLlmAggregateCsv } = await import("./crowd-import.ts");
+const { canExportLlmAggregateCsv, computeFieldProfiles, computeTagDetailFieldProfiles, crowdFieldProfilesToLlmAggregateCsv } = await import("./crowd-import.ts");
 
 const workspace = db.createWorkspace("test-aggregate");
 const otherWs = db.createWorkspace("other-ws");
@@ -189,6 +189,34 @@ test("computeTagDetailFieldProfiles applies type-level top rules and ignores tgi
   assert.deepEqual(category?.topValues.map((value) => value.value), ["裤装", "T恤", "卫衣"]);
   assert.deepEqual(city?.topValues.map((value) => value.value), ["二线城市"]);
   assert.equal(category?.topValues[0]?.ratio, 0.374);
+});
+
+test("computeTagDetailFieldProfiles accepts dynamic ratio column names", () => {
+  const columns = ["标签类型", "标签", "近1年-整体-抖音-占比", "近1年-整体-抖音-tgi", "col_5", "col_6"];
+  const rows = [
+    { 标签类型: "电商品类成交偏好", 标签: "休闲裤", "近1年-整体-抖音-占比": "37.3534%", "近1年-整体-抖音-tgi": 188, col_5: "0.00001", col_6: "228" },
+    { 标签类型: "电商品类成交偏好", 标签: "T恤", "近1年-整体-抖音-占比": "20%", "近1年-整体-抖音-tgi": 120, col_5: "0.00002", col_6: "199" },
+    { 标签类型: "电商品类成交偏好", 标签: "卫衣", "近1年-整体-抖音-占比": "10%", "近1年-整体-抖音-tgi": 110, col_5: "0.00003", col_6: "180" },
+    { 标签类型: "电商品类成交偏好", 标签: "外套", "近1年-整体-抖音-占比": "5%", "近1年-整体-抖音-tgi": 100, col_5: "0.00004", col_6: "160" },
+    { 标签类型: "城市", 标签: "二线城市", "近1年-整体-抖音-占比": "12.3618%", "近1年-整体-抖音-tgi": 98, col_5: "0.00005", col_6: "150" },
+    { 标签类型: "城市", 标签: "一线城市", "近1年-整体-抖音-占比": "8%", "近1年-整体-抖音-tgi": 90, col_5: "0.00006", col_6: "140" },
+  ];
+  const profiles = computeTagDetailFieldProfiles({ columns, rows });
+  assert.ok(profiles);
+  assert.equal(canExportLlmAggregateCsv(profiles), true);
+  assert.deepEqual(profiles.map((profile) => profile.field), ["电商品类成交偏好", "城市"]);
+  assert.deepEqual(profiles[0]?.topValues.map((value) => value.value), ["休闲裤", "T恤", "卫衣"]);
+  assert.deepEqual(profiles[1]?.topValues.map((value) => value.value), ["二线城市"]);
+});
+
+test("canExportLlmAggregateCsv rejects generic field-profile fallback", () => {
+  const profiles = computeFieldProfiles({
+    columns: ["标签类型", "标签", "近1年-整体-抖音-占比", "近1年-整体-抖音-tgi", "col_5", "col_6"],
+    rows: [
+      { 标签类型: "电商品类成交偏好", 标签: "休闲裤", "近1年-整体-抖音-占比": "37.3534%", "近1年-整体-抖音-tgi": 188, col_5: "0.00001", col_6: "228" },
+    ],
+  });
+  assert.equal(canExportLlmAggregateCsv(profiles), false);
 });
 
 test("crowdFieldProfilesToLlmAggregateCsv exports only aggregate LLM input columns", () => {

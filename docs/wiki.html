@@ -290,6 +290,318 @@ const DOMAINS = {
    · 一个阶段(如 P0)全部 done、要进下阶段时 → 把这批 done 的成果汇总成 CHANGELOG 一条版本记录，
      再从 TASKS 删除这些 done 条目（changelog 永久留档，派发区清空换新阶段任务）。   */
 const TASKS = [
+  // ════ 【控制·tool-use 治理中枢专题】（Infra 总控拆卡 2026-06-30；来源=控制台 tool-use 核心模块审视 + 用户补充“tools 承载数据分析 Python 固化代码，后续工具会持续增长，需要标签与搜索”）。定位：把 tool-use 从工具列表升级为跨 Chat / workflow / subagent / command / MCP / 实验场的受控计算能力层。红线：数据探索 tab 永不接 LLM/tool-use 自动调用；draw_data 原始行级内容不得直接进 LLM；analysis 工具可经 source=ai 网关处理已登记数据路径，但产物不得包含原始行级明细；ingestion 工具不暴露给 AI。专题真源即本组 TOOLUSE wiki 任务卡。════
+  { dom: "X", status: "done", created: "2026-06-30 07:35", title: "【控制·tool-use·契约·P0】X-TOOLUSE0：治理中枢专题契约 + manifest v2 + 调用矩阵口径", brief:
+`目标：冻结 tool-use 的产品定位与工程边界，后续 D/E/V 只按本契约落地，不各自发明工具模型。
+
+背景：
+- tool-use 是 pi-xanthil 的受控计算能力层，不只是工具列表页。
+- tools 还承担“数据分析 Python 固化代码”的角色，后续会持续增长，必须支持 tags/search/治理。
+- 工具调用入口分散在 Chat @工具、MCP、command、subagent、workflow、实验场 tool eval，但执行网关必须收敛。
+
+契约口径：
+1. 工具唯一注册源：server/tools/<id>/tool.json，经 server/tools/registry.ts 扫描。
+2. manifest v2 最小字段：
+   - tags?: string[]，用于业务域/算法/场景搜索；数据分析 Python 工具建议至少含 1 个业务域标签、1 个算法/任务标签、python-analysis。
+   - category: ingestion | analysis；缺省/非法保守归 ingestion。
+   - riskLevel: L0-L3。
+   - allowedUse / forbiddenUse / failureHandling / input / output / parameters / resultColumns 继续沿用。
+3. 后续可扩字段由本专题预留：owner、deprecated、replacementToolId、aiExposure、outputContract。
+4. 跨模块能力矩阵口径：
+   - manual：人工可运行。
+   - ai/mcp：仅 analysis 可暴露。
+   - command：只绑定 analysis toolIds，执行仍需 @工具卡/用户确认，不自动绕过。
+   - subagent：只进入 template toolIds 白名单。
+   - workflow：只引用 toolId + params，不复制工具 schema。
+   - eval：复用 tests/cases.json + ToolLab。
+5. 执行网关唯一：POST /api/extraction-tools/:id/run。AI/MCP 路径必须带 source=ai。
+
+红线：
+- 数据探索子树不接任何 LLM/tool-use 自动调用。
+- ingestion 工具不进入 AI/MCP/command/subagent 自动候选。
+- analysis 工具输出必须是聚合/衍生产物，不得含原始行级明细。
+- 前端只做展示/装配，不承担安全裁决；安全裁决集中在后端网关 + 工具输出契约。
+
+拆卡：
+- D-TOOLUSE1：manifest tags/search 基础与工具注册 SOP。
+- E-TOOLUSE2：统一 run ledger/执行观测。
+- V-TOOLUSE3：控制台治理工作台 UI。
+- E-TOOLUSE4：MCP/command/subagent/workflow 消费 manifest 策略。
+- E-TOOLUSE5：工具评测准入与质量闭环。
+- X-TOOLUSE6：全链验收与文档收口。
+
+验收：本卡只改 wiki/notes 契约，不直接开发产品代码；后续 agent 回流必须逐条对照本卡。
+
+✅ 总控自做 done（2026-06-30）：已核实现有实现基线并冻结 X-TOOLUSE0 契约。确认 server/tools/registry.ts 已支持实时扫盘、category/tags/metricHints 归一化；MCP server 已仅暴露 analysis 并经 /api/extraction-tools/:id/run source=ai 调用；ToolUsePane 已具备 tags/search/filter、能力矩阵和基于 trace_events 的运行看板。已在 docs/notes-infra.md §0 与新增 §十五 沉淀长期口径：唯一注册源、唯一执行网关、manifest v2 最小字段、manual/AI-MCP/command/subagent/workflow/eval 能力矩阵、安全红线和后续 D/E/V/X 卡边界。未改产品代码、未执行 git。后续从 D-TOOLUSE1 / E-TOOLUSE2 / V-TOOLUSE3 继续派发。` },
+
+  { dom: "D", status: "done", created: "2026-06-30 07:36", title: "【控制·tool-use·Registry·P1】D-TOOLUSE1：manifest tags/search 基础 + 数据分析 Python 工具标签规范", brief:
+`前置：X-TOOLUSE0。
+
+目标：让工具库能承载越来越多的数据分析 Python 固化代码，并支持可治理的标签、搜索和筛选。
+
+范围：
+1. server/tools/registry.ts：
+   - 支持 manifest 可选 tags?: string[]。
+   - 加载时 trim、去重、过滤空字符串，返回给 /api/extraction-tools。
+   - 缺 tags 的旧工具保持兼容，返回 [] 或 undefined 均可，但前端需稳定处理。
+2. server/tools/*/tool.json：
+   - 给现有 analysis 工具补第一批 tags。
+   - 每个 analysis 工具至少含 python-analysis。
+   - 标签建议形态：业务域（membership / apparel / store 等）+ 分析任务（segmentation / forecast / retention 等）+ 算法/模型（duckdb / rfm / cohort 等）。
+   - ingestion 工具可暂不补 tags，避免误导 AI 暴露；如补，只做人工摄取搜索，不参与 AI 候选。
+3. 工具注册 SOP：
+   - 更新 wiki 常用 prompt 或 docs 中工具注册说明：新增 Python 分析工具时必须维护 tags、category、riskLevel、allowedUse/forbiddenUse。
+   - 明确 tags 不等于权限；权限仍由 category/policy 决定。
+
+约束：
+- 不改执行网关语义。
+- 不新增依赖。
+- 不碰数据探索子树。
+- 如需改双侧 types.ts，由总控 X 卡先给契约或本卡回流请求总控代改，不要自行扩接缝。
+
+验收：
+- /api/extraction-tools 返回 tags。
+- 现有  analysis 工具可按 python-analysis 被检索。
+- registry 对旧 manifest 兼容。
+- npm run typecheck、npm run build 通过。
+- 数据探索隔离 grep 无匹配。
+
+✅ 回流总控审核通过（2026-06-30）：D-TOOLUSE1 最小收敛完成。新增 server/tools/README.md 工具注册 SOP，明确新增/修改 Python analysis 工具必须维护 tags/category/riskLevel/allowedUse/forbiddenUse/failureHandling，并强调 tags 只用于搜索和治理、不是权限边界。总控复核 registry.ts 已支持 tags?: string[]、trim/去重/过滤空串、实时扫盘返回，无需无效接缝 diff；工具清单实测 25 个工具、18 个 analysis、18/18 均含 python-analysis，ingestion 工具未补 tags。修正 README 中不存在的 server/src/lib/tool-runner.ts 引用后复核通过。验证：npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 与扩展隔离 grep 无匹配。残留非阻塞：8 个既有 analysis 工具仍缺 allowedUse/forbiddenUse/failureHandling 中部分字段，本卡只要求现有 analysis 补 python-analysis tags，治理字段作为后续修改/新增工具的 SOP 执行。` },
+
+  { dom: "E", status: "done", created: "2026-06-30 07:37", title: "【控制·tool-use·运行台账·P1】E-TOOLUSE2：统一 Tool Run Ledger + /run 网关观测", brief:
+`前置：X-TOOLUSE0；可与 D-TOOLUSE1 并行，但字段命名需对齐。
+
+目标：所有工具调用，无论来自人工、Chat、MCP、command、subagent、workflow、eval，都能进入统一运行台账，支撑审计、排障、数字锁、失败回放和工具质量统计。
+
+范围：
+1. 后端数据模型：
+   - 可优先复用 trace_events 作为过渡，也可新增 tool_runs 表；若新增表，schema 先在回流中说明给总控审。
+   - 建议字段：runId、workspaceId、toolId、toolName、caller、source(manual|ai)、targetKind、targetId、inputPathKind、inputPathBasename、outputArtifacts、status、durationMs、success、failed、rowGuard、metricSnapshotsCount、errorCode、createdAt。
+2. /api/extraction-tools/:id/run：
+   - 在单点网关记录 run ledger。
+   - 不保存 draw_data 原始内容、文件正文、样本行、SQL 结果明细。
+   - inputPath 可记录 basename/路径分类/登记信息，谨慎处理绝对路径。
+3. 查询 API：
+   - GET /api/workspaces/:id/tool-runs?toolId=&caller=&source=&status=&limit=
+   - 返回只读脱敏字段，供 V-TOOLUSE3 消费。
+4. caller 归因：
+   - manual、chat、mcp、command、subagent、workflow、eval。
+   - 首版如果调用方尚未传 caller，可先由 source/targetKind 推断，并保留 unknown。
+
+红线：
+- 不读数据文件正文。
+- 不记录原始行级内容。
+- source=ai 仍触发现有 row guard / metricSnapshots 逻辑，不降低安全等级。
+
+验收：
+- 手动 run 与 MCP/AI run 都能查到台账。
+- 失败/row guard 也有记录。
+- 查询 API 支持 workspace 隔离和 limit。
+- server 相关 node:test 覆盖 success/failure/workspace isolation。
+- npm run typecheck、npm run build 通过；数据探索隔离 grep 无匹配。
+
+✅ 回流总控审核通过（2026-06-30）：E-TOOLUSE2 完成并收口。采用 trace_events 作为过渡 Tool Run Ledger，未新增 tool_runs 表；/api/extraction-tools/:id/run 统一记录成功、工具失败、路径/格式 validation failure、参数 required validation failure、row guard failure。ledger payload 收敛为脱敏 metadata：inputPathKind/inputPathBasename、outputArtifacts basename、caller/source/target、success/failed、durationMs、rowGuard、metricSnapshotsCount、errorCode，不保存绝对输入/输出路径、文件正文、样本行或 SQL 明细。GET /api/workspaces/:id/tool-runs 支持 toolId/caller/source/status/limit 过滤与 workspace 隔离；MCP bridge 传 caller=mcp，Chat @工具传 caller=chat。总控补齐一处参数 required 校验未写 ledger 的缺口，并新增 validation_error 读取测试。验证：node --experimental-strip-types --test server/src/tool-run-ledger.test.ts 3/3 通过；npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 与扩展隔离 grep 无匹配。残留非阻塞：source/caller 过滤目前在读取候选记录后内存过滤，首版足够；若运行量上来，再由总控审是否迁独立 tool_runs 表或加 SQL 层索引。` },
+
+  { dom: "V", status: "done", created: "2026-06-30 07:38", title: "【控制·tool-use·工作台 UI·P1】V-TOOLUSE3：ToolUsePane 搜索/标签/矩阵/运行台账治理视图", brief:
+`前置：X-TOOLUSE0；D-TOOLUSE1 提供 tags 后可完整接入；E-TOOLUSE2 提供 run ledger 后接运行视图。
+
+目标：把 控制台 -> tool-use 从“已注册工具列表”升级为“工具治理工作台”，让用户能按标签搜索数据分析 Python 工具、理解跨模块暴露策略、查看运行质量。
+
+范围：
+1. 工具台账视图：
+   - 搜索框：匹配 name/id/description/tags/allowedUse/forbiddenUse。
+   - 筛选：category、riskLevel、tags。
+   - 列表项展示 tags、category、AI 暴露状态、版本、输入类型。
+2. 工具详情：
+   - 展示 tags、allowedUse、forbiddenUse、failureHandling、parameters、input/output。
+   - 增加跨模块能力矩阵：manual、AI/MCP、command、subagent、workflow、eval。
+   - 矩阵从 manifest/category/policy 派生，只展示，不自行裁决安全。
+3. 运行台账视图：
+   - 消费 E-TOOLUSE2 API。
+   - 支持按工具汇总、最近运行流水、source/caller/status 过滤。
+   - 显示耗时、成功失败、row guard、metricSnapshotsCount、输出 artifact 摘要。
+4. 空态与错误态：
+   - 无 workspace 时提示选择工作区。
+   - API 失败保留局部错误，不影响工具台账查看。
+
+约束：
+- 不新增依赖。
+- 不运行用户数据；本面板只做治理和观测。
+- 不碰导航接缝；只改已有 ToolUsePane 及必要的域 API client。
+- 文案避免让用户误解 ingestion 可被 AI 自动调用。
+
+验收：
+- 可按 python-analysis / rfm / forecast 等标签搜索工具。
+- 选中工具能看到能力矩阵。
+- 运行台账可按 tool/source/status 查看。
+- web typecheck/build 通过。
+- 数据探索隔离 grep 无匹配。
+- 浏览器 smoke：控制台 -> tool-use 搜索、筛选、切换运行台账正常。
+
+✅ 回流总控审核通过（2026-06-30）：V-TOOLUSE3 完成并收口。ToolUsePane 既有工具台账已覆盖 name/id/description/tags/allowedUse/forbiddenUse 搜索、category/risk/tags 筛选、详情 tags/用途/参数/input/output 与能力矩阵；本卡新增运行台账多维过滤（tool/source/caller/status）、按筛选后记录汇总、最近流水扩展展示来源、caller、状态、耗时、成功/失败计数、Row Guard、metricSnapshotsCount、outputArtifacts 摘要。总控补齐两处 UI 细节：去掉 select handler 的 any cast，补 unknown caller 选项，并展示 errorCode 失败摘要徽标。验证：npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 与扩展隔离 grep 无匹配。未跑浏览器自动化 smoke，保留为用户手动点检。` },
+
+  { dom: "E", status: "done", created: "2026-06-30 07:39", title: "【控制·tool-use·跨模块消费·P2】E-TOOLUSE4：MCP / command / subagent / workflow 统一消费 manifest 策略", brief:
+`前置：X-TOOLUSE0；建议 D-TOOLUSE1 后做。
+
+目标：让所有工具消费方从同一套 manifest/policy 派生候选、参数和说明，避免 Chat、MCP、command、subagent、workflow 各自维护一套工具配置。
+
+范围：
+1. MCP：
+   - tools/list 只暴露 analysis。
+   - description 纳入 tags/allowedUse/forbiddenUse 的简短摘要，帮助模型选对工具。
+   - 不暴露 ingestion。
+2. command：
+   - CommandManagementPane / 后端 coerceCommand 继续只允许 analysis toolIds。
+   - 参数映射候选从 tool.parameters 派生。
+   - 不自动执行工具，仍预填 @工具卡并保留用户确认。
+3. subagent：
+   - SubAgentTemplate.toolIds 候选只来自 analysis。
+   - template 展示工具 tags/risk，便于最小权限配置。
+   - 子 agent scoped MCP allowlist 仍只按 toolIds 注入。
+4. workflow：
+   - 若已有 ToolNodeConfig，候选和参数 schema 从 manifest 派生。
+   - 不复制工具描述/参数到 workflow 定义中；workflow 只保存 toolId + params。
+5. 公共 helper：
+   - 可抽一个 isAiExposed/isToolBindable helper，减少前后端散落判断；若触及 types/接缝，先回流总控审。
+
+红线：
+- ingestion 永不进入 AI/MCP/subagent 自动候选。
+- 所有真实执行仍走 /api/extraction-tools/:id/run。
+- 不把 draw_data 文件内容、列名样本、错误样本片段塞给 LLM。
+
+验收：
+- MCP tools/list 不含 ingestion。
+- command/subagent/workflow 候选不含 ingestion。
+- tags 可在候选 UI 或 description 中辅助检索/理解。
+- 相关单测覆盖 isAiExposed / command coerce / MCP filtering。
+- npm run typecheck、npm run build 通过；数据探索隔离 grep 无匹配。
+
+✅ 回流总控审核通过（2026-06-30）：E-TOOLUSE4 完成并收口。新增 server/src/tool-policy.ts 作为 server 侧统一策略源，isAiExposedTool/isToolBindable/listAiExposedToolIds/renderToolManifestSummary 统一口径为仅 analysis 暴露；MCP tools/list 与 tools/call 均复用该策略，description 纳入 tags/risk/allowedUse/forbiddenUse 摘要；command coerceCommand 拒绝 ingestion toolIds；subagent server coerce 过滤非 analysis toolIds，前端候选只显示 analysis 且展示 tags/risk；workflow tool 节点候选只显示 analysis，定义仍保存 toolId 与节点参数，不复制 manifest。总控仅修正一处 SubAgentManagementPane 注释漂移。验证：tool-policy/command-tool-policy/tool-run-ledger 6/6 通过；npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 与扩展隔离 grep 无匹配。` },
+
+  { dom: "E", status: "done", created: "2026-06-30 07:40", title: "【控制·tool-use·质量闭环·P2】E-TOOLUSE5：工具准入、评测 cases 与回归门禁接 ToolLab", brief:
+`前置：X-TOOLUSE0；D-TOOLUSE1 完成标签后收益更高。
+
+目标：随着数据分析 Python 工具越来越多，建立“可上线、可评测、可回放、可退役”的质量闭环，而不是只把脚本注册进来。
+
+范围：
+1. 准入规则：
+   - analysis 工具建议必须有 tests/cases.json；没有则 ToolUsePane/ToolLab 显示“未覆盖”。
+   - L1+ 工具建议至少一个 must-fail 或边界 case。
+   - 需要明确 forbiddenUse 和 failureHandling。
+2. ToolLab 接入：
+   - ToolLab 可按 tags/category/risk 过滤工具。
+   - case set / evaluation 结果回写或可被 tool-use 运行台账引用。
+   - 最近一次 eval 结果可供 V-TOOLUSE3 展示。
+3. 回归门禁：
+   - 核心工具支持批量跑 cases。
+   - 可选生成工具质量摘要：case count、lastRun、pass/fail、失败原因摘要。
+4. 失败样本沉淀：
+   - 从 run ledger 中把失败 run 转为候选 case（仅 metadata + artifact 路径，不复制原始数据内容），需用户确认。
+
+约束：
+- 不自动读取 draw_data 原始行。
+- 不把失败样本内容直接送 LLM。
+- 不新增复杂 CI 门禁，先做可手动运行的产品内回归。
+
+验收：
+- ToolLab 可按 tags 搜索/筛选。
+- 至少一个工具展示“有 cases / 最近 eval 状态”。
+- 失败 run 可被人工转成候选 case 的路径设计清晰；若首版不落地，需在卡回报中说明。
+- runner/API 单测通过。
+- npm run typecheck、npm run build 通过。
+
+✅ 回流总控审核通过（2026-06-30）：E-TOOLUSE5 完成并收口。ToolLab 候选工具支持 category/risk/tags/query 过滤；候选列表展示 tests/cases.json 覆盖状态、L1+ 缺 must-fail/边界 case 提示、forbiddenUse/failureHandling 缺失提示、最近一次 tool eval 状态；既有 ToolLab case set/evaluation runner 继续作为可手动运行的产品内回归入口。失败 run → candidate case 首版未自动落地，但 UI 已明确安全路径：只取 ledger metadata 与 artifact basename，经用户确认生成 case 草稿，不复制原始数据、错误样本或 draw_data 内容。验证：tool-evaluation-api/tool-evaluation-runner 16/16 通过；npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 与扩展隔离 grep 无匹配。残留非阻塞：失败 run 转 case 仍是路径设计说明，真正草稿生成需后续用户确认流落地。` },
+
+  { dom: "X", status: "done", created: "2026-06-30 07:41", title: "【控制·tool-use·验收·P3】X-TOOLUSE6：全链验收 + 安全红线 + wiki/notes 收口", brief:
+`前置：D-TOOLUSE1 / E-TOOLUSE2 / V-TOOLUSE3 / E-TOOLUSE4 / E-TOOLUSE5 视排期完成后执行。
+
+目标：总控终审 tool-use 治理专题，确认工具注册、搜索、运行台账、跨模块消费、评测闭环和安全红线一致。
+
+验收清单：
+1. Registry：
+   - /api/extraction-tools 返回 tags/category/risk。
+   - analysis 工具可按 python-analysis 检索。
+   - ingestion 兼容旧工具，不误暴露给 AI。
+2. UI：
+   - 控制台 tool-use 可搜索、按 tag/category/risk 筛选。
+   - 能力矩阵展示 manual / AI-MCP / command / subagent / workflow / eval。
+   - 运行台账可看成功/失败/AI/手动/耗时。
+3. 跨模块：
+   - MCP tools/list 只含 analysis。
+   - command/subagent/workflow 候选只含 analysis。
+   - 执行仍走 /api/extraction-tools/:id/run。
+4. 评测：
+   - ToolLab 可按 tags 使用工具 cases。
+   - 至少覆盖一个 success case、一个 failure/edge case。
+5. 安全：
+   - 数据探索隔离 grep 无匹配。
+   - AI/MCP 路径 source=ai 生效。
+   - row guard / metricSnapshots / MetricVerification 不回归。
+   - 不记录或展示 draw_data 原始行级内容。
+6. 文档：
+   - docs/wiki.html 本组卡状态更新。
+   - docs/notes-infra.md §0 记录专题状态、残留风险、下一步。
+   - 如有新长期口径，沉淀到 notes-infra 正文。
+
+验证建议：
+- npm run typecheck
+- npm run build
+- node --experimental-strip-types 运行相关 tool/ledger/MCP 单测
+- 数据探索隔离 grep
+- 浏览器 smoke：控制台 -> tool-use。
+
+完成标准：专题可作为“tool-use 治理中枢 v1”归档；若运行台账/质量闭环有延后项，明确列为后续增强，不混入 done。
+
+✅ 总控终审通过（2026-06-30）：X-TOOLUSE6 完成，tool-use 治理中枢 v1 可归档。Registry 清单复核：25 个工具、18 个 analysis、7 个 ingestion；analysis 18/18 均含 python-analysis；ingestion 均未进入 AI 暴露集合；所有工具经 registry 返回稳定 tags/category/riskLevel，其中总控补齐 3 个旧 ingestion 工具 riskLevel，不补 tags。UI 静态复核覆盖 ToolUsePane 搜索/tag/category/risk 筛选、能力矩阵与运行台账过滤，ToolLab 覆盖 category/risk/tags/query 与 cases/eval 状态。跨模块复核：MCP、command、subagent、workflow 均只暴露或绑定 analysis，真实执行仍回到 /api/extraction-tools/:id/run，MCP 带 source=ai/caller=mcp，Chat @工具带 caller=chat。验证：tool-policy/command-tool-policy/tool-run-ledger 6/6；tool-evaluation-api/tool-evaluation-runner 16/16；row guard/metricSnapshots/MetricVerification 39/39；npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 无匹配。残留非阻塞：失败 run 转 candidate case 仍停留在安全路径说明，真正草稿生成确认流进入 X-TOOLUSE7 后续增强；浏览器点击级 smoke 未自动化，保留用户手动点检。` },
+
+  { dom: "X", status: "todo", created: "2026-06-30 07:42", title: "【控制·tool-use·后续增强·待解冻·P3】X-TOOLUSE7：manifest v2 完整治理 + 标准输出契约 + 工具推荐专题", brief:
+`状态：待解冻后再拆实施卡；不进入 TOOLUSE v1 第一批验收。放在 wiki 中防遗忘，等 D-TOOLUSE1~E-TOOLUSE5 稳定后再由总控解冻。
+
+背景：
+- 第一批先完成 tags/search、运行台账、跨模块消费一致性和评测准入。
+- 以下能力价值明确，但影响面更大，需在 v1 形成稳定使用数据后再做。
+
+增强方向 A：manifest v2 完整治理字段
+1. owner：工具维护负责人 / owner team。
+2. deprecated：工具是否退役。
+3. replacementToolId：退役工具的替代工具。
+4. aiExposure：none | mcp | manual_confirmed 等显式暴露策略，替代“category 推断全部策略”。
+5. outputContract：声明工具输出是否含表格、最大行数、artifact 类型、是否可产 MetricSnapshot、是否可能含明细风险。
+
+增强方向 B：标准化工具输出契约
+目标输出结构：
+{
+  summary: string;
+  artifacts: Array<{ path: string; kind: "md" | "json" | "csv" | "html" }>;
+  metrics?: MetricSnapshot[];
+  warnings?: string[];
+  rowCount?: number;
+  omittedReason?: string;
+}
+
+注意：
+- 这会牵涉多个 server/tools/* Python 脚本和 /run summary 适配，不能混入第一批治理 UI。
+- 迁移需向后兼容旧 summary.json，建议先在 registry 或 run endpoint 做 adapter，再逐工具改脚本。
+- 标准输出不能包含 draw_data 原始行级明细。
+
+增强方向 C：工具推荐（只推荐，不自动执行）
+1. 基于 tags、allowedUse、input/output、历史 run ledger、ToolLab 通过率，推荐“这个场景适合哪些 analysis tools”。
+2. 推荐入口可出现在 Chat @工具、command 管理、subagent template、workflow tool node。
+3. 必须保留用户确认；不得让推荐直接执行工具。
+4. 不读取数据探索样本、列名剖析或 draw_data 原始行内容；首版推荐只看用户输入意图 + manifest 元数据 + 已登记路径类型。
+
+解冻条件：
+- TOOLUSE v1 已完成并通过 X-TOOLUSE6。
+- 至少有一批真实数据分析 Python 工具已带 tags 并产生运行台账。
+- 总控确认标准输出迁移策略：一次性改核心工具，或 adapter 兼容逐步迁移。
+
+解冻后建议拆卡：
+- X-TOOLUSE7A：manifest v2 完整字段契约。
+- D/E-TOOLUSE7B：标准输出 adapter + 核心工具迁移。
+- V-TOOLUSE7C：治理字段 UI 与退役/替代提示。
+- E-TOOLUSE7D：工具推荐器（只推荐，不执行）+ 单测。
+- X-TOOLUSE7E：增强专题验收。` },
+
   // ════ 【记忆库·知识图谱优化专题】（Infra 总控拆卡 2026-06-29；来源=KnowledgeGraphPane 说明页“后续值得优化的方向”：关系筛选、节点质量评分、提取预览、变更历史）。定位：把知识图谱从基础可视化升级为可筛选、可评估、可预览、可追溯的知识治理工作台。红线：不读 draw_data 原始行；提取预览只读且不触发 LLM；变更历史只记元数据摘要，不记录报告正文、prompt 正文、客户明细、订单样本或数据探索结果。本组 KG wiki 任务卡即专题派发真源。════
   { dom: "X", status: "done", created: "2026-06-29 18:00", title: "【记忆库·知识图谱·契约·P0】X-KG0：关系筛选/质量提示/提取预览/变更历史专题契约 + 派发", brief:
 `完成状态（2026-06-29 · 总控）：专题契约与红线已冻结，KG wiki 任务卡已创建；本专题后续卡已全部完成并通过 X-KG5 终审。

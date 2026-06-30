@@ -10,7 +10,16 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。2.3 发布后增量（Harness 全专题等）见 `Orchestration.md §八「2.3 阶段进展」`。详见发布节点。
 
-- 最近更新：2026-06-29 · 总控（trace 迭代专题 X-TRACE8 已收口）
+- 最近更新：2026-06-30 · 总控（tool-use 治理中枢 v1 全链验收收口）
+- 本批（2026-06-30 · tool-use 治理中枢专题，总控终审）：
+  - ✅ **X-TOOLUSE0 / D-TOOLUSE1 / E-TOOLUSE2 / V-TOOLUSE3 / E-TOOLUSE4 / E-TOOLUSE5 / X-TOOLUSE6 全部 done**：tool-use v1 可作为“治理中枢”归档；唯一注册源仍为 `server/tools/<id>/tool.json`，唯一执行网关仍为 `POST /api/extraction-tools/:id/run`。
+  - ✅ **Registry 收口**：当前 25 个工具、18 个 `analysis`、7 个 `ingestion`；18/18 analysis 均含 `python-analysis`；ingestion 工具不补 tags，避免误导 AI 暴露；所有工具经 registry 返回稳定 `tags/category/riskLevel`。总控补齐 3 个旧 ingestion 工具 `riskLevel` 元数据：`extract-sycm-member=L1`、`extract-xhs-insight=L1`、`phone-cleaner=L2`。
+  - ✅ **跨模块暴露策略收口**：`server/src/tool-policy.ts` 统一 server 侧 analysis 暴露口径；MCP tools/list 与 tools/call、command coerce、subagent server coerce 均复用或对齐 analysis-only 策略；前端 command/subagent/workflow 候选只展示 analysis；workflow 定义只保存 `toolId + params`。
+  - ✅ **运行台账与质量闭环收口**：继续复用 `trace_events` 作为过渡 Tool Run Ledger，记录成功、失败、validation failure、row guard failure 的脱敏 metadata；`GET /api/workspaces/:id/tool-runs` 支持 toolId/caller/source/status/limit 过滤；ToolUsePane 展示搜索、tags/category/risk 筛选、能力矩阵和运行台账；ToolLab 展示 cases 覆盖、L1+ 边界 case 提示、policy 缺失提示与最近 eval 状态。
+  - ✅ **验证**：tool-policy/command-tool-policy/tool-run-ledger 6/6；tool-evaluation-api/tool-evaluation-runner 16/16；row guard/metricSnapshots/MetricVerification 39/39；`npm run typecheck` 通过；`npm run build` 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 无匹配。
+  - 📌 **红线继续有效**：数据探索子树永不接 LLM/tool-use 自动调用；`ingestion` 永不进入 AI/MCP/subagent/command/workflow 自动候选；`analysis` 工具可处理已登记数据路径，但输出不得含原始行级明细；run ledger/trace/eval case 不保存文件正文、样本行、SQL 明细或 draw_data 原始内容。
+  - 📌 **残留 / 下一步**：失败 run 转 candidate case 首版仅明确安全路径（ledger metadata + artifact basename，经用户确认生成草稿），真正草稿生成确认流放入 X-TOOLUSE7 后续增强；独立 `tool_runs` 表、manifest v2 完整字段、标准输出契约、工具推荐器均留待 X-TOOLUSE7 解冻后再拆；浏览器点击级 smoke 未自动化，保留用户手动点检。
+- 历史批次（2026-06-29 · trace/业务环境/onto-knowhow 专题收口）：
 - 本批（2026-06-29 · trace 迭代专题，总控终审）：
   - ✅ **X-TRACE8 全链验收通过**：trace 专题 `X-TRACE0 / V-TRACE1 / D-TRACE2 / V-TRACE3 / D-TRACE4 / V-TRACE5 / E-TRACE6 / V-TRACE7 / X-TRACE8` 全部 done。TracePane 已具备运行、失败、记忆注入、规则提炼、巡检建议、说明六分面；事件详情抽屉、failure 状态闭环、纯规则巡检建议已接入。
   - ✅ **验证**：`node --experimental-strip-types --test server/src/trace-detail.test.ts server/src/trace-failure-state.test.ts server/src/trace-inspection.test.ts server/src/metric-injection-trace.test.ts` 30/30 通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 Echarts dynamic-import 与 chunk-size warning。
@@ -552,3 +561,54 @@
 **注意事项 / 边界**：模拟实验不是统计预测模型，不输出真实市场销量、转化率或财务承诺；结论只代表“基于当前报告文本与 persona 假设的 LLM 推演”。首版 DLF 只复用 `SubAgentTemplate.persona`，不继承 `toolIds`，不启动真实 subagent runner，不读取 `draw_data`、数据探索样本、`clean_data` 或 `knowledge`。如用户需要把聚合数据纳入判断，必须另立卡并在 UI 明示 clean_data 知情使用。
 
 **v2 演进路线**：① 生命体独立 runner：每个 DLF 可独立上下文、多轮记忆和 trace，但必须重新设计权限，不得默认继承 subagent 工具；② 多轮辩论 / 交叉质询：支持消费者互评、专家 challenge、主持人归纳，输出分歧与收敛条件；③ 历史模拟库：保存不同方案、persona、模型和结果，支持横向对比与复盘；④ 执行反馈校准：将真实行动反馈、A/B test、复盘结论沉淀为校准集，用于修正 persona 和评估口径；⑤ clean_data 聚合接入：只允许用户知情选择聚合指标，禁止原始行级内容进入 LLM。
+
+---
+
+## 十五、tool-use 治理中枢契约（X-TOOLUSE0，2026-06-30 总控自做）
+
+**定位**：tool-use 是 pi-xanthil 的受控计算能力层，承载数据摄取工具、数据分析 Python 固化代码、MCP/Chat/command/subagent/workflow/eval 的计算能力引用。它不是单一工具列表页；治理重点是注册源、执行网关、暴露策略、运行证据与质量闭环统一。
+
+**单一真源与网关**：
+- 工具唯一注册源：`server/tools/<id>/tool.json`，由 `server/tools/registry.ts` 实时扫盘加载；不要在 Chat、MCP、command、subagent、workflow 里复制工具 schema。
+- 工具唯一执行网关：`POST /api/extraction-tools/:id/run`。人工、Chat `@工具`、MCP、command、subagent、workflow、eval 的真实执行最终都必须回到这个端点。
+- AI/MCP 路径必须带 `source:"ai"`。`source` 是来源标记，不是授权本体；授权裁决仍由 manifest 分类、调用方候选过滤、row guard、工具输出契约共同完成。
+
+**manifest v2 最小口径**：
+- 已审定字段：`category?: "ingestion" | "analysis"`、`tags?: string[]`、`riskLevel?: "L0"|"L1"|"L2"|"L3"`、`allowedUse?`、`forbiddenUse?`、`failureHandling?`、`input`、`output`、`parameters?`、`resultColumns?`、`metricHints?`。
+- `category` 缺省或非法值一律归一为 `ingestion`，保守不暴露给 AI。
+- `tags` 只用于搜索、筛选、治理和候选理解，不代表权限；加载时 trim、去重、过滤空字符串。数据分析 Python 工具建议至少包含 `python-analysis`，并补业务域/任务/算法标签，如 `membership`、`retention`、`rfm`、`forecast`。
+- 预留但本轮不实现：`owner`、`deprecated`、`replacementToolId`、`aiExposure`、`outputContract`。这些字段需要另立卡，不要由 D/E/V 私自扩展语义。
+
+**工具分类与能力矩阵**：
+
+| 能力入口 | 暴露规则 | 执行规则 |
+|---|---|---|
+| manual | ingestion / analysis 均可人工运行 | 仍走 `/api/extraction-tools/:id/run` |
+| AI / MCP | 仅 `analysis` | MCP `tools/list` 过滤；`tools/call` 走 `/run source=ai` |
+| Chat `@工具` | 仅 `analysis` | 前端装配，后端网关执行 |
+| command | 只绑定 `analysis toolIds` | 不自动绕过用户确认；可预填 `@工具` 卡 |
+| subagent | 只进入 template `toolIds` 白名单 | scoped MCP allowlist 仍只按白名单注入 |
+| workflow | 只保存 `toolId + params` | 不复制工具描述或参数 schema |
+| eval / ToolLab | 复用 `tests/cases.json` | 可用于准入、回归、失败样本候选 |
+
+**当前实现基线（2026-06-30 X-TOOLUSE6 终审核实）**：
+- `registry.ts` 已支持 `tags`、`category`、`metricHints` 归一化，且 `listExtractionTools()` / `getExtractionTool()` 每次实时 `loadTools()`，新增/删除工具后刷新即可生效。
+- `server/src/tool-policy.ts` 统一 server 侧 analysis 暴露策略；MCP tools/list 与 tools/call、command coerce、subagent server coerce 均复用或对齐该口径。
+- `ToolUsePane` 已具备 tags/search/filter、risk/category 筛选、跨模块能力矩阵、test cases 读取和运行台账视图；`ToolLab` 已接 category/risk/tags/query 过滤、cases/eval 状态与 policy 缺失提示。
+- 运行看板当前基于 `trace_events(target_kind='extraction_tool', type='tool_run')` 的脱敏字段生成 `ToolRunRecord`，不是独立 `tool_runs` 表；payload 记录 basename、路径分类、artifact basename、计数、耗时、caller/source/status、rowGuard、metricSnapshotsCount、errorCode 等 metadata，不保存绝对输入路径、文件正文、样本行或 SQL 明细。
+- `/run` 已接 row guard 与 `MetricSnapshot` 数字锁；Chat/MCP 路径经 `source:"ai"` 触发 AI 行级输出守卫与 MetricVerification 后续链路。
+
+**安全红线**：
+- 数据探索模块（`DataExplorationPane.tsx` 及其子树）永久禁止接 LLM/tool-use 自动调用；相关改动必须跑 AGENTS.md 中的数据探索隔离 grep。
+- `ingestion` 工具永不进入 AI/MCP/command/subagent/workflow 自动候选；只允许人工摄取路径。
+- `analysis` 工具可以经 `source:"ai"` 处理已登记数据路径，但产物必须是聚合/衍生结果，不得包含 draw_data 原始行级明细、客户明细、订单样本、错误日志样本片段。
+- run ledger / trace / eval case 沉淀只记录元数据、artifact 路径和脱敏摘要，不保存文件正文、样本行或原始 SQL 结果明细。
+- 前端只负责展示和装配，不承担安全裁决；安全裁决集中在 registry 分类、后端网关、MCP 过滤、row guard 与工具输出契约。
+
+**后续卡边界**：
+- **D-TOOLUSE1**：完善 tags/SOP 与现有 analysis 工具标签，不改网关语义。
+- **E-TOOLUSE2**：统一 Tool Run Ledger；可先复用 trace_events，也可提出 `tool_runs` schema 给总控审。
+- **V-TOOLUSE3**：完善 ToolUsePane 治理视图与运行台账筛选，不自行扩大 AI 暴露规则。
+- **E-TOOLUSE4**：MCP/command/subagent/workflow 统一从 manifest 派生候选和参数说明。
+- **E-TOOLUSE5**：ToolLab 准入、cases 回归、失败 run 转候选 case；不得复制原始数据内容。
+- **X-TOOLUSE6**：全链验收、安全红线、wiki/notes 收口。

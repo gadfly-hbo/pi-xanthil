@@ -6,6 +6,7 @@
   "entry": "phone_exporter.py",
   "runtime": "python3",
   "category": "ingestion",
+  "riskLevel": "L2",
   "input": {
     "accept": [
       ".xlsx",

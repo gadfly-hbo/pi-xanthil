@@ -7,7 +7,7 @@
 // BUMP PROMPT_SCHEMA_VERSION whenever any block content changes — consumers
 // can record this alongside token stats to correlate prompt edits with shifts
 // in cache hit rates.
-export const PROMPT_SCHEMA_VERSION = "v5" as const;
+export const PROMPT_SCHEMA_VERSION = "v6" as const;
 
 // Block 01 — data safety (non-negotiable, must stay first)
 export const BLOCK_SAFETY = [
@@ -69,7 +69,8 @@ export const BLOCK_METRIC_LOCK = [
   "- 可引用展示，只解读业务现象、推断根因、提供策略建议",
 ].join("\n");
 
-// Optional causal layering block — enabled for formal reports (经营/监测/专题).
+// Formal report causal layering block — applies to every pi session.
+// The block is self-scoped to formal report outputs, so non-report turns are unaffected.
 export const BLOCK_CAUSAL_LAYERING = [
   "[正式报告因果分层约束]",
   "若本次产出为正式报告文本，必须按三层结构组织，不得混层。",
@@ -104,7 +105,8 @@ export interface AssembleSystemPromptOptions {
  *   1. BLOCK_SAFETY        — always present, never changes within a version
  *   2. BLOCK_BASE_BEHAVIOR — always present, never changes within a version
  *   3. BLOCK_FILE_ANALYSIS — always present, never changes within a version
- *   4. additionalPrompt    — per-session role / workflow instructions (optional)
+ *   4. BLOCK_CAUSAL_LAYERING — formal report zero-hallucination contract
+ *   5. additionalPrompt    — per-session role / workflow instructions (optional)
  *
  * Keeping blocks 1–3 byte-identical across every turn of every session
  * maximises provider prefix-cache hits.
@@ -116,9 +118,8 @@ export function buildDataContextBlock(paths: string[]): string {
 }
 
 export function assembleSystemPrompt(additionalPrompt?: string, options: AssembleSystemPromptOptions = {}): string {
-  const blocks: string[] = [BLOCK_SAFETY, BLOCK_BASE_BEHAVIOR, BLOCK_FILE_ANALYSIS];
+  const blocks: string[] = [BLOCK_SAFETY, BLOCK_BASE_BEHAVIOR, BLOCK_FILE_ANALYSIS, BLOCK_CAUSAL_LAYERING];
   if (options.injectExtractionToolSystem) blocks.push(BLOCK_METRIC_LOCK);
-  if (options.injectCausalLayering) blocks.push(BLOCK_CAUSAL_LAYERING);
   const extra = additionalPrompt?.trim();
   if (extra) blocks.push(extra);
   return blocks.join("\n\n");

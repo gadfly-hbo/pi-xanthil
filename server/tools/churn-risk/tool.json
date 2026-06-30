@@ -6,6 +6,7 @@
   "entry": "churn_risk.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["churn", "retention", "risk", "python-analysis"],
   "input": {
     "accept": [
       ".csv"

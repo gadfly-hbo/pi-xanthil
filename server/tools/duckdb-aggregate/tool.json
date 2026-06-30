@@ -6,6 +6,7 @@
   "entry": "duckdb_aggregate.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["sql", "aggregation", "duckdb", "python-analysis"],
   "input": {
     "accept": [".csv", ".tsv", ".parquet", ".json", ".jsonl"],
     "modes": ["file", "directory"]

@@ -6,6 +6,7 @@
   "entry": "aarrr_flow.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["aarrr", "funnel", "conversion", "python-analysis"],
   "input": {
     "accept": [
       ".csv"

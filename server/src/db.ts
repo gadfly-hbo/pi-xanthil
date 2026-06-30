@@ -1,6 +1,6 @@
 import { DatabaseSync } from "node:sqlite";
 import { randomUUID } from "node:crypto";
-import { join } from "node:path";
+import { basename, join } from "node:path";
 import { existsSync, mkdirSync, statSync } from "node:fs";
 import { resolve } from "node:path";
 import { DB_PATH, WORKSPACES_ROOT, ensureDirs } from "./config.ts";
@@ -3154,30 +3154,85 @@ export function getTraceEventDetail(
   };
 }
 
-// tool-use 运行看板数据源：从 trace_events 取工具运行流水（含 payload 明细字段）。
-export function listToolRuns(workspaceId: string, limit = 200): ToolRunRecord[] {
+export interface ToolRunListFilters {
+  toolId?: string;
+  caller?: ToolRunRecord["caller"];
+  source?: ToolRunRecord["source"];
+  status?: ToolRunRecord["status"];
+  limit?: number;
+}
+
+function coerceToolRunCaller(value: unknown, source: ToolRunRecord["source"]): ToolRunRecord["caller"] {
+  if (value === "manual" || value === "chat" || value === "mcp" || value === "command" || value === "subagent" || value === "workflow" || value === "eval" || value === "unknown") return value;
+  return source === "manual" ? "manual" : "unknown";
+}
+
+function coerceStringArray(value: unknown): string[] {
+  return Array.isArray(value) ? value.filter((item): item is string => typeof item === "string") : [];
+}
+
+// tool-use 运行看板数据源：从 trace_events 取工具运行流水。只返回脱敏 metadata，不返回输入/输出正文。
+export function listToolRuns(workspaceId: string, filters: ToolRunListFilters | number = {}): ToolRunRecord[] {
+  const opts: ToolRunListFilters = typeof filters === "number" ? { limit: filters } : filters;
+  const limit = Math.min(2000, Math.max(1, Number(opts.limit ?? 200) || 200));
+  const conditions = ["workspace_id = ?", "target_kind = 'extraction_tool'", "type = 'tool_run'"];
+  const params: (string | number)[] = [workspaceId];
+  if (opts.toolId) {
+    conditions.push("target_id = ?");
+    params.push(opts.toolId);
+  }
+  if (opts.status) {
+    conditions.push("status = ?");
+    params.push(opts.status);
+  }
   const rows = db.prepare(`
-    SELECT id, created_at AS time, target, status, payload
+    SELECT id, workspace_id AS workspaceId, target_id AS targetId, created_at AS time, target, status, payload
     FROM trace_events
-    WHERE workspace_id = ? AND target_kind = 'extraction_tool' AND type = 'tool_run'
+    WHERE ${conditions.join(" AND ")}
     ORDER BY created_at DESC LIMIT ?
-  `).all(workspaceId, limit) as Array<{ id: string; time: number; target: string | null; status: string; payload: string | null }>;
+  `).all(...params, Math.max(limit, Math.min(5000, limit * 5))) as Array<{ id: string; workspaceId: string; targetId: string; time: number; target: string | null; status: string; payload: string | null }>;
   const num = (v: unknown): number | null => (typeof v === "number" && Number.isFinite(v) ? v : null);
-  return rows.map((r) => {
+  const records = rows.map((r) => {
     let p: Record<string, unknown> = {};
     try { p = r.payload ? (JSON.parse(r.payload) as Record<string, unknown>) : {}; } catch { /* ignore malformed payload */ }
+    const source: ToolRunRecord["source"] = p.source === "ai" ? "ai" : "manual";
+    const rowGuard = p.rowGuard && typeof p.rowGuard === "object" ? p.rowGuard as Record<string, unknown> : null;
+    const inputPathBasename = typeof p.inputPathBasename === "string"
+      ? p.inputPathBasename
+      : (typeof p.inputPath === "string" ? basename(p.inputPath) : null);
+    const status: ToolRunRecord["status"] = r.status === "failed" ? "failed" : "success";
     return {
       id: r.id,
+      runId: typeof p.runId === "string" ? p.runId : r.id,
       time: r.time,
+      createdAt: r.time,
+      workspaceId: r.workspaceId,
       toolId: typeof p.toolId === "string" ? p.toolId : "",
       toolName: r.target ?? "",
-      source: p.source === "ai" ? "ai" : "manual",
-      status: r.status === "failed" ? "failed" : "success",
+      caller: coerceToolRunCaller(p.caller, source),
+      source,
+      targetKind: typeof p.targetKind === "string" ? p.targetKind : "",
+      targetId: typeof p.targetId === "string" ? p.targetId : "",
+      inputPathKind: typeof p.inputPathKind === "string" ? p.inputPathKind : null,
+      inputPathBasename,
+      outputArtifacts: coerceStringArray(p.outputArtifacts),
+      status,
       success: num(p.success),
       failed: num(p.failed),
+      rowGuard: rowGuard ? {
+        blocked: rowGuard.blocked === true,
+        ...(typeof rowGuard.rowLimit === "number" ? { rowLimit: rowGuard.rowLimit } : {}),
+        ...(typeof rowGuard.maxRowsSeen === "number" ? { maxRowsSeen: rowGuard.maxRowsSeen } : {}),
+      } : null,
+      metricSnapshotsCount: typeof p.metricSnapshotsCount === "number" && Number.isFinite(p.metricSnapshotsCount) ? p.metricSnapshotsCount : 0,
+      errorCode: typeof p.errorCode === "string" ? p.errorCode : null,
       durationMs: num(p.durationMs),
     };
   });
+  return records
+    .filter((record) => !opts.source || record.source === opts.source)
+    .filter((record) => !opts.caller || record.caller === opts.caller)
+    .slice(0, limit);
 }
 
 function listPersistedTraceTimeline(workspaceId: string, targetKind: string, targetId: string): TraceTimelineItem[] {

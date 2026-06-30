@@ -6,6 +6,7 @@
   "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["portrait", "membership", "profile", "python-analysis"],
   "input": {
     "accept": [
       ".csv",

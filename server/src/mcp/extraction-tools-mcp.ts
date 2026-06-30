@@ -14,6 +14,7 @@ import { createInterface } from "node:readline";
 import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { renderSourceLabel } from "../metric-source-label.ts";
+import { isAiExposedTool, renderToolManifestSummary } from "../tool-policy.ts";
 import type { MetricSnapshot } from "../types.ts";
 
 function argOf(flag: string): string | undefined {
@@ -35,7 +36,11 @@ interface RemoteTool {
   name: string;
   description?: string;
   category?: "ingestion" | "analysis";
+  tags?: string[];
   parameters?: ToolParameter[];
+  allowedUse?: string;
+  forbiddenUse?: string;
+  riskLevel?: "L0" | "L1" | "L2" | "L3";
 }
 
 type JsonRpcId = string | number | null;
@@ -58,11 +63,13 @@ async function fetchTools(): Promise<RemoteTool[]> {
 }
 
 function isAiExposed(tool: RemoteTool): boolean {
-  return tool.category === "analysis" && (TOOL_ALLOWLIST === undefined || TOOL_ALLOWLIST.has(tool.id));
+  return isAiExposedTool(tool) && (TOOL_ALLOWLIST === undefined || TOOL_ALLOWLIST.has(tool.id));
 }
 
 /** MCP tool def per ExtractionTool. Input may be any registered data path accepted by the tool. */
 function toMcpTool(t: RemoteTool) {
+  const policy = renderToolManifestSummary(t);
+  const policyText = policy ? ` ${policy}。` : "";
   const properties: Record<string, unknown> = {
     cleanDataPath: {
       type: "string",
@@ -76,7 +83,7 @@ function toMcpTool(t: RemoteTool) {
   }
   return {
     name: t.id,
-    description: `${t.name}${t.description ? ` — ${t.description}` : ""}（数据分析工具，可处理本工作区已登记且该工具接受的数据路径；产物不得包含原始行级明细。工具返回的 MetricSnapshot 数值为代码确定性计算结果，模型禁止修改或重新计算；只可解读、推因、建议。）`,
+    description: `${t.name}${t.description ? ` — ${t.description}` : ""}。${policyText}（数据分析工具，可处理本工作区已登记且该工具接受的数据路径；产物不得包含原始行级明细。工具返回的 MetricSnapshot 数值为代码确定性计算结果，模型禁止修改或重新计算；只可解读、推因、建议。）`,
     inputSchema: { type: "object", properties, required },
   };
 }
@@ -95,7 +102,7 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<{ 
   const res = await fetch(`${API_BASE}/api/extraction-tools/${encodeURIComponent(name)}/run`, {
     method: "POST",
     headers: { "content-type": "application/json" },
-    body: JSON.stringify({ source: "ai", workspaceId: WORKSPACE_ID, inputPath: cleanDataPath, outputPath, params }),
+    body: JSON.stringify({ source: "ai", caller: "mcp", workspaceId: WORKSPACE_ID, inputPath: cleanDataPath, outputPath, params }),
   });
   const body = (await res.json()) as Record<string, unknown>;
   if (!res.ok) {

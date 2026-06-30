@@ -5,6 +5,8 @@ import { sessionDir } from "./workspace-dirs.ts";
 import { safeResolve } from "./flow-fs.ts";
 import { buildExtractionToolsMcpServer } from "./mcp/register.ts";
 import { runPiTurn, type PiRun } from "./pi-adapter.ts";
+import { listExtractionTools } from "../tools/registry.ts";
+import { listAiExposedToolIds } from "./tool-policy.ts";
 import type { PiEvent, SubAgentTemplate } from "./types.ts";
 
 /**
@@ -88,8 +90,9 @@ export function coerceSubAgentTemplate(input: unknown): SubAgentTemplate | null 
   if (!id || !name || !persona) return null;
   if (hasExternalUrl(persona)) return null;
 
+  const bindableToolIds = listAiExposedToolIds(listExtractionTools());
   const toolIds = Array.isArray(o.toolIds)
-    ? Array.from(new Set(o.toolIds.map((x) => asConfigString(x).trim()).filter(Boolean)))
+    ? Array.from(new Set(o.toolIds.map((x) => asConfigString(x).trim()).filter((id) => id && bindableToolIds.has(id))))
     : [];
   const hasMaxRetries = Object.prototype.hasOwnProperty.call(o, "maxRetries");
   const maxRetriesRaw = Number(o.maxRetries);

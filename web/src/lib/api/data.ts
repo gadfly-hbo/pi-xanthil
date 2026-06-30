@@ -184,12 +184,15 @@ export const dataApi = {
       inputPath: string;
       outputPath: string;
       params?: Record<string, string | number | boolean>;
+      caller?: "chat" | "mcp" | "command" | "subagent" | "workflow" | "eval" | "unknown";
+      targetKind?: string;
+      targetId?: string;
     },
   ) =>
     fetch(`/api/extraction-tools/${encodeURIComponent(id)}/run`, {
       method: "POST",
       headers: { "content-type": "application/json" },
-      body: JSON.stringify({ ...payload, source: "ai" }),
+      body: JSON.stringify({ ...payload, source: "ai", caller: payload.caller ?? "chat" }),
     }).then(json<ExtractionRun>),
 
   getBiAggregationData: (pathId: string, limit?: number) => {

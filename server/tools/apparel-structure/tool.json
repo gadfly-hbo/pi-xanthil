@@ -6,6 +6,7 @@
   "entry": "apparel_structure.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["apparel", "structure", "category", "python-analysis"],
   "input": {
     "accept": [
       ".csv"

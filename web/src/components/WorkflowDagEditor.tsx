@@ -25,6 +25,10 @@ import type { ExtractionTool, PiModel, WorkflowDef, WorkflowNode } from "@/types
 // ---- types ----
 type NodeKind = NonNullable<WorkflowNode["kind"]>;
 
+function isAiExposedTool(tool: ExtractionTool): boolean {
+  return tool.category === "analysis";
+}
+
 interface GateOnBlock {
   retryFromNodeId: string;
   maxIterations?: number;
@@ -531,7 +535,7 @@ function NodePropertyPanel({ node, retryCandidates, models, tools, running, onCh
               value={node.toolId ?? ""}
               disabled={running}
               onChange={(e) => {
-                const t = tools.find((tool) => tool.id === e.target.value);
+                const t = tools.filter(isAiExposedTool).find((tool) => tool.id === e.target.value);
                 onChange(
                   t
                     ? { toolId: t.id, label: t.name || t.id, inputPath: "{{input.file}}", outputDir: "output", timeoutMs: 60000 }
@@ -541,8 +545,8 @@ function NodePropertyPanel({ node, retryCandidates, models, tools, running, onCh
               className={fieldInputCls}
             >
               <option value="">— 选择 tool —</option>
-              {tools.map((t) => (
-                <option key={t.id} value={t.id}>{t.name || t.id}</option>
+              {tools.filter(isAiExposedTool).map((t) => (
+                <option key={t.id} value={t.id}>{t.name || t.id}{t.tags?.length ? ` · ${t.tags.join(",")}` : ""}</option>
               ))}
             </select>
           </PropField>

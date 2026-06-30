@@ -18,11 +18,35 @@ function normalizeHeader(header: string): string {
   return header.trim().replace(/^\uFEFF/, "").toLowerCase();
 }
 
-function findTagDetailColumns(columns: string[]): TagDetailColumns | null {
+function findColumnByHeader(columns: string[], candidates: string[]): string | undefined {
   const byNormalized = new Map(columns.map((column) => [normalizeHeader(column), column]));
-  const type = byNormalized.get("标签类型") ?? byNormalized.get("tag_type") ?? byNormalized.get("label_type") ?? byNormalized.get("type");
-  const tag = byNormalized.get("标签") ?? byNormalized.get("tag") ?? byNormalized.get("label") ?? byNormalized.get("value");
-  const ratio = byNormalized.get("占比") ?? byNormalized.get("ratio") ?? byNormalized.get("pct") ?? byNormalized.get("percentage");
+  for (const candidate of candidates) {
+    const found = byNormalized.get(candidate);
+    if (found) return found;
+  }
+  return undefined;
+}
+
+function findTagDetailColumns(columns: string[]): TagDetailColumns | null {
+  const type = findColumnByHeader(columns, ["标签类型", "tag_type", "label_type", "type"]);
+  const tag = findColumnByHeader(columns, ["标签", "标签名", "标签名称", "一级标签值", "tag", "tag_name", "label", "label_name", "value"]);
+  const exactRatio = findColumnByHeader(columns, ["占比", "ratio", "pct", "percentage"]);
+  const ratio = exactRatio ?? columns.find((column) => {
+    const normalized = normalizeHeader(column);
+    return normalized.includes("占比") && !normalized.includes("tgi");
+  });
+  if (!type || !tag || !ratio) {
+    const normalized = columns.map(normalizeHeader);
+    const looksLikePortraitLongTable = normalized[0] === "标签类型" && columns.length >= 4;
+    if (looksLikePortraitLongTable) {
+      const fallbackRatio = columns.find((column) => {
+        const header = normalizeHeader(column);
+        return header.includes("占比") && !header.includes("tgi");
+      }) ?? columns[columns.length - 2];
+      const fallbackTag = columns[1];
+      if (fallbackTag && fallbackRatio) return { type: columns[0]!, tag: fallbackTag, ratio: fallbackRatio };
+    }
+  }
   if (!type || !tag || !ratio) return null;
   return { type, tag, ratio };
 }
@@ -82,6 +106,20 @@ function formatRatioForCsv(ratio: number): string {
   if (!Number.isFinite(ratio)) return "";
   const percentage = ratio * 100;
   return Number.isInteger(percentage) ? `${percentage}%` : `${Number(percentage.toFixed(4))}%`;
+}
+
+export function canExportLlmAggregateCsv(fieldProfiles: CrowdFieldProfile[]): boolean {
+  if (fieldProfiles.length === 0) return false;
+  return !fieldProfiles.some((profile) => {
+    const field = normalizeHeader(profile.field);
+    return field === "标签类型"
+      || field === "标签"
+      || field === "占比"
+      || field === "tgi"
+      || field.includes("占比")
+      || field.includes("tgi")
+      || /^col_\d+$/.test(field);
+  });
 }
 
 export function crowdFieldProfilesToLlmAggregateCsv(fieldProfiles: CrowdFieldProfile[]): string {

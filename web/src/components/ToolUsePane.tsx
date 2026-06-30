@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Wrench, ShieldCheck, Bot, FlaskConical, RefreshCw, Activity } from "lucide-react";
+import { Wrench, ShieldCheck, Bot, FlaskConical, RefreshCw, Activity, Search, Tags } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import type { ExtractionTool, ToolEvalCase, ToolRunRecord } from "@/types";
@@ -11,6 +11,7 @@ interface Props {
 }
 
 type Category = "ingestion" | "analysis";
+type RiskFilter = "all" | "L0" | "L1" | "L2" | "L3";
 
 type EvalState =
   | { status: "idle" }
@@ -31,12 +32,40 @@ function isAiExposed(tool: ExtractionTool): boolean {
   return categoryOf(tool) === "analysis";
 }
 
+function normalizeTag(tag: string): string {
+  return tag.trim().toLowerCase();
+}
+
+function toolTags(tool: ExtractionTool): string[] {
+  const explicit = tool.tags ?? [];
+  return [...new Set(explicit.map(normalizeTag).filter(Boolean))];
+}
+
+function toolSearchText(tool: ExtractionTool): string {
+  return [
+    tool.id,
+    tool.name,
+    tool.description,
+    tool.category ?? "",
+    tool.riskLevel ?? "",
+    tool.input.accept.join(" "),
+    tool.output.join(" "),
+    tool.allowedUse ?? "",
+    tool.forbiddenUse ?? "",
+    tool.failureHandling ?? "",
+    toolTags(tool).join(" "),
+  ].join(" ").toLowerCase();
+}
+
 export function ToolUsePane({ workspaceId }: Props) {
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [loadError, setLoadError] = useState("");
   const [reloading, setReloading] = useState(false);
   const [toolId, setToolId] = useState<string>("");
   const [filter, setFilter] = useState<"all" | Category>("all");
+  const [query, setQuery] = useState("");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
   const [evalState, setEvalState] = useState<EvalState>({ status: "idle" });
   const [view, setView] = useState<"console" | "board">("console");
 
@@ -60,9 +89,19 @@ export function ToolUsePane({ workspaceId }: Props) {
   const tool = useMemo(() => tools.find((t) => t.id === toolId) ?? null, [tools, toolId]);
 
   const filteredTools = useMemo(() => {
-    if (filter === "all") return tools;
-    return tools.filter((t) => categoryOf(t) === filter);
-  }, [tools, filter]);
+    const q = query.trim().toLowerCase();
+    return tools.filter((t) => {
+      if (filter !== "all" && categoryOf(t) !== filter) return false;
+      if (riskFilter !== "all" && t.riskLevel !== riskFilter) return false;
+      if (tagFilter !== "all" && !toolTags(t).includes(tagFilter)) return false;
+      if (q && !toolSearchText(t).includes(q)) return false;
+      return true;
+    });
+  }, [tools, filter, query, riskFilter, tagFilter]);
+
+  const allTags = useMemo(() => {
+    return [...new Set(tools.flatMap(toolTags))].sort((a, b) => a.localeCompare(b));
+  }, [tools]);
 
   const counts = useMemo(() => {
     let ingestion = 0;
@@ -97,7 +136,7 @@ export function ToolUsePane({ workspaceId }: Props) {
             <Wrench className="h-4 w-4" /> 计算工具 · tool-use（管理控制台）
           </h1>
           <p className="mt-1 text-[12.5px] text-neutral-500">
-            统一查看本仓库注册的本地工具：用途分类（摄取 / 分析）、AI 暴露（仅 analysis 类经 MCP 暴露给 pi-agent）、参数 / 风险 / 适用场景。
+            统一查看本仓库注册的本地工具：用途分类（摄取 / 分析）、AI 暴露（仅 analysis 类经 MCP 暴露给 pi-agent）、标签 / 参数 / 风险 / 适用场景。
           </p>
           <p className="mt-1 text-[11.5px] text-neutral-400">
             本面板只做<b>管理</b>：工具新增 / 修改的代码仍由开发者放在
@@ -149,6 +188,11 @@ export function ToolUsePane({ workspaceId }: Props) {
               <code className="mx-1 font-mono text-[11px]">{"server/tools/<id>/tool.json"}</code>
               中编辑。
             </li>
+            <li>
+              数据分析 Python 固化代码请在 manifest 维护
+              <code className="mx-1 font-mono text-[11px]">tags</code>
+              ，用于搜索、筛选、command / subagent / workflow 场景装配。
+            </li>
           </ul>
         </div>
 
@@ -194,11 +238,44 @@ export function ToolUsePane({ workspaceId }: Props) {
               ))}
             </div>
 
+            <div className="mt-2 space-y-2">
+              <label className="flex items-center gap-1.5 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5 text-[11px] dark:border-neutral-700 dark:bg-neutral-950/40">
+                <Search className="h-3.5 w-3.5 text-neutral-400" />
+                <input
+                  value={query}
+                  onChange={(e) => setQuery(e.target.value)}
+                  placeholder="搜索名称、id、描述、标签"
+                  className="min-w-0 flex-1 bg-transparent outline-none placeholder:text-neutral-400"
+                />
+              </label>
+              <div className="grid grid-cols-2 gap-2">
+                <select
+                  value={tagFilter}
+                  onChange={(e) => setTagFilter(e.target.value)}
+                  className="rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[11px] dark:border-neutral-700"
+                  title="按标签筛选"
+                >
+                  <option value="all">全部标签</option>
+                  {allTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+                </select>
+                <select
+                  value={riskFilter}
+                  onChange={(e) => setRiskFilter(e.target.value as RiskFilter)}
+                  className="rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[11px] dark:border-neutral-700"
+                  title="按风险等级筛选"
+                >
+                  <option value="all">全部风险</option>
+                  {(["L0", "L1", "L2", "L3"] as const).map((risk) => <option key={risk} value={risk}>{risk}</option>)}
+                </select>
+              </div>
+            </div>
+
             <div className="mt-2 space-y-1.5">
               {filteredTools.map((item) => {
                 const active = item.id === toolId;
                 const cat = categoryOf(item);
                 const aiExposed = isAiExposed(item);
+                const tags = toolTags(item);
                 return (
                   <button
                     key={item.id}
@@ -242,6 +319,13 @@ export function ToolUsePane({ workspaceId }: Props) {
                         </span>
                       )}
                     </span>
+                    {tags.length > 0 && (
+                      <span className={cn("mt-1 flex flex-wrap gap-1 text-[9.5px]", active ? "text-neutral-200 dark:text-neutral-600" : "text-neutral-400")}>
+                        {tags.slice(0, 4).map((tag) => (
+                          <span key={tag} className="rounded bg-neutral-500/10 px-1 py-[1px]">#{tag}</span>
+                        ))}
+                      </span>
+                    )}
                   </button>
                 );
               })}
@@ -281,6 +365,15 @@ interface ToolDetailProps {
 function ToolDetail({ tool, evalState, onLoadCases }: ToolDetailProps) {
   const cat = categoryOf(tool);
   const aiExposed = isAiExposed(tool);
+  const tags = toolTags(tool);
+  const matrix = [
+    { name: "人工运行", enabled: true, note: "数据提取面板手动触发" },
+    { name: "AI / MCP", enabled: aiExposed, note: aiExposed ? "可经 source=ai 网关调用" : "ingestion 不暴露给模型" },
+    { name: "command", enabled: aiExposed, note: aiExposed ? "可作为场景工具预填 @工具卡" : "不进入 command 工具绑定候选" },
+    { name: "subagent", enabled: aiExposed, note: aiExposed ? "可进入 template toolIds 白名单" : "不挂载给子 agent" },
+    { name: "workflow", enabled: aiExposed, note: aiExposed ? "可作为受控计算节点候选" : "只保留人工摄取路径" },
+    { name: "eval", enabled: true, note: "复用 tests/cases.json 与实验室 tool 评测" },
+  ];
   return (
     <>
       <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
@@ -292,6 +385,14 @@ function ToolDetail({ tool, evalState, onLoadCases }: ToolDetailProps) {
               {tool.id} · v{tool.version} · {tool.runtime}
               {tool.timeoutMs ? " · 超时 " + tool.timeoutMs + "ms" : ""}
             </p>
+            {tags.length > 0 && (
+              <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10.5px] text-neutral-500">
+                <Tags className="h-3 w-3" />
+                {tags.map((tag) => (
+                  <span key={tag} className="rounded bg-neutral-100 px-1.5 py-0.5 font-mono dark:bg-neutral-800">#{tag}</span>
+                ))}
+              </div>
+            )}
           </div>
           <div className="flex shrink-0 flex-col items-end gap-1">
             <span
@@ -353,6 +454,26 @@ function ToolDetail({ tool, evalState, onLoadCases }: ToolDetailProps) {
             {tool.forbiddenUse}
           </p>
         )}
+      </section>
+
+      <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <h3 className="text-[12.5px] font-semibold">跨模块能力矩阵</h3>
+        <p className="mt-0.5 text-[10.5px] text-neutral-400">
+          矩阵按 manifest 策略派生；实际执行仍统一走 <code className="font-mono text-[10.5px]">/api/extraction-tools/:id/run</code>。
+        </p>
+        <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
+          {matrix.map((item) => (
+            <div key={item.name} className={cn("rounded-md border px-3 py-2", item.enabled ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/40")}>
+              <div className="flex items-center justify-between gap-2">
+                <span className="text-[11.5px] font-medium text-neutral-800 dark:text-neutral-100">{item.name}</span>
+                <span className={cn("rounded px-1.5 py-[1px] text-[10px]", item.enabled ? "bg-emerald-500/15 text-emerald-700 dark:text-emerald-300" : "bg-neutral-200 text-neutral-500 dark:bg-neutral-800")}>
+                  {item.enabled ? "可用" : "关闭"}
+                </span>
+              </div>
+              <p className="mt-1 text-[10.5px] leading-4 text-neutral-500">{item.note}</p>
+            </div>
+          ))}
+        </div>
       </section>
 
       {tool.parameters && tool.parameters.length > 0 && (
@@ -449,6 +570,11 @@ function ToolDetail({ tool, evalState, onLoadCases }: ToolDetailProps) {
 }
 
 const SOURCE_LABEL: Record<ToolRunRecord["source"], string> = { manual: "手动", ai: "AI" };
+type ToolRunSourceFilter = "all" | ToolRunRecord["source"];
+type ToolRunCallerFilter = "all" | ToolRunRecord["caller"];
+type ToolRunStatusFilter = "all" | ToolRunRecord["status"];
+
+const TOOL_RUN_CALLERS: ToolRunRecord["caller"][] = ["manual", "chat", "mcp", "command", "subagent", "workflow", "eval", "unknown"];
 
 function formatRunTime(ts: number): string {
   const d = new Date(ts);
@@ -477,6 +603,11 @@ function ToolRunBoard({ workspaceId }: { workspaceId: string | null }) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
+  const [filterTool, setFilterTool] = useState("all");
+  const [filterSource, setFilterSource] = useState<ToolRunSourceFilter>("all");
+  const [filterCaller, setFilterCaller] = useState<ToolRunCallerFilter>("all");
+  const [filterStatus, setFilterStatus] = useState<ToolRunStatusFilter>("all");
+
   const load = useCallback(() => {
     if (!workspaceId) { setRuns([]); return; }
     setLoading(true);
@@ -489,9 +620,28 @@ function ToolRunBoard({ workspaceId }: { workspaceId: string | null }) {
 
   useEffect(() => { load(); }, [load]);
 
+  const toolOptions = useMemo(() => {
+    const map = new Map<string, string>();
+    for (const run of runs) {
+      if (!run.toolId) continue;
+      map.set(run.toolId, run.toolName || run.toolId);
+    }
+    return [...map.entries()].sort((a, b) => a[1].localeCompare(b[1]));
+  }, [runs]);
+
+  const filteredRuns = useMemo(() => {
+    return runs.filter((r) => {
+      if (filterTool !== "all" && r.toolId !== filterTool) return false;
+      if (filterSource !== "all" && r.source !== filterSource) return false;
+      if (filterCaller !== "all" && r.caller !== filterCaller) return false;
+      if (filterStatus !== "all" && r.status !== filterStatus) return false;
+      return true;
+    });
+  }, [runs, filterTool, filterSource, filterCaller, filterStatus]);
+
   const summary = useMemo(() => {
     const map = new Map<string, ToolRunAgg>();
-    for (const r of runs) {
+    for (const r of filteredRuns) {
       const key = r.toolId || r.toolName || r.id;
       let agg = map.get(key);
       if (!agg) {
@@ -505,12 +655,12 @@ function ToolRunBoard({ workspaceId }: { workspaceId: string | null }) {
       if (r.durationMs != null) { agg.durSum += r.durationMs; agg.durN += 1; }
     }
     return [...map.values()].sort((a, b) => b.total - a.total);
-  }, [runs]);
+  }, [filteredRuns]);
 
   const totals = useMemo(() => {
-    const failed = runs.filter((r) => r.status === "failed").length;
-    return { total: runs.length, success: runs.length - failed, failed };
-  }, [runs]);
+    const failed = filteredRuns.filter((r) => r.status === "failed").length;
+    return { total: filteredRuns.length, success: filteredRuns.length - failed, failed };
+  }, [filteredRuns]);
 
   if (!workspaceId) {
     return (
@@ -548,6 +698,31 @@ function ToolRunBoard({ workspaceId }: { workspaceId: string | null }) {
         </div>
       </div>
 
+      <div className="flex flex-wrap items-center gap-2 rounded-lg border border-neutral-200 bg-white px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900">
+        <span className="text-[12px] font-medium text-neutral-500">过滤：</span>
+        <select value={filterTool} onChange={(e) => setFilterTool(e.target.value)} className="rounded border border-neutral-200 bg-transparent px-2 py-1 text-[11px] dark:border-neutral-700 max-w-[140px] truncate">
+          <option value="all">所有工具</option>
+          {toolOptions.map(([id, name]) => <option key={id} value={id}>{name}</option>)}
+        </select>
+        <select value={filterSource} onChange={(e) => setFilterSource(e.target.value as ToolRunSourceFilter)} className="rounded border border-neutral-200 bg-transparent px-2 py-1 text-[11px] dark:border-neutral-700">
+          <option value="all">所有来源</option>
+          <option value="manual">手动 (manual)</option>
+          <option value="ai">AI</option>
+        </select>
+        <select value={filterCaller} onChange={(e) => setFilterCaller(e.target.value as ToolRunCallerFilter)} className="rounded border border-neutral-200 bg-transparent px-2 py-1 text-[11px] dark:border-neutral-700">
+          <option value="all">所有 Caller</option>
+          {TOOL_RUN_CALLERS.map((caller) => <option key={caller} value={caller}>{caller}</option>)}
+        </select>
+        <select value={filterStatus} onChange={(e) => setFilterStatus(e.target.value as ToolRunStatusFilter)} className="rounded border border-neutral-200 bg-transparent px-2 py-1 text-[11px] dark:border-neutral-700">
+          <option value="all">所有状态</option>
+          <option value="success">成功</option>
+          <option value="failed">失败</option>
+        </select>
+        {filteredRuns.length !== runs.length && (
+          <span className="ml-2 text-[11px] text-neutral-400">已过滤 {runs.length - filteredRuns.length} 条记录</span>
+        )}
+      </div>
+
       {error && (
         <p className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">{error}</p>
       )}
@@ -555,7 +730,7 @@ function ToolRunBoard({ workspaceId }: { workspaceId: string | null }) {
       <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <h3 className="flex items-center gap-1.5 text-[12.5px] font-semibold text-neutral-700 dark:text-neutral-200"><Wrench className="h-3.5 w-3.5" /> 按工具汇总</h3>
         {summary.length === 0 ? (
-          <p className="mt-3 text-[12px] text-neutral-400">{loading ? "加载中…" : "本工作区暂无工具运行记录。手动运行在「数据提取」面板，AI 调用经 MCP。"}</p>
+          <p className="mt-3 text-[12px] text-neutral-400">{loading ? "加载中…" : "本工作区当前筛选下暂无工具运行记录。"}</p>
         ) : (
           <table className="mt-2 w-full text-[11.5px]">
             <thead className="text-neutral-500 dark:text-neutral-400">
@@ -591,41 +766,73 @@ function ToolRunBoard({ workspaceId }: { workspaceId: string | null }) {
 
       <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <h3 className="flex items-center gap-1.5 text-[12.5px] font-semibold text-neutral-700 dark:text-neutral-200"><Activity className="h-3.5 w-3.5" /> 最近运行流水</h3>
-        {runs.length === 0 ? (
-          <p className="mt-3 text-[12px] text-neutral-400">{loading ? "加载中…" : "暂无运行记录。"}</p>
+        {filteredRuns.length === 0 ? (
+          <p className="mt-3 text-[12px] text-neutral-400">{loading ? "加载中…" : "当前筛选下无运行记录。"}</p>
         ) : (
-          <table className="mt-2 w-full text-[11.5px]">
-            <thead className="text-neutral-500 dark:text-neutral-400">
-              <tr className="border-b border-neutral-200 dark:border-neutral-700">
-                <th className="px-2 py-1.5 text-left font-normal">时间</th>
-                <th className="px-2 py-1.5 text-left font-normal">工具</th>
-                <th className="px-2 py-1.5 text-left font-normal">来源</th>
-                <th className="px-2 py-1.5 text-left font-normal">状态</th>
-                <th className="px-2 py-1.5 text-right font-normal">成功/失败</th>
-                <th className="px-2 py-1.5 text-right font-normal">耗时</th>
-              </tr>
-            </thead>
-            <tbody>
-              {runs.map((r) => (
-                <tr key={r.id} className="border-b border-neutral-100 last:border-0 dark:border-neutral-800">
-                  <td className="px-2 py-1.5 tabular-nums text-neutral-500">{formatRunTime(r.time)}</td>
-                  <td className="px-2 py-1.5 text-neutral-800 dark:text-neutral-100">{r.toolName || r.toolId}</td>
-                  <td className="px-2 py-1.5">
-                    <span className={cn("rounded px-1.5 py-[1px] text-[10px]", r.source === "ai" ? "bg-blue-500/15 text-blue-700 dark:text-blue-300" : "bg-neutral-200/70 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300")}>
-                      {SOURCE_LABEL[r.source]}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1.5">
-                    <span className={cn("font-medium", r.status === "failed" ? "text-red-500" : "text-emerald-600 dark:text-emerald-400")}>
-                      {r.status === "failed" ? "失败" : "成功"}
-                    </span>
-                  </td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{r.success ?? "-"}/{r.failed ?? "-"}</td>
-                  <td className="px-2 py-1.5 text-right tabular-nums text-neutral-500">{r.durationMs != null ? `${r.durationMs}ms` : "-"}</td>
+          <div className="mt-2 w-full overflow-x-auto">
+            <table className="w-full text-[11.5px]">
+              <thead className="text-neutral-500 dark:text-neutral-400">
+                <tr className="border-b border-neutral-200 dark:border-neutral-700">
+                  <th className="px-2 py-1.5 text-left font-normal w-28 whitespace-nowrap">时间</th>
+                  <th className="px-2 py-1.5 text-left font-normal min-w-[120px]">工具</th>
+                  <th className="px-2 py-1.5 text-left font-normal w-28 whitespace-nowrap">来源 / Caller</th>
+                  <th className="px-2 py-1.5 text-left font-normal w-24 whitespace-nowrap">状态 / 耗时</th>
+                  <th className="px-2 py-1.5 text-left font-normal">产物 / 摘要</th>
                 </tr>
-              ))}
-            </tbody>
-          </table>
+              </thead>
+              <tbody>
+                {filteredRuns.map((r) => (
+                  <tr key={r.id} className="border-b border-neutral-100 last:border-0 dark:border-neutral-800">
+                    <td className="px-2 py-1.5 tabular-nums text-neutral-500 whitespace-nowrap align-top">{formatRunTime(r.time)}</td>
+                    <td className="px-2 py-1.5 text-neutral-800 dark:text-neutral-100 break-all align-top">{r.toolName || r.toolId}</td>
+                    <td className="px-2 py-1.5 whitespace-nowrap align-top">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={cn("rounded px-1.5 py-[1px] text-[10px]", r.source === "ai" ? "bg-blue-500/15 text-blue-700 dark:text-blue-300" : "bg-neutral-200/70 text-neutral-600 dark:bg-neutral-700 dark:text-neutral-300")}>
+                          {SOURCE_LABEL[r.source]}
+                        </span>
+                        <span className="font-mono text-[10px] text-neutral-400">{r.caller}</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5 whitespace-nowrap align-top">
+                      <div className="flex flex-col items-start gap-1">
+                        <span className={cn("font-medium", r.status === "failed" ? "text-red-500" : "text-emerald-600 dark:text-emerald-400")}>
+                          {r.status === "failed" ? "失败" : "成功"}
+                        </span>
+                        <span className="tabular-nums text-[10px] text-neutral-400">{r.durationMs != null ? `${r.durationMs}ms` : "-"}</span>
+                      </div>
+                    </td>
+                    <td className="px-2 py-1.5 align-top">
+                      <div className="flex flex-wrap items-center gap-1.5 text-[10.5px]">
+                        <span className="text-neutral-600 dark:text-neutral-300 whitespace-nowrap" title="成功/失败条数">
+                          行: {r.success ?? "-"}/{r.failed ?? "-"}
+                        </span>
+                        {r.rowGuard && (
+                          <span className={cn("rounded border px-1 py-[1px] whitespace-nowrap", r.rowGuard.blocked ? "border-red-200 bg-red-50 text-red-600 dark:border-red-900/50 dark:bg-red-900/20" : "border-emerald-200 bg-emerald-50 text-emerald-600 dark:border-emerald-900/50 dark:bg-emerald-900/20")} title={`已扫描 ${r.rowGuard.maxRowsSeen ?? '-'}，限制 ${r.rowGuard.rowLimit ?? '-'}`}>
+                            Guard {r.rowGuard.blocked ? "Blocked" : "Pass"}
+                          </span>
+                        )}
+                        {r.metricSnapshotsCount > 0 && (
+                          <span className="rounded border border-blue-200 bg-blue-50 px-1 py-[1px] text-blue-600 whitespace-nowrap dark:border-blue-900/50 dark:bg-blue-900/20 dark:text-blue-400">
+                            指标 {r.metricSnapshotsCount}
+                          </span>
+                        )}
+                        {r.errorCode && (
+                          <span className="rounded border border-amber-200 bg-amber-50 px-1 py-[1px] font-mono text-[10px] text-amber-700 whitespace-nowrap dark:border-amber-900/50 dark:bg-amber-900/20 dark:text-amber-300">
+                            {r.errorCode}
+                          </span>
+                        )}
+                        {r.outputArtifacts && r.outputArtifacts.length > 0 && (
+                          <span className="rounded border border-purple-200 bg-purple-50 px-1 py-[1px] text-purple-600 dark:border-purple-900/50 dark:bg-purple-900/20 dark:text-purple-400" title={r.outputArtifacts.join("\n")}>
+                            产物 {r.outputArtifacts.length}
+                          </span>
+                        )}
+                      </div>
+                    </td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
         )}
       </section>
     </div>

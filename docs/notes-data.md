@@ -416,6 +416,8 @@ python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print
 
 ## 八、零幻觉专项决策（D-ZH6/7/8, 2026-06-26）
 
+- **正式报告零幻觉默认注入（2026-06-30 hotfix）**：零幻觉报告约束不再由 `injectCausalLayering` 按调用点手动开启，而是作为所有 pi session 的默认正式报告约束注入；该约束自带适用条件“若本次产出为正式报告文本”，非报告聊天不改变输出结构。历史 wiki 中“日常聊天不强制分层”应修正为“日常普通问答不强制，但日常生成正式数据分析报告必须遵守来源 / 证据等级 / 观察-推断-建议分层”。
+
 ### D-ZH6 数据充分性预检
 - **判定阈值**：< 10 行 fail（弃答），< 100 行 warn（降置信）。阈值是经验值，后续可经 `CoveragePolicy` 注入。
 - **coverage block 注入位置**：在 snapshot block 之后、数据集描述之前，与数字锁同层。

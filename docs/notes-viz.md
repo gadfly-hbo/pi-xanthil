@@ -9,23 +9,18 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新：2026-06-29 · **V-KG1（图谱边关系与来源筛选）+ V-KG2（前端启发式节点质量提示）done**。
+- 最近更新：2026-06-30 · **V-TOOLUSE3（ToolUsePane 搜索/标签/矩阵/运行台账治理视图）done**。
 - 进度：
-  - **V-KG1**（done，本次）：在图谱视图 toolbar 增加边 relation 筛选与来源（自动/手工）筛选，基于前端内存 `rawEdges` 过滤，确保不影响节点显示（`gcNodes` 不变）。
-  - **V-KG2**（done，本次）：增加纯前端的启发式节点质量提示，计算逻辑涵盖无入边、无出边、孤立节点、低关联、以及久未更新等维度的判断；列表页与详情面板新增提示区。
-  - **V-TRACE1**（done，本次）：重构 `TracePane.tsx` 为分面视图模式（运行看板、失败分析、巡检建议、记忆注入、规则提炼、说明），降低信息密度，分离职责。
-  - **V-TRACE5**（done，本次）：在失败分析页增加状态过滤与标记（全部、open、fixed、distilled、ignored）。卡片集成 inline 按钮支持快速填写 note，并做乐观本地渲染+局部 API 更新回滚。
-  - **V-TRACE7**（done，本次）：新增独立的“巡检建议” Tab。接入 E-TRACE6 端点（`listTraceInspectionFindings`），展示 7/14/30 天异常窗口（如失败峰值）并附带一键复制 targetId/errorType 快捷操作及修复建议的闭环操作 UI。
+  - **V-TOOLUSE3**（done，本次）：为 ToolUsePane 的运行台账面板（`ToolRunBoard`）增加了按 `toolId` / `source` / `caller` / `status` 过滤的功能；在最近运行流水表格中新增了 Row Guard 状态、指标 Snapshots 数量、产物 Artifacts 数量的徽标和统计展示。
+  - 总控回流收口：去掉 select handler 中的 `any` cast，补 `unknown` caller 选项，并在流水摘要中展示 `errorCode` 失败分类徽标。
 - 校验：
-  - `node --experimental-strip-types --test server/src/knowledge-graph-preview.test.ts` ✅ 2/2
   - `npm run typecheck` ✅
   - `npm run build` ✅（仅既有 Echarts dynamic-import / chunk-size warning）
   - 数据探索 LLM 隔离 grep ✅ 0 匹配
 - 下一步：
   - 用户 review 后手动 `git add/commit`。
-  - 知识图谱 preview / history 本轮只接 API wrapper，后续如需要可单开前端接入卡，在 `KnowledgeGraphPane` 说明页或独立历史抽屉中展示。
-  - 等待用户进行 KG 图谱筛选、节点质量提示、trace 失败状态闭环与巡检建议的浏览器人工实跑点检。
-  - 推进 `KICKOFF-P0.md` 其他项。
+  - 等待浏览器端手动 smoke 点检（控制台 -> tool-use 搜索、筛选、切换运行台账等功能）。
+  - 推进 `KICKOFF-P0.md` 中 P1 规划的剩余项（报告交付周月专题模板等）。
 - 阻塞 / 待总控：无。
 - 开放问题：
   - KG 既有 node/edge mutation API 仍是 legacy id-scoped 端点；如需强化跨 workspace 写隔离，后续应新增 workspace-scoped patch/delete 路由并迁移前端调用。
@@ -93,6 +88,7 @@ db 新表建 `db/viz.ts:initVizTables`（P0-B 的 `dashboards` 表在此）；HT
 - `extract_jobs` 表属于 V 域 schema，放 `db/viz.ts:initVizTables`，字段口径以 `ExtractJob` 为准；与 `onto_*` / `action_*` 同模式走 `CREATE TABLE IF NOT EXISTS`，不 ALTER 他域表、不加 FK。
 - 大文档抽取前端进度应复用长任务续跑范式：后台 REST 起 job，DB 持久化进度，前端轮询 `ExtractJob`；切 tab / unmount 后重新 mount 仍可恢复进度。
 - **图谱视图过滤与质量提示**（2026-06-29）：知识图谱关系筛选（V-KG1）与质量提示（V-KG2）全部基于前端 `rawNodes` / `rawEdges` 在内存计算。为防页面变卡并维持组件整洁，质量提示主要作为辅助视觉信号（不进入数据库）；边过滤不引起独立节点隐身，从而维持稳定视角。
+- **工具运行台账过滤**（2026-06-30）：在 `ToolRunBoard` 中新增的多维度运行状态过滤（toolId、source、caller、status 等）均设计为前端纯本地内存计算过滤（依赖于 `useMemo`）。后端 `listToolRuns` 承担定量的全集抓取职责（如默认获取近 200 条记录）。如后续遇到大数量卡顿，再评估是否需要改为后端动态过滤及分页。
 
 **规则记忆 4 Pane · 全局池化 UI 范式**
 - 列表数据源 = 全局池（`api.listRules/Standards/Cases/BusinessContexts/Metrics` 返回所有 ws 的条目，`workspaceId` 字段表示 origin）；启用态 = `sharedApi.listMemoryEnablements(ws, kind)` 索引 Map。两路独立拉取、独立更新。

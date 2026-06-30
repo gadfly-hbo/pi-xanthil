@@ -241,6 +241,9 @@ export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, emb
         inputPath,
         outputPath,
         params: normalizeParams(selectedTool, params),
+        caller: "chat",
+        targetKind: "session",
+        targetId: sessionId ?? "",
       });
       const summary = formatRunSummary(selectedTool, inputPath, outputPath, result);
       setRun(result);

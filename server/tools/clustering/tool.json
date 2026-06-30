@@ -6,6 +6,7 @@
   "entry": "clustering.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["clustering", "segmentation", "python-analysis"],
   "input": {
     "accept": [
       ".csv"

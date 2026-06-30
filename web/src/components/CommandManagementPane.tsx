@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { SquareTerminal, RefreshCw, Plus, Save, Trash2, AlertTriangle } from "lucide-react";
 import { api } from "@/lib/api";
-import type { ExtractionTool, XanCommand, XanCommandParam, XanCommandParamType, SkillRegistryEntry } from "@/types";
+import type { ExtractionTool, RiskLevel, XanCommand, XanCommandParam, XanCommandParamType, SkillRegistryEntry } from "@/types";
 
 /**
  * 计算工具·command 管理（pi-xanthil 自有的「斜杠命令注册表」）。
@@ -18,6 +18,17 @@ import type { ExtractionTool, XanCommand, XanCommandParam, XanCommandParamType, 
  */
 
 const SAFE_NAME_RE = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
+
+const RISK_BADGE: Record<RiskLevel, string> = {
+  L0: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
+  L1: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
+  L2: "bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300",
+  L3: "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300",
+};
+
+function isAiExposedTool(tool: ExtractionTool): boolean {
+  return tool.category === "analysis";
+}
 
 const PARAM_TYPE_OPTIONS: { value: XanCommandParamType; label: string }[] = [
   { value: "select", label: "select · 下拉" },
@@ -114,7 +125,7 @@ export function CommandManagementPane({ workspaceId }: Props) {
     api
       .listExtractionTools()
       .then((list) => {
-        if (!cancelled) setTools(list.filter((tool) => tool.category === "analysis"));
+        if (!cancelled) setTools(list.filter(isAiExposedTool));
       })
       .catch(() => {
         if (!cancelled) setTools([]);
@@ -818,8 +829,14 @@ function ToolIdsEditor({
                   checked={selectedSet.has(tool.id)}
                   onChange={() => toggle(tool.id)}
                 />
-                <code className="font-mono text-[11px] text-neutral-700 dark:text-neutral-200">{tool.id}</code>
-                <span className="truncate text-[11px] text-neutral-400">{tool.name}</span>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-1.5">
+                    <code className="font-mono text-[11px] text-neutral-700 dark:text-neutral-200">{tool.id}</code>
+                    <span className="truncate text-[11px] text-neutral-400">{tool.name}</span>
+                    {tool.riskLevel && <span className={`rounded px-1 py-0.5 text-[9.5px] ${RISK_BADGE[tool.riskLevel]}`}>{tool.riskLevel}</span>}
+                  </div>
+                  {tool.tags && tool.tags.length > 0 && <div className="truncate text-[10px] text-neutral-400">tags: {tool.tags.join(", ")}</div>}
+                </div>
               </label>
             ))}
           </div>

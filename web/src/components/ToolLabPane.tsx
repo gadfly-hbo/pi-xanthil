@@ -6,7 +6,7 @@ import { formatEfc, formatEta } from "@/lib/efc";
 import { downloadArchiveTextFile, downloadEvaluationArchiveManifest, downloadEvaluationJson, downloadToolEvaluationMarkdown } from "@/lib/evaluation-export";
 import { ArchiveList, EvalHistoryList, ExportActions, ResultCard as SharedResultCard, SummaryTable as SharedSummaryTable } from "@/components/eval-shared";
 import { AheManifestPanel } from "@/components/AheManifestPanel";
-import type { EvaluationArchiveIndexItem, EvaluationError, ExtractionTool, PiModel, ToolCaseSet, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, ToolExpectation } from "@/types";
+import type { EvaluationArchiveIndexItem, EvaluationError, ExtractionTool, ExtractionToolCategory, PiModel, RiskLevel, ToolCaseSet, ToolEvalCase, ToolEvaluation, ToolEvaluationDetail, ToolEvaluationRunResult, ToolExpectation } from "@/types";
 
 interface Props {
   workspaceId: string | null;
@@ -15,6 +15,10 @@ interface Props {
 }
 
 type ExpectationKind = "field-presence" | "schema" | "llm-judge" | "must-fail" | "golden";
+type RiskFilter = "all" | RiskLevel;
+type CategoryFilter = "all" | ExtractionToolCategory;
+
+interface ToolCaseCoverage { caseCount: number; hasMustFail: boolean }
 
 interface DraftCase {
   id: string;
@@ -56,6 +60,11 @@ const defaultCase = (): DraftCase => ({
 export function ToolLabPane(p: Props) {
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [toolId, setToolId] = useState("");
+  const [categoryFilter, setCategoryFilter] = useState<CategoryFilter>("all");
+  const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
+  const [tagFilter, setTagFilter] = useState("all");
+  const [query, setQuery] = useState("");
+  const [caseCoverage, setCaseCoverage] = useState<Record<string, ToolCaseCoverage>>({});
   const [cases, setCases] = useState<DraftCase[]>([{ ...defaultCase(), id: "case_1" }]);
   const [templateInfo, setTemplateInfo] = useState<{ source: string; caseCount: number; coverage: string } | null>(null);
   const [caseSets, setCaseSets] = useState<ToolCaseSet[]>([]);
@@ -131,6 +140,44 @@ export function ToolLabPane(p: Props) {
   const selectedTool = useMemo(() => tools.find((tool) => tool.id === toolId) ?? null, [toolId, tools]);
   const runnableCases = useMemo(() => cases.map((item) => toToolEvalCase(item, p.model)).filter((item): item is ToolEvalCase => item !== null), [cases, p.model]);
   const canRun = !!p.workspaceId && !!selectedTool && runnableCases.length > 0 && !running;
+  const latestEvalByTool = useMemo(() => {
+    const map = new Map<string, ToolEvaluation>();
+    for (const item of history) if (!map.has(item.toolId)) map.set(item.toolId, item);
+    return map;
+  }, [history]);
+  const allTags = useMemo(() => [...new Set(tools.flatMap((tool) => tool.tags ?? []))].sort((a, b) => a.localeCompare(b)), [tools]);
+  const filteredTools = useMemo(() => {
+    const q = query.trim().toLowerCase();
+    return tools.filter((tool) => {
+      if (categoryFilter !== "all" && (tool.category ?? "ingestion") !== categoryFilter) return false;
+      if (riskFilter !== "all" && tool.riskLevel !== riskFilter) return false;
+      if (tagFilter !== "all" && !(tool.tags ?? []).includes(tagFilter)) return false;
+      if (q) {
+        const haystack = [tool.id, tool.name, tool.description, tool.allowedUse, tool.forbiddenUse, tool.failureHandling, ...(tool.tags ?? [])].join(" ").toLowerCase();
+        if (!haystack.includes(q)) return false;
+      }
+      return true;
+    });
+  }, [categoryFilter, query, riskFilter, tagFilter, tools]);
+
+  useEffect(() => {
+    let cancelled = false;
+    if (tools.length === 0) {
+      setCaseCoverage({});
+      return () => { cancelled = true; };
+    }
+    Promise.all(tools.map(async (tool) => {
+      try {
+        const result = await api.listExtractionToolTestCases(tool.id);
+        return [tool.id, { caseCount: result.cases.length, hasMustFail: result.cases.some((item) => item.expected.kind === "must-fail") }] as const;
+      } catch {
+        return [tool.id, { caseCount: 0, hasMustFail: false }] as const;
+      }
+    })).then((entries) => {
+      if (!cancelled) setCaseCoverage(Object.fromEntries(entries));
+    });
+    return () => { cancelled = true; };
+  }, [tools]);
 
   function updateCase(id: string, patch: Partial<DraftCase>): void {
     setTemplateInfo(null);
@@ -321,18 +368,39 @@ export function ToolLabPane(p: Props) {
         <p className="mt-1 text-xs leading-5 text-neutral-500">对本地注册 extraction tool 运行标准输入，检查产物字段、预期失败或 golden 输出。</p>
 
         <div className="mt-5 text-xs font-medium">候选 tool</div>
+        <div className="mt-2 grid grid-cols-2 gap-2">
+          <select value={categoryFilter} onChange={(e) => setCategoryFilter(e.target.value as CategoryFilter)} className={inputClass()}>
+            <option value="all">全部 category</option>
+            <option value="analysis">analysis</option>
+            <option value="ingestion">ingestion</option>
+          </select>
+          <select value={riskFilter} onChange={(e) => setRiskFilter(e.target.value as RiskFilter)} className={inputClass()}>
+            <option value="all">全部 risk</option>
+            {(["L0", "L1", "L2", "L3"] as RiskLevel[]).map((risk) => <option key={risk} value={risk}>{risk}</option>)}
+          </select>
+          <select value={tagFilter} onChange={(e) => setTagFilter(e.target.value)} className={inputClass("col-span-2")}>
+            <option value="all">全部 tags</option>
+            {allTags.map((tag) => <option key={tag} value={tag}>{tag}</option>)}
+          </select>
+          <input value={query} onChange={(e) => setQuery(e.target.value)} placeholder="按 id / name / tags / policy 搜索" className={inputClass("col-span-2")} />
+        </div>
         <div className="mt-2 space-y-1">
           {loadingTools && <p className="px-2 py-2 text-xs text-neutral-400">正在读取 tool...</p>}
           {!loadingTools && tools.length === 0 && <p className="px-2 py-2 text-xs text-neutral-400">暂无已注册工具。</p>}
-          {tools.map((tool) => (
+          {!loadingTools && tools.length > 0 && filteredTools.length === 0 && <p className="px-2 py-2 text-xs text-neutral-400">无匹配工具。</p>}
+          {filteredTools.map((tool) => (
             <button key={tool.id} onClick={() => {
               setToolId(tool.id);
               setTemplateInfo(null);
             }} className={cn("w-full rounded-md px-2 py-2 text-left text-xs hover:bg-neutral-100 dark:hover:bg-neutral-800", tool.id === toolId && "bg-neutral-100 dark:bg-neutral-800")}>
               <span className="block truncate font-medium">{tool.name}</span>
               <span className="mt-0.5 block truncate text-[11px] text-neutral-400">{tool.id} · {tool.input.accept.join(", ")} · {tool.output.join(", ")}</span>
+              <ToolQualityLine tool={tool} coverage={caseCoverage[tool.id]} latest={latestEvalByTool.get(tool.id)} />
             </button>
           ))}
+        </div>
+        <div className="mt-2 rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1.5 text-[11px] leading-4 text-neutral-500 dark:border-neutral-800 dark:bg-neutral-900/60">
+          失败 run → 候选 case 设计：只读取 ledger metadata（toolId、caller、errorCode、artifact basename、target），用户确认后生成 case 草稿；不复制 draw_data 内容或错误样本片段。首版先展示路径，不自动落地。
         </div>
 
         <div className="mt-4 space-y-2">
@@ -549,6 +617,26 @@ function CaseEditor(p: {
       <input value={p.value.timeoutMs} type="number" min={1000} step={1000} onChange={(e) => p.onChange({ timeoutMs: Number(e.target.value) })} className={inputClass("mt-1")} />
     </label>
   </div>;
+}
+
+function ToolQualityLine({ tool, coverage, latest }: { tool: ExtractionTool; coverage?: ToolCaseCoverage; latest?: ToolEvaluation }) {
+  const needsBoundary = tool.riskLevel === "L1" || tool.riskLevel === "L2" || tool.riskLevel === "L3";
+  const missingPolicy = !tool.forbiddenUse || !tool.failureHandling;
+  const uncovered = !coverage || coverage.caseCount === 0;
+  const missingBoundary = needsBoundary && coverage && coverage.caseCount > 0 && !coverage.hasMustFail;
+  return (
+    <div className="mt-1 flex flex-wrap gap-1 text-[10px]">
+      {tool.category && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-500 dark:bg-neutral-800">{tool.category}</span>}
+      {tool.riskLevel && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-neutral-500 dark:bg-neutral-800">{tool.riskLevel}</span>}
+      {tool.tags?.slice(0, 3).map((tag) => <span key={tag} className="rounded bg-sky-50 px-1.5 py-0.5 text-sky-600 dark:bg-sky-950/30 dark:text-sky-300">#{tag}</span>)}
+      <span className={cn("rounded px-1.5 py-0.5", uncovered ? "bg-amber-50 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300" : "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300")}>
+        {uncovered ? "未覆盖" : `${coverage.caseCount} cases`}
+      </span>
+      {missingBoundary && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">缺边界 case</span>}
+      {missingPolicy && <span className="rounded bg-amber-50 px-1.5 py-0.5 text-amber-700 dark:bg-amber-950/30 dark:text-amber-300">policy 待补</span>}
+      {latest && <span className={cn("rounded px-1.5 py-0.5", latest.status === "success" ? "bg-emerald-50 text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-300" : "bg-rose-50 text-rose-700 dark:bg-rose-950/30 dark:text-rose-300")}>last eval {latest.status}</span>}
+    </div>
+  );
 }
 
 function SummaryTable({ result }: { result: ToolEvaluationDetail }) {

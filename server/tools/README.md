@@ -1,7 +1,7 @@
 # server/tools — Python 工具运行环境
 
-本目录下的工具（`tool.json` 中 `runtime: "python3"`）由 `/api/extraction-tools/:id/run` 经
-`server/src/lib/tool-runner.ts` 直接 `python3 <entry>` 调起，**复用宿主机的 system Python**，
+本目录下的工具（`tool.json` 中 `runtime: "python3"`）由 `/api/extraction-tools/:id/run` 网关
+直接 `python3 <entry>` 调起，**复用宿主机的 system Python**，
 不打包虚拟环境。所以新机器/新部署/换环境前必须装好下列依赖，否则 `/run` 会以 ImportError
 失败（summary.json 里通常会带 `ModuleNotFoundError`）。
 
@@ -39,6 +39,18 @@ python3 -c "import pandas, numpy, scipy, statsmodels, bs4, openpyxl, xlrd; print
 
 各工具的最小验收 = 跑各自 `tests/` 下的单测 / 样例数据；缺依赖时 `/run` 返回的
 `summary.json` 会包含 stderr 中的 `ModuleNotFoundError`，按提示 `pip install` 即可。
+
+## 工具注册 SOP
+
+新增或修改 `server/tools/<id>/tool.json` 时必须维护这些治理字段：
+
+- `category`: `analysis` 才能进入 AI/MCP 候选；摄取原始/半结构化文件的工具用 `ingestion`。
+- `tags`: 搜索和治理标签，不是权限。Python 数据分析工具至少包含 `python-analysis`，并建议补充业务域、分析任务、算法/模型标签，例如 `membership`、`retention`、`rfm`。
+- `riskLevel`: 标注 L0-L3 风险层级。
+- `allowedUse` / `forbiddenUse`: 明确允许和禁止用途，尤其要说明是否只能处理 `clean_data` 聚合数据。
+- `failureHandling`: 写清失败时的用户提示或降级方式。
+
+权限仍由 `category`、调用来源和 `/api/extraction-tools/:id/run` 网关策略决定；不要把 `tags` 当安全边界。
 
 ## 不做什么
 

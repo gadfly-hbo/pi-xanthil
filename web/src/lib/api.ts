@@ -309,8 +309,14 @@ const legacyApi = {
     fetch(`/api/workspaces/${workspaceId}/trace/recent-events?limit=${limit}`).then(json<TraceEvent[]>),
   getTraceTrend: (workspaceId: string, days = 14) =>
     fetch(`/api/workspaces/${workspaceId}/trace/trend?days=${days}`).then(json<TraceTrendPoint[]>),
-  listToolRuns: (workspaceId: string, limit = 200) =>
-    fetch(`/api/workspaces/${workspaceId}/tool-runs?limit=${limit}`).then(json<ToolRunRecord[]>),
+  listToolRuns: (workspaceId: string, limit = 200, filters: { toolId?: string; caller?: string; source?: string; status?: string } = {}) => {
+    const params = new URLSearchParams({ limit: String(limit) });
+    if (filters.toolId) params.set("toolId", filters.toolId);
+    if (filters.caller) params.set("caller", filters.caller);
+    if (filters.source) params.set("source", filters.source);
+    if (filters.status) params.set("status", filters.status);
+    return fetch(`/api/workspaces/${workspaceId}/tool-runs?${params.toString()}`).then(json<ToolRunRecord[]>);
+  },
   getTraceEventDetail: (workspaceId: string, eventId: string, opts: { beforeLimit?: number; afterLimit?: number } = {}) => {
     const params = new URLSearchParams();
     if (opts.beforeLimit !== undefined) params.set("beforeLimit", String(opts.beforeLimit));

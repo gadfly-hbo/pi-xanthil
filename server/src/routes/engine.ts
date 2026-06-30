@@ -157,6 +157,7 @@ import {
 } from "../evolve-engine.ts";
 import { runDocumentEvaluation } from "../document-evaluation-runner.ts";
 import { getExtractionTool, listExtractionTools } from "../../tools/registry.ts";
+import { listAiExposedToolIds } from "../tool-policy.ts";
 import { archiveHookEvaluation } from "../evaluation-archive.ts";
 import { type DocumentEvalResult, type Hook } from "../types.ts";
 import { autoTriggerCuration } from "../skill-curator.ts";
@@ -1490,7 +1491,7 @@ const COMMAND_PARAM_KEYS = new Set(["key", "label", "required", "type", "options
 const COMMAND_PARAM_TYPES = new Set<XanCommandParamType>(["text", "select", "file"]);
 const SAFE_COMMAND_NAME = /^[A-Za-z0-9][A-Za-z0-9_-]*$/;
 
-function coerceCommand(input: unknown): XanCommand | null {
+export function coerceCommand(input: unknown): XanCommand | null {
   const o = toRecord(input);
   if (!onlyKnownKeys(o, COMMAND_KEYS)) return null;
 
@@ -1527,7 +1528,7 @@ function coerceCommand(input: unknown): XanCommand | null {
   let toolIds: string[] | undefined;
   if (o.toolIds !== undefined) {
     if (!Array.isArray(o.toolIds)) return null;
-    const analysisToolIds = new Set(listExtractionTools().filter((tool) => tool.category === "analysis").map((tool) => tool.id));
+    const analysisToolIds = listAiExposedToolIds(listExtractionTools());
     toolIds = [];
     for (const rawToolId of o.toolIds) {
       const toolId = asCommandString(rawToolId);

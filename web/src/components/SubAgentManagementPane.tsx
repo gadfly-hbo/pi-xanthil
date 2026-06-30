@@ -20,7 +20,7 @@ import type {
  *   - dataScope 恒为 "clean_data"（编译期 + 运行期双锁，禁止 draw_data；AGENTS.md §一红线）
  *   - source 恒为 "custom"
  *   - maxRetries clamp 到 0~5（耗尽 → waiting_for_help）
- *   - toolIds 去重；引擎层会按 id 与 ExtractionTool 清单交集挂载
+ *   - toolIds 去重；引擎层只按 analysis ExtractionTool 白名单挂载
  *
  * 仿 HooksManagementPane / CommandManagementPane 的左列表 + 右表单 + 整体覆盖式 PUT。
  */
@@ -96,6 +96,10 @@ function validateTemplate(
   return out;
 }
 
+function isAiExposedTool(tool: ExtractionTool): boolean {
+  return tool.category === "analysis";
+}
+
 const RISK_BADGE: Record<RiskLevel, string> = {
   L0: "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300",
   L1: "bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300",
@@ -145,7 +149,7 @@ export function SubAgentManagementPane() {
     setToolsLoading(true);
     api
       .listExtractionTools()
-      .then(setTools)
+      .then((items) => setTools(items.filter(isAiExposedTool)))
       .catch((err) => setError(String(err)))
       .finally(() => setToolsLoading(false));
   }, []);
@@ -548,9 +552,9 @@ function TemplateEditor({
 
           <div className="mt-3 rounded border border-neutral-200 p-3 dark:border-neutral-800">
             <div className="mb-2 flex items-center gap-2 text-[11.5px] font-medium text-neutral-600 dark:text-neutral-300">
-              toolIds（挂载的计算工具白名单）
+              toolIds（挂载的 analysis 计算工具白名单）
               <span className="font-normal text-neutral-400">
-                空 = 不挂任何工具；server 持原样存，引擎按 id 与工具清单求交集
+                空 = 不挂任何工具；ingestion 工具不会进入子 agent 候选或 scoped MCP
               </span>
               <button
                 onClick={onReloadTools}
@@ -626,7 +630,10 @@ function ToolPicker({
           (t) =>
             t.id.toLowerCase().includes(f) ||
             t.name.toLowerCase().includes(f) ||
-            (t.description ?? "").toLowerCase().includes(f),
+            (t.description ?? "").toLowerCase().includes(f) ||
+            (t.tags ?? []).join(" ").toLowerCase().includes(f) ||
+            (t.allowedUse ?? "").toLowerCase().includes(f) ||
+            (t.forbiddenUse ?? "").toLowerCase().includes(f),
         )
       : tools;
     const map = new Map<string, ExtractionTool[]>();
@@ -737,6 +744,9 @@ function ToolPicker({
                         </div>
                         {tool.description && (
                           <div className="truncate text-[10.5px] text-neutral-400">{tool.description}</div>
+                        )}
+                        {tool.tags && tool.tags.length > 0 && (
+                          <div className="truncate text-[10px] text-neutral-400">tags: {tool.tags.join(", ")}</div>
                         )}
                       </div>
                     </label>

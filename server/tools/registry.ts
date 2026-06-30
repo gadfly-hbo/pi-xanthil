@@ -28,6 +28,7 @@ export interface ExtractionToolManifest {
     modes: Array<"file" | "directory">;
   };
   output: string[];
+  tags?: string[];
   timeoutMs?: number;
   parameters?: ToolParameter[];
   resultColumns?: Array<{ key: string; label: string }>;
@@ -73,6 +74,7 @@ function isManifest(value: unknown): value is ExtractionToolManifest {
     && Array.isArray(input.modes)
     && input.modes.every((mode) => mode === "file" || mode === "directory")
     && isStringArray(item.output)
+    && (item.tags === undefined || isStringArray(item.tags))
     && (item.timeoutMs === undefined || (typeof item.timeoutMs === "number" && Number.isInteger(item.timeoutMs) && item.timeoutMs > 0))
     && (!item.parameters || Array.isArray(item.parameters))
     && (!item.resultColumns || Array.isArray(item.resultColumns));
@@ -82,10 +84,16 @@ function normalizeCategory(value: unknown): ExtractionToolCategory {
   return value === "analysis" ? "analysis" : "ingestion";
 }
 
+function normalizeTags(value: unknown): string[] {
+  if (!isStringArray(value)) return [];
+  return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))].slice(0, 24);
+}
+
 function normalizeManifest(manifest: ExtractionToolManifest): ExtractionToolManifest {
   return {
     ...manifest,
     category: normalizeCategory(manifest.category),
+    tags: normalizeTags(manifest.tags),
     metricHints: coerceMetricHints(manifest.metricHints),
   };
 }

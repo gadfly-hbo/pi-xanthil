@@ -43,6 +43,20 @@ function formatCount(n: number): string {
   return String(n);
 }
 
+function canUseLlmAggregate(dataset: CrowdDataset): boolean {
+  if (dataset.fieldProfiles.length === 0) return false;
+  return !dataset.fieldProfiles.some((profile) => {
+    const field = profile.field.trim().replace(/^\uFEFF/, "").toLowerCase();
+    return field === "标签类型"
+      || field === "标签"
+      || field === "占比"
+      || field === "tgi"
+      || field.includes("占比")
+      || field.includes("tgi")
+      || /^col_\d+$/.test(field);
+  });
+}
+
 function ZoneHeader({ icon: Icon, title, count, action }: {
   icon: typeof Tags;
   title: string;
@@ -241,6 +255,7 @@ export function CrowdPane({ workspaceId }: Props) {
     profileCount: profiles.length,
     publishedCount: profiles.filter((p) => p.publishedSubAgentTemplateId).length,
   }), [datasets, segments, profiles]);
+  const selectedDatasetCanUseLlmAggregate = selectedDataset ? canUseLlmAggregate(selectedDataset) : false;
 
   return (
     <div className="flex h-full flex-col overflow-hidden">
@@ -393,7 +408,9 @@ export function CrowdPane({ workspaceId }: Props) {
                       聚合结果检查
                     </div>
                     <div className="text-muted-foreground">
-                      原始明细行不会传给 LLM。请先下载检查聚合 CSV，确认无误后再使用聚合结果生成画像。
+                      {selectedDatasetCanUseLlmAggregate
+                        ? "原始明细行不会传给 LLM。请先下载检查聚合 CSV，确认无误后再使用聚合结果生成画像。"
+                        : "当前数据集是旧解析结果，不能传送 LLM。请重新上传包含「标签类型 / 标签 / 占比 / tgi」的明细文件。"}
                     </div>
                     <div className="text-muted-foreground/80">
                       标签类型 {selectedDataset.fieldProfiles.length} 个 · 聚合标签 {selectedDataset.fieldProfiles.reduce((sum, profile) => sum + profile.topValues.length, 0)} 条
@@ -428,6 +445,7 @@ export function CrowdPane({ workspaceId }: Props) {
                     )}
                     <button
                       onClick={() => void handleDownloadLlmAggregate()}
+                      disabled={!selectedDatasetCanUseLlmAggregate}
                       className="inline-flex items-center gap-1.5 rounded-md border border-emerald-200 bg-background px-2.5 py-1.5 font-medium text-emerald-700 hover:bg-emerald-50 dark:border-emerald-900 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
                     >
                       <Download className="h-3.5 w-3.5" />
@@ -436,7 +454,7 @@ export function CrowdPane({ workspaceId }: Props) {
                     {segments[0] && (
                       <button
                         onClick={() => void handleGenerateProfile(segments[0]!)}
-                        disabled={generatingProfileSegmentId === segments[0]!.id}
+                        disabled={!selectedDatasetCanUseLlmAggregate || generatingProfileSegmentId === segments[0]!.id}
                         className="inline-flex items-center gap-1.5 rounded-md bg-emerald-600 px-2.5 py-1.5 font-medium text-white hover:bg-emerald-700 disabled:opacity-60"
                       >
                         {generatingProfileSegmentId === segments[0]!.id ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" />}

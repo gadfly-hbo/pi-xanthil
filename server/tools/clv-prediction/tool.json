@@ -6,6 +6,7 @@
   "entry": "clv_prediction.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["clv", "ltv", "prediction", "python-analysis"],
   "input": {
     "accept": [
       ".csv"

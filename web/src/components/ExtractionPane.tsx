@@ -1,5 +1,5 @@
 import { useEffect, useMemo, useState } from "react";
-import { Download, FileCode2, FolderOpen, Play, ShieldCheck, Wrench, X } from "lucide-react";
+import { Download, FileCode2, FolderOpen, Play, Search, ShieldCheck, Wrench, X } from "lucide-react";
 import { Prism as SyntaxHighlighter } from "react-syntax-highlighter";
 import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/cn";
@@ -157,6 +157,27 @@ function categoryOf(tool: ExtractionTool): Category {
   return tool.category === "analysis" ? "analysis" : "ingestion";
 }
 
+function isIngestionTool(tool: ExtractionTool): boolean {
+  return categoryOf(tool) === "ingestion";
+}
+
+function toolSearchText(tool: ExtractionTool): string {
+  return [
+    tool.id,
+    tool.name,
+    tool.description,
+    tool.runtime,
+    tool.riskLevel ?? "",
+    tool.allowedUse ?? "",
+    tool.forbiddenUse ?? "",
+    tool.failureHandling ?? "",
+    ...(tool.tags ?? []),
+    ...tool.input.accept,
+    ...tool.input.modes,
+    ...tool.output,
+  ].join(" ").toLowerCase();
+}
+
 function csvCell(value: string): string {
   return /[",\n]/.test(value) ? `"${value.replace(/"/g, '""')}"` : value;
 }
@@ -189,24 +210,20 @@ export function ExtractionPane({ workspaceId }: { workspaceId: string | null }) 
   const [run, setRun] = useState<ExtractionRun | null>(null);
   const [preview, setPreview] = useState<PreviewState | null>(null);
   const [confirming, setConfirming] = useState(false);
-  const [filter, setFilter] = useState<"all" | Category>("all");
+  const [query, setQuery] = useState("");
   const tool = useMemo(() => tools.find((item) => item.id === toolId) ?? null, [toolId, tools]);
-  const filteredTools = useMemo(
-    () => (filter === "all" ? tools : tools.filter((item) => categoryOf(item) === filter)),
-    [tools, filter],
-  );
-  const counts = useMemo(() => {
-    let ingestion = 0;
-    let analysis = 0;
-    for (const item of tools) categoryOf(item) === "analysis" ? (analysis += 1) : (ingestion += 1);
-    return { all: tools.length, ingestion, analysis };
-  }, [tools]);
+  const filteredTools = useMemo(() => {
+    const needle = query.trim().toLowerCase();
+    if (!needle) return tools;
+    return tools.filter((item) => toolSearchText(item).includes(needle));
+  }, [tools, query]);
 
   useEffect(() => {
     api.listExtractionTools()
       .then((items) => {
-        setTools(items);
-        setToolId((current) => current || items[0]?.id || "");
+        const ingestionTools = items.filter(isIngestionTool);
+        setTools(ingestionTools);
+        setToolId((current) => ingestionTools.some((item) => item.id === current) ? current : ingestionTools[0]?.id || "");
       })
       .catch((err) => setError(String(err)));
   }, []);
@@ -293,23 +310,26 @@ export function ExtractionPane({ workspaceId }: { workspaceId: string | null }) 
 
           <div className="grid gap-4 lg:grid-cols-[18rem_minmax(0,1fr)]">
             <aside className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-              <h2 className="flex items-center gap-2 px-1 text-[12px] font-semibold"><Wrench className="h-3.5 w-3.5" /> 已注册工具</h2>
-              <div className="mt-2 flex gap-1">
-                {(["all", "ingestion", "analysis"] as const).map((key) => (
+              <h2 className="flex items-center gap-2 px-1 text-[12px] font-semibold"><Wrench className="h-3.5 w-3.5" /> 摄取工具</h2>
+              <div className="mt-2 flex items-center gap-1.5 rounded-md border border-neutral-200 px-2 py-1.5 text-[11px] dark:border-neutral-700">
+                <Search className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
+                <input
+                  value={query}
+                  onChange={(event) => setQuery(event.target.value)}
+                  placeholder="搜索名称 / id / 格式"
+                  className="min-w-0 flex-1 bg-transparent text-[11px] outline-none placeholder:text-neutral-400"
+                />
+                {query && (
                   <button
-                    key={key}
-                    onClick={() => setFilter(key)}
-                    className={cn(
-                      "flex-1 rounded-md border px-2 py-1 text-[11px] font-medium transition-colors",
-                      filter === key
-                        ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
-                        : "border-neutral-200 text-neutral-500 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800",
-                    )}
+                    onClick={() => setQuery("")}
+                    className="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                    aria-label="清空搜索"
                   >
-                    {key === "all" ? "全部" : CATEGORY_LABEL[key]} {counts[key]}
+                    <X className="h-3 w-3" />
                   </button>
-                ))}
+                )}
               </div>
+              <p className="mt-1.5 px-1 text-[10.5px] text-neutral-400">仅显示 category=ingestion 的本地摄取工具，共 {tools.length} 个。</p>
               <div className="mt-2 space-y-1.5">
                 {filteredTools.map((item) => (
                   <button key={item.id} onClick={() => setToolId(item.id)} className={`w-full rounded-md border px-3 py-2 text-left text-[12px] ${item.id === toolId ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900" : "border-neutral-200 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800"}`}>
@@ -317,7 +337,7 @@ export function ExtractionPane({ workspaceId }: { workspaceId: string | null }) 
                     <span className={`mt-1 block text-[10px] ${item.id === toolId ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-500"}`}>v{item.version} · {CATEGORY_LABEL[categoryOf(item)]} · {item.input.accept.join(", ")}</span>
                   </button>
                 ))}
-                {filteredTools.length === 0 && <p className="px-1 py-4 text-[12px] text-neutral-400">{tools.length === 0 ? "暂无已注册工具" : "该分类下暂无工具"}</p>}
+                {filteredTools.length === 0 && <p className="px-1 py-4 text-[12px] text-neutral-400">{tools.length === 0 ? "暂无摄取工具" : "当前搜索下没有摄取工具"}</p>}
               </div>
             </aside>
 

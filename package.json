@@ -13,7 +13,8 @@
     "dev:server": "npm -w server run dev",
     "dev:web": "npm -w web run dev",
     "build": "npm -w web run build",
-    "typecheck": "npm -w server run typecheck && npm -w web run typecheck"
+    "typecheck": "npm -w server run typecheck && npm -w web run typecheck",
+    "check:wiki": "node scripts/check-wiki.mjs"
   },
   "devDependencies": {
     "@playwright/test": "^1.60.0",

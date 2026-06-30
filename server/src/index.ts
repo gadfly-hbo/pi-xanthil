@@ -1486,7 +1486,13 @@ app.get("/api/workspaces/:id/trace/trend", (req, res) => {
 app.get("/api/workspaces/:id/tool-runs", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   const limit = Math.min(2000, Math.max(1, Number(req.query.limit ?? 200) || 200));
-  res.json(listToolRuns(req.params.id, limit));
+  const source = req.query.source === "manual" || req.query.source === "ai" ? req.query.source : undefined;
+  const status = req.query.status === "success" || req.query.status === "failed" ? req.query.status : undefined;
+  const caller = typeof req.query.caller === "string" && ["manual", "chat", "mcp", "command", "subagent", "workflow", "eval", "unknown"].includes(req.query.caller)
+    ? req.query.caller as "manual" | "chat" | "mcp" | "command" | "subagent" | "workflow" | "eval" | "unknown"
+    : undefined;
+  const toolId = typeof req.query.toolId === "string" && req.query.toolId.trim() ? req.query.toolId.trim() : undefined;
+  res.json(listToolRuns(req.params.id, { toolId, caller, source, status, limit }));
 });
 
 app.get("/api/workspaces/:id/trace/events/:eventId/detail", (req, res) => {
@@ -5000,6 +5006,64 @@ const AI_TOOL_MAX_RESULT_ROWS = (() => {
   return parseAiToolMaxRows(process.env.XANTHIL_AI_TOOL_MAX_ROWS);
 })();
 
+function coerceToolRunCaller(value: unknown, source: "manual" | "ai"): "manual" | "chat" | "mcp" | "command" | "subagent" | "workflow" | "eval" | "unknown" {
+  if (value === "manual" || value === "chat" || value === "mcp" || value === "command" || value === "subagent" || value === "workflow" || value === "eval" || value === "unknown") return value;
+  return source === "manual" ? "manual" : "unknown";
+}
+
+function coerceToolRunTarget(body: unknown): { targetKind: string; targetId: string } {
+  const obj = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const targetKind = typeof obj.targetKind === "string" ? obj.targetKind.trim() : "";
+  const targetId = typeof obj.targetId === "string" ? obj.targetId.trim() : "";
+  return { targetKind, targetId };
+}
+
+function classifyToolInputPath(workspaceId: string | undefined, inputPath: string): { inputPathKind: string | null; inputPathBasename: string | null } {
+  const inputPathBasename = inputPath ? basename(inputPath) : null;
+  if (!workspaceId || !inputPath) return { inputPathKind: null, inputPathBasename };
+  const match = listWorkspacePaths(workspaceId).find((p) => resolve(p.path) === inputPath);
+  return { inputPathKind: match?.folder ?? null, inputPathBasename };
+}
+
+function outputArtifactsFromSummary(summary: { results?: Array<{ outputs?: string[] }> }): string[] {
+  return [...new Set((summary.results ?? []).flatMap((result) => result.outputs ?? []).map((path) => basename(path)).filter(Boolean))];
+}
+
+function recordToolRunValidationFailure(input: {
+  workspaceId: string | undefined;
+  toolId: string;
+  toolName: string;
+  runId: string;
+  caller: ReturnType<typeof coerceToolRunCaller>;
+  source: "manual" | "ai";
+  target: { targetKind: string; targetId: string };
+  inputMeta: { inputPathKind: string | null; inputPathBasename: string | null };
+  message: string;
+}): void {
+  if (!input.workspaceId) return;
+  addTraceEvent({
+    workspaceId: input.workspaceId,
+    targetKind: "extraction_tool",
+    targetId: input.toolId,
+    type: "tool_run",
+    target: input.toolName,
+    status: "failed",
+    detail: input.message.slice(0, 500),
+    payload: {
+      runId: input.runId,
+      toolId: input.toolId,
+      caller: input.caller,
+      source: input.source,
+      ...input.target,
+      ...input.inputMeta,
+      outputArtifacts: [],
+      status: "failed",
+      errorCode: "validation_error",
+      metricSnapshotsCount: 0,
+    },
+  });
+}
+
 app.get("/api/extraction-tools", (_req, res) => {
   res.json(listExtractionTools());
 });
@@ -5030,15 +5094,29 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
   // validation still happens below; tools are responsible for ensuring their
   // outputs do not include raw row-level draw_data before those outputs reach LLMs.
   const source = req.body?.source === "ai" ? "ai" : "manual";
+  const caller = coerceToolRunCaller(req.body?.caller, source);
+  const target = coerceToolRunTarget(req.body);
+  const inputMeta = classifyToolInputPath(workspaceId, inputPath);
+  const runId = randomUUID();
   try {
     if (!String(req.body?.inputPath ?? "").trim()) throw new Error("inputPath required");
     if (!String(req.body?.outputPath ?? "").trim()) throw new Error("outputPath required");
     validateExtractionInput(tool, inputPath);
     if (!statSync(outputPath).isDirectory()) throw new Error("outputPath must be an existing directory");
   } catch (err) {
+    recordToolRunValidationFailure({
+      workspaceId,
+      toolId: tool.id,
+      toolName: tool.name,
+      runId,
+      caller,
+      source,
+      target,
+      inputMeta,
+      message: String(err),
+    });
     return res.status(400).json({ error: String(err) });
   }
-  const runId = randomUUID();
   const runDir = join(EXTRACTION_RUNS_ROOT, runId);
   mkdirSync(runDir, { recursive: true });
   const summaryPath = join(runDir, "summary.json");
@@ -5050,6 +5128,18 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
       let val = paramsObj[param.name];
       if (val === undefined || val === "") val = param.default;
       if (param.required && (val === undefined || val === "")) {
+        const message = `parameter ${param.name} is required`;
+        recordToolRunValidationFailure({
+          workspaceId,
+          toolId: tool.id,
+          toolName: tool.name,
+          runId,
+          caller,
+          source,
+          target,
+          inputMeta,
+          message,
+        });
         return res.status(400).json({ error: `parameter ${param.name} is required` });
       }
       if (val !== undefined && val !== "") {
@@ -5099,6 +5189,7 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
             })
           : [];
         const durationMs = Date.now() - startMs;
+        const outputArtifacts = outputArtifactsFromSummary(guardedSummary);
         if (workspaceId) {
           addTraceEvent({
             workspaceId,
@@ -5111,13 +5202,18 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
             payload: {
               runId,
               toolId: tool.id,
+              caller,
               source,
-              inputPath,
-              outputPath,
+              ...target,
+              ...inputMeta,
+              outputArtifacts,
+              status: err || rowGuardError ? "failed" : "success",
               success: guardedSummary.success,
               failed: guardedSummary.failed,
               durationMs,
-              ...(rowGuardError ? { rowLimit: AI_TOOL_MAX_RESULT_ROWS, maxRowsSeen: rowGuard.maxRowsSeen } : {}),
+              rowGuard: rowGuardError ? { blocked: true, rowLimit: AI_TOOL_MAX_RESULT_ROWS, maxRowsSeen: rowGuard.maxRowsSeen } : { blocked: false },
+              metricSnapshotsCount: metricSnapshots.length,
+              ...(rowGuardError ? { errorCode: "row_guard" } : err ? { errorCode: "tool_error" } : {}),
             },
           });
         }
@@ -5140,7 +5236,18 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
             target: tool.name,
             status: "failed",
             detail: String(err ?? summaryError).slice(0, 500),
-            payload: { runId, toolId: tool.id, source, inputPath, outputPath },
+            payload: {
+              runId,
+              toolId: tool.id,
+              caller,
+              source,
+              ...target,
+              ...inputMeta,
+              outputArtifacts: [],
+              status: "failed",
+              errorCode: "summary_error",
+              metricSnapshotsCount: 0,
+            },
           });
         }
         res.status(500).json({ error: `extraction failed: ${String(err ?? summaryError)}`, stdout, stderr });

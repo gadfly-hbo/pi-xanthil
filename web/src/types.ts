@@ -228,6 +228,7 @@ export interface ExtractionTool {
   entry: string;
   runtime: "python3";
   category?: ExtractionToolCategory;
+  tags?: string[];
   timeoutMs?: number;
   parameters?: ToolParameter[];
   resultColumns?: Array<{ key: string; label: string }>;
@@ -3725,16 +3726,32 @@ export interface HookTriggerRecord {
   blocked?: boolean; // 该触发是否实际拦截了工具调用
 }
 
+export type ToolRunCaller = "manual" | "chat" | "mcp" | "command" | "subagent" | "workflow" | "eval" | "unknown";
+export type ToolRunSource = "manual" | "ai";
+export type ToolRunStatus = "success" | "failed";
+
 // 计算工具·tool-use 运行看板：单次工具运行记录（来自 trace_events，target_kind=extraction_tool / type=tool_run）。
 export interface ToolRunRecord {
   id: string;
+  runId: string;
   time: number;
+  createdAt: number;
+  workspaceId: string;
   toolId: string;
   toolName: string;
-  source: "manual" | "ai";       // 手动（数据提取面板）/ AI（经 MCP 调用）
-  status: "success" | "failed";
+  caller: ToolRunCaller;
+  source: ToolRunSource;       // 手动（数据提取面板）/ AI（经 MCP 调用）
+  targetKind: string;
+  targetId: string;
+  inputPathKind: string | null;
+  inputPathBasename: string | null;
+  outputArtifacts: string[];
+  status: ToolRunStatus;
   success: number | null;        // 工具产物中成功条数
   failed: number | null;
+  rowGuard: { blocked: boolean; rowLimit?: number; maxRowsSeen?: number } | null;
+  metricSnapshotsCount: number;
+  errorCode: string | null;
   durationMs: number | null;
 }
 

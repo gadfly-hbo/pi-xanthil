@@ -6,6 +6,7 @@
   "entry": "seasonal_forecast.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["forecast", "seasonality", "time-series", "python-analysis"],
   "input": {
     "accept": [
       ".csv"

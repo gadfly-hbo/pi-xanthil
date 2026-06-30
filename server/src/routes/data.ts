@@ -125,7 +125,7 @@ import {
   type CrowdProfileFeedbackCreateInput,
 } from "../db/data.ts";
 import { evaluateSegment, validateSegmentRule } from "../crowd-segment.ts";
-import { computeFieldProfiles, computeTagDetailFieldProfiles, crowdFieldProfilesToLlmAggregateCsv } from "../crowd-import.ts";
+import { canExportLlmAggregateCsv, computeFieldProfiles, computeTagDetailFieldProfiles, crowdFieldProfilesToLlmAggregateCsv } from "../crowd-import.ts";
 import { importAggregateDataset, autoTagDictionary, createDefaultSegment } from "../crowd-aggregate.ts";
 import { HOOKS_CONFIG_PATH, HOOKS_LOG_PATH } from "../config.ts";
 import { PORT } from "../config.ts";
@@ -2203,6 +2203,9 @@ dataRouter.get("/api/workspaces/:id/crowd/datasets/:datasetId/llm-aggregate.csv"
   const dataset = getCrowdDataset(req.params.datasetId);
   if (!dataset) return res.status(404).json({ error: "dataset not found" });
   if (dataset.workspaceId !== workspaceId) return res.status(403).json({ error: "dataset belongs to another workspace" });
+  if (!canExportLlmAggregateCsv(dataset.fieldProfiles)) {
+    return res.status(409).json({ error: "当前数据集不是可传送 LLM 的标签聚合结果，请重新上传包含「标签类型 / 标签 / 占比 / tgi」的明细文件。" });
+  }
   const csv = crowdFieldProfilesToLlmAggregateCsv(dataset.fieldProfiles);
   const filename = `${dataset.name.replace(/[\\/:*?"<>|]/g, "_")}-llm-aggregate.csv`;
   res.setHeader("Content-Type", "text/csv; charset=utf-8");

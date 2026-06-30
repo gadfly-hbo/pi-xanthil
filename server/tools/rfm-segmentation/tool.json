@@ -6,6 +6,7 @@
   "entry": "rfm_segmentation.py",
   "runtime": "python3",
   "category": "analysis",
+  "tags": ["rfm", "segmentation", "membership", "python-analysis"],
   "input": {
     "accept": [
       ".csv"
