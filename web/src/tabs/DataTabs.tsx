@@ -8,6 +8,7 @@ import { FolderPathsPane } from "@/components/FolderPathsPane";
 import { DataExplorationPane } from "@/components/DataExplorationPane";
 import { AggregatePane } from "@/components/AggregatePane";
 import { ExtractionPane } from "@/components/ExtractionPane";
+import { ToolComputePane } from "@/components/ToolComputePane";
 import { SqlConnectPane } from "@/components/SqlConnectPane";
 import { ToolUsePane } from "@/components/ToolUsePane";
 import { HooksManagementPane } from "@/components/HooksManagementPane";
@@ -46,10 +47,18 @@ export function DataTabs({ ctx }: { ctx: TabContext }) {
         <FolderPathsPane scope={ctx.folderScope} folder="draw_data" />
       )}
       {dataScopeTab && activeSubTab === "extraction" && (
-        <ExtractionPane workspaceId={ctx.activeWorkspaceId} />
+        <ExtractionPane workspaceId={ctx.activeWorkspaceId} folderScope={ctx.folderScope} />
+      )}
+      {dataScopeTab && activeSubTab === "tool_compute" && (
+        <ToolComputePane
+          workspaceId={ctx.activeWorkspaceId}
+          sessionId={ctx.activeSessionId}
+          folderScope={ctx.folderScope}
+          onRegistered={() => ctx.setArtifactRefreshKey((current) => current + 1)}
+        />
       )}
       {dataScopeTab && activeSubTab === "aggregate_compute" && (
-        <AggregatePane model={ctx.model} models={ctx.models} />
+        <AggregatePane model={ctx.model} models={ctx.models} workspaceId={ctx.activeWorkspaceId} folderScope={ctx.folderScope} />
       )}
       {dataScopeTab && activeSubTab === "clean_data" && (
         <FolderPathsPane scope={ctx.folderScope} folder="clean_data" />

@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Wrench, ShieldCheck, Bot, FlaskConical, RefreshCw, Activity, Search, Tags } from "lucide-react";
+import { Wrench, ShieldCheck, Bot, FlaskConical, RefreshCw, Activity, Search, Tags, Copy, Check } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import type { ExtractionTool, ToolEvalCase, ToolRunRecord } from "@/types";
@@ -68,6 +68,7 @@ export function ToolUsePane({ workspaceId }: Props) {
   const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
   const [evalState, setEvalState] = useState<EvalState>({ status: "idle" });
   const [view, setView] = useState<"console" | "board">("console");
+  const [copiedToolId, setCopiedToolId] = useState("");
 
   const reload = () => {
     setReloading(true);
@@ -126,6 +127,14 @@ export function ToolUsePane({ workspaceId }: Props) {
     } catch (err) {
       setEvalState({ status: "error", message: String(err) });
     }
+  };
+
+  const copyToolId = async (id: string) => {
+    await navigator.clipboard.writeText(id);
+    setCopiedToolId(id);
+    window.setTimeout(() => {
+      setCopiedToolId((current) => current === id ? "" : current);
+    }, 1500);
   };
 
   return (
@@ -289,6 +298,32 @@ export function ToolUsePane({ workspaceId }: Props) {
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="block flex-1 font-medium">{item.name}</span>
+                      <span className={cn("font-mono text-[9.5px]", active ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-400")}>
+                        {item.id}
+                      </span>
+                      <span
+                        role="button"
+                        tabIndex={0}
+                        title={copiedToolId === item.id ? "已复制" : "复制 toolId"}
+                        onClick={(event) => {
+                          event.stopPropagation();
+                          void copyToolId(item.id);
+                        }}
+                        onKeyDown={(event) => {
+                          if (event.key !== "Enter" && event.key !== " ") return;
+                          event.preventDefault();
+                          event.stopPropagation();
+                          void copyToolId(item.id);
+                        }}
+                        className={cn(
+                          "inline-flex h-5 w-5 shrink-0 items-center justify-center rounded border text-[10px]",
+                          active
+                            ? "border-white/20 text-neutral-200 hover:bg-white/10 dark:border-neutral-500 dark:text-neutral-600"
+                            : "border-neutral-200 text-neutral-400 hover:bg-neutral-100 hover:text-neutral-700 dark:border-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200",
+                        )}
+                      >
+                        {copiedToolId === item.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                      </span>
                       <span
                         className={
                           "rounded px-1 py-[1px] text-[9.5px] font-medium " +
@@ -345,7 +380,7 @@ export function ToolUsePane({ workspaceId }: Props) {
             )}
 
             {tool && (
-              <ToolDetail tool={tool} evalState={evalState} onLoadCases={loadCases} />
+              <ToolDetail tool={tool} evalState={evalState} copiedToolId={copiedToolId} onCopyToolId={copyToolId} onLoadCases={loadCases} />
             )}
           </main>
         </div>
@@ -359,10 +394,12 @@ export function ToolUsePane({ workspaceId }: Props) {
 interface ToolDetailProps {
   tool: ExtractionTool;
   evalState: EvalState;
+  copiedToolId: string;
+  onCopyToolId: (id: string) => void;
   onLoadCases: () => void;
 }
 
-function ToolDetail({ tool, evalState, onLoadCases }: ToolDetailProps) {
+function ToolDetail({ tool, evalState, copiedToolId, onCopyToolId, onLoadCases }: ToolDetailProps) {
   const cat = categoryOf(tool);
   const aiExposed = isAiExposed(tool);
   const tags = toolTags(tool);
@@ -381,10 +418,23 @@ function ToolDetail({ tool, evalState, onLoadCases }: ToolDetailProps) {
           <div className="min-w-0">
             <h2 className="text-[13px] font-semibold">{tool.name}</h2>
             <p className="mt-1 text-[12px] text-neutral-500">{tool.description}</p>
-            <p className="mt-2 font-mono text-[11px] text-neutral-400">
-              {tool.id} · v{tool.version} · {tool.runtime}
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11px] text-neutral-400">
+              <span className="inline-flex items-center gap-1.5 rounded border border-neutral-200 bg-neutral-50 px-2 py-1 dark:border-neutral-700 dark:bg-neutral-950">
+                <span className="text-[10.5px] text-neutral-400">toolId</span>
+                <code className="font-mono text-[11px] text-neutral-700 dark:text-neutral-200">{tool.id}</code>
+                <button
+                  onClick={() => onCopyToolId(tool.id)}
+                  title={copiedToolId === tool.id ? "已复制" : "复制 toolId"}
+                  className="inline-flex h-5 w-5 items-center justify-center rounded text-neutral-400 hover:bg-neutral-200 hover:text-neutral-700 dark:hover:bg-neutral-800 dark:hover:text-neutral-200"
+                >
+                  {copiedToolId === tool.id ? <Check className="h-3 w-3" /> : <Copy className="h-3 w-3" />}
+                </button>
+              </span>
+              <span className="font-mono">
+                v{tool.version} · {tool.runtime}
+              </span>
               {tool.timeoutMs ? " · 超时 " + tool.timeoutMs + "ms" : ""}
-            </p>
+            </div>
             {tags.length > 0 && (
               <div className="mt-2 flex flex-wrap items-center gap-1.5 text-[10.5px] text-neutral-500">
                 <Tags className="h-3 w-3" />

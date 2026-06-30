@@ -190,6 +190,97 @@ export interface MemoryAgingInspectionResult {
   recommendations: string[];
 }
 
+export type RequirementCommunicationScene = "daily" | "topic" | "recurring";
+export type RequirementCommunicationPriority = "must_confirm" | "should_confirm" | "can_defer";
+export type RequirementCommunicationQuestionStatus = "pending" | "answered" | "skipped" | "assumed" | "deferred";
+export type RequirementCommunicationAssumptionStatus = "proposed" | "confirmed" | "rejected" | "deferred";
+
+export interface RequirementCommunicationQuestion {
+  id: string;
+  priority: RequirementCommunicationPriority;
+  category: string;
+  question: string;
+  why: string;
+  status: RequirementCommunicationQuestionStatus;
+  answer?: string;
+}
+
+export interface RequirementCommunicationAssumption {
+  id: string;
+  text: string;
+  status: RequirementCommunicationAssumptionStatus;
+  source: "user" | "history" | "business_context" | "metric" | "path_metadata" | "model";
+}
+
+export interface RequirementCommunicationDraft {
+  background: string;
+  objective: string;
+  scope: string[];
+  metrics: string[];
+  questions: string[];
+  outputs: string[];
+  successCriteria: string[];
+  risks: string[];
+  assumptions: string[];
+}
+
+export interface RequirementCommunicationResult {
+  clarifyingQuestions: RequirementCommunicationQuestion[];
+  assumptions: RequirementCommunicationAssumption[];
+  requirementDraft: RequirementCommunicationDraft;
+  riskNotes: string[];
+}
+
+export interface RequirementCommunicationConfirmResult {
+  path: string;
+  jsonPath: string;
+  communicationRecordPath: string;
+  content: string;
+  structured: unknown;
+}
+
+export type RequirementImportDocumentSource = "business_requirements" | "report" | "clean_data" | "localText";
+
+export interface RequirementImportDocumentInput {
+  source: RequirementImportDocumentSource;
+  pathId?: number;
+  relPath?: string;
+  localText?: string;
+  name?: string;
+}
+
+export interface RequirementImportDocumentSummary {
+  id: string;
+  name: string;
+  source: RequirementImportDocumentSource;
+  summary: string;
+  warnings?: string[];
+}
+
+export interface RequirementImportExtractedQuestion {
+  category: string;
+  question: string;
+  why: string;
+  priority: RequirementCommunicationPriority;
+}
+
+export interface RequirementImportDocumentsResult {
+  documentSummaries: RequirementImportDocumentSummary[];
+  extractedFacts: string[];
+  extractedQuestions: RequirementImportExtractedQuestion[];
+  extractedAssumptions: Array<{ text: string; source: string }>;
+  suggestedMessage: string;
+  riskNotes: string[];
+}
+
+export interface RequirementAnalysisFrameworkFromConfirmedResult {
+  path: string;
+  jsonPath: string;
+  content: string;
+  structured: unknown;
+  sourceConfirmedRequirement?: unknown;
+}
+
 // 记忆 v2.0 缺口4 · 从记忆升级 Skill 候选（响应结构对齐 server/src/memory-to-skill.ts:32）。
 export interface MemorySkillThresholds {
   highConfidence: number;
@@ -787,6 +878,66 @@ export const engineApi = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ ...body, annotationStatus: body.annotationStatus ?? "candidate" }),
     }).then(json<{ id: string; annotationStatus: string }>),
+
+  // E-BRC1 专用 API：需求沟通澄清，不走通用 chat/generate/extract/clarify client。
+  runRequirementCommunication: (
+    workspaceId: string,
+    body: { scene: RequirementCommunicationScene; message: string; history?: string; contextRefs?: string[]; model?: string },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/business-requirement-communication/clarify`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<RequirementCommunicationResult>),
+
+  confirmRequirementCommunication: (
+    workspaceId: string,
+    body: {
+      pathId: number;
+      scene: RequirementCommunicationScene;
+      title: string;
+      confirmedBy?: string;
+      sourceCommunicationId?: string;
+      message?: string;
+      history?: string;
+      clarifyingQuestions: RequirementCommunicationQuestion[];
+      assumptions: RequirementCommunicationAssumption[];
+      requirementDraft: RequirementCommunicationDraft;
+      riskNotes: string[];
+    },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/business-requirement-communication/confirm`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<RequirementCommunicationConfirmResult>),
+
+  runRequirementImportDocuments: (
+    workspaceId: string,
+    body: { scene: RequirementCommunicationScene; documents: RequirementImportDocumentInput[]; message?: string; model?: string },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/business-requirement-communication/import-documents`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<RequirementImportDocumentsResult>),
+
+  generateAnalysisFrameworkFromConfirmed: (
+    workspaceId: string,
+    body: { pathId: number; confirmedRequirementJsonPath: string; model?: string },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/business-requirements/analysis-framework-from-confirmed`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<RequirementAnalysisFrameworkFromConfirmedResult>),
+
+  getRequirementCommunicationReviewContext: (workspaceId: string, pathId: number, jsonPath?: string) => {
+    const qs = new URLSearchParams({ pathId: String(pathId) });
+    if (jsonPath) qs.set("jsonPath", jsonPath);
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/business-requirement-communication/review-context?${qs.toString()}`)
+      .then(json<{ context: string; requirement: unknown; jsonPath?: string }>);
+  },
 
   // ---- 数据库 · the-crowd（E-CROWD5/E-CROWD8 后续实现；X-CROWD0 只定契约） ----
   // 画像生成只允许传聚合摘要可推导的 segmentId + 人工 businessContext；server 端不得读取/注入原始行级标签明细。

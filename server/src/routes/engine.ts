@@ -7,7 +7,7 @@ import { tmpdir } from "node:os";
 import { randomUUID } from "node:crypto";
 import {
   getFlow, listFlowMessages, listFlowRuns, getFlowRun, updateFlowSourceName,
-  getWorkspace, listFlows, createFlow, renameFlow, deleteFlow,
+  getWorkspace, getWorkspacePath, listFlows, createFlow, renameFlow, deleteFlow,
   listWorkflowFavorites, getWorkflowFavoriteBySourceFlowId, updateWorkflowFavorite,
   getWorkflowFavorite, createWorkflowFavorite, removeWorkflowFavorite,
   getStaleNodes, markNodesStale, listWorkspacePaths, addWorkspacePath, removeWorkspacePath,
@@ -16,6 +16,7 @@ import {
   upsertHypothesisFromArchive, createChangeProposal,
   listSessions, listMessages, getSession, getSessionRuntime, createSession,
   addTraceEvent, getTraceTimeline, db,
+  listBusinessContexts, listEnabledMetricDefinitions,
   listCollectSessions, createCollectSession, setCollectSessionFolder,
   renameSession, deleteSession, COLLECT_WORKSPACE_ID,
 } from "../db.ts";
@@ -98,7 +99,7 @@ import {
   reorderCollectFolder,
   deleteCollectFolder,
 } from "../db/engine.ts";
-import { finishFlowNodeRun, startFlowNodeRun } from "../db/shared.ts";
+import { finishFlowNodeRun, listEnabledItemIds, startFlowNodeRun } from "../db/shared.ts";
 import { recordBusinessContextInjectionTraces, recordMetricInjectionTraces } from "../db/viz.ts";
 import { readTree, readFlowFile, writeFlowFile, copyLocalFolderIntoFlow, copyFlowSnapshot, inferWorkflow, moveAllFiles } from "../flow-fs.ts";
 import { normalizeWorkflowModels, normalizeWorkflowSkills, type WorkflowLike } from "../workflow-config.ts";
@@ -179,6 +180,31 @@ import {
 } from "../skill-regression.ts";
 import { runSimulationLab } from "../simulation-lab.ts";
 import { parseSimulationRunRequest } from "../simulation-lab.ts";
+import {
+  parseRequirementCommunicationRequest,
+  parseRequirementCommunicationConfirmInput,
+  parseRequirementImportDocumentsRequest,
+  parseAnalysisFrameworkFromConfirmedRequest,
+  validateRequirementImportDocumentAccess,
+  buildAnalysisFrameworkFromConfirmedTracePayload,
+  buildConfirmedBusinessRequirement,
+  buildRequirementCommunicationRecord,
+  buildRequirementConfirmationTracePayload,
+  buildRequirementImportTracePayload,
+  buildRequirementReviewContext,
+  isConfirmedBusinessRequirementJsonPath,
+  makeRequirementImportDocumentFromText,
+  renderAnalysisFrameworkFromConfirmedMarkdown,
+  renderConfirmedBusinessRequirementMarkdown,
+  runAnalysisFrameworkFromConfirmedRequirement,
+  runRequirementCommunicationClarification,
+  runRequirementImportDocuments,
+  type BusinessRequirementAnalysisFrameworkStructured,
+  type RequirementImportDocumentForPrompt,
+  type RequirementImportDocumentInput,
+  type RequirementCommunicationPathMeta,
+  type ConfirmedBusinessRequirementStructured,
+} from "../business-requirement-communication.ts";
 
 /**
  * 【Agent-E · 智能引擎域】HTTP 路由 slot —— owner: codex(GPT-5.5)
@@ -4022,6 +4048,389 @@ engineRouter.post("/api/workspaces/:id/monitor/actions/draft", async (req, res) 
     res.json({ drafts: drafts.length > 0 ? drafts : buildMonitorActionsFallback(selected) });
   } catch {
     res.json({ drafts: buildMonitorActionsFallback(selected) });
+  }
+});
+
+function summarizeBusinessContextsForRequirementCommunication(workspaceId: string): string {
+  const now = Date.now();
+  const enabledIds = new Set(listEnabledItemIds(workspaceId, "business_context"));
+  return listBusinessContexts()
+    .filter((item) => enabledIds.has(item.id) && (item.validUntil === null || item.validUntil >= now))
+    .slice(0, 20)
+    .map((item) => `- [${item.category}] ${item.title}${item.content ? `：${item.content}` : ""}`.slice(0, 800))
+    .join("\n");
+}
+
+function summarizeMetricsForRequirementCommunication(workspaceId: string): string {
+  return listEnabledMetricDefinitions(workspaceId)
+    .slice(0, 30)
+    .map((metric) => {
+      const parts = [metric.name, metric.category ? `[${metric.category}]` : "", metric.description ? `含义:${metric.description}` : "", metric.formula ? `公式:${metric.formula}` : "", metric.caliber ? `口径:${metric.caliber}` : "", metric.unit ? `单位:${metric.unit}` : ""].filter(Boolean);
+      return `- ${parts.join(" · ")}`.slice(0, 800);
+    })
+    .join("\n");
+}
+
+function basenameOnly(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).pop() ?? path;
+}
+
+function listPathMetadataForRequirementCommunication(workspaceId: string): RequirementCommunicationPathMeta[] {
+  return listWorkspacePaths(workspaceId).map((entry) => ({
+    id: entry.id,
+    folder: entry.folder,
+    kind: entry.kind,
+    name: basenameOnly(entry.path),
+  }));
+}
+
+function sanitizeRequirementFilenamePart(value: string): string {
+  const cleaned = value.trim().replace(/[\\/:*?"<>|\u0000-\u001f]/g, "-").replace(/\s+/g, "-").slice(0, 80);
+  return cleaned || "business-requirement";
+}
+
+function requirementTimestampForFilename(date = new Date()): string {
+  const pad = (n: number) => String(n).padStart(2, "0");
+  return `${date.getFullYear()}${pad(date.getMonth() + 1)}${pad(date.getDate())}-${pad(date.getHours())}${pad(date.getMinutes())}${pad(date.getSeconds())}`;
+}
+
+function resolveRequirementOutputDirForEngine(pathId: number, workspaceId: string): { outputDir: string; pathName: string } {
+  const entry = getWorkspacePath(pathId);
+  if (!entry) throw new Error("path not found");
+  if (entry.workspaceId !== workspaceId) throw new Error("path belongs to another workspace");
+  if (entry.folder !== "report") throw new Error("only report output paths can store business requirements");
+  return {
+    outputDir: entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path)),
+    pathName: basenameOnly(entry.path),
+  };
+}
+
+function readLatestConfirmedRequirement(outputDir: string): { jsonPath: string; structured: ConfirmedBusinessRequirementStructured } | null {
+  const dir = join(outputDir, "business_requirements");
+  if (!existsSync(dir)) return null;
+  const candidates = readdirSync(dir)
+    .filter((name) => name.endsWith(".json"))
+    .map((name) => {
+      const abs = join(dir, name);
+      try { return { name, mtimeMs: statSync(abs).mtimeMs }; } catch { return null; }
+    })
+    .filter((item): item is { name: string; mtimeMs: number } => item !== null)
+    .sort((a, b) => b.mtimeMs - a.mtimeMs);
+  for (const candidate of candidates) {
+    try {
+      const jsonPath = `business_requirements/${candidate.name}`;
+      const structured = JSON.parse(readFlowFile(outputDir, jsonPath).content) as ConfirmedBusinessRequirementStructured;
+      if (structured.communication?.confirmedAt) return { jsonPath, structured };
+    } catch {
+      // Ignore malformed legacy files.
+    }
+  }
+  return null;
+}
+
+function resolveRequirementImportPathMeta(input: RequirementImportDocumentInput, workspaceId: string): RequirementCommunicationPathMeta | undefined {
+  if (input.source === "localText") return undefined;
+  if (input.pathId === undefined) throw new Error(`${input.source} document requires pathId`);
+  const entry = getWorkspacePath(input.pathId);
+  if (!entry) throw new Error("path not found");
+  if (entry.workspaceId !== workspaceId) throw new Error("path belongs to another workspace");
+  return { id: entry.id, folder: entry.folder, kind: entry.kind, name: input.relPath ?? basenameOnly(entry.path) };
+}
+
+function validateRequirementImportRelPath(path: string): void {
+  const segments = path.split(/[\\/]/).filter(Boolean);
+  if (segments.some((segment) => segment === ".." || segment.startsWith("."))) throw new Error("document relPath contains forbidden segments");
+}
+
+function prepareRequirementImportDocuments(input: ReturnType<typeof parseRequirementImportDocumentsRequest>, workspaceId: string): RequirementImportDocumentForPrompt[] {
+  return input.documents.map((document, index) => {
+    const meta = resolveRequirementImportPathMeta(document, workspaceId);
+    validateRequirementImportDocumentAccess(document, meta);
+    if (document.source === "localText") {
+      return makeRequirementImportDocumentFromText(document, index, document.localText ?? "");
+    }
+    if (document.source === "clean_data") {
+      const entry = getWorkspacePath(document.pathId!);
+      if (!entry) throw new Error("path not found");
+      const content = [
+        "仅提供 clean_data 路径元信息，未读取正文。",
+        `folder=${entry.folder}`,
+        `kind=${entry.kind}`,
+        `name=${basenameOnly(entry.path)}`,
+      ].join("\n");
+      return makeRequirementImportDocumentFromText(document, index, content, ["clean_data body not read"]);
+    }
+    const entry = getWorkspacePath(document.pathId!);
+    if (!entry) throw new Error("path not found");
+    const root = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+    const relPath = document.relPath ?? basenameOnly(entry.path);
+    validateRequirementImportRelPath(relPath);
+    if (document.source === "business_requirements" && !relPath.startsWith("business_requirements/")) {
+      throw new Error("business_requirements relPath must be under business_requirements/");
+    }
+    const read = readFlowFile(root, relPath);
+    const warnings = read.truncated ? [`file truncated at ${read.content.length} chars`] : [];
+    return makeRequirementImportDocumentFromText({ ...document, name: document.name ?? basenameOnly(relPath) }, index, read.content, warnings);
+  });
+}
+
+function confirmedRequirementMarkdownPath(jsonPath: string): string {
+  return jsonPath.replace(/\.json$/, ".md");
+}
+
+function readConfirmedRequirementForFramework(outputDir: string, jsonPath: string): { jsonPath: string; markdownPath?: string; markdown?: string; structured: ConfirmedBusinessRequirementStructured } {
+  if (!isConfirmedBusinessRequirementJsonPath(jsonPath)) throw new Error("confirmedRequirementJsonPath must point to a confirmed requirement json");
+  const structured = JSON.parse(readFlowFile(outputDir, jsonPath).content) as ConfirmedBusinessRequirementStructured;
+  if (!structured.communication?.confirmedAt) throw new Error("confirmed requirement json is invalid");
+  const markdownPath = confirmedRequirementMarkdownPath(jsonPath);
+  try {
+    return { jsonPath, markdownPath, markdown: readFlowFile(outputDir, markdownPath).content, structured };
+  } catch {
+    return { jsonPath, structured };
+  }
+}
+
+function attachAnalysisFrameworkVersion(
+  structured: BusinessRequirementAnalysisFrameworkStructured,
+  markdownPath: string,
+  jsonPath: string,
+  model: string,
+): BusinessRequirementAnalysisFrameworkStructured {
+  structured.version = {
+    generatedAt: Date.now(),
+    model,
+    markdownPath,
+    jsonPath,
+    source: "from_confirmed_requirement",
+    sourceConfirmedRequirement: structured.sourceConfirmedRequirement,
+    requirementInput: {
+      projectName: structured.projectName,
+      businessBackground: structured.businessFacts.join("\n"),
+      businessGoal: structured.businessFacts.find((item) => item.startsWith("目标：")) ?? structured.projectName,
+      businessQuestions: structured.analysisQuestions.join("\n"),
+      decisionScenario: structured.dimensions.join("\n"),
+      stakeholders: "",
+      knownData: structured.metrics.map((item) => item.name).join("\n"),
+      constraints: [...structured.risks, ...structured.openQuestions.map((item) => `待确认：${item}`)].join("\n"),
+      outputPreference: structured.deliverables.join("\n"),
+      extraPrompt: "基于确认需求生成",
+    },
+  };
+  return structured;
+}
+
+engineRouter.post("/api/workspaces/:id/business-requirement-communication/import-documents", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const input = parseRequirementImportDocumentsRequest(req.body);
+    const documents = prepareRequirementImportDocuments(input, req.params.id);
+    const result = await runRequirementImportDocuments(
+      input,
+      documents,
+      ({ systemPrompt, prompt }) => runPiPrompt({
+        workspaceRoot: (workspace as { rootPath?: string }).rootPath ?? process.cwd(),
+        text: prompt,
+        systemPrompt,
+        model: input.model ?? "minimax-cn/MiniMax-M3",
+        timeoutMs: 120_000,
+      }),
+    );
+    const tracePayload = buildRequirementImportTracePayload(input, documents, result);
+    addTraceEvent({
+      workspaceId: req.params.id,
+      targetKind: "business_requirement",
+      targetId: `communication-import:${Date.now()}`,
+      type: "business_requirement_documents_imported",
+      target: input.scene,
+      status: "success",
+      detail: `需求沟通材料导入 · ${documents.length} 材料 · ${result.extractedQuestions.length} 问题`,
+      payload: tracePayload,
+    });
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "import documents failed";
+    return res.status(400).json({ error: message });
+  }
+});
+
+engineRouter.post("/api/workspaces/:id/business-requirement-communication/clarify", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const input = parseRequirementCommunicationRequest(req.body);
+    const result = await runRequirementCommunicationClarification(
+      input,
+      {
+        businessContextSummary: summarizeBusinessContextsForRequirementCommunication(req.params.id),
+        metricSummary: summarizeMetricsForRequirementCommunication(req.params.id),
+        pathMetas: listPathMetadataForRequirementCommunication(req.params.id),
+      },
+      ({ systemPrompt, prompt }) => runPiPrompt({
+        workspaceRoot: (workspace as { rootPath?: string }).rootPath ?? process.cwd(),
+        text: prompt,
+        systemPrompt,
+        model: input.model ?? "minimax-cn/MiniMax-M3",
+        timeoutMs: 120_000,
+      }),
+    );
+    addTraceEvent({
+      workspaceId: req.params.id,
+      targetKind: "business_requirement",
+      targetId: `communication:${Date.now()}`,
+      type: "business_requirement_clarification_generated",
+      target: input.scene,
+      status: "success",
+      detail: `需求澄清问题生成 · ${result.clarifyingQuestions.length} 问题 · ${result.assumptions.length} 假设`,
+      payload: {
+        scene: input.scene,
+        questionCount: result.clarifyingQuestions.length,
+        assumptionCount: result.assumptions.length,
+        questionCategories: [...new Set(result.clarifyingQuestions.map((item) => item.category))].slice(0, 12),
+        questionStatuses: result.clarifyingQuestions.reduce<Record<string, number>>((acc, item) => { acc[item.status] = (acc[item.status] ?? 0) + 1; return acc; }, {}),
+      },
+    });
+    return res.json(result);
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "clarify failed";
+    return res.status(400).json({ error: message });
+  }
+});
+
+engineRouter.post("/api/workspaces/:id/business-requirement-communication/confirm", (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const input = parseRequirementCommunicationConfirmInput(req.body);
+    const { outputDir, pathName } = resolveRequirementOutputDirForEngine(input.pathId, req.params.id);
+    const now = Date.now();
+    const slug = sanitizeRequirementFilenamePart(input.title);
+    const stamp = requirementTimestampForFilename(new Date(now));
+    const markdownPath = `business_requirements/${slug}-确认需求-${stamp}.md`;
+    const jsonPath = `business_requirements/${slug}-确认需求-${stamp}.json`;
+    const communicationRecordPath = `business_requirements/communications/${slug}-沟通记录-${stamp}.json`;
+    const structured = buildConfirmedBusinessRequirement(input, communicationRecordPath, now);
+    structured.version = {
+      generatedAt: now,
+      model: "confirmed_by_user",
+      markdownPath,
+      jsonPath,
+      requirementInput: {
+        projectName: input.title,
+        businessBackground: structured.businessFacts.join("\n"),
+        businessGoal: input.requirementDraft.objective,
+        businessQuestions: structured.analysisQuestions.join("\n"),
+        decisionScenario: structured.dimensions.join("\n"),
+        stakeholders: "",
+        knownData: structured.metrics.map((item) => item.name).join("\n"),
+        constraints: [...structured.risks, ...structured.deferredQuestions.map((q) => `未确认：${q}`)].join("\n"),
+        outputPreference: [...structured.deliverables, ...input.requirementDraft.successCriteria].join("\n"),
+        extraPrompt: "",
+      },
+    };
+    const record = buildRequirementCommunicationRecord(input, randomUUID(), now, markdownPath, jsonPath);
+    const markdown = renderConfirmedBusinessRequirementMarkdown(structured);
+    writeFlowFile(outputDir, markdownPath, markdown.endsWith("\n") ? markdown : `${markdown}\n`);
+    writeFlowFile(outputDir, jsonPath, `${JSON.stringify(structured, null, 2)}\n`);
+    writeFlowFile(outputDir, communicationRecordPath, `${JSON.stringify(record, null, 2)}\n`);
+    const tracePayload = buildRequirementConfirmationTracePayload(input, structured);
+    const assumptionStatuses = tracePayload.assumptionStatuses as Record<string, number>;
+    addTraceEvent({
+      workspaceId: req.params.id,
+      targetKind: "business_requirement",
+      targetId: input.sourceCommunicationId ?? jsonPath,
+      type: "business_requirement_assumptions_reviewed",
+      target: input.title,
+      status: "success",
+      detail: `需求假设确认 · confirmed ${assumptionStatuses.confirmed ?? 0} · deferred ${assumptionStatuses.deferred ?? 0} · rejected ${assumptionStatuses.rejected ?? 0}`,
+      payload: { scene: input.scene, assumptionStatuses, confirmedCount: assumptionStatuses.confirmed ?? 0 },
+    });
+    addTraceEvent({
+      workspaceId: req.params.id,
+      targetKind: "business_requirement",
+      targetId: jsonPath,
+      type: "business_requirement_confirmed",
+      target: input.title,
+      status: "success",
+      detail: `业务需求确认 · ${input.title}`,
+      payload: { ...tracePayload, pathName },
+    });
+    return res.json({ path: markdownPath, jsonPath, communicationRecordPath, content: markdown, structured });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "confirm failed";
+    return res.status(400).json({ error: message });
+  }
+});
+
+engineRouter.post("/api/workspaces/:id/business-requirements/analysis-framework-from-confirmed", async (req, res) => {
+  const workspace = getWorkspace(req.params.id);
+  if (!workspace) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const input = parseAnalysisFrameworkFromConfirmedRequest(req.body);
+    const { outputDir, pathName } = resolveRequirementOutputDirForEngine(input.pathId, req.params.id);
+    const source = readConfirmedRequirementForFramework(outputDir, input.confirmedRequirementJsonPath);
+    const model = input.model ?? "minimax-cn/MiniMax-M3";
+    const generated = await runAnalysisFrameworkFromConfirmedRequirement(
+      source.structured,
+      { jsonPath: source.jsonPath, markdownPath: source.markdownPath, markdown: source.markdown },
+      ({ systemPrompt, prompt }) => runPiPrompt({
+        workspaceRoot: (workspace as { rootPath?: string }).rootPath ?? process.cwd(),
+        text: prompt,
+        systemPrompt,
+        model,
+        timeoutMs: 120_000,
+      }),
+    );
+    const stamp = requirementTimestampForFilename();
+    const slug = sanitizeRequirementFilenamePart(generated.projectName || source.structured.projectName);
+    const markdownPath = `business_requirements/${slug}-分析框架-${stamp}.md`;
+    const jsonPath = `business_requirements/${slug}-分析框架-${stamp}.json`;
+    const structured = attachAnalysisFrameworkVersion(generated, markdownPath, jsonPath, model);
+    const content = renderAnalysisFrameworkFromConfirmedMarkdown(structured);
+    writeFlowFile(outputDir, markdownPath, content.endsWith("\n") ? content : `${content}\n`);
+    writeFlowFile(outputDir, jsonPath, `${JSON.stringify(structured, null, 2)}\n`);
+    const tracePayload = buildAnalysisFrameworkFromConfirmedTracePayload(structured);
+    addTraceEvent({
+      workspaceId: req.params.id,
+      targetKind: "business_requirement",
+      targetId: jsonPath,
+      type: "business_requirement_analysis_framework_generated",
+      target: structured.projectName,
+      status: "success",
+      detail: `基于确认需求生成分析框架 · ${structured.projectName}`,
+      payload: { ...tracePayload, generatedMarkdownBasename: basenameOnly(markdownPath), generatedJsonBasename: basenameOnly(jsonPath), pathName },
+    });
+    return res.json({
+      path: markdownPath,
+      jsonPath,
+      content,
+      structured,
+      sourceConfirmedRequirement: structured.sourceConfirmedRequirement,
+    });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "analysis framework generation failed";
+    return res.status(400).json({ error: message });
+  }
+});
+
+engineRouter.get("/api/workspaces/:id/business-requirement-communication/review-context", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const pathId = Number(req.query.pathId);
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
+  try {
+    const { outputDir } = resolveRequirementOutputDirForEngine(pathId, req.params.id);
+    const jsonPath = typeof req.query.jsonPath === "string" ? req.query.jsonPath : "";
+    const item = jsonPath
+      ? (() => {
+        if (!isConfirmedBusinessRequirementJsonPath(jsonPath)) throw new Error("jsonPath must point to a confirmed business requirement json");
+        return { jsonPath, structured: JSON.parse(readFlowFile(outputDir, jsonPath).content) as ConfirmedBusinessRequirementStructured };
+      })()
+      : readLatestConfirmedRequirement(outputDir);
+    if (!item?.structured.communication?.confirmedAt) return res.json({ context: "", requirement: null });
+    return res.json({ context: buildRequirementReviewContext(item.structured), requirement: item.structured, jsonPath: item.jsonPath });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "review context failed";
+    return res.status(400).json({ error: message });
   }
 });
 

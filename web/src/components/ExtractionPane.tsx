@@ -5,7 +5,8 @@ import { oneDark } from "react-syntax-highlighter/dist/esm/styles/prism";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import { Markdown } from "@/components/Markdown";
-import type { ExtractionRun, ExtractionTool } from "@/types";
+import type { ExtractionRun, ExtractionTool, WorkspacePath } from "@/types";
+import type { FolderScope } from "@/tabs/types";
 
 type PreviewState =
   | { status: "loading"; path: string }
@@ -199,7 +200,23 @@ function downloadInputTemplate(tool: ExtractionTool): void {
   URL.revokeObjectURL(url);
 }
 
-export function ExtractionPane({ workspaceId }: { workspaceId: string | null }) {
+function taskScopeOptions(scope: FolderScope): { sessionId?: string; flowId?: string } {
+  if (scope?.type === "session") return { sessionId: scope.sessionId };
+  if (scope?.type === "flow") return { flowId: scope.flowId };
+  return {};
+}
+
+async function listScopePaths(scope: FolderScope, workspaceId: string, folder: "clean_data"): Promise<WorkspacePath[]> {
+  if (scope?.type === "session") return api.listSessionPaths(scope.sessionId, folder);
+  if (scope?.type === "flow") return api.listFlowPaths(scope.flowId, folder);
+  return api.listWorkspacePaths(workspaceId, folder);
+}
+
+function firstCleanDataDir(paths: WorkspacePath[]): WorkspacePath | null {
+  return paths.find((path) => path.folder === "clean_data" && path.kind === "dir" && path.status !== "missing") ?? null;
+}
+
+export function ExtractionPane({ workspaceId, folderScope }: { workspaceId: string | null; folderScope: FolderScope }) {
   const [tools, setTools] = useState<ExtractionTool[]>([]);
   const [toolId, setToolId] = useState("");
   const [inputPath, setInputPath] = useState("");
@@ -219,6 +236,19 @@ export function ExtractionPane({ workspaceId }: { workspaceId: string | null }) 
   }, [tools, query]);
 
   useEffect(() => {
+    if (!workspaceId || outputPath) return;
+    let cancelled = false;
+    listScopePaths(folderScope, workspaceId, "clean_data")
+      .then((paths) => {
+        if (cancelled) return;
+        const dir = firstCleanDataDir(paths);
+        if (dir) setOutputPath(dir.path);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [folderScope, outputPath, workspaceId]);
+
+  useEffect(() => {
     api.listExtractionTools()
       .then((items) => {
         const ingestionTools = items.filter(isIngestionTool);
@@ -231,7 +261,10 @@ export function ExtractionPane({ workspaceId }: { workspaceId: string | null }) 
   const pickPath = async (kind: "input" | "output", mode: "file" | "dir") => {
     setError("");
     try {
-      const { path } = await api.pickLocalPath(mode);
+      const { path } = await api.pickLocalPath(
+        mode,
+        kind === "output" ? { folder: "clean_data", ...taskScopeOptions(folderScope) } : undefined,
+      );
       if (kind === "input") setInputPath(path);
       else setOutputPath(path);
     } catch (err) {

@@ -5,7 +5,6 @@ import type { EditableWorkflowNode } from "./types";
 interface Props {
   node: EditableWorkflowNode;
   tools: ExtractionTool[];
-  loadingTools: boolean;
   running: boolean;
   selectedTool: ExtractionTool | null;
   onNodeChange: (nodeId: string, patch: Partial<EditableWorkflowNode>) => void;
@@ -15,27 +14,30 @@ interface Props {
 export function ToolNodeConfig({
   node,
   tools,
-  loadingTools,
   running,
   selectedTool,
   onNodeChange,
   onApplyTemplate,
 }: Props) {
+  const toolId = node.toolId ?? "";
+  const knownToolIds = new Set(tools.map((tool) => tool.id));
+  const unknownToolId = toolId.trim() && tools.length > 0 && !knownToolIds.has(toolId.trim());
+
   return (
     <div className="grid gap-2 rounded-md border border-emerald-100 bg-emerald-50/40 p-2 dark:border-emerald-900/40 dark:bg-emerald-950/20 md:grid-cols-2">
       <label className="flex flex-col gap-1">
         <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">toolId</span>
-        <select
-          value={node.toolId ?? ""}
-          disabled={running || loadingTools}
+        <input
+          value={toolId}
+          disabled={running}
           onChange={(e) => onNodeChange(node.id, { toolId: e.target.value })}
+          placeholder="如 aarrr-flow"
           className="h-8 rounded-md border border-emerald-200 bg-white px-2 text-[12px] text-neutral-900 outline-none focus:border-emerald-400 disabled:opacity-50 dark:border-emerald-800 dark:bg-neutral-950 dark:text-neutral-100"
-        >
-          <option value="">{loadingTools ? "加载工具中…" : "选择 registered tool"}</option>
-          {tools.map((tool) => (
-            <option key={tool.id} value={tool.id}>{tool.id}</option>
-          ))}
-        </select>
+          list="workflow-tool-id-options"
+        />
+        <datalist id="workflow-tool-id-options">
+          {tools.map((tool) => <option key={tool.id} value={tool.id} />)}
+        </datalist>
       </label>
       <label className="flex flex-col gap-1">
         <span className="text-[10px] font-medium text-emerald-700 dark:text-emerald-300">timeoutMs</span>
@@ -82,6 +84,12 @@ export function ToolNodeConfig({
             <Copy className="h-3 w-3" strokeWidth={1.75} />
             套用
           </button>
+        </div>
+      )}
+      {unknownToolId && (
+        <div className="flex items-center gap-1 md:col-span-2 text-[10.5px] text-amber-700 dark:text-amber-300">
+          <AlertCircle className="h-3 w-3 shrink-0" strokeWidth={1.75} />
+          当前 toolId 不在已加载工具清单中，保存不会阻止；运行时需确保后端已注册该工具。
         </div>
       )}
       {(!node.toolId || !node.inputPath) && (

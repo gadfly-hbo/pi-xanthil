@@ -2498,6 +2498,7 @@ interface BusinessRequirementStructuredOutput {
   dimensions: string[];
   dataNeeds: Array<{ name: string; fields: string[]; purpose: string; priority: "P0" | "P1" | "P2" }>;
   analysisFramework: Array<{ businessQuestion: string; hypothesis: string; method: string; requiredData: string[]; expectedOutput: string }>;
+  reportFramework: Array<{ section: string; purpose: string; keyQuestions: string[]; requiredEvidence: string[]; outputGuidance: string; zeroHallucinationCheck: string }>;
   deliverables: string[];
   openQuestions: string[];
   risks: string[];
@@ -2822,7 +2823,7 @@ function normalizeBusinessRequirementSourceRefs(value: unknown): Record<string, 
   if (typeof value !== "object" || value === null || Array.isArray(value)) return undefined;
   const output: Record<string, BusinessRequirementSourceRef[]> = {};
   for (const [fieldPath, rawRefs] of Object.entries(value as Record<string, unknown>)) {
-    if (!/^(businessFacts|inferredNeeds|analysisQuestions|metrics|dataNeeds|analysisFramework|deliverables|openQuestions|risks)\.\d+$/.test(fieldPath)) continue;
+    if (!/^(businessFacts|inferredNeeds|analysisQuestions|metrics|dataNeeds|analysisFramework|reportFramework|deliverables|openQuestions|risks)\.\d+$/.test(fieldPath)) continue;
     if (!Array.isArray(rawRefs)) continue;
     const refs = rawRefs
       .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
@@ -2893,6 +2894,19 @@ function validateBusinessRequirementStructuredOutput(value: unknown, fallbackPro
       }))
       .filter((entry) => entry.businessQuestion && entry.method && entry.expectedOutput)
     : [];
+  const reportFramework = Array.isArray(item.reportFramework)
+    ? item.reportFramework
+      .filter((entry): entry is Record<string, unknown> => typeof entry === "object" && entry !== null)
+      .map((entry) => ({
+        section: String(entry.section ?? "").trim(),
+        purpose: String(entry.purpose ?? "").trim(),
+        keyQuestions: Array.isArray(entry.keyQuestions) ? entry.keyQuestions.filter((question): question is string => typeof question === "string" && question.trim().length > 0).map((question) => question.trim()) : [],
+        requiredEvidence: Array.isArray(entry.requiredEvidence) ? entry.requiredEvidence.filter((evidence): evidence is string => typeof evidence === "string" && evidence.trim().length > 0).map((evidence) => evidence.trim()) : [],
+        outputGuidance: String(entry.outputGuidance ?? "").trim(),
+        zeroHallucinationCheck: String(entry.zeroHallucinationCheck ?? "").trim(),
+      }))
+      .filter((entry) => entry.section && entry.purpose && entry.outputGuidance)
+    : [];
   const sourceRefs = normalizeBusinessRequirementSourceRefs(item.sourceRefs);
   return {
     projectName: typeof item.projectName === "string" && item.projectName.trim() ? item.projectName.trim() : fallbackProjectName,
@@ -2903,6 +2917,7 @@ function validateBusinessRequirementStructuredOutput(value: unknown, fallbackPro
     dimensions: strings("dimensions"),
     dataNeeds,
     analysisFramework,
+    reportFramework,
     deliverables: strings("deliverables"),
     openQuestions: strings("openQuestions"),
     risks: strings("risks"),
@@ -2937,6 +2952,9 @@ function renderBusinessRequirementMarkdown(result: BusinessRequirementStructured
   const framework = result.analysisFramework.length
     ? result.analysisFramework.map((item) => `| ${item.businessQuestion} | ${item.hypothesis || "待确认"} | ${item.method} | ${item.requiredData.join("、") || "待确认"} | ${item.expectedOutput} |`).join("\n")
     : "| 待确认 | 待确认 | 待确认 | 待确认 | 待确认 |";
+  const reportFramework = result.reportFramework.length
+    ? result.reportFramework.map((item) => `| ${item.section} | ${item.purpose} | ${item.keyQuestions.join("；") || "待确认"} | ${item.requiredEvidence.join("；") || "待确认"} | ${item.outputGuidance} | ${item.zeroHallucinationCheck || "每个数字标注来源与证据等级，缺证据时写待确认"} |`).join("\n")
+    : "| 执行摘要 | 概述分析目标、结论与限制 | 本次分析回答什么问题 | 已验证关键指标、口径、数据范围 | 先给结论，再列证据和限制 | 每个数字标注来源与证据等级，缺证据时写待确认 |";
   return [
     `# ${result.projectName} 业务需求与分析框架`,
     "",
@@ -2971,15 +2989,20 @@ function renderBusinessRequirementMarkdown(result: BusinessRequirementStructured
     "|---|---|---|---|---|",
     framework,
     "",
-    "## 5. 数据需求清单",
+    "## 5. 报告框架",
+    "| 报告章节 | 章节目的 | 需要回答的问题 | 必需证据/数据 | 输出要求 | 零幻觉检查 |",
+    "|---|---|---|---|---|---|",
+    reportFramework,
+    "",
+    "## 6. 数据需求清单",
     "| 优先级 | 数据/表 | 字段/维度 | 用途 |",
     "|---|---|---|---|",
     dataNeeds,
     "",
-    "## 6. 交付物建议",
+    "## 7. 交付物建议",
     list(result.deliverables),
     "",
-    "## 7. 风险、不确定性与待确认问题",
+    "## 8. 风险、不确定性与待确认问题",
     "### 风险与不确定性",
     list(result.risks),
     "",
@@ -3150,11 +3173,13 @@ ${formatRequirementDocuments(documents)}
 2. 不要编造用户未提供的事实、数据或指标数值；缺失信息要写入“待确认问题”。
 3. 需要把业务表达转成数据分析语言，明确分析目标、分析对象、指标、维度、数据需求、方法路径和交付物。
 4. 分析框架要能指导后续数据提取、聚合计算、报告输出和黄金策二次分析。
-5. 如果导入文档和手工填写内容冲突，要列入 risks，不能擅自合并成确定事实。
-6. 需要区分 businessFacts、inferredNeeds、openQuestions。
-7. 如果某个字段来自导入文档，必须在 sourceRefs 中按字段路径引用文档编号和短片段；字段路径格式如 businessFacts.0、metrics.0、dataNeeds.0、analysisFramework.0。
-8. documentId 只能使用导入文档区显示的 D1、D2 等编号；quote 必须是原文中的短片段，不要编造。
-9. JSON schema:
+5. 必须额外生成 reportFramework，用于约束后续“数据分析”环节写正式报告时的章节结构、证据要求和零幻觉检查，避免分析模块输出报告时缺少报告框架。
+6. reportFramework 至少包含：执行摘要、背景与口径、观察 Observation、推断 Inference、建议 Action、风险与待确认问题。每章要说明必需证据和输出要求。
+7. 如果导入文档和手工填写内容冲突，要列入 risks，不能擅自合并成确定事实。
+8. 需要区分 businessFacts、inferredNeeds、openQuestions。
+9. 如果某个字段来自导入文档，必须在 sourceRefs 中按字段路径引用文档编号和短片段；字段路径格式如 businessFacts.0、metrics.0、dataNeeds.0、analysisFramework.0、reportFramework.0。
+10. documentId 只能使用导入文档区显示的 D1、D2 等编号；quote 必须是原文中的短片段，不要编造。
+11. JSON schema:
 {
   "projectName": "${input.projectName}",
   "businessFacts": ["已明确业务事实"],
@@ -3164,6 +3189,7 @@ ${formatRequirementDocuments(documents)}
   "dimensions": ["分析维度"],
   "dataNeeds": [{"name":"数据/表/文件","fields":["字段或维度"],"purpose":"用途","priority":"P0"}],
   "analysisFramework": [{"businessQuestion":"业务问题","hypothesis":"分析假设","method":"验证方法","requiredData":["所需数据"],"expectedOutput":"预期输出"}],
+  "reportFramework": [{"section":"报告章节","purpose":"章节目的","keyQuestions":["本章必须回答的问题"],"requiredEvidence":["必需证据/数据"],"outputGuidance":"输出要求","zeroHallucinationCheck":"来源、证据等级、口径和不确定性检查"}],
   "deliverables": ["建议交付物"],
   "openQuestions": ["待确认问题"],
   "risks": ["风险或不确定性"],
@@ -3182,7 +3208,7 @@ ${formatRequirementDocuments(documents)}
   } catch {
     const repaired = await repairJsonObject(
       output,
-      "{\"projectName\":\"项目名称\",\"businessFacts\":[],\"inferredNeeds\":[],\"analysisQuestions\":[],\"metrics\":[{\"name\":\"指标名\",\"definition\":\"指标定义\",\"source\":\"来源\"}],\"dimensions\":[],\"dataNeeds\":[{\"name\":\"数据名\",\"fields\":[],\"purpose\":\"用途\",\"priority\":\"P0\"}],\"analysisFramework\":[{\"businessQuestion\":\"业务问题\",\"hypothesis\":\"分析假设\",\"method\":\"验证方法\",\"requiredData\":[],\"expectedOutput\":\"预期输出\"}],\"deliverables\":[],\"openQuestions\":[],\"risks\":[],\"sourceRefs\":{}}",
+      "{\"projectName\":\"项目名称\",\"businessFacts\":[],\"inferredNeeds\":[],\"analysisQuestions\":[],\"metrics\":[{\"name\":\"指标名\",\"definition\":\"指标定义\",\"source\":\"来源\"}],\"dimensions\":[],\"dataNeeds\":[{\"name\":\"数据名\",\"fields\":[],\"purpose\":\"用途\",\"priority\":\"P0\"}],\"analysisFramework\":[{\"businessQuestion\":\"业务问题\",\"hypothesis\":\"分析假设\",\"method\":\"验证方法\",\"requiredData\":[],\"expectedOutput\":\"预期输出\"}],\"reportFramework\":[{\"section\":\"执行摘要\",\"purpose\":\"概述分析目标、结论与限制\",\"keyQuestions\":[],\"requiredEvidence\":[],\"outputGuidance\":\"先给结论，再列证据和限制\",\"zeroHallucinationCheck\":\"每个数字标注来源与证据等级，缺证据时写待确认\"}],\"deliverables\":[],\"openQuestions\":[],\"risks\":[],\"sourceRefs\":{}}",
       workspaceRoot,
       model,
       `业务沟通信息：\n${formatBusinessRequirementInput(input)}\n\n导入文档：\n${formatRequirementDocuments(documents)}`,
@@ -3363,6 +3389,7 @@ app.put("/api/business-requirements/version", (req, res) => {
   const pathId = Number(req.body?.pathId);
   const markdownPath = String(req.body?.markdownPath ?? "");
   const content = String(req.body?.content ?? "");
+  const structuredPayload = req.body?.structured;
   if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
   if (!markdownPath) return res.status(400).json({ error: "markdownPath required" });
   try {
@@ -3374,7 +3401,37 @@ app.put("/api/business-requirements/version", (req, res) => {
     writeFlowFile(outputDir, markdownPath, content.endsWith("\n") ? content : `${content}\n`);
     const jsonPath = markdownPath.replace(/\.md$/i, ".json");
     const jsonAbs = safeResolve(outputDir, jsonPath);
-    if (jsonPath.startsWith("business_requirements/") && existsSync(jsonAbs)) {
+    if (structuredPayload !== undefined && jsonPath.startsWith("business_requirements/")) {
+      const structured = validateBusinessRequirementStructuredOutput(structuredPayload, "业务需求");
+      const rawVersion = typeof structuredPayload === "object" && structuredPayload !== null ? (structuredPayload as Partial<BusinessRequirementStructuredOutput>).version : undefined;
+      const sourceDocuments = Array.isArray((structuredPayload as Partial<BusinessRequirementStructuredOutput>)?.sourceDocuments)
+        ? (structuredPayload as Partial<BusinessRequirementStructuredOutput>).sourceDocuments ?? []
+        : [];
+      structured.sourceDocuments = sourceDocuments;
+      structured.sourceRefs = filterBusinessRequirementSourceRefs(
+        normalizeBusinessRequirementSourceRefs((structuredPayload as Partial<BusinessRequirementStructuredOutput>)?.sourceRefs),
+        sourceDocuments.length,
+      );
+      structured.version = {
+        generatedAt: typeof rawVersion?.generatedAt === "number" ? rawVersion.generatedAt : Date.now(),
+        model: typeof rawVersion?.model === "string" ? rawVersion.model : "",
+        markdownPath,
+        jsonPath,
+        requirementInput: rawVersion?.requirementInput ?? {
+          projectName: structured.projectName,
+          businessBackground: "",
+          businessGoal: "",
+          businessQuestions: "",
+          decisionScenario: "",
+          stakeholders: "",
+          knownData: "",
+          constraints: "",
+          outputPreference: "",
+          extraPrompt: "",
+        },
+      };
+      writeFlowFile(outputDir, jsonPath, `${JSON.stringify(structured, null, 2)}\n`);
+    } else if (jsonPath.startsWith("business_requirements/") && existsSync(jsonAbs)) {
       const structured = JSON.parse(readFileSync(jsonAbs, "utf8")) as Partial<BusinessRequirementStructuredOutput>;
       const currentVersion = typeof structured.version === "object" && structured.version !== null ? structured.version : undefined;
       structured.version = {

@@ -137,7 +137,6 @@ export function CollectPane({ ctx }: { ctx: TabContext }) {
           hideSediment
           hidePromptLib
           hideBizReq
-          hideToolPanel
           hideDelegate
         />
       </div>

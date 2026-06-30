@@ -10,26 +10,35 @@
 
 > **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-06-29 · **KG 优化专题 D-KG3 / D-KG4 完成并待 X-KG5 总控终审**
+- 最近更新：2026-06-30 · **D/V-BREQ-LINK1/3/3B/5 已完成业务需求贯通前端主链路；KG D-KG3/D-KG4 仍待 X-KG5 总控终审**
 - 进度：
+  - **D/V-BREQ-LINK1（activeConfirmedRequirement）**：`BusinessRequirementPane` 父容器新增 `activeConfirmedRequirement`。需求沟通确认成功后写入确认需求源、刷新版本列表、自动切到“分析框架”，打开历史确认需求版本时同步该状态；打开旧分析框架版本不会覆盖确认源。
+  - **D/V-BREQ-LINK3（沟通材料 UI）**：需求沟通 tab 增加“导入沟通材料”工作区，支持登记材料、粘贴文本、上传文本；材料只进入沟通输入、澄清问题、假设和风险提示，不会直接生成分析框架或成为 confirmed facts。分析框架 tab 已移除旧“导入需求文档/提取草稿/本地文件”主入口。
+  - **D/V-BREQ-LINK3B（导入接线）**：`web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()`，消费 E-BREQ-LINK2 专用 `/api/workspaces/:id/business-requirement-communication/import-documents`。登记 report/business_requirements/clean_data、粘贴/上传文本均先走专用 API；API 失败才显式 fallback 到“本地启发式，未走服务端导入”。`clean_data` 只传路径元信息，正文由服务端安全策略决定且前端不自行落正文 trace。
+  - **D/V-BREQ-LINK5（确认需求源面板 + LINK4 生成）**：分析框架左侧从旧大表单改为“确认需求源”面板，展示当前确认需求版本、确认时间、scene、来源、业务目标、成功标准、confirmed facts、confirmed assumptions、open questions、风险与限制。主按钮改为“基于确认需求生成分析框架”，有 `activeConfirmedRequirement` 时调用 E-BREQ-LINK4 专用 `analysis-framework-from-confirmed` API；无确认需求时提示回需求沟通。旧直接生成表单仅保留在默认关闭的“不推荐旧路径”高级区。
+  - **版本列表防御**：前端防御性过滤 `business_requirements/communications/` 记录，不让 communication record 进入正式版本列表；下拉中视觉区分 `[确认需求]` / `[分析框架]` / `[旧版本]`。
   - **D-KG3（AI 语义提取 preview 只读接口）**：新增 `previewKgExtraction()` 与 `GET /api/workspaces/:id/knowledge-graph/extract-preview`，返回 report id/path/title/status/reason/updatedAt、processLimit、estimatedProcessCount、skippedCount。preview 只基于现有 `kg_nodes` report 元数据和文件存在性判断，不读取报告正文、不调用 LLM、不写 `kg_nodes` / `kg_edges`。
   - **D-KG4（KG history 记录与查询 API）**：新增 `kg_history_events` 表（落 D slot `db/data.ts`）与 `recordKgHistoryEvent` / `listKgHistoryEvents`；新增 `GET /api/workspaces/:id/knowledge-graph/history?limit=50`，limit clamp 1–200。已记录 `sync`、`extract`、`node_hidden`、`node_recovered`、`edge_added`、`edge_deleted`；history 仅存元数据摘要，不存报告正文/prompt 正文/客户明细/订单样本/原始明细。
   - **接缝注意**：本任务按 wiki brief 接入了现有 legacy KG 路由所在的 `server/src/index.ts`、现有 KG 表所在的 `server/src/db.ts`、双侧 `types.ts` 与 legacy `web/src/lib/api.ts`；这些属于接缝/legacy 文件，需总控按 X-KG5 加重终审。
 - 校验：
-  - `node --experimental-strip-types --test server/src/knowledge-graph-preview.test.ts`：✅ 2/2 通过（preview 不写库；history workspace 隔离）
-  - `npm run typecheck`：✅ server + web 0 错
-  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning）
-  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/` + `insights/joins/profiling`）：✅ 0 匹配
+  - `npm run typecheck`：✅ server + web 0 错（2026-06-30 D/V-BREQ-LINK1/3/3B/5）
+  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-06-30 D/V-BREQ-LINK1/3/3B/5）
+  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-06-30 D/V-BREQ-LINK1/3/3B/5）
+  - `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts`：✅ 19/19 通过（2026-06-30 D/V-BREQ-LINK5 补跑）
 - 下一步（接续优先级）：
-  - ① 回流总控做 X-KG5：重点审 `index.ts` / `db.ts` / 双侧 `types.ts` / `web/src/lib/api.ts` 的接缝改动是否接受，确认 KG history schema 与 preview reason 枚举是否冻结。
-  - ② 若总控接受，前端后续可在 KG 面板接 `api.previewKgExtraction` 与 `api.listKgHistoryEvents`；建议仍尽量保持 `KnowledgeGraphPane.tsx` 主体结构不大改。
-  - ③ 浏览器 smoke：先同步 KG，再调用 preview，执行 extract 后确认 history 有 sync/extract；隐藏/恢复节点、添加/删除边后确认 history 按 workspace 隔离可查。
+  - ① BREQ 浏览器 smoke：分别从日常/专题/重复进入业务需求，验证“需求沟通 → 导入沟通材料 → 生成澄清 → 确认正式需求 → 自动进入分析框架 → 左侧确认需求源面板 → 基于确认需求生成分析框架 → 版本列表区分确认需求/分析框架”的完整链路。
+  - ② 回流总控终审 BREQ 跨域最小接入：重点看 `BusinessRequirementPane.tsx` 消费 E-BREQ-LINK2/LINK4 专用 API 的边界是否接受，以及 `web/src/lib/api/engine.ts` 新增 client 是否符合 E 域契约。
+  - ③ 后续瘦身可继续把 `RequirementCommunicationPane` / `AnalysisFrameworkPane` 从内部组件迁成独立文件；当前仍是单文件局部改造，避免 props-heavy 搬迁引发流程回归。
+  - ④ 回流总控做 X-KG5：重点审 `index.ts` / `db.ts` / 双侧 `types.ts` / `web/src/lib/api.ts` 的接缝改动是否接受，确认 KG history schema 与 preview reason 枚举是否冻结。
+  - ⑤ 若总控接受 KG，前端后续可在 KG 面板接 `api.previewKgExtraction` 与 `api.listKgHistoryEvents`；建议仍尽量保持 `KnowledgeGraphPane.tsx` 主体结构不大改。
 - 阻塞 / 待确认：
   - 无硬阻塞。
 - 开放问题：
-  - **① 接缝层加重终审**：本次 KG 既有实现仍在 legacy `index.ts` / `db.ts` / `api.ts` / `types.ts`，D-KG3/D-KG4 为最小落地触及这些文件；需总控确认是否接受本次最小补丁，还是后续迁入 data/viz slot。
-  - **② history schema 是否升级**：当前 metadata 为 `Record<string, unknown>` JSON，未做 event-specific 结构化子类型；如 X-KG5 要用于 UI 强展示，需总控决定是否冻结更细 schema。
-  - **③ preview reason 口径**：当前 `content_unchanged` 与 `already_processed` 均表示无需处理，实际 `aiExtractedHash === contentHash` 时返回 `content_unchanged`；是否保留两个 reason 或收敛为一个需总控拍板。
+  - **① BREQ 浏览器实跑未完成**：本 session 已完成代码与构建/单测校验，但未启动浏览器走真实 UI；需下个 session 或总控实跑确认 LINK2/LINK4 在真实工作区、真实 report path 下交互无断点。
+  - **② BREQ 跨域 client 归属**：本次在 `web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()` 与 `generateAnalysisFrameworkFromConfirmed()`，是 D/V Pane 消费 E 专用 API 的最小接线；需总控确认该跨域接法继续接受，还是后续由 E 统一封装。
+  - **③ BREQ 后续拆文件节奏**：当前 `BusinessRequirementPane.tsx` 已继续增大；建议 smoke 稳定后拆 `RequirementCommunicationPane` / `AnalysisFrameworkPane` 独立文件，但是否现在拆需总控拍板，避免在贯通期扩大 diff。
+  - **④ 接缝层加重终审**：KG 既有实现仍在 legacy `index.ts` / `db.ts` / `api.ts` / `types.ts`，D-KG3/D-KG4 为最小落地触及这些文件；需总控确认是否接受本次最小补丁，还是后续迁入 data/viz slot。
+  - **⑤ history schema / preview reason 口径**：KG history metadata 当前为 `Record<string, unknown>`，preview reason 中 `content_unchanged` 与 `already_processed` 是否保留两个枚举仍待总控冻结。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -174,6 +183,20 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - 跨表 JOIN **物化成真实 duckdb 表**(`__joined_<ts>`)而非泛化 SQL → 出图/剖析/洞察管线**零改动复用**；DROP joined 表与源表独立。
 - Layer 2 自动洞察**纯算法**：`computeCorrelationMatrix`(duckdb 原生 `corr()` 单查询)、`computeCategoryNumericAssociation`(η²)、`detectDataQualityFlags`(纯 JS)。**绝不用 LLM 生成文案**。
 - 手动改列类型走**重新 profile + override map**，stats 按真实 SQL 类型 guard。
+
+**业务需求沟通工作台（D/V-BRC2, 2026-06-30）**
+- **前置沟通不等于正式业务需求**：需求沟通工作台只维护本地 UI 状态（诉求、沟通记录、澄清问题、假设、草案），不会写 `business_requirements` 文件；只有用户把草案“应用到表单”后，再手动点击既有“生成分析框架”，才进入正式业务需求写入链路。被跳过 / deferred / assumed 的内容不得被静默当成 confirmed facts。
+- **三入口复用同一 Pane，不新增导航接缝**：日常 / 专题 / 重复仍复用 `BusinessRequirementPane`，由 `EngineTabs.tsx` 传 `scene=daily|topic|recurring` 控制展示密度和提示文案。未新增 subtab / constants，避免碰导航骨架；若后续要独立“需求沟通”入口，需先回流总控扩接缝。
+- **只消费 E-BRC1 专用 API**：沟通阶段前端调用 `api.runRequirementCommunication()` → `/api/workspaces/:id/business-requirement-communication/clarify`，不再调用旧 `api.generateBusinessRequirementClarifyingQuestions`，也不自行走通用 `chat/generate/extract/clarify` API。原因：BRC 的 prompt 红线、JSON 契约、枚举收敛都由 E-BRC1 专用端点负责，UI 只消费稳定结构。
+- **workspace id 用于沟通上下文，不改变产物 scope**：E-BRC1 路由以 workspace id 为边界聚合 business_context / metric / 路径元信息；三入口由 `EngineTabs` 透传 `activeWorkspaceId` 给沟通 API，避免 session/flow scope 下工作台不可用。报告路径读取、版本加载与正式业务需求生成仍按原 `scope` 执行；后续若专题/重复需要 flow 级上下文，应由总控/E 扩 API 契约，而不是前端拼接额外上下文绕过端点。
+- **草案映射是辅助填表，不是结构化真源**：E-BRC1 的 `requirementDraft` 被压入既有 `RequirementDraft` 文本字段（background/objective/scope/metrics/questions/outputs/successCriteria/risks/assumptions）。这是最小接入，避免新建第二套正式需求 schema；后续 E-BRC3 若定义确认写入结构，应以 E-BRC3 契约为准。
+- **BREQ-SPLIT 骨架先行（2026-06-30）**：`BusinessRequirementPane` 先做内部双子 tab + 内部 `RequirementCommunicationPane` / `AnalysisFrameworkPane`，不立刻拆独立文件。原因：该文件同时持有 report path、版本列表、draft、文档预览、生成任务、确认回调等大量共享状态；一次性 props-heavy 搬文件容易打断既有流程。先把“确认前沟通”和“确认后分析框架”在 JSX 边界上分流，等浏览器 smoke 稳定后再逐块迁文件。
+- **report path 属父容器共享状态**：确认正式需求与生成分析框架都依赖当前 report path，因此路径选择保留在业务需求父容器顶部；生成分析框架按钮只放在“分析框架”子 tab。反范式：把路径选择只放进分析框架 tab 会让沟通 tab 的“确认成正式需求”按钮因无路径不可用且用户无处选择。
+- **activeConfirmedRequirement 是贯通真源（D/V-BREQ-LINK1/5, 2026-06-30）**：确认需求成功后，父容器必须持有 `activeConfirmedRequirement`，分析框架主路径只从该确认源生成。打开旧分析框架版本不得覆盖该确认源；打开 `*-确认需求-*.json` 才同步确认源。原因：分析框架只能基于“已确认需求”，不能被左侧旧表单静默改事实。
+- **沟通材料只推进澄清，不直接成为事实（D/V-BREQ-LINK3/3B, 2026-06-30）**：导入材料的 `suggestedMessage` / `extractedQuestions` / `extractedAssumptions` 只合入沟通输入、澄清清单、假设区和风险提示；必须经用户回答/采纳/确认后才进入正式需求。API 失败 fallback 必须显式标注“本地启发式，未走服务端导入”。
+- **沟通材料导入只消费 E 专用 API（D/V-BREQ-LINK3B, 2026-06-30）**：前端通过 `api.runRequirementImportDocuments()` 调 `/business-requirement-communication/import-documents`；禁止走通用 `chat/generate/extract/clarify`。登记 report/business_requirements 传 `pathId/relPath/name`，`clean_data` 只允许路径元信息/聚合说明，粘贴/上传文本走 `localText`，不传本机绝对路径。
+- **分析框架生成走 LINK4 专用 API（D/V-BREQ-LINK5, 2026-06-30）**：主按钮调用 `api.generateAnalysisFrameworkFromConfirmed()` → `/business-requirements/analysis-framework-from-confirmed`，传 `confirmedRequirementJsonPath`。旧 `api.generateBusinessRequirement()` 只保留在默认关闭的“不推荐旧路径 / 直接生成”高级区，且 `documents: []`，避免沟通材料绕过确认链路。
+- **版本列表防御性过滤 communications（D/V-BREQ-LINK5, 2026-06-30）**：即使后端已过滤，前端仍过滤 `business_requirements/communications/`，并用 `[确认需求] / [分析框架] / [旧版本]` 标记下拉项。communication record 是审计/追踪材料，不是正式需求版本。
 
 **规则记忆（数据部分）**
 - AI 提取跳过逻辑用专属列 `kg_nodes.ai_extracted_hash`（仿 `hidden` 列），不用 `tags`（sync 会覆写 tags）。

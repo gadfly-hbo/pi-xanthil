@@ -9,39 +9,51 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新:2026-06-30 · **E-TOOLUSE2/4/5 完成：工具运行台账、manifest 统一消费、ToolLab 质量闭环首版**
+- 最近更新:2026-06-30 · **E-BREQ-LINK2/E-BREQ-LINK4 完成：BRC 材料导入 + 确认需求生成分析框架 API**
 - 进度:
-  - **E-TOOLUSE2：统一 Tool Run Ledger + `/run` 网关观测**
-    - 不新增 `tool_runs` 表，复用 X-TOOLUSE0 已有 `trace_events` 过渡账本（`target_kind='extraction_tool'` / `type='tool_run'`）。
-    - `/api/extraction-tools/:id/run` 单点记录 success / tool failure / validation failure / row guard failure；ledger payload 只存脱敏 metadata（basename、folder kind、artifact basename、counters、duration、errorCode），不存输入绝对路径、文件正文、样本行或 SQL 明细。
-    - caller 支持 `manual/chat/mcp/command/subagent/workflow/eval/unknown`；MCP 传 `caller:"mcp"`，Chat @工具传 `caller:"chat"` + `targetKind:"session"`。
-    - `GET /api/workspaces/:id/tool-runs?toolId=&caller=&source=&status=&limit=` 支持 workspace 隔离、limit clamp 1-2000、只读脱敏字段，供 V-TOOLUSE3 消费。
-    - `source:"ai"` 仍触发现有 row guard / MetricSnapshot 数字锁逻辑，安全等级未降低。
-  - **E-TOOLUSE4：MCP / command / subagent / workflow 统一消费 manifest 策略**
-    - 新增 server helper `tool-policy.ts`：`isAiExposedTool` / `isToolBindable` / `listAiExposedToolIds` / `renderToolManifestSummary`，统一口径为仅 `category:"analysis"` 可进入 AI/MCP/command/subagent/workflow 候选。
-    - MCP `tools/list` 只暴露 analysis；description 合并 tags/risk/allowedUse/forbiddenUse 摘要，不暴露 ingestion。
-    - command `coerceCommand` 复用 helper 严格拒绝 ingestion `toolIds`；参数映射候选仍从绑定 tool 的 `parameters` 派生，不自动执行工具。
-    - subagent 模板 server coerce 过滤非 analysis toolIds；前端候选只显示 analysis，并展示 tags/risk；scoped MCP allowlist 仍只按 toolIds 注入。
-    - workflow DAG tool 节点候选只显示 analysis；workflow 定义仍只保存 `toolId + inputPath/outputDir/timeout`，不复制工具描述或参数 schema。
-  - **E-TOOLUSE5：工具准入、评测 cases 与回归门禁接 ToolLab**
-    - ToolLab 候选工具支持 category/risk/tags/query 过滤。
-    - ToolLab 从 manifest + `tests/cases.json` 派生准入提示：case 覆盖/未覆盖、L1+ 是否缺 must-fail 边界 case、forbiddenUse/failureHandling 是否待补。
-    - 候选列表展示最近一次 tool eval 状态（success/failed），供后续 V-TOOLUSE3 质量统计消费。
-    - 失败 run → candidate case 首版只落 UI 设计说明：仅读 ledger metadata + artifact basename，用户确认后生成 case 草稿；本次不自动落地、不复制 draw_data 或错误样本内容。
-  - **前序状态仍有效**：X-TRACE8 / E-OKH3 / E-CROWD11 / E-CROWD8 / E-CROWD5 均已完成；DLF 模拟实验专题 done；MONITOR-TARGET1 done。
+  - **E-BREQ-LINK4：基于确认需求 JSON/Markdown 生成分析框架 API**
+    - 新增 `POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed`，采用方案 B 专用 API，避免触碰 legacy `index.ts` 的旧表单生成端点。
+    - 输入 `pathId + confirmedRequirementJsonPath + model?`；只接受 `business_requirements/*-确认需求-*.json`，拒绝普通 `*-分析框架-*.json` 与 `business_requirements/communications/*.json`。
+    - 读取范围只限确认需求 JSON 与同名 Markdown（存在则读）；不读 communications 记录、不读 `draw_data` / `data_exploration`。
+    - 生成结果仍写 `business_requirements/*-分析框架-*.md/json`，结构含 `version.requirementInput` 与 `sourceConfirmedRequirement`，保持现有业务需求版本列表可见。
+    - prompt / normalize 双层约束：必须消费 confirmedFacts、confirmedAssumptions、deferredQuestions、successCriteria、risks；deferred/skipped/assumed/pending 只能进入 openQuestions/risks/zeroHallucinationCheck，不得进入 businessFacts。
+    - trace `business_requirement_analysis_framework_generated` 只记录确认需求 basename、open/risk/框架数量、生成结果 basename 等 metadata。
+  - **E-BREQ-LINK2：业务需求沟通材料导入 / 摘要 API**
+    - 新增 `POST /api/workspaces/:id/business-requirement-communication/import-documents`，专用于把会议纪要、brief、历史需求/报告摘要整理成 BRC 沟通上下文；不复用通用 extract/chat/generate/clarify。
+    - 新增 `parseRequirementImportDocumentsRequest`、`validateRequirementImportDocumentAccess`、`buildRequirementImportDocumentsPrompt`、`runRequirementImportDocuments`、输出归一化与 trace metadata helper。
+    - 读取边界：`report` / `business_requirements` 可读正文；`clean_data` 首版只注入路径元信息并标记 `clean_data body not read`；`draw_data` / `data_exploration` 禁入；`localText` 只接受前端显式上传/粘贴文本且截断。
+    - trace 事件 `business_requirement_documents_imported` 只记录文档数量、来源分布、摘要长度、问题/假设/风险数量，不记录正文。
+    - prompt 明确导入材料只用于形成澄清问题、待确认假设和沟通草案，不得把未确认内容写成事实。
+  - **E-BRC1：需求澄清引擎 + 结构化草案 API**
+    - 新增 `server/src/business-requirement-communication.ts` 纯模块，负责请求 shape、prompt 组装、server 侧 JSON slice/fence/comment/trailing-comma repair、输出归一化。
+    - 新增 `POST /api/workspaces/:id/business-requirement-communication/clarify`，输入 `scene/message/contextRefs/history/model`，返回 `clarifyingQuestions/assumptions/requirementDraft/riskNotes`，不写业务需求文件。
+    - 路由只注入已启用 `business_context`、已启用 `metric_definitions` 与登记路径元信息；路径只传 `id/folder/kind/basename`，不传绝对路径、文件正文、样本行或数据探索结果。
+    - 输出枚举已收敛到 X-BRC0 / D/V-BRC2 口径：`priority=must_confirm|should_confirm|can_defer`，`status=pending|answered|skipped|assumed|deferred`。
+  - **E-BRC3：确认成业务需求 + trace / review 闭环**
+    - 新增 `POST /api/workspaces/:id/business-requirement-communication/confirm`：只写用户确认后的 `RequirementDraft` 与问题/假设状态，生成正式业务需求 `business_requirements/*-确认需求-*.md/json`，现有业务需求版本列表可见。
+    - 沟通记录轻量落 `business_requirements/communications/*.json`，保存用户输入、问题、回答、假设、草案、确认状态；不保存数据文件正文或样本。该子目录避免被正式业务需求列表误收录。
+    - 正式需求结构显式区分 `confirmedFacts`、`confirmedAssumptions`、`deferredQuestions`、`rejectedAssumptions`；`deferred/skipped/pending` 问题不会写成已确认事实。
+    - trace 写 `business_requirement_clarification_generated`、`business_requirement_assumptions_reviewed`、`business_requirement_confirmed`，payload 只含 scene、数量、状态分布、路径 basename 等 metadata。
+    - 新增 `GET /api/workspaces/:id/business-requirement-communication/review-context`，返回确认后的目标、成功标准、确认假设、未确认问题，供报告审核展示/拼接；首版不做自动 judge。
+  - **前序状态仍有效**：E-TOOLUSE2/4/5 已完成；X-TRACE8 / E-OKH3 / E-CROWD11 / E-CROWD8 / E-CROWD5 均已完成；DLF 模拟实验专题 done；MONITOR-TARGET1 done。
 - 校验:
   - `npm run typecheck` ✅(server + web)
   - `npm run build` ✅(仅既有 Vite chunk warning)
-  - `node --experimental-strip-types --test server/src/tool-policy.test.ts server/src/command-tool-policy.test.ts server/src/tool-run-ledger.test.ts` ✅(**6/6**)
-  - `node --experimental-strip-types --test server/src/tool-evaluation-api.test.ts server/src/tool-evaluation-runner.test.ts` ✅(**16/16**)
-  - 数据探索隔离 grep ✅(no match，E-TOOLUSE 验收补跑)
+  - `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` ✅(**19/19**)
+  - 安全 grep ✅ `readFlowFile` 无 `draw_data` / `data_exploration` 读取形态匹配
+  - 数据探索隔离 grep ✅(no match，E-BRC 验收补跑)
 - 下一步:
-  - V-TOOLUSE3 可直接消费 `/api/workspaces/:id/tool-runs` 与 ToolLab 最近 eval 状态做工具质量/运行统计。
-  - 若要把失败 run 真正转 candidate case，需新增用户确认流：ledger metadata → case draft → 人审保存到 ToolLab case set；仍不得读取/复制原始数据内容。
-  - 若 tool-run 规模统计需要更高查询性能，再由总控审是否从 `trace_events` 迁为独立 `tool_runs` 表；当前未新增表。
+  - 建议人工浏览器 smoke：从日常 / 专题 / 重复三入口各跑一条“输入诉求 → 生成澄清清单/草案 → 回答/跳过/采纳假设 → 确认成正式需求 → 版本列表可见 → review-context 可取”。
+  - 建议补一条 BRC import-documents 浏览器 smoke：粘贴会议纪要 + 选择历史 `business_requirements` / `report` 产物 → 生成 summaries/questions/assumptions/suggestedMessage → 送入 clarify。
+  - 建议补一条 confirmed requirement → analysis framework smoke：选择确认需求 JSON → 调专用 API → 生成 `*-分析框架-*` 版本 → 版本列表打开可见，deferred 仍在待确认/风险。
+  - 若报告审核 UI 要自动展示 BRC review-context，需要 V/D 后续接入 `api.getRequirementCommunicationReviewContext()` 或在 legacy `reviewReport` 调用前拼接用户 prompt。
+  - 若需要跨 workspace / 全局查询沟通历史，再由总控审是否新增 DB 表；当前采用 report 目录 JSON 文件，最小闭环已足够。
+  - V-TOOLUSE3 仍可直接消费 `/api/workspaces/:id/tool-runs` 与 ToolLab 最近 eval 状态做工具质量/运行统计。
   - 仍待：E-SKILLINJECT1 真实 workflow smoke、E-SKILLOPT1 浏览器 smoke；KICKOFF-P0 的 E2E 验证补课（AnaX 8 阶段真跑 / skill 蒸馏全链路 smoke / SQL 连接真实库）仍未执行。
 - 阻塞: 无硬阻塞。
 - 开放问题(需总控):
+  - BRC 沟通历史是否需要从 `business_requirements/communications/*.json` 升级为 DB 表，以支持跨 workspace 检索、治理和 trace drill-down。
+  - 报告审核是否由 V/D 在 UI 层展示 BRC review-context，还是由总控迁移 legacy `/api/report-review/review` 到域 router 后统一拼接上下文。
   - 失败 run → candidate case 是否需要独立持久化 proposal 表，还是直接写入 ToolLab case set 草稿流。
   - 后续是否将 trace_events 过渡账本迁为独立 `tool_runs` 表。
   - 沿用前序开放项（动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等）。
@@ -259,6 +271,11 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - 业务需求来源引用 = 字段级 `sourceRefs` + quote 最小闭环，**不做字符 offset 定位**；业务需求上下文抽成前端共享 hook（Chat/报告版本/Golden Strategy 复用）。
 - 2026-06-18 专题业务需求接入决策：`BusinessRequirementPane` 在 `explore` / `multi` / `zhuanti` 三个入口复用同一组件和 props，不 fork pane 逻辑；专题下的作用域由 App 层 `folderScope={type:"flow", flowId:<专题 flow>}` 提供，`EngineTabs.tsx` 只负责把 `business_requirement` 渲染条件加上 `zhuanti`。`onExploreFields` 仍跳 `data_exploration`，不向数据探索子树注入数据或 LLM 链路。
 - 业务需求版本恢复依赖 `structured.version.requirementInput`：后端生成版本必须写入原始 draft 输入，手动编辑 markdown 时必须保留已有 requirementInput；前端打开历史版本/刷新恢复左侧 draft 时只读该字段，旧 JSON 缺字段时不应臆造完整业务背景。
+- **需求沟通闭环（E-BRC1/E-BRC3，2026-06-30）**：正式业务需求前新增“业务诉求沟通 → 需求澄清 → 业务需求确认 → 分析/报告”链路。澄清 API 真源是 `server/src/business-requirement-communication.ts` + `POST /api/workspaces/:id/business-requirement-communication/clarify`，输出枚举固定为 `must_confirm/should_confirm/can_defer` 与 `pending/answered/skipped/assumed/deferred`；不得重新引入 `P0/P1/P2` 或 `open/dismissed` 作为前后端契约。
+- **BRC 数据安全边界**：澄清阶段只可注入已启用 `business_context`、已启用 `metric_definitions` 与登记路径元信息（`id/folder/kind/basename`）；禁止读取/传入 `draw_data` 原始行、`clean_data` 文件正文、数据探索字段值/样本/剖析结果。prompt 必须显式要求“未确认项以问题或假设呈现，不得擅自定稿”。
+- **BRC 确认写入口径**：`POST /api/workspaces/:id/business-requirement-communication/confirm` 只写用户确认后的草案、问题状态与假设状态；正式需求落 `business_requirements/*-确认需求-*.md/json`，沟通记录落 `business_requirements/communications/*.json`，避免被现有版本列表误认为正式需求。正式 JSON 必须显式区分 `confirmedFacts` / `confirmedAssumptions` / `deferredQuestions` / `rejectedAssumptions`；`deferred/skipped/pending` 问题不得写成 confirmed facts。
+- **BRC trace/review 边界**：trace 事件只存脱敏 metadata（scene、数量、状态分布、路径 basename、风险/输出数量），不得存用户长文本、文件正文、样本值。`GET /api/workspaces/:id/business-requirement-communication/review-context` 只返回确认后的目标、成功标准、确认假设、未确认问题，供报告审核展示或拼接；首版不自动 judge。
+- **BRC 材料导入与确认需求生成分析框架边界（E-BREQ-LINK2/E-BREQ-LINK4，2026-06-30）**：沟通材料导入使用专用 `POST /api/workspaces/:id/business-requirement-communication/import-documents`，不得让前端复用通用 extract/chat/generate/clarify。导入可读 `report` / `business_requirements` 衍生产物正文；`clean_data` 首版只允许路径元信息/聚合说明，禁止读正文；`draw_data` / `data_exploration` 禁入；`localText` 仅限用户显式上传/粘贴并截断。分析框架生成使用专用 `POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed`，采用方案 B 而非扩 legacy `index.ts` 旧表单端点，避免触碰接缝层；只接受 `business_requirements/*-确认需求-*.json` 与同名 Markdown，拒绝 `*-分析框架-*.json` 和 `business_requirements/communications/*.json`。生成结果仍写 `business_requirements/*-分析框架-*`，保持版本列表兼容；`deferred/skipped/assumed/pending` 只能进入 openQuestions/risks/zeroHallucinationCheck，不得进入 businessFacts。两类 trace 均只存 basename / 数量 / 长度 metadata，不存正文。
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
 - **memory evaluation runner 检索上下文单一真源（2026-06-18 E-EVAL）**：baseline vs memory 评估必须用同一 evaluation prompt 构造 `RetrievalContext`（当前 `query = prompt.trim()`），并把同一个 ctx 同时传给 `buildMemoryInjectionSnapshot(..., {}, ctx)` 与 `buildMemoryPrompt(..., {}, ctx)`。否则 snapshot 中看到的候选/命中可能与实际 pi system prompt 不一致，评估数据会失真。baseline candidate 仍只记录 `requested:false` snapshot，不注入 memory；memory candidate 走 `memory_item` 新检索。runner 读记忆只经 `memory-injection.ts`，不要为了评估直接 import D 的 db CRUD。

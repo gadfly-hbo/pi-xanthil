@@ -10,7 +10,54 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。2.3 发布后增量（Harness 全专题等）见 `Orchestration.md §八「2.3 阶段进展」`。详见发布节点。
 
-- 最近更新：2026-06-30 · 总控（tool-use 治理中枢 v1 全链验收收口）
+- 最近更新：2026-06-30 · 总控（业务需求贯通 X-BREQ-LINK6 全链验收）
+- 本批（2026-06-30 · 业务需求贯通，沟通材料导入 + 确认需求驱动分析框架）：
+  - ✅ **X-BREQ-LINK0 已完成总控自做**：冻结“需求沟通”和“分析框架”的产物流转契约：需求沟通前置承接线下材料/诉求/历史需求，确认后产物成为分析框架输入源；分析框架不再要求用户二次导入和重填左侧表单。
+  - ✅ **D/V-BREQ-LINK1 已回流并通过总控复核**：`BusinessRequirementPane` 新增 `activeConfirmedRequirement` 父容器状态；确认正式需求成功后写入确认需求来源、回填 draft、刷新版本、选中刚确认版本并自动切到“分析框架”；打开历史版本时仅 `business_requirements/*-确认需求-*.json` 会同步 active confirmed，旧分析框架版本不会覆盖当前确认需求源。
+  - ✅ **D/V-BREQ-LINK1 总控收口**：移除同文件中已无入口的旧“从文档提取草稿”死代码，恢复 `npm run typecheck`；对已出现的“导入沟通材料”局部骨架做安全收紧，登记材料只形成待确认沟通材料，不静默绕过确认成为分析框架 source document。
+  - ✅ **E-BREQ-LINK2 已回流并通过总控复核**：新增 `POST /api/workspaces/:id/business-requirement-communication/import-documents`，BRC 专用沟通材料导入 / 摘要 API。支持 `localText`、`report`、`business_requirements` 正文导入，`clean_data` 仅导入路径元信息/聚合说明并带 `clean_data body not read` warning；`draw_data` / `data_exploration` 在 source 白名单和路径访问两层被拒绝。
+  - ✅ **E-BREQ-LINK2 安全收口**：trace 事件 `business_requirement_documents_imported` 只记录 `documentCount`、source 计数、summary length、问题/假设/风险数量，不记录材料正文；prompt 明确导入材料只能形成澄清问题、待确认假设和可编辑沟通草案，不得把未确认内容写成事实。
+  - ✅ **D/V-BREQ-LINK3 UI 骨架已回流并通过总控复核**：`需求沟通` tab 新增“导入沟通材料”工作区，支持已登记材料、粘贴文本、上传文本文件；材料只合入原始诉求输入、澄清清单与假设区，不直接成为 confirmed facts。分析框架生成已改为 `documents: []`，旧“导入需求文档 / 提取草稿 / 本地文件”主入口移除，不再绕过确认链路。
+  - ✅ **D/V-BREQ-LINK3 安全收口**：`clean_data` 分支只展示元信息/知情提示，不读取字段值、样本或正文；未使用 `pickLocalPath`，未新增通用 `chat/extract/clarify` API 调用。
+  - ✅ **D/V-BREQ-LINK3B 已回流并通过总控复核**：`web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()`，前端材料导入改为调用 E-BREQ-LINK2 专用 `POST /business-requirement-communication/import-documents`。登记材料、粘贴文本、上传文本分别映射为 `report/business_requirements/clean_data/localText` 输入；`clean_data` 只传路径元信息并展示 warning，`localText` 不传本机路径。
+  - ✅ **D/V-BREQ-LINK3B 安全收口**：服务端返回的摘要、问题、假设、建议输入与风险提示映射到 material card；API 失败时才 fallback 到本地启发式，并在 UI 标注“本地启发式，未走服务端导入”。服务端导入和 fallback 都只进入沟通输入、澄清清单、假设与风险提示，不直接成为 confirmed facts。
+  - ✅ **E-BREQ-LINK4 已回流并通过总控复核**：新增 `POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed`，采用独立专用 API 方案 B，不改 legacy 旧表单生成端点。只接受 `business_requirements/*-确认需求-*.json`，拒绝普通 `*-分析框架-*.json` 与 `business_requirements/communications/*.json`；输出仍写 `business_requirements/*-分析框架-*.md/json`，兼容现有版本列表。
+  - ✅ **E-BREQ-LINK4 安全收口**：生成 prompt 要求基于确认需求；`deferred/skipped/assumed/pending` 只进入 `openQuestions` / `risks` / `zeroHallucinationCheck`，不进入 `businessFacts`；trace 只记录确认需求 basename、问题/风险/框架数量与生成结果 basename 等 metadata。
+  - ✅ **D/V-BREQ-LINK5 已回流并通过总控复核**：`web/src/lib/api/engine.ts` 新增 `generateAnalysisFrameworkFromConfirmed()`；`BusinessRequirementPane` 分析框架左侧主路径已改为“确认需求源”面板，展示确认需求版本、确认时间、scene、来源、业务目标、成功标准、confirmed facts、confirmed assumptions、open questions、风险限制。主按钮改为“基于确认需求生成分析框架”，有 `activeConfirmedRequirement` 时调用 E-BREQ-LINK4 专用 API。
+  - ✅ **D/V-BREQ-LINK5 总控收口**：旧表单 / 直接生成已折叠进“旧路径 / 直接生成（不推荐）”高级区；版本列表过滤 communications/ 记录，并标注 `[确认需求] / [分析框架] / [旧版本]`。打开确认需求版本现在只更新 `activeConfirmedRequirement` 和左侧确认源，不再把确认需求 Markdown 覆盖到右侧分析框架预览 / 编辑区。
+  - ✅ **X-BREQ-LINK6 已完成总控终审**：确认两个子 tab 已从“并列 UI”收敛为同一份确认需求在两阶段流转：需求沟通导入材料与澄清，确认后写正式确认需求，分析框架主路径直接消费 `activeConfirmedRequirement` 和 E-BREQ-LINK4 专用 API，不再要求用户二次导入 / 填写需求。
+  - ✅ **X-BREQ-LINK6 总控收口**：打开历史确认需求版本时 `activeConfirmedRequirement` 已显式记录 `scene`，满足 `markdownPath/jsonPath/content/structured/source/scene/confirmedAt` 契约；旧表单和 legacy `generateBusinessRequirement()` 仍保留但默认折叠，并明确标注“不推荐”。
+  - ✅ **验证**：`node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 19/19 通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 Vite/ECharts chunk warning；数据探索隔离 grep 无输出；`BusinessRequirementPane` 残留检查无 `pickLocalPath` / `extractBusinessRequirementDraft` / `generateBusinessRequirementClarifyingQuestions` / 通用 `chat/extract/clarify` 调用；API smoke 由用户手动完成。
+  - 📌 **下一步**：本组“业务需求贯通”专题完成。后续若继续优化，优先做浏览器点击级三入口自动化 smoke，或把默认折叠的 legacy fallback 迁出主组件。
+  - 📌 **红线**：贯通链路继续只允许 `report` / `business_requirements` 衍生产物正文、用户显式 `localText` 和 `clean_data` 元信息进入 BRC import API；禁止 `draw_data` 原始行和 `data_exploration` 字段值/样本/剖析结果进入 LLM。
+  - 📌 **残留**：浏览器点击级日常 / 专题 / 重复三入口未由总控亲自复跑；旧路径仍作为折叠高级 fallback 存在，后续真实用户点检时继续观察是否会误导主路径。
+- 历史批次（2026-06-30 · 业务需求模块瘦身，需求沟通 / 分析框架双子 tab）：
+- 本批（2026-06-30 · 业务需求模块瘦身，需求沟通 / 分析框架双子 tab）：
+  - ✅ **X-BREQ-SPLIT0 已完成总控自做**：冻结业务需求模块内部信息架构，一级入口仍为“业务需求”，组件内拆为“需求沟通”和“分析框架”两个子 tab；前者承接正式需求确认前，后者消费确认需求并生成/管理分析框架。
+  - ✅ **D/V-BREQ-SPLIT1 已回流并通过总控复核**：`BusinessRequirementPane` 已成为父容器，内部新增双子 tab；父容器保留 report path、版本刷新、scene 与 `communicationWorkspaceId` 共享状态；确认成正式需求后刷新版本并自动切到“分析框架”。未改 `App.tsx` / `constants.ts` / `tabs/types.ts` 等接缝骨架，未新增后端 API。
+  - ✅ **D/V-BREQ-SPLIT2 已回流并通过总控复核**：`RequirementCommunicationPane` 区域承接 scene 说明、诉求输入、可用上下文引用说明、沟通记录、澄清清单、假设处理、草案预览与“确认成正式需求”；需求沟通仍只走 `runRequirementCommunication()` / `confirmRequirementCommunication()` 两个 BRC 专用 API，不展示“生成分析框架”主操作。
+  - ✅ **D/V-BREQ-SPLIT3 已回流并通过总控复核**：`AnalysisFrameworkPane` 区域承接生成分析框架、模板、导入需求文档、质量检查、正式需求版本列表、分析/报告/差异/说明预览、编辑、沉淀与字段验证入口；确认需求返回结构与旧分析框架结构不完全同形，但保留 `projectName`，可打开版本与预览，旧分析框架字段为空时沉淀/字段验证按钮自然不可用。
+  - ✅ **验证**：`npm run typecheck` 通过；`npm run build` 通过，仅既有 Vite/ECharts chunk warning；`node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 9/9 通过；数据探索隔离 grep 无输出；`docs/wiki.html` script parse 通过。
+  - 📌 **下一步**：执行 `X-BREQ-SPLIT4` 总控全链验收，重点跑浏览器手动 smoke：日常 / 专题 / 重复各走一条“需求沟通 → 确认正式需求 → 自动切入分析框架 → 生成/查看分析框架”链路；同时观察旧“确认需求”和旧“分析框架版本”的视觉区分是否足够清楚。
+  - 📌 **红线**：业务需求模块瘦身只做前端信息架构收敛，不改变 BRC API、安全 prompt、确认写入路径、trace/review 口径；继续禁止 `draw_data` 原始行、数据探索字段值/样本/剖析结果进入 LLM。
+  - 📌 **残留**：浏览器点击级 smoke 未跑；`RequirementCommunicationPane` / `AnalysisFrameworkPane` 当前为同文件内部组件，后续如文件继续膨胀可再开纯 UI 文件拆分卡；确认需求与分析框架历史版本的标签/筛选可在 X-BREQ-SPLIT4 验收后决定是否追加小修。
+- 历史批次（2026-06-30 · 业务需求沟通闭环，总控契约/派发）：
+- 本批（2026-06-30 · 业务需求沟通闭环，总控契约/派发）：
+  - ✅ **X-BRC0 已完成总控自做**：冻结日常 / 专题 / 重复三类场景在正式业务需求前的“需求沟通”产品契约；主链路为“业务诉求沟通 → 需求澄清 → 业务需求确认 → 分析 / workflow / 报告”。
+  - ✅ **E-BRC1 已回流并通过总控复核**：新增 `server/src/business-requirement-communication.ts` 与 `POST /api/workspaces/:id/business-requirement-communication/clarify`；server 侧完成请求解析、JSON repair、结构化输出归一化、prompt 红线、business_context/metric_definitions/路径元信息接入；只返回澄清结果，不写业务需求文件。
+  - ✅ **总控收口契约漂移**：E 初版使用 `P0/P1/P2` 与 `open/answered/dismissed`，已收敛回 X-BRC0 单一契约：问题优先级 `must_confirm/should_confirm/can_defer`，状态 `pending/answered/skipped/assumed/deferred`，并同步 prompt schema 与测试。
+  - ✅ **D/V-BRC2 已回流并通过总控复核**：`BusinessRequirementPane` 新增需求沟通工作台，`EngineTabs` 接入日常 `daily` / 专题 `topic` / 重复 `recurring` 三场景；前端只调用 E-BRC1 专用 `runRequirementCommunication()`，确认前不写正式业务需求，正式写入仍走既有“生成分析框架”。
+  - ✅ **总控收口入口阻断**：D/V 初版只在 workspace scope 允许沟通 API，session/flow scope 下三入口会被禁用；已改为由入口透传 `activeWorkspaceId` 给沟通 API，路径读取与正式需求生成仍保持原 scope，不改变产物归属。
+  - ✅ **E-BRC3 已回流并通过总控复核**：新增确认写入 API 与 review-context API；正式需求写入 `business_requirements/*-确认需求-*.md/json`，沟通记录写入 `business_requirements/communications/*.json`；trace 记录澄清生成、假设 review、需求确认三类脱敏 metadata；前端新增“确认成正式需求”按钮并刷新既有版本列表。
+  - ✅ **总控收口 review 读取边界**：E 初版 `review-context` 允许传任意同 outputDir 下 jsonPath；已收紧为只接受 `business_requirements/*-确认需求-*.json`，拒绝普通分析框架 JSON 与 communications 记录，避免误读非确认需求结构。
+  - ✅ **X-BRC4 已完成总控全链验收**：确定性验收覆盖 daily / topic / recurring 三场景，确认业务需求沟通闭环已能从模糊诉求进入澄清清单、需求草案、正式业务需求、review context 与 trace metadata；业务需求沟通闭环可作为正式进入业务需求模块的前置阶段。
+  - ✅ **总控收口 assumed 状态归属**：`assumed` 问题此前不会成为事实、但也不会进入未确认问题清单；已纳入 `deferredQuestions/openQuestions`，避免后续报告审核丢失“按假设推进”的问题。
+  - ✅ **三场景口径**：日常走轻量快问快答，只澄清最容易跑偏的关键项；专题走项目制 brief，覆盖背景、目标、范围、交付物、owner、评审点；重复走模板化复用，识别历史需求差异并沉淀可复用参数/澄清项。
+  - ✅ **验证**：`node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 9/9 通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 Vite/ECharts chunk warning；数据探索隔离 grep 无输出；`docs/wiki.html` script parse 通过。
+  - 📌 **下一步**：BRC 本组专题完成。短期建议做一次人工浏览器 smoke：日常/专题/重复各走一条“输入诉求→澄清清单/草案→回答/跳过/采纳假设→确认成正式需求→版本列表可见→review-context 可取”；后续若要跨 workspace 查询沟通历史，再另开 DB 表卡。
+  - 📌 **红线**：沟通环节允许 LLM 读取用户诉求、已确认业务背景、指标口径说明、历史需求/报告摘要、已登记路径元信息；禁止 `draw_data` 原始行、数据探索字段值/样本/剖析结果、客户/订单/明细级数据进入 LLM；`clean_data` 首版只允许路径元信息/聚合说明且 UI 需知情提示。
+  - 📌 **残留**：未新增 DB、未扩双侧 `types.ts`；沟通历史跨 workspace 查询后续如需要再建表；浏览器点击级 smoke 未自动化。
+- 历史批次（2026-06-30 · tool-use 治理中枢专题，总控终审）：
 - 本批（2026-06-30 · tool-use 治理中枢专题，总控终审）：
   - ✅ **X-TOOLUSE0 / D-TOOLUSE1 / E-TOOLUSE2 / V-TOOLUSE3 / E-TOOLUSE4 / E-TOOLUSE5 / X-TOOLUSE6 全部 done**：tool-use v1 可作为“治理中枢”归档；唯一注册源仍为 `server/tools/<id>/tool.json`，唯一执行网关仍为 `POST /api/extraction-tools/:id/run`。
   - ✅ **Registry 收口**：当前 25 个工具、18 个 `analysis`、7 个 `ingestion`；18/18 analysis 均含 `python-analysis`；ingestion 工具不补 tags，避免误导 AI 暴露；所有工具经 registry 返回稳定 `tags/category/riskLevel`。总控补齐 3 个旧 ingestion 工具 `riskLevel` 元数据：`extract-sycm-member=L1`、`extract-xhs-insight=L1`、`phone-cleaner=L2`。
@@ -612,3 +659,193 @@
 - **E-TOOLUSE4**：MCP/command/subagent/workflow 统一从 manifest 派生候选和参数说明。
 - **E-TOOLUSE5**：ToolLab 准入、cases 回归、失败 run 转候选 case；不得复制原始数据内容。
 - **X-TOOLUSE6**：全链验收、安全红线、wiki/notes 收口。
+
+---
+
+## 十六、业务需求沟通闭环接缝契约（X-BRC0，2026-06-30 总控自做）
+
+**背景**：用户指出日常 / 专题 / 重复三个模块都有“业务需求”，但在业务需求正式确定前，实际存在重要的业务需求沟通环节。总控裁决：这不是业务需求表单的一段附属聊天，而是正式业务需求前的轻量工作台，负责把模糊诉求澄清为可确认、可追溯、可执行的分析任务说明。
+
+**首版定位**：
+- 主链路为 **业务诉求沟通 → 需求澄清 → 业务需求确认 → 分析 / workflow / 报告**。
+- 沟通环节的产物不是报告，也不是直接执行任务，而是一份用户确认后的 `RequirementDraft`。
+- 后续分析链路只消费确认后的业务需求，不直接消费未定稿沟通全文，避免把上下文噪声和未确认假设带入分析。
+
+**三场景口径**：
+- **日常**：轻量快问快答，优先澄清 2-3 个会导致跑偏的关键项，如时间范围、指标口径、对比对象、输出物。
+- **专题**：项目制 brief，覆盖背景、目标、边界、数据范围、交付物、owner、评审点、成功标准。
+- **重复**：模板化复用，识别本次与历史需求的差异，固化参数和澄清项，减少下次沟通成本。
+
+**结构化沟通模型**：
+- 沟通记录：保留用户诉求与系统追问，但不直接作为最终需求。
+- 澄清清单：目标、对象、时间范围、指标口径、维度、输出物、成功标准、风险假设。
+- 问题优先级：`must_confirm` / `should_confirm` / `can_defer`。
+- 回答状态：`pending` / `answered` / `skipped` / `assumed` / `deferred`。
+- 需求草案：背景、目标、范围、数据使用边界、指标与口径、分析问题、输出物、风险与假设。
+- 确认动作：用户确认后才写入现有 `business_requirements` 产物链路。
+
+**数据红线**：
+- 允许进入 LLM：用户自然语言诉求、已确认业务背景、指标名称/口径说明、已登记路径元信息、历史需求/报告摘要。
+- 禁止进入 LLM：`draw_data` 原始行级内容、数据探索字段值/样本/剖析结果、错误日志样本片段、客户/订单/明细级数据。
+- `clean_data` 首版不读取文件正文；如用于澄清提示，只允许路径元信息/聚合说明，并在 UI 明示受控数据知情。
+- 被跳过或 deferred 的问题不得写成已确认事实；正式业务需求必须显式区分 confirmed facts 与 assumptions。
+
+**下游分工审定**：
+- `E-BRC1`：需求澄清引擎 + 结构化草案 API；server 侧 JSON parse/repair；不直接写业务需求。
+- `D/V-BRC2`：需求沟通工作台 + 日常/专题/重复三入口接入；前端只调用专题专用 API，不自行调用通用 `chat/generate/extract/clarify`。
+- `E-BRC3`：确认成业务需求 + trace/review 闭环；只写确认后的草案，trace 只存脱敏 metadata。
+- `X-BRC4`：全链验收、安全红线和 wiki/notes 收口。
+
+**✅ E-BRC1 终审通过（2026-06-30）**：新增 `server/src/business-requirement-communication.ts` 与 `POST /api/workspaces/:id/business-requirement-communication/clarify`。实现请求解析（`scene/message/contextRefs/history/model`）、server 侧 JSON slice/fence/comment/trailing-comma repair、结构化输出校验与归一化（`clarifyingQuestions/assumptions/requirementDraft/riskNotes`），prompt 明确“未确认项必须以问题或假设呈现，不得擅自定稿”。路由接入已启用 `business_context` 与 `metric_definitions` 摘要，已登记路径只传 `id/folder/kind/basename` 元信息，不传绝对路径、文件正文或样本。API 只返回结构化澄清结果，不写业务需求文件。
+
+**总控收口**：E 初版问题优先级用 `P0/P1/P2`、状态用 `open/answered/dismissed`，偏离 X-BRC0 长期契约；已改回 `must_confirm/should_confirm/can_defer` 与 `pending/answered/skipped/assumed/deferred`，并同步 prompt schema 与测试。后续前端必须消费这套枚举，不要再引入本地映射真源。
+
+**验证口径**：E-BRC1 已通过 `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 5/5、`npm run typecheck`、`npm run build`；数据探索隔离 grep 无输出。尚未新增 DB、未扩双侧 `types.ts`、未接 UI；下游 D/V-BRC2 接前端，E-BRC3 接确认写入与 trace/review。
+
+**✅ D/V-BRC2 终审通过（2026-06-30）**：`BusinessRequirementPane` 已新增“需求沟通”工作台，支持用户诉求输入、沟通记录、澄清清单、假设处理、草案预览与应用到表单；确认前只维护前端状态，不写正式业务需求。`EngineTabs` 在日常 / 专题 / 重复三个业务需求入口分别传 `daily` / `topic` / `recurring`，`web/src/lib/api/engine.ts` 新增 `runRequirementCommunication()` 且只调用 E-BRC1 专用端点。
+
+**总控收口**：D/V 初版把沟通 API 的 workspace id 绑定到 `scope.type === "workspace"`，导致普通 session/flow scope 下三入口 UI 会提示不可用；已改为 `EngineTabs` 透传 `activeWorkspaceId` 给沟通 API。该 id 只用于 E-BRC1 读取 workspace 级 business_context / metric_definitions / 路径元信息，报告路径读取、版本加载、正式业务需求生成仍按原 `scope` 执行，避免改变产物归属。
+
+**验证口径**：D/V-BRC2 已复跑 `npm run typecheck`、`npm run build`；数据探索隔离 grep 无输出。浏览器点击级 smoke 未自动化，后续需手工从三入口确认“沟通草案应用到表单”与“生成分析框架前不写正式需求”的 UI 流程。
+
+**✅ E-BRC3 终审通过（2026-06-30）**：`server/src/business-requirement-communication.ts` 新增确认输入解析、正式需求结构转换、Markdown 渲染、review 对照上下文、trace metadata 纯函数；正式需求结构显式区分 `confirmedFacts`、`confirmedAssumptions`、`deferredQuestions`、`rejectedAssumptions`，`deferred/skipped/pending` 问题不会进入 confirmed facts。`POST /api/workspaces/:id/business-requirement-communication/confirm` 写正式需求到 `business_requirements/*-确认需求-*.md/json`，沟通记录写入 `business_requirements/communications/*.json`；前端 `BusinessRequirementPane` 新增“确认成正式需求”按钮，确认后刷新既有业务需求版本列表。
+
+**review / trace 接线**：新增 `GET /api/workspaces/:id/business-requirement-communication/review-context`，返回确认后的目标、成功标准、确认假设、未确认问题，供报告审核展示或拼接；trace 记录 `business_requirement_clarification_generated`、`business_requirement_assumptions_reviewed`、`business_requirement_confirmed`，payload 只含 scene、数量、状态分布、路径名等 metadata，不含数据文件正文或样本。
+
+**总控收口**：E 初版 `review-context` 显式 `jsonPath` 可读取同 outputDir 下任意 JSON 并尝试解释为确认需求；已新增 `isConfirmedBusinessRequirementJsonPath()`，只允许 `business_requirements/*-确认需求-*.json`，拒绝普通分析框架 JSON 与 `communications` 沟通记录，避免误读和非确认结构暴露。
+
+**验证口径**：E-BRC3 已通过 `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 8/8、`npm run typecheck`、`npm run build`；数据探索隔离 grep 无输出。未新增 DB；如后续需要跨 workspace 查询沟通历史，再另立 DB 表。
+
+**✅ X-BRC4 全链验收通过（2026-06-30）**：业务需求沟通闭环专题完成，`X-BRC0 / E-BRC1 / D/V-BRC2 / E-BRC3 / X-BRC4` 全部 done。新增确定性验收覆盖三场景：日常轻量诉求、专题完整 brief、重复历史口径复用与本次差异；验证链路为澄清问题（优先级/状态）→ 假设处理 → 正式确认需求 → review context → trace metadata。确认结构继续显式区分 `confirmedFacts`、`confirmedAssumptions`、`deferredQuestions`、`rejectedAssumptions`；`skipped/deferred/pending/assumed` 均不会进入 confirmed facts。
+
+**总控收口**：`assumed` 问题原本不会成为事实，但也不会出现在未确认问题清单，容易让“按假设推进”的待复核点在 review 阶段丢失；已纳入 `deferredQuestions/openQuestions`，正式需求 Markdown 的 Deferred / Skipped Questions 与 review context 都能看到。
+
+**最终验证口径**：`node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 9/9、`npm run typecheck`、`npm run build` 通过；数据探索隔离 grep 无输出；`docs/wiki.html` script parse 通过。浏览器点击级 smoke 未自动化，仍建议人工从日常 / 专题 / 重复各跑一条确认链路。
+
+---
+
+## 十七、业务需求模块瘦身接缝契约（X-BREQ-SPLIT0，2026-06-30 总控自做）
+
+**背景**：BRC 闭环完成后，`BusinessRequirementPane` 同时承载“需求沟通、草案确认、正式需求版本、分析框架生成、报告框架、沉淀与字段验证”，用户反馈业务需求模块过于臃肿。总控裁决：不新增全局一级/二级 subtab，不改接缝层，只在业务需求组件内部按生命周期拆成两个子 tab。
+
+**产品边界**：
+- 一级入口仍为“业务需求”。
+- 内部子 tab：
+  - **需求沟通**：确认前工作台，处理模糊诉求、澄清问题、假设、草案预览和确认成正式需求。
+  - **分析框架**：确认后管理台，消费确认需求，处理版本、生成分析框架、报告框架、编辑、沉淀和下游联动。
+- 确认成功后的推荐行为：刷新正式需求版本列表，并自动切到“分析框架”。
+- 日常 / 专题 / 重复入口默认进入“需求沟通”；从报告审核 / workflow 回看需求时可优先进入“分析框架”，首版未实现自动判断也不阻断，必须保留显式切换。
+
+**工程边界**：
+- 首版只改 `web/src/components/BusinessRequirementPane.tsx`，`RequirementCommunicationPane` / `AnalysisFrameworkPane` 为同文件内部组件，避免扩大 diff。
+- 不改 `App.tsx` / `constants.ts` / `tabs/types.ts` / 后端路由 / BRC API。
+- `runRequirementCommunication()` / `confirmRequirementCommunication()` 继续是需求沟通专用 API；分析框架主路径已由 E-BREQ-LINK4 / D/V-BREQ-LINK5 切到确认需求专用生成链路，`generateBusinessRequirement()` 仅保留在折叠的 legacy fallback。
+- 不改变 `business_requirements/*-确认需求-*.md/json`、`business_requirements/communications/*.json`、trace/review context 结构。
+
+**✅ D/V-BREQ-SPLIT1~3 终审通过（2026-06-30）**：
+- `BusinessRequirementPane` 已有“需求沟通 / 分析框架”双子 tab，父容器保留 path、版本、scene、workspace id 等共享状态。
+- `RequirementCommunicationPane` 区域承接确认前链路，不展示“生成分析框架”主操作。
+- `AnalysisFrameworkPane` 区域承接确认后链路，包含生成分析框架、版本列表、预览、编辑、报告框架、沉淀与字段验证。
+- 确认成正式需求后会刷新版本列表并切换到“分析框架”。
+
+**安全红线**：
+- 需求沟通 tab 不 import 通用 `chat/generate/extract/clarify` API，不读取 `draw_data` 原始行，不读取 `data_exploration` 字段值/样本/剖析结果。
+- 分析框架 tab 延续既有业务需求生成链路，仍只能读允许的需求文档/聚合说明/报告等受控产物。
+- 数据探索联动保持单向：业务需求 → 数据探索字段名提示，不携带数据内容。
+
+**验证口径**：
+- `npm run typecheck`、`npm run build` 通过；build 仅既有 Vite/ECharts chunk warning。
+- `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 9/9 通过。
+- 数据探索隔离 grep 无输出。
+- `docs/wiki.html` script parse 通过。
+
+**历史残留 / LINK6 收口**：
+- 未跑浏览器点击级 smoke；需从日常 / 专题 / 重复三入口各走一条“需求沟通 → 确认正式需求 → 自动切入分析框架 → 生成/查看分析框架”。
+- 版本列表已防御性过滤 communications 记录，并标注 `[确认需求]` / `[分析框架]` / `[旧版本]`；X-BREQ-LINK6 已确认主路径收口，legacy fallback 后续只作为折叠过渡能力继续观察。
+- 两个 pane 仍在同一文件内部，若后续继续膨胀，再开纯 UI 文件拆分卡，不和本次生命周期拆分混做。
+
+---
+
+## 十八、业务需求模块贯通接缝契约（X-BREQ-LINK0，2026-06-30 总控自做）
+
+**背景**：双子 tab 已拆，但用户指出“需求沟通”和“分析框架”的连接度仍不够。总控裁决：业务需求模块不应只是两个并列 UI，而应是同一份确认需求在两个阶段流转。需求沟通前置承接线下材料、口头诉求、历史需求/报告摘要；确认后产物成为分析框架的输入源。
+
+**产品链路**：
+- 导入线下需求文档 / 输入诉求 → 需求沟通 → 确认正式需求 → 自动进入分析框架 → 基于确认需求生成分析框架。
+- 需求沟通 tab 新增“导入沟通材料”：会议纪要、brief、邮件整理、访谈记录、PRD、历史需求和历史报告摘要。
+- 分析框架 tab 左侧改为“确认需求源面板”：展示确认需求版本、目标、成功标准、confirmed facts、confirmed assumptions、open/deferred questions、风险与限制。
+- 分析框架主路径不再要求用户二次导入和重填需求表单；旧表单如保留，只能作为默认折叠的过渡 fallback。
+
+**工程边界**：
+- 前端父容器应维护 `activeConfirmedRequirement`，来源包括刚确认的需求、用户选择的确认需求版本、报告审核/workflow 反查入口。
+- BRC 导入材料能力必须走专用 API，不复用通用 `chat/generate/extract/clarify` client。
+- 基于确认需求生成分析框架建议走专用 API 或现有 API 的 `mode:"from_confirmed_requirement"` 兼容扩展。
+- 不改全局 subtab，不改 `App.tsx` / `constants.ts` / `tabs/types.ts`。
+
+**✅ E-BREQ-LINK2 终审通过（2026-06-30）**：
+- 新增 `POST /api/workspaces/:id/business-requirement-communication/import-documents`。
+- 请求支持 `scene/documents/message/model`；document source 白名单为 `localText` / `report` / `business_requirements` / `clean_data`。
+- `localText` 只接收用户显式粘贴/上传文本，禁止携带 server path；`report` / `business_requirements` 可读登记 report 输出目录内正文；`clean_data` 首版只导入路径元信息/聚合说明，不读取正文。
+- `draw_data` / `data_exploration` 不在 source 白名单内，路径访问校验也会拒绝对应 folder。
+- 输出结构为 `documentSummaries/extractedFacts/extractedQuestions/extractedAssumptions/suggestedMessage/riskNotes`，用于后续沟通，不直接成为 confirmed facts。
+- trace 事件 `business_requirement_documents_imported` 只记录 metadata，不保存材料正文。
+
+**✅ D/V-BREQ-LINK1 终审通过（2026-06-30）**：
+- `BusinessRequirementPane` 父容器新增 `activeConfirmedRequirement`，保存 `markdownPath/jsonPath/content/structured/source/scene/confirmedAt`。
+- `confirmRequirementCommunication` 成功后会把确认需求写入 active source、回填 draft、刷新版本列表、选中刚确认版本，并自动切到“分析框架”。
+- `openVersion` 只在 `jsonPath` 命中 `business_requirements/*-确认需求-*.json` 时同步 active confirmed；打开旧分析框架版本只更新预览，不覆盖确认需求源。
+- 分析框架顶部展示“当前基于确认需求”，无确认需求时引导回“需求沟通”确认，不再把重填表单作为首选路径。
+- 总控收口：同文件中已无入口的旧提取草稿逻辑已移除；沟通材料只能形成待确认材料。
+
+**✅ D/V-BREQ-LINK3 UI 骨架终审通过（2026-06-30）**：
+- `需求沟通` tab 已新增“导入沟通材料”工作区，可添加已登记材料、粘贴文本、上传文本文件。
+- 材料卡展示摘要、待确认问题与假设；“应用到本轮沟通”只写入沟通输入、澄清清单与假设区，不直接写正式需求或 confirmed facts。
+- `clean_data` 只展示元信息/知情提示，不读取字段值、样本或正文。
+- 分析框架生成传 `documents: []`，已移除旧“导入需求文档 / 提取草稿 / 本地文件”主入口，避免材料绕过确认链路。
+- 未使用 `pickLocalPath`，未新增通用 `chat/extract/clarify` API 调用。
+
+**✅ D/V-BREQ-LINK3B 终审通过（2026-06-30）**：
+- `web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()`，前端导入材料主路径消费 E-BREQ-LINK2 专用 `import-documents` API。
+- 已登记材料导入按来源传 `report` / `business_requirements` / `clean_data`；`clean_data` 只传 `pathId/relPath/name` 元信息并展示 warning。
+- 粘贴和上传文本走 `localText`，只上传用户显式提供的文本内容，不传本机路径。
+- API 返回的 `documentSummaries/extractedQuestions/extractedAssumptions/suggestedMessage/riskNotes` 映射到 material card 和“应用到本轮沟通”。
+- API 失败才 fallback 到本地启发式，并明确显示“本地启发式，未走服务端导入”；fallback 也只进入沟通输入、澄清清单、假设与风险提示。
+
+**✅ E-BREQ-LINK4 终审通过（2026-06-30）**：
+- 新增 `POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed`，采用专用 API 方案，不改 legacy 旧表单生成端点。
+- 请求只接受 `business_requirements/*-确认需求-*.json`；普通 `*-分析框架-*.json` 与 `business_requirements/communications/*.json` 会在 parse 阶段拒绝。
+- 输出仍写 `business_requirements/*-分析框架-*.md/json`，现有版本列表可继续消费。
+- 生成结果必须保留 `sourceConfirmedRequirement`，并在 Markdown 中声明“来源：基于确认需求生成”。
+- `deferred/skipped/assumed/pending` 未确认问题只进入 `openQuestions` / `risks` / `zeroHallucinationCheck`，不进入 `businessFacts`。
+- trace 只记录确认需求 basename、问题/风险/框架数量和生成结果 basename，不记录确认需求正文或沟通正文。
+
+**✅ D/V-BREQ-LINK5 终审通过（2026-06-30）**：
+- `web/src/lib/api/engine.ts` 新增 `generateAnalysisFrameworkFromConfirmed()`，前端分析框架主路径接 E-BREQ-LINK4 专用 API。
+- 分析框架左侧改为“确认需求源”面板，展示确认需求版本、确认时间、scene、来源、业务目标、成功标准、confirmed facts、confirmed assumptions、open questions、风险限制。
+- 主按钮文案为“基于确认需求生成分析框架”；无确认需求时提示回“需求沟通”，不展示旧大表单作为主路径。
+- 旧表单和 legacy `generateBusinessRequirement()` 仅保留在折叠的“旧路径 / 直接生成（不推荐）”高级区。
+- 版本列表过滤 `business_requirements/communications/` 记录，并标注 `[确认需求] / [分析框架] / [旧版本]`。
+- 打开确认需求版本只更新 `activeConfirmedRequirement` 与左侧确认源，不覆盖当前分析框架预览 / 编辑区。
+
+**✅ X-BREQ-LINK6 全链验收通过（2026-06-30）**：
+- 需求沟通导入链路成立：已登记 `report/business_requirements`、用户显式 `localText`、`clean_data` 元信息进入 import-documents 专用 API；导入结果只进入摘要、待确认问题、假设、建议诉求和风险提示，不直接成为 confirmed facts。
+- 确认需求链路成立：`confirmRequirementCommunication()` 写正式确认需求和沟通记录；`activeConfirmedRequirement` 保存 `markdownPath/jsonPath/content/structured/source/scene/confirmedAt`，确认成功后刷新版本并自动切到“分析框架”。
+- 分析框架链路成立：左侧为“确认需求源”面板，主按钮走 `generateAnalysisFrameworkFromConfirmed()`；服务端只接受 `business_requirements/*-确认需求-*.json`，拒绝普通分析框架 JSON 与 `business_requirements/communications/*.json`。
+- 下游链路成立：`review-context` 仍只读取确认需求 JSON，并返回目标、成功标准、confirmed assumptions 与 deferred questions；trace 继续只记录 basename、数量、状态等 metadata。
+- 安全红线成立：`draw_data` / `data_exploration` 不可作为 import source，路径守卫也拒绝对应 folder；`clean_data` 仅限元信息/聚合说明；新 UI 不 import 通用 `chat/generate/extract/clarify` API。
+- 总控小修：打开历史确认需求版本时同步 `scene` 到 `activeConfirmedRequirement`，避免契约只靠 structured fallback 成立。
+- 验证：BRC node:test 19/19、typecheck、build、数据探索隔离 grep、BusinessRequirementPane 残留 grep、wiki script parse 均通过；API smoke 由用户手动完成。
+
+**安全红线**：
+- `report` / `business_requirements` 是衍生产物，允许作为沟通材料正文来源。
+- `clean_data` 只允许元信息/聚合说明，UI 接入时必须有受控数据知情提示。
+- `draw_data` 原始行、客户/订单/明细级内容、`data_exploration` 字段值/样本/剖析结果禁止进入 LLM。
+- 导入材料只能形成澄清问题、候选事实、假设和草案；确认前不得写成正式事实。
+
+**验证口径**：
+- `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 16/16 通过。
+- `npm run typecheck`、`npm run build` 通过；build 仅既有 Vite/ECharts chunk warning。
+- 安全 grep 无生产读取 `draw_data` / `data_exploration` 的 `readFlowFile` 路径命中。
+
+**后续顺序**：
+- 本组专题完成。后续可另开低优先级卡做浏览器点击级 smoke 自动化，或把 legacy fallback 从主组件继续外移。

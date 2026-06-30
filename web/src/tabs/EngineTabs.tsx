@@ -164,7 +164,9 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
       )}
       {(activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti") && activeSubTab === "business_requirement" && (
         <BusinessRequirementPane
+          scene={activeTab === "zhuanti" ? "topic" : activeTab === "multi" ? "recurring" : "daily"}
           scope={ctx.folderScope}
+          communicationWorkspaceId={ctx.activeWorkspaceId}
           model={ctx.model}
           onGenerated={() => ctx.setArtifactRefreshKey((current) => current + 1)}
           onBusinessContextChanged={() => void ctx.refreshRulesPromptInfo()}

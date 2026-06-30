@@ -1,8 +1,7 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Archive, ArrowUp, Bot, CheckCircle2, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, Paperclip, RefreshCw, Square, WandSparkles, Wrench, X } from "lucide-react";
+import { Archive, ArrowUp, Bot, CheckCircle2, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, Paperclip, RefreshCw, Square, WandSparkles, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
-import { ManualAnalysisToolCard } from "@/components/ManualAnalysisToolCard";
 import { MemoryFeedbackInline } from "@/components/MemoryFeedbackInline";
 import { hasToolBlocks, hasTraceBlocks, MessageRow, type UiMessage } from "@/components/MessageRow";
 import { PromptDistillDialog } from "@/components/PromptDistillDialog";
@@ -30,7 +29,7 @@ interface Props {
   disabled: boolean;
   workspaceId: string | null;
   folderScope: FolderScope | null;
-  /** 显式会话 id：folderScope 为 flow scope（如专题对话）时，session 工具(@工具/Fork/委派)用它识别活跃 session。日常场景不传，从 folderScope 的 session scope 推断。 */
+  /** 显式会话 id：folderScope 为 flow scope（如专题对话）时，Fork/委派用它识别活跃 session。日常场景不传，从 folderScope 的 session scope 推断。 */
   sessionId?: string;
   model: string;
   models: PiModel[];
@@ -46,12 +45,11 @@ interface Props {
   skillScope?: Exclude<FolderScope, { type: "session"; sessionId: string }> | null;
   skillSources?: Array<"global" | "project">;
   enableFileUpload?: boolean;
-  // E-COLLECT-TRIM：能力开关（默认 false=保持现状；收集场景关掉这些会话工具/沉淀/选择器）。
+  // E-COLLECT-TRIM：能力开关（默认 false=保持现状；收集场景关掉沉淀/选择器/委派）。
   hideSediment?: boolean;   // 沉淀 trace + 沉淀 prompt
   hideSkill?: boolean;      // skill 选择器
   hidePromptLib?: boolean;  // prompt 库
   hideBizReq?: boolean;     // 业务需求下拉
-  hideToolPanel?: boolean;  // @工具
   hideDelegate?: boolean;   // 委派子 agent
 }
 
@@ -372,7 +370,7 @@ export function ChatPane(p: Props) {
   const [selectedSkillPaths, setSelectedSkillPaths] = useState<string[]>([]);
   const [attachments, setAttachments] = useState<ComposerAttachment[]>([]);
   const [attachmentError, setAttachmentError] = useState("");
-  const [activeAssistPanel, setActiveAssistPanel] = useState<"fork" | "delegate" | "tool" | null>(null);
+  const [activeAssistPanel, setActiveAssistPanel] = useState<"fork" | "delegate" | null>(null);
   const [commands, setCommands] = useState<XanCommand[]>([]);
   const [commandsLoading, setCommandsLoading] = useState(false);
   const [commandsError, setCommandsError] = useState("");
@@ -380,7 +378,6 @@ export function ChatPane(p: Props) {
   const [selectedCommand, setSelectedCommand] = useState<XanCommand | null>(null);
   const [commandFormValues, setCommandFormValues] = useState<Record<string, string>>({});
   const [commandFormError, setCommandFormError] = useState("");
-  const [toolPreset, setToolPreset] = useState<{ toolId?: string; inputPath?: string; params?: Record<string, string | number | boolean>; nonce: number } | null>(null);
   const [cleanDataFiles, setCleanDataFiles] = useState<WorkspacePath[]>([]);
   const [cleanDataLoading, setCleanDataLoading] = useState(false);
   const [consolidationCount, setConsolidationCount] = useState(0);
@@ -755,32 +752,11 @@ export function ChatPane(p: Props) {
       return;
     }
     setInput(`/${command.name} `);
-    applyCommandToolPreset(command, {});
     setCommandMenuOpen(false);
     requestAnimationFrame(() => {
       taRef.current?.focus();
       autosize();
     });
-  }
-
-  function applyCommandToolPreset(command: XanCommand, values: Record<string, string>) {
-    const toolId = command.toolIds?.[0];
-    if (!toolId || p.hideToolPanel) return;
-    const params: Record<string, string | number | boolean> = {};
-    let inputPath = "";
-    for (const [paramKey, target] of Object.entries(command.toolParamMap ?? {})) {
-      const value = values[paramKey]?.trim();
-      if (!value) continue;
-      if (target === "inputPath" || target === "cleanDataPath") inputPath = value;
-      else params[target] = value;
-    }
-    setToolPreset({
-      toolId,
-      ...(inputPath ? { inputPath } : {}),
-      ...(Object.keys(params).length > 0 ? { params } : {}),
-      nonce: Date.now(),
-    });
-    setActiveAssistPanel("tool");
   }
 
   function updateCommandFormValue(key: string, value: string) {
@@ -799,7 +775,6 @@ export function ChatPane(p: Props) {
     const line = encodeCommandLine(command, commandFormValues);
     if (command.toolIds && command.toolIds.length > 0) {
       setInput(`${line} `);
-      applyCommandToolPreset(command, commandFormValues);
       setSelectedCommand(null);
       setCommandFormValues({});
       requestAnimationFrame(() => {
@@ -867,7 +842,6 @@ export function ChatPane(p: Props) {
       : `上下文 ${contextPercent.toFixed(0)}%`;
   const drawerTitle =
     activeAssistPanel === "fork" ? "Fork 分支" :
-    activeAssistPanel === "tool" ? "@工具" :
     activeAssistPanel === "delegate" ? "委派子 agent" :
     "";
 
@@ -1080,22 +1054,6 @@ export function ChatPane(p: Props) {
       <div className="shrink-0 px-6 pb-5">
         <div className="mx-auto max-w-[760px]">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            {!p.hideToolPanel && (
-            <button
-              onClick={() => setActiveAssistPanel((current) => current === "tool" ? null : "tool")}
-              disabled={!canUseSessionTools}
-              className={cn(
-                "inline-flex h-8 items-center gap-1.5 rounded-md border px-2.5 text-[12px] transition-colors disabled:cursor-not-allowed disabled:opacity-40",
-                activeAssistPanel === "tool"
-                  ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
-                  : "border-neutral-200 text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800",
-              )}
-              title={canUseSessionTools ? "手动运行 analysis 工具并回流结果" : "先选择或新建一个会话"}
-            >
-              <Wrench className="h-3.5 w-3.5" strokeWidth={1.75} />
-              @工具
-            </button>
-            )}
             <button
               onClick={() => setActiveAssistPanel((current) => current === "fork" ? null : "fork")}
               disabled={!canUseSessionTools}
@@ -1373,15 +1331,6 @@ export function ChatPane(p: Props) {
                 parentSessionId={activeSessionId}
                 model={p.model}
                 onBackflow={(text) => p.onSend(text)}
-              />
-            )}
-            {activeAssistPanel === "tool" && (
-              <ManualAnalysisToolCard
-                sessionId={activeSessionId}
-                workspaceId={p.workspaceId}
-                onBackflow={(text) => p.onSend(text)}
-                preset={toolPreset}
-                embedded
               />
             )}
             {activeAssistPanel === "delegate" && (

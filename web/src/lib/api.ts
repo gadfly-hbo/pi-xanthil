@@ -141,7 +141,7 @@ const legacyApi = {
   getBusinessRequirementVersion: (payload: { pathId: number; markdownPath: string; jsonPath?: string }) =>
     fetch(`/api/business-requirements/version?pathId=${encodeURIComponent(payload.pathId)}&markdownPath=${encodeURIComponent(payload.markdownPath)}${payload.jsonPath ? `&jsonPath=${encodeURIComponent(payload.jsonPath)}` : ""}`)
       .then(json<{ content: string; structured: unknown }>),
-  updateBusinessRequirementVersion: (payload: { pathId: number; markdownPath: string; content: string }) =>
+  updateBusinessRequirementVersion: (payload: { pathId: number; markdownPath: string; content: string; structured?: unknown }) =>
     fetch("/api/business-requirements/version", {
       method: "PUT",
       headers: { "content-type": "application/json" },

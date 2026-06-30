@@ -257,7 +257,6 @@ export function MultiAgentExecutionPane(p: Props) {
   const [workflowSaveError, setWorkflowSaveError] = useState<string | null>(null);
   const [workflowSaveMessage, setWorkflowSaveMessage] = useState<string | null>(null);
   const [tools, setTools] = useState<ExtractionTool[]>([]);
-  const [loadingTools, setLoadingTools] = useState(false);
   const [flowSkills, setFlowSkills] = useState<PiSkill[]>([]);
   const [registryEntries, setRegistryEntries] = useState<SkillRegistryEntry[]>([]);
   const [loadingFlowSkills, setLoadingFlowSkills] = useState(false);
@@ -344,16 +343,12 @@ export function MultiAgentExecutionPane(p: Props) {
 
   useEffect(() => {
     let cancelled = false;
-    setLoadingTools(true);
     api.listExtractionTools()
       .then((items) => {
         if (!cancelled) setTools(items);
       })
       .catch(() => {
         if (!cancelled) setTools([]);
-      })
-      .finally(() => {
-        if (!cancelled) setLoadingTools(false);
       });
     return () => {
       cancelled = true;
@@ -1107,7 +1102,6 @@ export function MultiAgentExecutionPane(p: Props) {
                                   <ToolNodeConfig
                                     node={node}
                                     tools={tools}
-                                    loadingTools={loadingTools}
                                     running={running}
                                     selectedTool={selectedTool}
                                     onNodeChange={updateWorkflowNode}

@@ -1,10 +1,11 @@
-import { useMemo, useState, type ChangeEvent } from "react";
-import { Calculator, Check, Clipboard, Download, FileSpreadsheet, Loader2, SendHorizonal, ShieldCheck } from "lucide-react";
+import { useEffect, useMemo, useState, type ChangeEvent } from "react";
+import { Calculator, Check, Clipboard, Download, FileSpreadsheet, FolderOpen, Loader2, Save, SendHorizonal, ShieldCheck } from "lucide-react";
 import { buildPythonPrompt, profileDataset, readLocalDataset, runAggregation, toCsv, type AggregateDsl, type AggregateOperation, type DateGranularity, type LocalDataset } from "@/lib/aggregate";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
 import { useResumableTask } from "@/lib/resumableTask";
-import type { PiModel } from "@/types";
+import type { PiModel, WorkspacePath } from "@/types";
+import type { FolderScope } from "@/tabs/types";
 
 const OPERATIONS: { id: AggregateOperation; label: string }[] = [
   { id: "sum", label: "sum" },
@@ -26,9 +27,43 @@ function downloadCsv(rows: Record<string, string | number>[]): void {
 interface Props {
   model?: string;
   models?: PiModel[];
+  workspaceId: string | null;
+  folderScope: FolderScope;
 }
 
-export function AggregatePane({ model, models }: Props) {
+function taskScopeOptions(scope: FolderScope): { sessionId?: string; flowId?: string } {
+  if (scope?.type === "session") return { sessionId: scope.sessionId };
+  if (scope?.type === "flow") return { flowId: scope.flowId };
+  return {};
+}
+
+async function listScopePaths(scope: FolderScope, workspaceId: string, folder: "clean_data"): Promise<WorkspacePath[]> {
+  if (scope?.type === "session") return api.listSessionPaths(scope.sessionId, folder);
+  if (scope?.type === "flow") return api.listFlowPaths(scope.flowId, folder);
+  return api.listWorkspacePaths(workspaceId, folder);
+}
+
+async function addScopeDir(scope: FolderScope, workspaceId: string, path: string): Promise<WorkspacePath> {
+  if (scope?.type === "session") return api.addSessionPath(scope.sessionId, "clean_data", path, "dir");
+  if (scope?.type === "flow") return api.addFlowPath(scope.flowId, "clean_data", path, "dir");
+  return api.addWorkspacePath(workspaceId, "clean_data", path, "dir");
+}
+
+async function addScopeFile(scope: FolderScope, workspaceId: string, path: string): Promise<WorkspacePath> {
+  if (scope?.type === "session") return api.addSessionPath(scope.sessionId, "clean_data", path, "file");
+  if (scope?.type === "flow") return api.addFlowPath(scope.flowId, "clean_data", path, "file");
+  return api.addWorkspacePath(workspaceId, "clean_data", path, "file");
+}
+
+function firstCleanDataDir(paths: WorkspacePath[]): WorkspacePath | null {
+  return paths.find((path) => path.folder === "clean_data" && path.kind === "dir" && path.status !== "missing") ?? null;
+}
+
+function sanitizeFileStem(name: string): string {
+  return (name.replace(/\.[^.]+$/, "") || "aggregate").replace(/[\\/:*?"<>|]/g, "_").trim() || "aggregate";
+}
+
+export function AggregatePane({ model, models, workspaceId, folderScope }: Props) {
   const [dataset, setDataset] = useState<LocalDataset | null>(null);
   const [fileName, setFileName] = useState("");
   const [error, setError] = useState("");
@@ -40,6 +75,12 @@ export function AggregatePane({ model, models }: Props) {
   const [minGroupSize, setMinGroupSize] = useState(5);
   const [requirement, setRequirement] = useState("");
   const [copied, setCopied] = useState(false);
+  const [outputDirPath, setOutputDirPath] = useState("");
+  const [outputDirEntry, setOutputDirEntry] = useState<WorkspacePath | null>(null);
+  const [outputFileName, setOutputFileName] = useState(`aggregate-${new Date().toISOString().slice(0, 10)}.csv`);
+  const [savingCsv, setSavingCsv] = useState(false);
+  const [saveMessage, setSaveMessage] = useState("");
+  const [saveError, setSaveError] = useState("");
 
   // LLM send flow
   const [sendModel, setSendModel] = useState(model ?? "");
@@ -86,11 +127,76 @@ export function AggregatePane({ model, models }: Props) {
       setGroupBy([]);
       setDateColumn("");
       setMetrics(["count:"]);
+      setOutputFileName(`${sanitizeFileStem(file.name)}-aggregate.csv`);
     } catch (err) {
       setDataset(null);
       setError(String(err));
     } finally {
       event.target.value = "";
+    }
+  };
+
+  useEffect(() => {
+    if (!workspaceId || outputDirPath) return;
+    let cancelled = false;
+    listScopePaths(folderScope, workspaceId, "clean_data")
+      .then((paths) => {
+        if (cancelled) return;
+        const dir = firstCleanDataDir(paths);
+        if (!dir) return;
+        setOutputDirEntry(dir);
+        setOutputDirPath(dir.path);
+      })
+      .catch(() => {});
+    return () => { cancelled = true; };
+  }, [folderScope, outputDirPath, workspaceId]);
+
+  const pickOutputDir = async () => {
+    setSaveError("");
+    setSaveMessage("");
+    try {
+      const { path } = await api.pickLocalPath("dir", { folder: "clean_data", ...taskScopeOptions(folderScope) });
+      setOutputDirPath(path);
+      setOutputDirEntry(null);
+    } catch (err) {
+      setSaveError(String(err));
+    }
+  };
+
+  const ensureOutputDirEntry = async (): Promise<WorkspacePath> => {
+    if (!workspaceId) throw new Error("请先选择工作区");
+    if (!outputDirPath.trim()) throw new Error("请选择输出目录");
+    const paths = await listScopePaths(folderScope, workspaceId, "clean_data");
+    const existing = paths.find((path) => path.kind === "dir" && path.path === outputDirPath.trim());
+    if (existing) {
+      setOutputDirEntry(existing);
+      return existing;
+    }
+    const created = await addScopeDir(folderScope, workspaceId, outputDirPath.trim());
+    setOutputDirEntry(created);
+    return created;
+  };
+
+  const saveAggregateCsv = async () => {
+    if (!result?.rows.length || savingCsv) return;
+    setSavingCsv(true);
+    setSaveError("");
+    setSaveMessage("");
+    try {
+      const dir = await ensureOutputDirEntry();
+      const fileName = outputFileName.trim() || `aggregate-${new Date().toISOString().slice(0, 10)}.csv`;
+      const written = await api.workspacePathFilePut(dir.id, fileName, `\ufeff${toCsv(result.rows)}\n`);
+      if (workspaceId) {
+        const existingFiles = await listScopePaths(folderScope, workspaceId, "clean_data");
+        if (!existingFiles.some((path) => path.kind === "file" && path.path === written.path)) {
+          await addScopeFile(folderScope, workspaceId, written.path);
+        }
+      }
+      setSaveMessage(`已保存并登记：${written.path}`);
+    } catch (err) {
+      setSaveError(String(err));
+    } finally {
+      setSavingCsv(false);
     }
   };
 
@@ -253,8 +359,32 @@ export function AggregatePane({ model, models }: Props) {
                     <label className="block"><span className="font-semibold">最小分组阈值</span><input className="mt-2 w-full rounded border border-neutral-200 bg-transparent px-2 py-1.5 dark:border-neutral-700" type="number" min={1} value={minGroupSize} onChange={(event) => setMinGroupSize(Math.max(1, Number(event.target.value) || 1))} /><span className="mt-1 block text-[11px] text-neutral-500">默认过滤 count &lt; 5 的分组，降低聚合结果反推明细的风险。</span></label>
                   </div>
                   <div className="min-w-0 rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-                    <div className="flex items-center justify-between gap-3"><h3 className="text-[13px] font-semibold">聚合结果预览</h3><button disabled={!result?.rows.length} onClick={() => result && downloadCsv(result.rows)} className="inline-flex items-center gap-1.5 rounded border border-neutral-200 px-2.5 py-1.5 text-[12px] disabled:opacity-40 dark:border-neutral-700"><Download className="h-3.5 w-3.5" /> 导出汇总 CSV</button></div>
+                    <div className="flex items-center justify-between gap-3"><h3 className="text-[13px] font-semibold">聚合结果预览</h3><button disabled={!result?.rows.length} onClick={() => result && downloadCsv(result.rows)} className="inline-flex items-center gap-1.5 rounded border border-neutral-200 px-2.5 py-1.5 text-[12px] disabled:opacity-40 dark:border-neutral-700"><Download className="h-3.5 w-3.5" /> 下载 CSV</button></div>
                     <p className="mt-1 text-[11px] text-neutral-500">结果仍只在本地。发送给 LLM 前请人工确认。已过滤 {result?.filteredGroupCount ?? 0} 个低于阈值的分组。</p>
+                    <div className="mt-3 rounded-md border border-neutral-200 bg-neutral-50/60 p-3 dark:border-neutral-700 dark:bg-neutral-950/40">
+                      <div className="grid gap-2 lg:grid-cols-[minmax(0,1fr)_13rem_auto]">
+                        <label className="block text-[11.5px]">
+                          <span className="font-medium text-neutral-600 dark:text-neutral-300">输出目录</span>
+                          <div className="mt-1 flex gap-2">
+                            <input value={outputDirPath} readOnly placeholder="默认使用聚合数据目录" className="min-w-0 flex-1 rounded border border-neutral-200 bg-white px-2.5 py-1.5 font-mono text-[11px] dark:border-neutral-700 dark:bg-neutral-900" />
+                            <button onClick={() => void pickOutputDir()} className="inline-flex items-center gap-1.5 rounded border border-neutral-200 px-2.5 text-[11px] dark:border-neutral-700">
+                              <FolderOpen className="h-3.5 w-3.5" /> 选择
+                            </button>
+                          </div>
+                        </label>
+                        <label className="block text-[11.5px]">
+                          <span className="font-medium text-neutral-600 dark:text-neutral-300">文件名</span>
+                          <input value={outputFileName} onChange={(event) => setOutputFileName(event.target.value)} className="mt-1 w-full rounded border border-neutral-200 bg-white px-2.5 py-1.5 font-mono text-[11px] dark:border-neutral-700 dark:bg-neutral-900" />
+                        </label>
+                        <button disabled={!result?.rows.length || !outputDirPath || savingCsv} onClick={() => void saveAggregateCsv()} className="inline-flex h-8 self-end items-center justify-center gap-1.5 rounded-md bg-neutral-900 px-3 text-[12px] font-medium text-white disabled:opacity-40 dark:bg-neutral-100 dark:text-neutral-900">
+                          {savingCsv ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Save className="h-3.5 w-3.5" />}
+                          保存到聚合数据
+                        </button>
+                      </div>
+                      {outputDirPath && !outputDirEntry && <p className="mt-2 text-[10.5px] text-neutral-400">已手动选择目录；保存时会尝试登记为 clean_data 目录。</p>}
+                      {saveMessage && <p className="mt-2 break-all text-[11px] text-emerald-600 dark:text-emerald-300">{saveMessage}</p>}
+                      {saveError && <p className="mt-2 break-all text-[11px] text-red-500">{saveError}</p>}
+                    </div>
                     <div className="mt-3 max-h-[32rem] overflow-auto">{result?.rows.length ? <table className="w-full whitespace-nowrap text-left text-[12px]"><thead className="sticky top-0 bg-white text-neutral-500 dark:bg-neutral-900"><tr>{Object.keys(result.rows[0]!).map((header) => <th key={header} className="border-b border-neutral-200 px-2 py-1.5 font-mono dark:border-neutral-700">{header}</th>)}</tr></thead><tbody>{result.rows.slice(0, 200).map((row, index) => <tr key={index} className="border-b border-neutral-100 dark:border-neutral-800">{Object.keys(result.rows[0]!).map((header) => <td key={header} className="px-2 py-1.5">{typeof row[header] === "number" ? Number(row[header]).toLocaleString(undefined, { maximumFractionDigits: 4 }) : row[header]}</td>)}</tr>)}</tbody></table> : <p className="py-16 text-center text-[12px] text-neutral-400">当前规则没有可展示的分组结果</p>}</div>
                   </div>
                 </div>
