@@ -3,8 +3,10 @@ import { AlertTriangle, Check, CheckCircle, Loader2, Play, Sparkles, FlaskConica
 import { vizApi } from "@/lib/api/viz";
 import { engineApi } from "@/lib/api/engine";
 import { cn } from "@/lib/cn";
-import { getHealthSelectedRunId, setHealthSelectedRunId } from "@/lib/health-ui-state";
+import { getHealthSelectedRunId, getHealthSelectedWatchlistId, setHealthSelectedRunId, setHealthSelectedWatchlistId } from "@/lib/health-ui-state";
 import { Markdown } from "@/components/Markdown";
+import { FindingDetailDrawer } from "@/components/monitor/FindingDetailDrawer";
+import { MonitorWatchlistSelector } from "@/components/monitor/MonitorWatchlistSelector";
 import readmeContent from "@/docs/health-report-readme.md?raw";
 import type {
   HealthFinding,
@@ -35,10 +37,12 @@ function monitorReportKey(runId: string): string {
 
 export function HealthReportPane({ workspaceId }: { workspaceId: string | null }) {
   const [view, setView] = useState<"main" | "readme">("main");
+  const [watchlistId, setWatchlistId] = useState(getHealthSelectedWatchlistId());
   const [runs, setRuns] = useState<MonitorRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [findings, setFindings] = useState<HealthFinding[]>([]);
   const [selectedFindingIds, setSelectedFindingIds] = useState<Set<string>>(new Set());
+  const [detailFinding, setDetailFinding] = useState<HealthFinding | null>(null);
 
   const [drafts, setDrafts] = useState<ActionItemDraft[]>([]);
   const [items, setItems] = useState<ActionItem[]>([]);
@@ -63,6 +67,7 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
       setRuns([]);
       setSelectedRunId(null);
       setFindings([]);
+      setDetailFinding(null);
       setSelectedFindingIds(new Set());
       setDrafts([]);
       setItems([]);
@@ -71,7 +76,7 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
       return;
     }
     let cancelled = false;
-    vizApi.listMonitorRuns(workspaceId).then((rs) => {
+    vizApi.listMonitorRuns(workspaceId, { watchlistId }).then((rs) => {
       if (cancelled) return;
       setRuns(rs);
       const storeId = getHealthSelectedRunId();
@@ -86,7 +91,7 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
       }
     }).catch((e) => { if (!cancelled) setError("加载 runs 失败: " + String(e)); });
     return () => { cancelled = true; };
-  }, [workspaceId]);
+  }, [workspaceId, watchlistId]);
 
   // 切 run 加载 findings + items + tasks
   useEffect(() => {
@@ -126,6 +131,19 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
     }).catch((e) => { if (!cancelled) setError("加载 findings/items 失败: " + String(e)); })
       .finally(() => { if (!cancelled) setLoadingData(false); });
     return () => { cancelled = true; };
+  }, [workspaceId, selectedRunId]);
+
+  const reloadRunData = useCallback(async () => {
+    if (!workspaceId || !selectedRunId) return;
+    const reportPath = monitorReportKey(selectedRunId);
+    const [fs, its, tks] = await Promise.all([
+      vizApi.listMonitorFindings(workspaceId, selectedRunId),
+      vizApi.listActionItems(workspaceId, reportPath),
+      vizApi.listActionTasks({ scopeId: workspaceId }),
+    ]);
+    setFindings(fs);
+    setItems(its);
+    setTasks(tks);
   }, [workspaceId, selectedRunId]);
 
   const toggleFinding = (id: string) => {
@@ -315,6 +333,24 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
         <>
       {/* 顶部：run 选择 + 触发提取 */}
       <div className="flex shrink-0 flex-col gap-2 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+        <MonitorWatchlistSelector
+          workspaceId={workspaceId}
+          value={watchlistId}
+          onChange={(id) => {
+            setHealthSelectedWatchlistId(id);
+            setHealthSelectedRunId(null);
+            setSelectedRunId(null);
+            setFindings([]);
+            setSelectedFindingIds(new Set());
+            setDetailFinding(null);
+            setDrafts([]);
+            setItems([]);
+            setTasks([]);
+            setFeedbacks({});
+            setWatchlistId(id);
+          }}
+          compact
+        />
         <div className="flex flex-wrap items-center gap-2">
           <div className="flex items-center gap-2 text-[13px] font-semibold text-neutral-900 dark:text-neutral-100">
             <Sparkles className="h-4 w-4 text-emerald-500" strokeWidth={1.75} />
@@ -393,6 +429,12 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
                       提为 eval 候选
                     </button>
                   )}
+                  <button
+                    onClick={(e) => { e.preventDefault(); setDetailFinding(f); }}
+                    className="rounded border border-neutral-200 bg-white px-1.5 py-0.5 text-[10px] text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                  >
+                    详情 / 处理
+                  </button>
                 </label>
               );
             })}
@@ -563,6 +605,15 @@ export function HealthReportPane({ workspaceId }: { workspaceId: string | null }
           run {selectedRun.id.slice(0, 8)}… · {findings.length} findings · {items.length} 行动项（{adoptCountForCurrentRun} 采纳） · {runTasks.length} 任务 · {Object.keys(feedbacks).length} 反馈
         </div>
       )}
+      <FindingDetailDrawer
+        workspaceId={workspaceId}
+        run={selectedRun}
+        finding={detailFinding}
+        items={items}
+        tasks={tasks}
+        onClose={() => setDetailFinding(null)}
+        onChanged={() => void reloadRunData()}
+      />
       </>
       )}
     </div>

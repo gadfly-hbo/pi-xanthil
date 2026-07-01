@@ -3728,6 +3728,342 @@ B. 前端：
 5. 收口：更新 docs/notes-viz.md 与 docs/notes-data.md §0；通过后把 D/E/X 卡置 done，待用户 review 后提交。
 约束：不执行 git；不清理无关脏工作区。` },
 
+  // ════ 【监测·产品深化】（总控拆卡 2026-07-01；来源=用户反馈：现有监测逻辑基本成立，但产品深度不足且不好用）。总控判断：底层已有目标/历史/行业/竞品差距、ontology 诊断、生命周期、目标测算、行动闭环；当前问题主要是产品编排弱，像多个工具页拼接。路线：P0 先把监测变成“每日经营工作台”（总览/就绪检查/finding 解释/直接转行动），P1 再引入 Watchlist 多监测计划和更深的指标链路治理。红线延续 E-MONITOR8：不得读 draw_data；监测 LLM 只读 clean_data 元数据/衍生产物；数据探索子树零 LLM。════
+  { dom: "X", status: "done", created: "2026-07-01 15:00", title: "【监测·产品深化·契约·P0】X-MONITOR-PROD0：从工具页到每日经营工作台的产品契约 + 分期边界", brief:
+`目标：冻结监测模块下一轮产品深化方向，避免直接堆 UI。总控结论：不先重写 monitor-engine，先补一层“监测工作流”和“业务可读解释”。
+
+产品问题定义：
+1. 当前有初始化/目标测算/观星台/行动环，但用户需要自己知道先后顺序。
+2. 观星台能列 finding，但缺默认首屏：今天是否健康、最该处理什么、下一步做什么。
+3. 初始化页像工程配置，不像业务 onboarding。
+4. finding 已有 comparisons/diagnosis/lifecycle，但没有足够解释层和处理入口。
+5. 行动环与 finding 割裂，用户要跳 tab 才能处理。
+
+P0 产品契约：
+1. 新增或改造默认首屏为“监测总览”：配置就绪、最近 run、Top findings、待处理行动、目标绑定状态、下一步建议。
+2. 运行前必须有“就绪检查”：监测数据、goal/source 角色、指标体系、目标计划、最近数据水位；缺项给一键跳转，不静默失败。
+3. finding 卡升级为“可解释对象”：差距维度、证据、关联指标、ontology 对象、生命周期、建议行动、处理状态。
+4. finding 允许直接生成/采纳/忽略行动项；行动环保留为集中看板，不再是唯一处理入口。
+5. 阈值从内部 key 表单降级为高级设置，主路径提供保守/标准/敏感策略。
+
+P1 产品契约：
+1. 引入 Watchlist（监测计划）：日常经营/大促/会员复购/门店等多计划，每个计划有指标组、阈值、目标、频率、owner。
+2. 引入 finding 优先级排序：严重度、目标差距、生命周期、连续复现、是否已有行动项。
+3. 引入指标链路视图：基于 MonitorMetricDependency + ontology diagnosis 展示驱动指标/护栏指标/关联对象。
+4. 引入运行历史 diff：新增、恢复、恶化、连续复现的问题流。
+
+红线：
+- 不新增任何 draw_data 读取路径。
+- 不把 data_exploration 字段值/样本/剖析结果送 LLM。
+- 监测行动项和 eval 候选只消费 finding 衍生产物。
+- P0 尽量复用现有 API；需要新 API 时先走总控契约。
+
+验收：本卡只改 wiki，不改业务代码；下游卡明确文件范围、红线、完成标准。
+
+✅ 总控自做 done（2026-07-01）：产品方向与接缝口径已冻结。关键裁决：
+1. P0 明确新增 health_overview 二级 tab 作为监测默认首屏，顺序调整为「总览 / 初始化 / 目标测算 / 观星台 / 行动环 / readme」；现有 health_dashboard 继续承载观星台运行和结果区，不把总览硬塞进观星台。
+2. P0 不新增后端 schema、不重写 monitor-engine，优先用现有 API 前端聚合：config、target plans、runs、findings、actions/tasks。
+3. P0 finding 处理最短链路落在观星台：详情解释、生成行动项、采纳/忽略、提为 eval 候选；行动环保留批量看板。
+4. 阈值策略预设只是 UI 层映射现有 thresholds，不改变规则公式；高级阈值继续折叠保留。
+5. Watchlist 多监测计划属于 P1，必须等 P0 工作台验收后再开 X-MONITOR-PROD5，不抢跑 schema。
+6. 交互红线：运行监测后仍留当前页展示结果，不自动跳行动环；跨 tab 跳转必须用户主动触发。
+验证：仅文档契约变更；TASKS 解析检查需在本次回报中给出。` },
+
+  { dom: "D", status: "done", created: "2026-07-01 15:01", title: "【监测·产品深化·总览·P0】D-MONITOR-PROD1：监测总览首屏 + 就绪检查 + 下一步入口", brief:
+`前置：X-MONITOR-PROD0。
+
+目标：让用户进入监测模块第一眼看到“现在能不能跑、最近发生了什么、该点哪里”，而不是先面对初始化/目标测算/观星台/行动环的工具页集合。
+
+建议落点：
+- web/src/lib/constants.ts：新增 health_overview subtab，并加入 HEALTH_SUB_TABS 第一位，label 为「总览」。
+- App 默认进入监测模块时应落到 health_overview；若默认 subtab 逻辑在 App/常量接缝层，按接缝变更回报。
+- web/src/tabs/HealthTabs.tsx：接入 HealthOverviewPane 分支。
+- 新增 web/src/components/HealthOverviewPane.tsx；HealthDashboardPane 保持观星台运行与结果区职责。
+
+功能范围：
+1. 总览顶部：显示最近一次 MonitorRun 状态、问题数/风险数、critical/warn 分布、目标绑定状态、指标体系状态。
+2. 就绪检查 checklist：
+   - 是否有监测聚合数据；
+   - 是否有 source 角色；
+   - 是否有 goal 角色或 adopted TargetPlan；
+   - 是否有 metricSystemId；
+   - 最近一次 run 是否过期或失败。
+3. 每个缺项给明确 CTA：去初始化、去目标测算、生成指标体系、运行监测、查看行动环。
+4. Top findings：按 severity + lifecycle 展示 3-5 条最重要 finding，点击进入对应 run/finding 详情。
+5. 待处理行动：展示当前 workspace monitor:* 下未完成 action task 数量和入口。
+6. 运行监测按钮仍由用户主动触发，不自动跳 tab；沿用“跑完留本页 + 结果可见”的既有范式。
+
+约束：
+- P0 优先前端聚合现有 API：getMonitorConfig/listMonitorRuns/listMonitorFindings/listTargetPlans/listActionTasks/listActionItems。
+- 不新增后端表；如现有 API 不足，先用前端 best-effort 聚合，不扩大后端。
+- UI 是工作台，不做营销式 hero；信息密度要适合日常扫视。
+
+验收：
+- 无配置工作区能明确看到缺项和下一步。
+- 已配置工作区能看到最近 run 摘要、Top findings、行动待办。
+- web typecheck/build 绿；若新增 subtab，回报中说明接缝变更。
+
+✅ D 回流 + 总控终审通过（2026-07-01）：新增 health_overview 到 SubTab 与 HEALTH_SUB_TABS 第一位，App 进入 health 默认页改为 health_overview，HealthTabs 接入 HealthOverviewPane。总览聚合现有 config、target plans、runs、findings、monitor imports、actions/tasks，展示最近 run、问题/风险/critical/warn、目标绑定、指标体系状态、就绪 checklist、Top findings 与 monitor:* 待处理行动入口；未新增后端 schema/API。总控核准接缝变更符合 X-MONITOR-PROD0 裁决。验证：npm run typecheck ✅、npm run build ✅（仅既有 ECharts/chunk warning）、数据探索隔离 grep ✅ 无匹配。` },
+
+  { dom: "D", status: "done", created: "2026-07-01 15:02", title: "【监测·产品深化·finding 解释·P0】D-MONITOR-PROD2：Finding 详情抽屉 + 直接转行动/忽略/候选", brief:
+`前置：X-MONITOR-PROD0、D-MONITOR-PROD1 可并行。
+
+目标：把 finding 从“列表卡片”升级为“可解释、可处理的业务对象”，降低用户理解和操作成本。
+
+建议落点：
+- web/src/components/HealthDashboardPane.tsx
+- web/src/components/HealthReportPane.tsx
+- 可新增 web/src/components/monitor/FindingDetailDrawer.tsx、FindingPriorityBadge.tsx 等小组件。
+
+功能范围：
+1. FindingCard 增加详情入口，打开抽屉展示：
+   - 基本信息：severity/kind/lifecycle/category/ruleId/signature；
+   - 差距解释：target/history/industry/competitor comparisons，展示 current/baseline/delta/deltaRate/window；
+   - 证据：保留 evidence 折叠，不默认铺满；
+   - 诊断：relatedMetricIds、ontologyObjectIds、logicRuleIds、opportunity；
+   - 建议：suggestion + 已有行动状态。
+2. finding 上直接支持：
+   - 生成行动项草案（复用 /monitor/actions/draft）；
+   - 采纳为 action item + task；
+   - 忽略/不处理（可先落为 dismissed ActionItem，复用 reportPath=monitor:<runId> 范式）；
+   - 提为 eval 候选（复用现有 D-EVOLVE2 入口）。
+3. 已有行动项去重：同 run + title 已采纳/忽略时，finding 上展示状态，避免重复采纳。
+4. 行动环仍保留批量处理，但观星台可以完成单条 finding 的最短闭环。
+
+红线：
+- 提为 eval 候选和行动项生成只传 finding 衍生产物，不传 evidence 中可能含行级明细的原值；沿用 HealthReportPane 现有脱敏口径。
+- 不读取 draw_data，不读取 data_exploration。
+
+验收：
+- 用户可从观星台单条 finding 直接完成“理解 → 生成行动 → 采纳/忽略”。
+- 行动环中能看到观星台采纳的任务。
+- web typecheck/build 绿；数据探索隔离 grep 无匹配。
+
+✅ D 回流 + 总控终审通过（2026-07-01）：新增 components/monitor/FindingDetailDrawer.tsx，并接入 HealthDashboardPane、HealthReportPane、HealthOverviewPane。抽屉展示 severity/kind/lifecycle/category/rule/signature、comparisons、诊断、建议与默认折叠 evidence；UI 侧对 rows/records/values/samples 做 redacted。支持单条 finding 生成行动项草案（复用 /monitor/actions/draft 且只传 findingIds）、采纳并建 task、忽略为 dismissed ActionItem、提为 eval 候选；行动去重用 metricRef=monitor-finding:<findingId> marker。总控核准：该实现只消费 finding 衍生产物，不新增 draw_data / data_exploration 通道。验证：npm run typecheck ✅、npm run build ✅、数据探索隔离 grep ✅ 无匹配。` },
+
+  { dom: "D", status: "done", created: "2026-07-01 15:03", title: "【监测·产品深化·初始化瘦身·P0】D-MONITOR-PROD3：初始化页改成业务 onboarding + 阈值策略预设", brief:
+`前置：X-MONITOR-PROD0。
+
+目标：降低初始化页的工程配置感，让用户按“接数据 → 标角色 → 生成指标体系 → 可运行”完成 onboarding。
+
+建议落点：
+- web/src/components/HealthDataPane.tsx
+- web/src/components/HealthDashboardPane.tsx（阈值主路径改策略预设）
+
+功能范围：
+1. HealthDataPane 顶部增加步骤条/状态条：数据接入、角色绑定、指标体系、可运行。
+2. 数据集列表按角色分区展示：经营数据、运营目标、行业大盘、竞品数据；未绑定数据单独一组。
+3. 生成指标体系前展示质量提示：缺 source/goal、缺 ontology、缺时间列、历史长度不足等；首版可基于现有元数据 best-effort。
+4. 指标体系草案预览增加“需要确认的重点”：指标数、缺失数据、假设、低置信指标；采纳按钮旁明确“采纳后观星台才可运行”。
+5. HealthDashboardPane 阈值主路径改为策略预设：
+   - 敏感：阈值更低；
+   - 标准：当前默认；
+   - 保守：阈值更高；
+   - 高级设置折叠展示内部 key。
+6. 保持现有数据库连接单入口和 clean_data/monitor 专用目录，不恢复旧入口。
+
+约束：
+- 不改 monitor-engine 规则公式。
+- 不新增依赖，不新增后端表。
+- 不做自动读取数据行的 profiling；如需要列级质量提示，只基于 aggregation 元数据或已登记摘要。
+
+验收：
+- 新用户能按步骤知道下一步。
+- 阈值主路径不再暴露一屏内部 key。
+- web typecheck/build 绿。
+
+✅ D 回流 + 总控终审通过（2026-07-01）：HealthDataPane 新增“数据接入 → 角色绑定 → 指标体系 → 可运行”步骤条，数据集按 source/goal/industry/competitor/未绑定分区，生成指标体系前展示 source/goal/ontology/时间列/历史行数 best-effort 质量提示，草案预览突出指标数、缺失数据、假设和低置信指标，并明确采纳后观星台可运行。HealthDashboardPane 阈值主路径改为敏感/标准/保守三预设，高级设置折叠展示内部 key；preset 基于 defaultThresholds 计算，不改变 monitor-engine 规则公式。验证：npm run typecheck ✅、npm run build ✅（仅既有 ECharts/chunk warning）、数据探索隔离 grep ✅ 无匹配。` },
+
+  { dom: "E", status: "done", created: "2026-07-01 15:04", title: "【监测·产品深化·排序与摘要·P1】E-MONITOR-PROD4：Finding 优先级评分 + 运行摘要纯函数", brief:
+`前置：X-MONITOR-PROD0；P0 UI 可先前端 best-effort，本卡负责把优先级和摘要沉淀为可测纯函数。
+
+目标：让观星台不只是列出 findings，而是稳定回答“先处理哪几个、为什么”。
+
+建议落点：
+- server/src/monitor-priority.ts（新建纯函数）
+- server/src/monitor-engine.test.ts 或新增 monitor-priority.test.ts
+- 可在 routes/engine.ts 的 list findings / run 响应中附加 summary，或先由前端 import 不可行时另开轻量 API。
+
+功能范围：
+1. 定义 MonitorFindingPriority：
+   - priorityScore: 0-100；
+   - priorityBand: urgent/high/medium/low；
+   - reasons: string[]。
+2. 评分因子：
+   - severity：critical > warn > info；
+   - lifecycle：worsening > recurring > new > resolved；
+   - deltaRate 绝对值；
+   - target 差距优先于普通 history 偏离；
+   - 连续复现或 firstSeenRunId 存在加权；
+   - 已有 adopted action 可降权或标记处理中。
+3. 运行摘要 MonitorRunSummary：
+   - topProblems/topRisks；
+   - new/worsening/resolved counts；
+   - targetGap count；
+   - suggestedFocus 文本（确定性模板，不调用 LLM）。
+4. 纯函数输入只吃 HealthFinding[] + 可选 action 状态，不读文件、不调用网络。
+
+红线：
+- 不读 draw_data、不读 dataset.rows。
+- suggestedFocus 只能模板化组合 finding 衍生产物，不把原始样本放入文本。
+
+验收：
+- 单测覆盖 critical+worsening 排序、resolved 降权、target gap 加权、已有 action 标记。
+- server typecheck 绿；如接 API，npm run build 绿。
+
+✅ E 回流 + 总控终审通过（2026-07-01）：新增 server/src/monitor-priority.ts 纯函数，导出 MonitorFindingPriority、prioritizeMonitorFindings、summarizeMonitorRun，评分覆盖 severity、lifecycle、deltaRate、target gap、firstSeenRunId 与 adopted/doing action 降权；新增 monitor-priority.test.ts 覆盖 critical+worsening 排序、resolved cap、target boost、action 降权、summary counts/focus 文本。routes/engine.ts 接入 POST /monitor/runs 响应 summary，并新增 GET /monitor/runs/:runId/summary，未改变既有 /findings 数组返回形状。总控备注：summary API 当前未组装 actionStates，行动状态降权能力先保留在纯函数入参，后续若前端需要 action-aware summary 再接 actions 表。验证：monitor-priority 5/5 ✅、monitor-engine 13/13 ✅、npm run typecheck ✅、npm run build ✅（仅既有 Vite chunk warning）、红线 grep ✅ 无 fetch/文件 IO/进程调用/.rows 读取。` },
+
+  { dom: "X", status: "done", created: "2026-07-01 15:05", title: "【监测·产品深化·Watchlist 契约·P1】X-MONITOR-PROD5：多监测计划 Watchlist 产品/数据契约", brief:
+`前置：P0 总览/finding/初始化瘦身完成或进入验收；E-MONITOR-PROD4 可并行。
+
+目标：定义 Watchlist（监测计划）契约，解决当前 workspace 只有一份 monitor config，无法表达“日常经营 / 大促 / 会员复购 / 门店”等多套监测对象的问题。
+
+产品契约：
+1. 一个 workspace 可有多个 watchlist。
+2. 每个 watchlist 包含：
+   - name/description/type（日常经营、大促、会员、门店、自定义）；
+   - suite/frequency；
+   - datasetBindings；
+   - targetPlanId 或 goal dataset；
+   - metricSystemId；
+   - thresholdPolicy 或 thresholds；
+   - owner/status；
+   - createdAt/updatedAt。
+3. 默认 watchlist 兼容现有 monitor_configs：旧工作区没有 watchlist 时自动显示“默认监测”。
+4. run 需要关联 watchlistId；finding/run 历史可按 watchlist 过滤。
+5. 不要求首版定时调度；先支持手动运行和切换计划。
+
+建议 API：
+- GET /api/workspaces/:id/monitor/watchlists
+- POST /api/workspaces/:id/monitor/watchlists
+- PATCH /api/workspaces/:id/monitor/watchlists/:watchlistId
+- DELETE 或 archive /api/workspaces/:id/monitor/watchlists/:watchlistId
+- POST /api/workspaces/:id/monitor/watchlists/:watchlistId/run
+
+迁移策略：
+- 不破坏 monitor_configs；首版可让 watchlist 读取/写入现有 config，或新增表后对默认 config 做 lazy migration。
+- 若新增表，归属按 monitor_configs 同源，优先 viz/engine 既有 monitor schema 所在位置，需总控审定。
+
+红线：
+- Watchlist 是配置，不存原始数据。
+- datasetPathId 必须继续经 workspace clean_data 白名单校验。
+
+验收：契约写入 wiki/notes，明确 D/E 下游卡边界。
+
+✅ 总控自做 done（2026-07-01）：Watchlist 契约冻结，进入 P1 可实现阶段。关键审定：
+1. 产品语义：Watchlist=一个可运行的监测计划，不是项目管理对象；首版只支持手动运行和切换，不做定时调度、通知、owner 工作流。
+2. 运行关系：monitor_runs 必须关联 watchlistId；findings 仍通过 runId 归属，按 watchlist 过滤时先筛 runs 再取 findings，避免给 monitor_findings 再加冗余 watchlist_id。
+3. 默认兼容：旧 workspace 没有 watchlist 时，后端返回一个虚拟 default watchlist，id 固定为 default，读取现有 monitor_configs；只有用户编辑/创建时才落真实 monitor_watchlists 行，避免强制迁移。
+4. 表归属：新增 monitor_watchlists 落 server/src/db/engine.ts，与 monitor_metric_systems / monitor_runs 同域；monitor_configs 保留为 legacy singleton fallback，不移动、不删除。理由：watchlist 与 run/filter 强绑定，E 后端负责 CRUD/run 组装；target_plans 仍归 viz，不迁移。
+5. 建议 schema：id TEXT PK、workspace_id TEXT NOT NULL、name/description/type/suite/frequency/status/owner、dataset_bindings_json、target_plan_id、goal_dataset_path_id、metric_system_id、threshold_policy、thresholds_json、created_at、updated_at、archived_at。status 首版 active/archived；type 首版 daily/campaign/member/store/custom；frequency 可 nullable/manual。
+6. API 冻结：GET/POST/PATCH /api/workspaces/:id/monitor/watchlists，DELETE 语义为 archive；POST /api/workspaces/:id/monitor/watchlists/:watchlistId/run。run body 可覆盖 suite/thresholds，但默认用 watchlist 配置。
+7. 校验红线：create/update/run 都必须校验 datasetBindings 内 datasetPathId 属于当前 workspace clean_data 白名单；targetPlanId / goalDatasetPathId / metricSystemId 必须属于当前 workspace；Watchlist 不存原始 rows/cells。
+8. 下游分工：E-MONITOR-PROD6 实现 DB/API/run 关联/默认兼容；D-MONITOR-PROD7 实现 selector、创建向导、按 watchlist 过滤总览/观星台/行动环；X-MONITOR-PROD8 P0 验收不阻塞 Watchlist，Watchlist 另由 P1 验收收口。
+验证：仅文档契约变更；TASKS parse 检查需在回报中给出。` },
+
+  { dom: "E", status: "done", created: "2026-07-01 15:06", title: "【监测·产品深化·Watchlist 后端·P1】E-MONITOR-PROD6：Watchlist CRUD + run 关联 + 旧 config 兼容", brief:
+`前置：X-MONITOR-PROD5。
+
+目标：实现多监测计划后端，让观星台可以按 watchlist 运行和回看。
+
+范围：
+1. DB：新增 monitor_watchlists 到 server/src/db/engine.ts，字段覆盖 X-MONITOR-PROD5 契约；旧 monitor_configs 保持 legacy fallback，不迁移、不删除。
+2. CRUD API：list/create/update/archive；校验 workspace 归属。
+3. run API：支持按 watchlistId 运行；monitor_runs 增 watchlist_id（nullable，旧 run 为 null），需保持旧 run 查询不坏。
+4. datasetBindings 校验仍复用 clean_data 白名单；非本 workspace pathId 400，不落 run。
+5. 默认兼容：无 watchlist 的 workspace 自动返回虚拟 default watchlist，读取 monitor_configs；用户编辑/复制默认计划时才创建真实行。
+
+约束：
+- 不新增 LLM 调用。
+- 不改变 monitor-engine 纯函数输入结构，watchlist 只负责组装 config。
+- 如 schema 触及 db/engine.ts 或 db/viz.ts，回报中明确表归属与旧库迁移。
+
+验收：
+- node:test 覆盖 create/list/update/archive、非法 pathId、默认 config 兼容、按 watchlist run。
+- npm run typecheck/build 绿。
+
+完成（2026-07-01，总控验收）：
+1. server/src/db/engine.ts 新增 monitor_watchlists 表，归属 engine；monitor_runs 增 nullable watchlist_id，fresh DB 有 FK，旧库用 ALTER TABLE 补列。
+2. server/src/routes/engine.ts 新增 watchlist list/create/update/archive API 与 POST /monitor/watchlists/:watchlistId/run；/monitor/runs 支持 body watchlistId 与 query watchlistId 过滤，watchlistId=default 映射旧 watchlist_id IS NULL runs。
+3. 无真实 watchlist 时 GET /monitor/watchlists 返回虚拟 default，读取 legacy monitor_configs；旧 monitor_configs 不迁移、不删除。
+4. create/update/run 均校验 datasetBindings / goalDatasetPathId clean_data 白名单、metricSystemId workspace 归属、targetPlanId workspace 归属；非法 pathId 不落 run。
+5. 已补 server/src/monitor-watchlist.test.ts 覆盖 CRUD、非法 pathId、默认兼容、按 watchlist run、非法 metric dataset run 前拦截。
+6. 校验：monitor-watchlist node:test 5/5；monitor-engine + monitor-priority 18/18；npm run typecheck 通过；npm run build 通过，仅既有 Vite chunk warning。
+7. 接续注意：双侧 MonitorRun/Watchlist 前端契约类型与 API client 暂未上提/接线，留给 D-MONITOR-PROD7 在总控允许触碰接缝类型时处理。` },
+
+  { dom: "D", status: "done", created: "2026-07-01 15:07", title: "【监测·产品深化·Watchlist 前端·P1】D-MONITOR-PROD7：监测计划列表/切换/创建向导 + 总览联动", brief:
+`前置：X-MONITOR-PROD5；E-MONITOR-PROD6 提供 API 后接完整链路。
+
+目标：让用户能创建和切换不同业务监测计划，监测总览/观星台/行动环按当前计划聚焦。
+
+建议落点：
+- HealthOverviewPane / HealthDashboardPane / HealthDataPane / HealthReportPane
+- web/src/lib/api/viz.ts 或 engine.ts（按后端归属）
+
+功能范围：
+1. 顶部 watchlist selector：默认监测、日常经营、大促等；无真实 watchlist 时显示后端虚拟 default。
+2. 创建向导：
+   - 选择场景类型；
+   - 选择/绑定数据角色；
+   - 选择目标计划；
+   - 选择指标体系；
+   - 选择阈值策略；
+   - 保存并运行。
+3. 切换 watchlist 后，总览、run 历史、findings、行动项过滤到该计划；旧 run（watchlistId=null）只在 default 下展示。
+4. 旧工作区无 watchlist 时展示“默认监测”，不强迫迁移。
+
+约束：
+- 不做定时调度 UI。
+- 不把 Watchlist 做成复杂项目管理系统；首版只服务监测配置切换。
+- 不触碰数据探索子树。
+
+验收：
+- 可创建两个 watchlist 并切换查看不同 run/finding。
+- 旧 monitor config 工作区仍可使用。
+- web typecheck/build 绿。
+
+完成（2026-07-01，总控验收）：
+1. web/src/lib/api/viz.ts 接入 Watchlist API：list/create/update/archive、按 watchlist run、run body/query watchlistId；Watchlist 类型先局部放在 viz client，未上提双侧 types.ts。
+2. 新增 MonitorWatchlistSelector：顶部计划 selector + 创建向导；支持场景类型、数据角色、目标计划、指标体系、阈值策略，并把策略转换为 concrete thresholds。
+3. HealthOverviewPane / HealthDashboardPane / HealthReportPane 按当前 watchlist 拉 run/finding/action；切换 watchlist 时清空 run/findings/drawer/actions 等本地状态，避免跨计划误操作。
+4. HealthDataPane：default 仍写 legacy monitor/config；真实 watchlist 下角色绑定与指标体系采纳写回 updateMonitorWatchlist。
+5. health-ui-state 增加当前 watchlist id 的跨 Pane 记忆；客户端始终补 default 选项，创建真实 watchlist 后仍可回 legacy 默认监测。
+6. 总控补丁：修复 HealthDataPane 从真实 watchlist 切回 default 时未重新加载 legacy monitor/config 的问题，避免把真实计划 bindings 误写入 default config。
+7. 校验：npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import / chunk size warning；数据探索隔离 grep 0 匹配；TASKS parse 通过。` },
+
+  { dom: "X", status: "done", created: "2026-07-01 15:08", title: "【监测·产品深化·验收·P0】X-MONITOR-PROD8：P0 工作台全链验收 + notes 收口", brief:
+`前置：D-MONITOR-PROD1、D-MONITOR-PROD2、D-MONITOR-PROD3 回流；E-MONITOR-PROD4 如已完成则一并验收，否则登记为 P1。
+
+验收目标：确认监测模块从“工具页集合”升级为可日常使用的经营监测工作台。
+
+验收场景：
+1. 空工作区：进入监测看到就绪检查，按 CTA 能去初始化/目标测算。
+2. 已有数据未采纳指标体系：总览明确提示缺 metric system，能跳转生成/采纳。
+3. 已完整配置：总览显示最近 run、目标状态、Top findings、待办行动。
+4. 运行监测：跑完留在当前页，结果区可见，不强制跳行动环。
+5. 单条 finding：打开详情抽屉，能看差距/证据/诊断，能生成并采纳行动项。
+6. 行动环：能看到从观星台采纳的任务，完成后可记录反馈。
+7. 初始化：步骤条清晰，阈值主路径为策略预设，高级阈值仍可调整。
+
+安全校验：
+- npm run typecheck。
+- npm run build。
+- 数据探索 LLM 隔离 grep（如触及相关子树；理论上不应触及）。
+- 检查 monitor actions/eval candidate 不传 draw_data 原始行。
+
+收口：
+- 更新 docs/notes-data.md 或 docs/notes-infra.md 的当前状态与长效决策。
+- wiki 卡状态按验收结果更新。
+- 不执行 git 操作。
+
+完成（2026-07-01，总控静态/安全验收收口）：
+1. P0 工作台代码链路已覆盖：health 默认进入总览；总览有就绪检查/最近 run/Top findings/行动入口；观星台运行后留本页；finding 详情抽屉支持解释、生成/采纳/忽略行动、提 eval 候选；行动环可查看 run 关联行动并提交反馈；初始化页有 onboarding 步骤与阈值策略预设。
+2. E-MONITOR-PROD4 已完成并纳入验收：run 响应/summary API 使用确定性 summarizeMonitorRun，不调用 LLM；priority/action-aware 能力保留为纯函数入参。
+3. Watchlist P1 已随 D/E 7/6 一并进入静态验收：前端 selector/create/run/filter 与后端 CRUD/run/filter 已通过 typecheck/build；default legacy config 兼容有总控补丁。
+4. 安全复核：/monitor/actions/draft 只把 finding 的 kind/severity/lifecycle/category/title/suggestion/comparisons/diagnosis 发给 LLM，不带 evidence/raw rows；eval candidate 只发 run/finding 元数据、comparisons/diagnosis/suggestion。FindingDetailDrawer UI 侧对 evidence 的 row/rows/records/values/samples 做 redacted。
+5. 校验：npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import / chunk size warning；数据探索隔离 grep 0 匹配；TASKS parse 通过。
+6. 浏览器点击级 smoke：用户已明确接管后续手测，未由总控继续执行；notes §0 保留待回填场景清单。` },
+
   // ════ 【Harness 自进化专题·研究驱动】（总控拆卡 2026-06-22；来源=harness 论文集精读 docs/backlog/{EFC,AHE,SkillOpt,AgingBench,HarnessAudit}-*.md + 记忆 harness-papers-2026）。命题：把 harness(测评/skill/记忆/编排)当可进化的一等工程对象——Life-Harness「改接口不改模型」为整条路线背书。
   // ── 波次与依赖（必读）── P0=EFC 度量底座(其余三项皆插它)→AHE 可证伪编辑契约；P1=SkillOpt 受控回写器 / AgingBench 记忆老化巡检(可并行)；P2=HarnessAudit 轨迹审计(待多 agent 规模)。前 4 项共用同一套实验场测评台证据，串成专题逐步捞。
   // ── 落点：主域=E(codex；实验室/Eval/Harness/skill/multi-agent 全归 E)、跨域契约=X(总控；types.ts/cache 契约)、记忆 store 信号=D。冻结卡(P1/P2)待 P0 跑通『同分不同 EFC』验证后由总控解冻。════

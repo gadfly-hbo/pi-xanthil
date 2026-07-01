@@ -1,8 +1,10 @@
 import { useEffect, useRef, useState } from "react";
 import type { SubTab } from "@/lib/constants";
-import { vizApi } from "@/lib/api/viz";
-import { setHealthSelectedRunId } from "@/lib/health-ui-state";
+import { vizApi, type MonitorWatchlist } from "@/lib/api/viz";
+import { getHealthSelectedWatchlistId, setHealthSelectedRunId, setHealthSelectedWatchlistId } from "@/lib/health-ui-state";
 import type {
+  ActionItem,
+  ActionTask,
   HealthRuleMeta,
   HealthSuite,
   HealthFinding,
@@ -11,6 +13,8 @@ import type {
   TargetPlan,
 } from "@/types";
 import { Markdown } from "@/components/Markdown";
+import { FindingDetailDrawer } from "@/components/monitor/FindingDetailDrawer";
+import { MonitorWatchlistSelector } from "@/components/monitor/MonitorWatchlistSelector";
 import { cn } from "@/lib/cn";
 import readmeContent from "@/docs/health-dashboard-readme.md?raw";
 
@@ -21,6 +25,12 @@ const SUITES: { id: HealthSuite; label: string }[] = [
   { id: "quarterly", label: "季度" },
   { id: "yearly", label: "年度" },
 ];
+
+const THRESHOLD_PRESETS = [
+  { id: "sensitive", label: "敏感", desc: "更早报警", factor: 0.75 },
+  { id: "standard", label: "标准", desc: "使用默认阈值", factor: 1 },
+  { id: "conservative", label: "保守", desc: "减少误报", factor: 1.25 },
+] as const;
 
 const SEVERITY_COLOR: Record<string, string> = {
   critical: "border-red-300 bg-red-50 dark:border-red-800 dark:bg-red-950/30",
@@ -55,6 +65,10 @@ function fmtPct(v: number | null | undefined): string {
   return `${sign}${(v * 100).toFixed(1)}%`;
 }
 
+function monitorReportKey(runId: string): string {
+  return "monitor:" + runId;
+}
+
 function ComparisonRow({ c }: { c: MonitorComparison }) {
   const positive = c.delta !== null && c.delta !== undefined && c.delta > 0;
   const arrow = c.delta === null || c.delta === undefined ? "" : c.delta > 0 ? "↑" : c.delta < 0 ? "↓" : "→";
@@ -85,15 +99,23 @@ export function HealthDashboardPane({
   setActiveSubTab: (sub: SubTab) => void;
 }) {
   const [view, setView] = useState<"main" | "readme">("main");
+  const [watchlistId, setWatchlistId] = useState(getHealthSelectedWatchlistId());
+  const [watchlists, setWatchlists] = useState<MonitorWatchlist[]>([]);
   const [rules, setRules] = useState<HealthRuleMeta[]>([]);
   const [suite, setSuite] = useState<HealthSuite>("monthly");
+  const [thresholdPreset, setThresholdPreset] = useState<(typeof THRESHOLD_PRESETS)[number]["id"]>("standard");
+  const [defaultThresholds, setDefaultThresholds] = useState<Record<string, number>>({});
   const [thresholds, setThresholds] = useState<Record<string, number>>({});
+  const [showAdvancedThresholds, setShowAdvancedThresholds] = useState(false);
   const [running, setRunning] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [hasMetricSystem, setHasMetricSystem] = useState(false);
   const [runs, setRuns] = useState<MonitorRun[]>([]);
   const [selectedRunId, setSelectedRunId] = useState<string | null>(null);
   const [findings, setFindings] = useState<HealthFinding[]>([]);
+  const [actionItems, setActionItems] = useState<ActionItem[]>([]);
+  const [actionTasks, setActionTasks] = useState<ActionTask[]>([]);
+  const [selectedFinding, setSelectedFinding] = useState<HealthFinding | null>(null);
   const [loadingFindings, setLoadingFindings] = useState(false);
   const [goalPlan, setGoalPlan] = useState<TargetPlan | null>(null);
   const resultRef = useRef<HTMLDivElement | null>(null);
@@ -104,8 +126,13 @@ export function HealthDashboardPane({
       setRuns([]);
       setSelectedRunId(null);
       setFindings([]);
+      setActionItems([]);
+      setActionTasks([]);
+      setSelectedFinding(null);
       setHasMetricSystem(false);
       setGoalPlan(null);
+      setDefaultThresholds({});
+      setWatchlists([]);
       return;
     }
     let cancelled = false;
@@ -121,6 +148,7 @@ export function HealthDashboardPane({
           if (!(k in t0)) t0[k] = v;
         }
       }
+      setDefaultThresholds(t0);
       setThresholds(t0);
     }).catch(() => {});
 
@@ -131,7 +159,7 @@ export function HealthDashboardPane({
       if (cfg?.thresholds) setThresholds((prev) => ({ ...prev, ...cfg.thresholds }));
     }).catch(() => {});
 
-    vizApi.listMonitorRuns(workspaceId).then((rs) => {
+    vizApi.listMonitorRuns(workspaceId, { watchlistId }).then((rs) => {
       if (cancelled) return;
       setRuns(rs);
       if (rs.length > 0) setSelectedRunId(rs[0]!.id);
@@ -144,17 +172,28 @@ export function HealthDashboardPane({
     }).catch(() => {});
 
     return () => { cancelled = true; };
-  }, [workspaceId]);
+  }, [workspaceId, watchlistId]);
 
   useEffect(() => {
     if (!workspaceId || !selectedRunId) {
       setFindings([]);
+      setActionItems([]);
+      setActionTasks([]);
       return;
     }
     let cancelled = false;
     setLoadingFindings(true);
-    vizApi.listMonitorFindings(workspaceId, selectedRunId)
-      .then((fs) => { if (!cancelled) setFindings(fs); })
+    Promise.all([
+      vizApi.listMonitorFindings(workspaceId, selectedRunId),
+      vizApi.listActionItems(workspaceId, monitorReportKey(selectedRunId)),
+      vizApi.listActionTasks({ scopeId: workspaceId }),
+    ])
+      .then(([fs, items, tasks]) => {
+        if (cancelled) return;
+        setFindings(fs);
+        setActionItems(items);
+        setActionTasks(tasks.filter((task) => items.some((item) => item.id === task.actionItemId)));
+      })
       .catch((e) => { if (!cancelled) setError(`加载 findings 失败: ${String(e)}`); })
       .finally(() => { if (!cancelled) setLoadingFindings(false); });
     return () => { cancelled = true; };
@@ -165,12 +204,16 @@ export function HealthDashboardPane({
     setRunning(true);
     setError(null);
     try {
-      const r = await vizApi.runMonitorSuite(workspaceId, { suite, thresholds });
+      const r = watchlistId === "default"
+        ? await vizApi.runMonitorSuite(workspaceId, { suite, thresholds, watchlistId })
+        : await vizApi.runMonitorWatchlist(workspaceId, watchlistId);
       setHealthSelectedRunId(r.run.id);
-      const newRuns = await vizApi.listMonitorRuns(workspaceId);
+      const newRuns = await vizApi.listMonitorRuns(workspaceId, { watchlistId });
       setRuns(newRuns);
       setSelectedRunId(r.run.id);
       setFindings(r.findings);
+      setActionItems([]);
+      setActionTasks([]);
       setTimeout(() => resultRef.current?.scrollIntoView({ behavior: "smooth", block: "start" }), 50);
     } catch (e) {
       setError(`运行监测失败（可能 E-MONITOR2 后端未实装）: ${String(e)}`);
@@ -185,6 +228,25 @@ export function HealthDashboardPane({
   const trendRuns = runs.slice(0, 5);
   const problems = findings.filter((f) => f.kind === "问题");
   const risks = findings.filter((f) => f.kind === "风险");
+  const selectedRun = runs.find((run) => run.id === selectedRunId) ?? null;
+  const currentWatchlist = watchlists.find((item) => item.id === watchlistId);
+  const readyMetricSystem = watchlistId === "default" ? hasMetricSystem : !!currentWatchlist?.metricSystemId;
+
+  const reloadActions = async () => {
+    if (!workspaceId || !selectedRunId) return;
+    const [items, tasks] = await Promise.all([
+      vizApi.listActionItems(workspaceId, monitorReportKey(selectedRunId)),
+      vizApi.listActionTasks({ scopeId: workspaceId }),
+    ]);
+    setActionItems(items);
+    setActionTasks(tasks.filter((task) => items.some((item) => item.id === task.actionItemId)));
+  };
+
+  const applyThresholdPreset = (presetId: (typeof THRESHOLD_PRESETS)[number]["id"]) => {
+    const preset = THRESHOLD_PRESETS.find((item) => item.id === presetId) ?? THRESHOLD_PRESETS[1];
+    setThresholdPreset(preset.id);
+    setThresholds(Object.fromEntries(Object.entries(defaultThresholds).map(([key, value]) => [key, Number((value * preset.factor).toFixed(4))])));
+  };
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-neutral-50/40 text-[12.5px] dark:bg-neutral-950/40">
@@ -218,7 +280,7 @@ export function HealthDashboardPane({
       <div className="flex items-center justify-between">
         <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">观星台</h2>
         <div className="flex items-center gap-2">
-          {!hasMetricSystem && (
+          {!readyMetricSystem && (
             <button
               onClick={() => setActiveSubTab("health_data")}
               className="rounded-md border border-amber-300 bg-amber-50 px-2 py-0.5 text-[11px] text-amber-700 hover:bg-amber-100 dark:border-amber-700 dark:bg-amber-900/40 dark:text-amber-200"
@@ -236,6 +298,25 @@ export function HealthDashboardPane({
           )}
         </div>
       </div>
+
+      <MonitorWatchlistSelector
+        workspaceId={workspaceId}
+        value={watchlistId}
+        onChange={(id) => {
+          setHealthSelectedWatchlistId(id);
+          setHealthSelectedRunId(null);
+          setSelectedRunId(null);
+          setFindings([]);
+          setActionItems([]);
+          setActionTasks([]);
+          setSelectedFinding(null);
+          setWatchlistId(id);
+        }}
+        onWatchlistsChange={setWatchlists}
+        onSaved={() => {
+          if (workspaceId) void vizApi.listMonitorRuns(workspaceId, { watchlistId }).then(setRuns).catch(() => {});
+        }}
+      />
 
       {goalPlan && (
         <div className="flex items-center gap-2 rounded-md border border-emerald-300 bg-emerald-50 px-3 py-2 text-[12px] dark:border-emerald-700 dark:bg-emerald-950/30">
@@ -275,23 +356,42 @@ export function HealthDashboardPane({
 
       {/* 选数据集（已由「初始化」配置） */}
 
-      {/* 阈值表单 */}
-      <div className="space-y-2">
-        <label className="text-sm font-medium">阈值（可调整）</label>
-        <div className="grid grid-cols-1 gap-2 sm:grid-cols-2">
-          {allThresholdKeys.map((key) => (
-            <label key={key} className="flex items-center gap-2 text-xs">
-              <span className="text-neutral-500 w-40 truncate">{key}</span>
-              <input
-                type="number"
-                step="any"
-                value={thresholds[key] ?? 0}
-                onChange={(e) => setThresholds((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
-                className="h-7 w-24 rounded-md border border-neutral-200 bg-white px-2 text-[12px] dark:border-neutral-700 dark:bg-neutral-950"
-              />
-            </label>
+      {/* 阈值策略 */}
+      <div className="space-y-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+        <div>
+          <label className="text-sm font-medium">阈值策略</label>
+          <p className="mt-0.5 text-[11px] text-neutral-500">主路径用策略预设；内部 key 放在高级设置里。</p>
+        </div>
+        <div className="grid grid-cols-1 gap-2 sm:grid-cols-3">
+          {THRESHOLD_PRESETS.map((preset) => (
+            <button
+              key={preset.id}
+              type="button"
+              onClick={() => applyThresholdPreset(preset.id)}
+              className={`rounded-md border px-3 py-2 text-left ${thresholdPreset === preset.id ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900" : "border-neutral-200 bg-neutral-50 text-neutral-700 hover:bg-white dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200 dark:hover:bg-neutral-900"}`}
+            >
+              <div className="text-[12px] font-medium">{preset.label}</div>
+              <div className="mt-0.5 text-[11px] opacity-70">{preset.desc}</div>
+            </button>
           ))}
         </div>
+        <details open={showAdvancedThresholds} onToggle={(e) => setShowAdvancedThresholds(e.currentTarget.open)}>
+          <summary className="cursor-pointer text-[11px] text-neutral-500">高级设置：内部阈值 key（{allThresholdKeys.length}）</summary>
+          <div className="mt-2 grid grid-cols-1 gap-2 sm:grid-cols-2">
+            {allThresholdKeys.map((key) => (
+              <label key={key} className="flex items-center gap-2 text-xs">
+                <span className="w-40 truncate text-neutral-500">{key}</span>
+                <input
+                  type="number"
+                  step="any"
+                  value={thresholds[key] ?? 0}
+                  onChange={(e) => setThresholds((prev) => ({ ...prev, [key]: Number(e.target.value) }))}
+                  className="h-7 w-24 rounded-md border border-neutral-200 bg-white px-2 text-[12px] dark:border-neutral-700 dark:bg-neutral-950"
+                />
+              </label>
+            ))}
+          </div>
+        </details>
       </div>
 
       {/* 将执行的规则 + 触发 */}
@@ -310,7 +410,7 @@ export function HealthDashboardPane({
           </div>
         </details>
         <div className="mt-3 flex items-center justify-between border-t border-neutral-100 pt-2 dark:border-neutral-800">
-          <span className="text-[11px] text-neutral-500">数据角色和指标体系在「初始化」配置</span>
+              <span className="text-[11px] text-neutral-500">{currentWatchlist && watchlistId !== "default" ? `按「${currentWatchlist.name}」保存配置运行` : "数据角色和指标体系在「初始化」配置"}</span>
           <button
             onClick={runMonitor}
             disabled={running || !workspaceId}
@@ -329,7 +429,10 @@ export function HealthDashboardPane({
             {trendRuns.map((run) => (
               <button
                 key={run.id}
-                onClick={() => setSelectedRunId(run.id)}
+                onClick={() => {
+                  setSelectedRunId(run.id);
+                  setHealthSelectedRunId(run.id);
+                }}
                 className={`rounded-md border p-2 text-left text-[11px] transition-colors ${run.id === selectedRunId ? "border-neutral-400 bg-white shadow-sm dark:border-neutral-500 dark:bg-neutral-900" : "border-neutral-200 bg-white/60 hover:bg-white dark:border-neutral-800 dark:bg-neutral-900/60 dark:hover:bg-neutral-900"}`}
               >
                 <div className="flex items-center justify-between">
@@ -381,7 +484,7 @@ export function HealthDashboardPane({
               <span className="font-medium text-amber-600 dark:text-amber-300">🟡 风险 {risks.length}</span>
             </div>
             {findings.map((f) => (
-              <FindingCard key={f.id} f={f} />
+              <FindingCard key={f.id} f={f} onOpen={() => setSelectedFinding(f)} />
             ))}
           </>
         )}
@@ -389,11 +492,20 @@ export function HealthDashboardPane({
       </div>
       </div>
       )}
+      <FindingDetailDrawer
+        workspaceId={workspaceId}
+        run={selectedRun}
+        finding={selectedFinding}
+        items={actionItems}
+        tasks={actionTasks}
+        onClose={() => setSelectedFinding(null)}
+        onChanged={() => void reloadActions()}
+      />
     </div>
   );
 }
 
-function FindingCard({ f }: { f: HealthFinding }) {
+function FindingCard({ f, onOpen }: { f: HealthFinding; onOpen: () => void }) {
   const lc = LIFECYCLE_LABEL[f.lifecycle] ?? { text: f.lifecycle, cls: "text-neutral-500" };
   const sevCls = SEVERITY_COLOR[f.severity] ?? "border-neutral-200 bg-white dark:border-neutral-800 dark:bg-neutral-900";
   return (
@@ -407,6 +519,9 @@ function FindingCard({ f }: { f: HealthFinding }) {
           </div>
           <p className="mt-1 text-[13px] font-medium text-neutral-900 dark:text-neutral-100">{f.title}</p>
         </div>
+        <button onClick={onOpen} className="shrink-0 rounded-md border border-neutral-300 bg-white px-2 py-1 text-[11px] text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800">
+          详情 / 处理
+        </button>
       </div>
 
       {f.comparisons && f.comparisons.length > 0 && (

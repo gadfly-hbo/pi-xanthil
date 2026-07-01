@@ -755,7 +755,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "view" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "kb_collect" : tab === "health" ? "health_data" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "view" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "kb_collect" : tab === "health" ? "health_overview" : "view");
     if (tab === "explore") {
       setActiveSessionId(sessions[0]?.id ?? null);
     }

@@ -9,54 +9,40 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新:2026-06-30 · **E-BREQ-LINK2/E-BREQ-LINK4 完成：BRC 材料导入 + 确认需求生成分析框架 API**
+- 最近更新:2026-07-01 · **E-MONITOR-PROD4/E-MONITOR-PROD6 完成：观星台 Finding 优先级/摘要纯函数 + Watchlist 后端**
 - 进度:
-  - **E-BREQ-LINK4：基于确认需求 JSON/Markdown 生成分析框架 API**
-    - 新增 `POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed`，采用方案 B 专用 API，避免触碰 legacy `index.ts` 的旧表单生成端点。
-    - 输入 `pathId + confirmedRequirementJsonPath + model?`；只接受 `business_requirements/*-确认需求-*.json`，拒绝普通 `*-分析框架-*.json` 与 `business_requirements/communications/*.json`。
-    - 读取范围只限确认需求 JSON 与同名 Markdown（存在则读）；不读 communications 记录、不读 `draw_data` / `data_exploration`。
-    - 生成结果仍写 `business_requirements/*-分析框架-*.md/json`，结构含 `version.requirementInput` 与 `sourceConfirmedRequirement`，保持现有业务需求版本列表可见。
-    - prompt / normalize 双层约束：必须消费 confirmedFacts、confirmedAssumptions、deferredQuestions、successCriteria、risks；deferred/skipped/assumed/pending 只能进入 openQuestions/risks/zeroHallucinationCheck，不得进入 businessFacts。
-    - trace `business_requirement_analysis_framework_generated` 只记录确认需求 basename、open/risk/框架数量、生成结果 basename 等 metadata。
-  - **E-BREQ-LINK2：业务需求沟通材料导入 / 摘要 API**
-    - 新增 `POST /api/workspaces/:id/business-requirement-communication/import-documents`，专用于把会议纪要、brief、历史需求/报告摘要整理成 BRC 沟通上下文；不复用通用 extract/chat/generate/clarify。
-    - 新增 `parseRequirementImportDocumentsRequest`、`validateRequirementImportDocumentAccess`、`buildRequirementImportDocumentsPrompt`、`runRequirementImportDocuments`、输出归一化与 trace metadata helper。
-    - 读取边界：`report` / `business_requirements` 可读正文；`clean_data` 首版只注入路径元信息并标记 `clean_data body not read`；`draw_data` / `data_exploration` 禁入；`localText` 只接受前端显式上传/粘贴文本且截断。
-    - trace 事件 `business_requirement_documents_imported` 只记录文档数量、来源分布、摘要长度、问题/假设/风险数量，不记录正文。
-    - prompt 明确导入材料只用于形成澄清问题、待确认假设和沟通草案，不得把未确认内容写成事实。
-  - **E-BRC1：需求澄清引擎 + 结构化草案 API**
-    - 新增 `server/src/business-requirement-communication.ts` 纯模块，负责请求 shape、prompt 组装、server 侧 JSON slice/fence/comment/trailing-comma repair、输出归一化。
-    - 新增 `POST /api/workspaces/:id/business-requirement-communication/clarify`，输入 `scene/message/contextRefs/history/model`，返回 `clarifyingQuestions/assumptions/requirementDraft/riskNotes`，不写业务需求文件。
-    - 路由只注入已启用 `business_context`、已启用 `metric_definitions` 与登记路径元信息；路径只传 `id/folder/kind/basename`，不传绝对路径、文件正文、样本行或数据探索结果。
-    - 输出枚举已收敛到 X-BRC0 / D/V-BRC2 口径：`priority=must_confirm|should_confirm|can_defer`，`status=pending|answered|skipped|assumed|deferred`。
-  - **E-BRC3：确认成业务需求 + trace / review 闭环**
-    - 新增 `POST /api/workspaces/:id/business-requirement-communication/confirm`：只写用户确认后的 `RequirementDraft` 与问题/假设状态，生成正式业务需求 `business_requirements/*-确认需求-*.md/json`，现有业务需求版本列表可见。
-    - 沟通记录轻量落 `business_requirements/communications/*.json`，保存用户输入、问题、回答、假设、草案、确认状态；不保存数据文件正文或样本。该子目录避免被正式业务需求列表误收录。
-    - 正式需求结构显式区分 `confirmedFacts`、`confirmedAssumptions`、`deferredQuestions`、`rejectedAssumptions`；`deferred/skipped/pending` 问题不会写成已确认事实。
-    - trace 写 `business_requirement_clarification_generated`、`business_requirement_assumptions_reviewed`、`business_requirement_confirmed`，payload 只含 scene、数量、状态分布、路径 basename 等 metadata。
-    - 新增 `GET /api/workspaces/:id/business-requirement-communication/review-context`，返回确认后的目标、成功标准、确认假设、未确认问题，供报告审核展示/拼接；首版不做自动 judge。
-  - **前序状态仍有效**：E-TOOLUSE2/4/5 已完成；X-TRACE8 / E-OKH3 / E-CROWD11 / E-CROWD8 / E-CROWD5 均已完成；DLF 模拟实验专题 done；MONITOR-TARGET1 done。
+  - **E-MONITOR-PROD4：Finding 优先级评分 + 运行摘要纯函数**
+    - 新增 `server/src/monitor-priority.ts`，定义 `MonitorFindingPriority` / `MonitorRunSummary` 与 `scoreMonitorFindingPriority()` / `prioritizeMonitorFindings()` / `summarizeMonitorRun()`。
+    - 评分因子覆盖 severity、lifecycle、`deltaRate`、target gap、`firstSeenRunId` 连续复现、adopted/doing action 降权；每项都进入 `reasons`，便于 UI 解释“为什么先处理它”。
+    - `suggestedFocus` 为确定性模板文本，只组合 finding 衍生产物（title、band、score、counts），不调用 LLM、不读取数据文件、不读取 rows/cells。
+    - `POST /api/workspaces/:id/monitor/runs` 额外返回 `summary`；新增 `GET /api/workspaces/:id/monitor/runs/:runId/summary`，保持既有 `/findings` 数组响应不变。
+  - **E-MONITOR-PROD6：Watchlist CRUD + run 关联 + legacy config 兼容**
+    - `server/src/db/engine.ts` 新增 `monitor_watchlists`（engine 域表），字段覆盖 X-MONITOR-PROD5：name/description/type/suite/frequency/status/owner/datasetBindings/targetPlan/goalDataset/metricSystem/thresholdPolicy/thresholds/timestamps。
+    - `monitor_runs` 新增 nullable `watchlist_id`；旧 run 为 `null`，旧查询仍可用；按 watchlist 过滤时先筛 runs，findings 仍只经 runId 归属，不给 `monitor_findings` 冗余加列。
+    - 新增 `GET/POST/PATCH/DELETE /api/workspaces/:id/monitor/watchlists`；DELETE 语义为 archive；新增 `POST /api/workspaces/:id/monitor/watchlists/:watchlistId/run`。
+    - 无真实 watchlist 时返回虚拟 `id:"default"`，读取 legacy `monitor_configs`（仍归 `db/viz.ts`，不迁移、不删除）；PATCH default 会 lazy 创建真实 watchlist。
+    - create/update/run 都校验 `datasetBindings` 与 `goalDatasetPathId` 属当前 workspace clean_data 白名单、`metricSystemId` 属当前 workspace、`targetPlanId` 属当前 workspace；非法 pathId 在 `insertMonitorRun` 前 400，不落空 run。
+    - 旧 `/api/workspaces/:id/monitor/runs` 保持可用，并支持 body `watchlistId`；`GET /monitor/runs?watchlistId=default` 返回 `watchlist_id IS NULL` 的旧 run。
+  - **前序状态仍有效**：E-BREQ-LINK2/4、E-BRC1/3 已完成；E-TOOLUSE2/4/5 已完成；X-TRACE8 / E-OKH3 / E-CROWD11 / E-CROWD8 / E-CROWD5 均已完成；DLF 模拟实验专题 done；MONITOR-TARGET1 done。
 - 校验:
+  - `node --experimental-strip-types --test server/src/monitor-priority.test.ts` ✅(5/5)
+  - `node --experimental-strip-types --test server/src/monitor-watchlist.test.ts` ✅(5/5)
+  - `node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/monitor-priority.test.ts` ✅(18/18)
   - `npm run typecheck` ✅(server + web)
   - `npm run build` ✅(仅既有 Vite chunk warning)
-  - `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` ✅(**19/19**)
-  - 安全 grep ✅ `readFlowFile` 无 `draw_data` / `data_exploration` 读取形态匹配
-  - 数据探索隔离 grep ✅(no match，E-BRC 验收补跑)
 - 下一步:
-  - 建议人工浏览器 smoke：从日常 / 专题 / 重复三入口各跑一条“输入诉求 → 生成澄清清单/草案 → 回答/跳过/采纳假设 → 确认成正式需求 → 版本列表可见 → review-context 可取”。
-  - 建议补一条 BRC import-documents 浏览器 smoke：粘贴会议纪要 + 选择历史 `business_requirements` / `report` 产物 → 生成 summaries/questions/assumptions/suggestedMessage → 送入 clarify。
-  - 建议补一条 confirmed requirement → analysis framework smoke：选择确认需求 JSON → 调专用 API → 生成 `*-分析框架-*` 版本 → 版本列表打开可见，deferred 仍在待确认/风险。
-  - 若报告审核 UI 要自动展示 BRC review-context，需要 V/D 后续接入 `api.getRequirementCommunicationReviewContext()` 或在 legacy `reviewReport` 调用前拼接用户 prompt。
-  - 若需要跨 workspace / 全局查询沟通历史，再由总控审是否新增 DB 表；当前采用 report 目录 JSON 文件，最小闭环已足够。
-  - V-TOOLUSE3 仍可直接消费 `/api/workspaces/:id/tool-runs` 与 ToolLab 最近 eval 状态做工具质量/运行统计。
+  - D-MONITOR-PROD7 可接前端：顶部 watchlist selector、创建/编辑向导、按 `watchlistId` 过滤总览/观星台/行动环；旧 workspace 应显示虚拟“默认监测”。
+  - 建议补一条浏览器/API smoke：legacy `monitor_configs` workspace → `GET /monitor/watchlists` 显示 default → PATCH default 创建真实行 → 按 watchlist run → run 历史按 `watchlistId` 过滤。
+  - 建议 D/V 前端消费 `summary`：观星台顶部展示 `suggestedFocus`、`topProblems/topRisks`、new/worsening/resolved/targetGap counts；若要展示 action 降权，需要把 action 状态映射为 `MonitorFindingActionStates` 后再由 API 或前端调用纯函数。
+  - 仍待 BRC 人工浏览器 smoke：日常/专题/重复三入口 clarify→confirm→版本列表→review-context，以及 import-documents 与 confirmed requirement→analysis framework 两条链路。
   - 仍待：E-SKILLINJECT1 真实 workflow smoke、E-SKILLOPT1 浏览器 smoke；KICKOFF-P0 的 E2E 验证补课（AnaX 8 阶段真跑 / skill 蒸馏全链路 smoke / SQL 连接真实库）仍未执行。
 - 阻塞: 无硬阻塞。
 - 开放问题(需总控):
+  - `MonitorWatchlist` / `MonitorRunSummary` 是否需要上提到双侧 `types.ts`，供 D-MONITOR-PROD7 前端稳定消费；本卡为避免接缝层扩散，暂放 E 域内部类型。
+  - summary 中 adopted/doing action 降权当前只在纯函数入参支持，run/summary API 暂未跨域查询 `action_items`；是否由 D/V 前端传入 action 状态，还是由总控定义统一后端聚合口径。
   - BRC 沟通历史是否需要从 `business_requirements/communications/*.json` 升级为 DB 表，以支持跨 workspace 检索、治理和 trace drill-down。
   - 报告审核是否由 V/D 在 UI 层展示 BRC review-context，还是由总控迁移 legacy `/api/report-review/review` 到域 router 后统一拼接上下文。
-  - 失败 run → candidate case 是否需要独立持久化 proposal 表，还是直接写入 ToolLab case set 草稿流。
-  - 后续是否将 trace_events 过渡账本迁为独立 `tool_runs` 表。
-  - 沿用前序开放项（动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等）。
+  - 沿用前序开放项（失败 run → candidate case 是否独立 proposal 表、trace_events 是否迁为独立 `tool_runs` 表、动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等）。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -211,6 +197,8 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
   - R-GAP-COMPETITOR：source vs competitorMetricId，口径同 industry
   - lifecycle 复用 health-check-engine 的 4 态（new/recurring/worsening/resolved）+ 同 signature 匹配 + resolved 补丁
 - LLM 草案安全约束：prompt 只送 `BiAggregationDataset.columns/rowCount + ontology 元数据`，不送原始行、不送 `draw_data`、不送行级明细。无聚合/ontology 时降级返回 `missingData` 不调 LLM。JSON 解析参 `onto-extract.ts` 范式。
+- **Finding 优先级与运行摘要（E-MONITOR-PROD4，2026-07-01）**：优先级沉淀为 `server/src/monitor-priority.ts` 纯函数，不塞回 `HealthFinding` 原结构。排序返回 `{finding, priority}`，summary 返回 `topProblems/topRisks/counts/suggestedFocus`；`suggestedFocus` 只能用确定性模板组合 finding 衍生产物，禁止 LLM、禁止读取文件、禁止 rows/cells。评分权重当前为 severity(critical/warn/info) + lifecycle(worsening/recurring/new/resolved) + `maxAbs(deltaRate)` + target gap boost + `firstSeenRunId` 复现 boost + adopted/doing action 降权；每个因子必须写入 `reasons`，方便前端解释。API 只给 run 响应和独立 summary GET 附加 summary，**不改变**既有 `/findings` 数组形状。
+- **Watchlist 后端契约（E-MONITOR-PROD6，2026-07-01）**：`monitor_watchlists` 归 `server/src/db/engine.ts`，与 `monitor_metric_systems` / `monitor_runs` 同域；legacy singleton `monitor_configs` 保留在 `db/viz.ts` 做 fallback，不迁移、不删除。`monitor_runs.watchlist_id` nullable，旧 run 为 `null`；按 watchlist 过滤时筛 `monitor_runs`，findings 仍只经 runId 归属，否决给 `monitor_findings` 加冗余 `watchlist_id`。无真实 watchlist 时 `GET /monitor/watchlists` 返回虚拟 `id:"default"`，读取 legacy config；只有 PATCH default 或创建/复制时才落真实行。create/update/run 必须在 `insertMonitorRun` 前校验 `datasetBindings` / `goalDatasetPathId` 属当前 workspace clean_data 白名单、`metricSystemId` 属当前 workspace、`targetPlanId` 属当前 workspace；非法 pathId 400 且不落 run。Watchlist 是配置，不存原始 rows/cells；run 时仍只负责组装 config，不改变 `runMonitorChecks()` 纯函数输入结构。
 
 **重复 / 工作流产物**
 - Flow `kind: single|multi`（DB 自动迁移 ALTER+DEFAULT）→ 后删单智能体，只留 multi；**更名仅改 label，内部 id `multi`/DB kind 不动**（零迁移）。

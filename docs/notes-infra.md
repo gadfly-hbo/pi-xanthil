@@ -8,168 +8,24 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-> 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。2.3 发布后增量（Harness 全专题等）见 `Orchestration.md §八「2.3 阶段进展」`。详见发布节点。
-
-- 最近更新：2026-06-30 · 总控（业务需求贯通 X-BREQ-LINK6 全链验收）
-- 本批（2026-06-30 · 业务需求贯通，沟通材料导入 + 确认需求驱动分析框架）：
-  - ✅ **X-BREQ-LINK0 已完成总控自做**：冻结“需求沟通”和“分析框架”的产物流转契约：需求沟通前置承接线下材料/诉求/历史需求，确认后产物成为分析框架输入源；分析框架不再要求用户二次导入和重填左侧表单。
-  - ✅ **D/V-BREQ-LINK1 已回流并通过总控复核**：`BusinessRequirementPane` 新增 `activeConfirmedRequirement` 父容器状态；确认正式需求成功后写入确认需求来源、回填 draft、刷新版本、选中刚确认版本并自动切到“分析框架”；打开历史版本时仅 `business_requirements/*-确认需求-*.json` 会同步 active confirmed，旧分析框架版本不会覆盖当前确认需求源。
-  - ✅ **D/V-BREQ-LINK1 总控收口**：移除同文件中已无入口的旧“从文档提取草稿”死代码，恢复 `npm run typecheck`；对已出现的“导入沟通材料”局部骨架做安全收紧，登记材料只形成待确认沟通材料，不静默绕过确认成为分析框架 source document。
-  - ✅ **E-BREQ-LINK2 已回流并通过总控复核**：新增 `POST /api/workspaces/:id/business-requirement-communication/import-documents`，BRC 专用沟通材料导入 / 摘要 API。支持 `localText`、`report`、`business_requirements` 正文导入，`clean_data` 仅导入路径元信息/聚合说明并带 `clean_data body not read` warning；`draw_data` / `data_exploration` 在 source 白名单和路径访问两层被拒绝。
-  - ✅ **E-BREQ-LINK2 安全收口**：trace 事件 `business_requirement_documents_imported` 只记录 `documentCount`、source 计数、summary length、问题/假设/风险数量，不记录材料正文；prompt 明确导入材料只能形成澄清问题、待确认假设和可编辑沟通草案，不得把未确认内容写成事实。
-  - ✅ **D/V-BREQ-LINK3 UI 骨架已回流并通过总控复核**：`需求沟通` tab 新增“导入沟通材料”工作区，支持已登记材料、粘贴文本、上传文本文件；材料只合入原始诉求输入、澄清清单与假设区，不直接成为 confirmed facts。分析框架生成已改为 `documents: []`，旧“导入需求文档 / 提取草稿 / 本地文件”主入口移除，不再绕过确认链路。
-  - ✅ **D/V-BREQ-LINK3 安全收口**：`clean_data` 分支只展示元信息/知情提示，不读取字段值、样本或正文；未使用 `pickLocalPath`，未新增通用 `chat/extract/clarify` API 调用。
-  - ✅ **D/V-BREQ-LINK3B 已回流并通过总控复核**：`web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()`，前端材料导入改为调用 E-BREQ-LINK2 专用 `POST /business-requirement-communication/import-documents`。登记材料、粘贴文本、上传文本分别映射为 `report/business_requirements/clean_data/localText` 输入；`clean_data` 只传路径元信息并展示 warning，`localText` 不传本机路径。
-  - ✅ **D/V-BREQ-LINK3B 安全收口**：服务端返回的摘要、问题、假设、建议输入与风险提示映射到 material card；API 失败时才 fallback 到本地启发式，并在 UI 标注“本地启发式，未走服务端导入”。服务端导入和 fallback 都只进入沟通输入、澄清清单、假设与风险提示，不直接成为 confirmed facts。
-  - ✅ **E-BREQ-LINK4 已回流并通过总控复核**：新增 `POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed`，采用独立专用 API 方案 B，不改 legacy 旧表单生成端点。只接受 `business_requirements/*-确认需求-*.json`，拒绝普通 `*-分析框架-*.json` 与 `business_requirements/communications/*.json`；输出仍写 `business_requirements/*-分析框架-*.md/json`，兼容现有版本列表。
-  - ✅ **E-BREQ-LINK4 安全收口**：生成 prompt 要求基于确认需求；`deferred/skipped/assumed/pending` 只进入 `openQuestions` / `risks` / `zeroHallucinationCheck`，不进入 `businessFacts`；trace 只记录确认需求 basename、问题/风险/框架数量与生成结果 basename 等 metadata。
-  - ✅ **D/V-BREQ-LINK5 已回流并通过总控复核**：`web/src/lib/api/engine.ts` 新增 `generateAnalysisFrameworkFromConfirmed()`；`BusinessRequirementPane` 分析框架左侧主路径已改为“确认需求源”面板，展示确认需求版本、确认时间、scene、来源、业务目标、成功标准、confirmed facts、confirmed assumptions、open questions、风险限制。主按钮改为“基于确认需求生成分析框架”，有 `activeConfirmedRequirement` 时调用 E-BREQ-LINK4 专用 API。
-  - ✅ **D/V-BREQ-LINK5 总控收口**：旧表单 / 直接生成已折叠进“旧路径 / 直接生成（不推荐）”高级区；版本列表过滤 communications/ 记录，并标注 `[确认需求] / [分析框架] / [旧版本]`。打开确认需求版本现在只更新 `activeConfirmedRequirement` 和左侧确认源，不再把确认需求 Markdown 覆盖到右侧分析框架预览 / 编辑区。
-  - ✅ **X-BREQ-LINK6 已完成总控终审**：确认两个子 tab 已从“并列 UI”收敛为同一份确认需求在两阶段流转：需求沟通导入材料与澄清，确认后写正式确认需求，分析框架主路径直接消费 `activeConfirmedRequirement` 和 E-BREQ-LINK4 专用 API，不再要求用户二次导入 / 填写需求。
-  - ✅ **X-BREQ-LINK6 总控收口**：打开历史确认需求版本时 `activeConfirmedRequirement` 已显式记录 `scene`，满足 `markdownPath/jsonPath/content/structured/source/scene/confirmedAt` 契约；旧表单和 legacy `generateBusinessRequirement()` 仍保留但默认折叠，并明确标注“不推荐”。
-  - ✅ **验证**：`node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 19/19 通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 Vite/ECharts chunk warning；数据探索隔离 grep 无输出；`BusinessRequirementPane` 残留检查无 `pickLocalPath` / `extractBusinessRequirementDraft` / `generateBusinessRequirementClarifyingQuestions` / 通用 `chat/extract/clarify` 调用；API smoke 由用户手动完成。
-  - 📌 **下一步**：本组“业务需求贯通”专题完成。后续若继续优化，优先做浏览器点击级三入口自动化 smoke，或把默认折叠的 legacy fallback 迁出主组件。
-  - 📌 **红线**：贯通链路继续只允许 `report` / `business_requirements` 衍生产物正文、用户显式 `localText` 和 `clean_data` 元信息进入 BRC import API；禁止 `draw_data` 原始行和 `data_exploration` 字段值/样本/剖析结果进入 LLM。
-  - 📌 **残留**：浏览器点击级日常 / 专题 / 重复三入口未由总控亲自复跑；旧路径仍作为折叠高级 fallback 存在，后续真实用户点检时继续观察是否会误导主路径。
-- 历史批次（2026-06-30 · 业务需求模块瘦身，需求沟通 / 分析框架双子 tab）：
-- 本批（2026-06-30 · 业务需求模块瘦身，需求沟通 / 分析框架双子 tab）：
-  - ✅ **X-BREQ-SPLIT0 已完成总控自做**：冻结业务需求模块内部信息架构，一级入口仍为“业务需求”，组件内拆为“需求沟通”和“分析框架”两个子 tab；前者承接正式需求确认前，后者消费确认需求并生成/管理分析框架。
-  - ✅ **D/V-BREQ-SPLIT1 已回流并通过总控复核**：`BusinessRequirementPane` 已成为父容器，内部新增双子 tab；父容器保留 report path、版本刷新、scene 与 `communicationWorkspaceId` 共享状态；确认成正式需求后刷新版本并自动切到“分析框架”。未改 `App.tsx` / `constants.ts` / `tabs/types.ts` 等接缝骨架，未新增后端 API。
-  - ✅ **D/V-BREQ-SPLIT2 已回流并通过总控复核**：`RequirementCommunicationPane` 区域承接 scene 说明、诉求输入、可用上下文引用说明、沟通记录、澄清清单、假设处理、草案预览与“确认成正式需求”；需求沟通仍只走 `runRequirementCommunication()` / `confirmRequirementCommunication()` 两个 BRC 专用 API，不展示“生成分析框架”主操作。
-  - ✅ **D/V-BREQ-SPLIT3 已回流并通过总控复核**：`AnalysisFrameworkPane` 区域承接生成分析框架、模板、导入需求文档、质量检查、正式需求版本列表、分析/报告/差异/说明预览、编辑、沉淀与字段验证入口；确认需求返回结构与旧分析框架结构不完全同形，但保留 `projectName`，可打开版本与预览，旧分析框架字段为空时沉淀/字段验证按钮自然不可用。
-  - ✅ **验证**：`npm run typecheck` 通过；`npm run build` 通过，仅既有 Vite/ECharts chunk warning；`node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 9/9 通过；数据探索隔离 grep 无输出；`docs/wiki.html` script parse 通过。
-  - 📌 **下一步**：执行 `X-BREQ-SPLIT4` 总控全链验收，重点跑浏览器手动 smoke：日常 / 专题 / 重复各走一条“需求沟通 → 确认正式需求 → 自动切入分析框架 → 生成/查看分析框架”链路；同时观察旧“确认需求”和旧“分析框架版本”的视觉区分是否足够清楚。
-  - 📌 **红线**：业务需求模块瘦身只做前端信息架构收敛，不改变 BRC API、安全 prompt、确认写入路径、trace/review 口径；继续禁止 `draw_data` 原始行、数据探索字段值/样本/剖析结果进入 LLM。
-  - 📌 **残留**：浏览器点击级 smoke 未跑；`RequirementCommunicationPane` / `AnalysisFrameworkPane` 当前为同文件内部组件，后续如文件继续膨胀可再开纯 UI 文件拆分卡；确认需求与分析框架历史版本的标签/筛选可在 X-BREQ-SPLIT4 验收后决定是否追加小修。
-- 历史批次（2026-06-30 · 业务需求沟通闭环，总控契约/派发）：
-- 本批（2026-06-30 · 业务需求沟通闭环，总控契约/派发）：
-  - ✅ **X-BRC0 已完成总控自做**：冻结日常 / 专题 / 重复三类场景在正式业务需求前的“需求沟通”产品契约；主链路为“业务诉求沟通 → 需求澄清 → 业务需求确认 → 分析 / workflow / 报告”。
-  - ✅ **E-BRC1 已回流并通过总控复核**：新增 `server/src/business-requirement-communication.ts` 与 `POST /api/workspaces/:id/business-requirement-communication/clarify`；server 侧完成请求解析、JSON repair、结构化输出归一化、prompt 红线、business_context/metric_definitions/路径元信息接入；只返回澄清结果，不写业务需求文件。
-  - ✅ **总控收口契约漂移**：E 初版使用 `P0/P1/P2` 与 `open/answered/dismissed`，已收敛回 X-BRC0 单一契约：问题优先级 `must_confirm/should_confirm/can_defer`，状态 `pending/answered/skipped/assumed/deferred`，并同步 prompt schema 与测试。
-  - ✅ **D/V-BRC2 已回流并通过总控复核**：`BusinessRequirementPane` 新增需求沟通工作台，`EngineTabs` 接入日常 `daily` / 专题 `topic` / 重复 `recurring` 三场景；前端只调用 E-BRC1 专用 `runRequirementCommunication()`，确认前不写正式业务需求，正式写入仍走既有“生成分析框架”。
-  - ✅ **总控收口入口阻断**：D/V 初版只在 workspace scope 允许沟通 API，session/flow scope 下三入口会被禁用；已改为由入口透传 `activeWorkspaceId` 给沟通 API，路径读取与正式需求生成仍保持原 scope，不改变产物归属。
-  - ✅ **E-BRC3 已回流并通过总控复核**：新增确认写入 API 与 review-context API；正式需求写入 `business_requirements/*-确认需求-*.md/json`，沟通记录写入 `business_requirements/communications/*.json`；trace 记录澄清生成、假设 review、需求确认三类脱敏 metadata；前端新增“确认成正式需求”按钮并刷新既有版本列表。
-  - ✅ **总控收口 review 读取边界**：E 初版 `review-context` 允许传任意同 outputDir 下 jsonPath；已收紧为只接受 `business_requirements/*-确认需求-*.json`，拒绝普通分析框架 JSON 与 communications 记录，避免误读非确认需求结构。
-  - ✅ **X-BRC4 已完成总控全链验收**：确定性验收覆盖 daily / topic / recurring 三场景，确认业务需求沟通闭环已能从模糊诉求进入澄清清单、需求草案、正式业务需求、review context 与 trace metadata；业务需求沟通闭环可作为正式进入业务需求模块的前置阶段。
-  - ✅ **总控收口 assumed 状态归属**：`assumed` 问题此前不会成为事实、但也不会进入未确认问题清单；已纳入 `deferredQuestions/openQuestions`，避免后续报告审核丢失“按假设推进”的问题。
-  - ✅ **三场景口径**：日常走轻量快问快答，只澄清最容易跑偏的关键项；专题走项目制 brief，覆盖背景、目标、范围、交付物、owner、评审点；重复走模板化复用，识别历史需求差异并沉淀可复用参数/澄清项。
-  - ✅ **验证**：`node --experimental-strip-types --test server/src/business-requirement-communication.test.ts` 9/9 通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 Vite/ECharts chunk warning；数据探索隔离 grep 无输出；`docs/wiki.html` script parse 通过。
-  - 📌 **下一步**：BRC 本组专题完成。短期建议做一次人工浏览器 smoke：日常/专题/重复各走一条“输入诉求→澄清清单/草案→回答/跳过/采纳假设→确认成正式需求→版本列表可见→review-context 可取”；后续若要跨 workspace 查询沟通历史，再另开 DB 表卡。
-  - 📌 **红线**：沟通环节允许 LLM 读取用户诉求、已确认业务背景、指标口径说明、历史需求/报告摘要、已登记路径元信息；禁止 `draw_data` 原始行、数据探索字段值/样本/剖析结果、客户/订单/明细级数据进入 LLM；`clean_data` 首版只允许路径元信息/聚合说明且 UI 需知情提示。
-  - 📌 **残留**：未新增 DB、未扩双侧 `types.ts`；沟通历史跨 workspace 查询后续如需要再建表；浏览器点击级 smoke 未自动化。
-- 历史批次（2026-06-30 · tool-use 治理中枢专题，总控终审）：
-- 本批（2026-06-30 · tool-use 治理中枢专题，总控终审）：
-  - ✅ **X-TOOLUSE0 / D-TOOLUSE1 / E-TOOLUSE2 / V-TOOLUSE3 / E-TOOLUSE4 / E-TOOLUSE5 / X-TOOLUSE6 全部 done**：tool-use v1 可作为“治理中枢”归档；唯一注册源仍为 `server/tools/<id>/tool.json`，唯一执行网关仍为 `POST /api/extraction-tools/:id/run`。
-  - ✅ **Registry 收口**：当前 25 个工具、18 个 `analysis`、7 个 `ingestion`；18/18 analysis 均含 `python-analysis`；ingestion 工具不补 tags，避免误导 AI 暴露；所有工具经 registry 返回稳定 `tags/category/riskLevel`。总控补齐 3 个旧 ingestion 工具 `riskLevel` 元数据：`extract-sycm-member=L1`、`extract-xhs-insight=L1`、`phone-cleaner=L2`。
-  - ✅ **跨模块暴露策略收口**：`server/src/tool-policy.ts` 统一 server 侧 analysis 暴露口径；MCP tools/list 与 tools/call、command coerce、subagent server coerce 均复用或对齐 analysis-only 策略；前端 command/subagent/workflow 候选只展示 analysis；workflow 定义只保存 `toolId + params`。
-  - ✅ **运行台账与质量闭环收口**：继续复用 `trace_events` 作为过渡 Tool Run Ledger，记录成功、失败、validation failure、row guard failure 的脱敏 metadata；`GET /api/workspaces/:id/tool-runs` 支持 toolId/caller/source/status/limit 过滤；ToolUsePane 展示搜索、tags/category/risk 筛选、能力矩阵和运行台账；ToolLab 展示 cases 覆盖、L1+ 边界 case 提示、policy 缺失提示与最近 eval 状态。
-  - ✅ **验证**：tool-policy/command-tool-policy/tool-run-ledger 6/6；tool-evaluation-api/tool-evaluation-runner 16/16；row guard/metricSnapshots/MetricVerification 39/39；`npm run typecheck` 通过；`npm run build` 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 无匹配。
-  - 📌 **红线继续有效**：数据探索子树永不接 LLM/tool-use 自动调用；`ingestion` 永不进入 AI/MCP/subagent/command/workflow 自动候选；`analysis` 工具可处理已登记数据路径，但输出不得含原始行级明细；run ledger/trace/eval case 不保存文件正文、样本行、SQL 明细或 draw_data 原始内容。
-  - 📌 **残留 / 下一步**：失败 run 转 candidate case 首版仅明确安全路径（ledger metadata + artifact basename，经用户确认生成草稿），真正草稿生成确认流放入 X-TOOLUSE7 后续增强；独立 `tool_runs` 表、manifest v2 完整字段、标准输出契约、工具推荐器均留待 X-TOOLUSE7 解冻后再拆；浏览器点击级 smoke 未自动化，保留用户手动点检。
-- 历史批次（2026-06-29 · trace/业务环境/onto-knowhow 专题收口）：
-- 本批（2026-06-29 · trace 迭代专题，总控终审）：
-  - ✅ **X-TRACE8 全链验收通过**：trace 专题 `X-TRACE0 / V-TRACE1 / D-TRACE2 / V-TRACE3 / D-TRACE4 / V-TRACE5 / E-TRACE6 / V-TRACE7 / X-TRACE8` 全部 done。TracePane 已具备运行、失败、记忆注入、规则提炼、巡检建议、说明六分面；事件详情抽屉、failure 状态闭环、纯规则巡检建议已接入。
-  - ✅ **验证**：`node --experimental-strip-types --test server/src/trace-detail.test.ts server/src/trace-failure-state.test.ts server/src/trace-inspection.test.ts server/src/metric-injection-trace.test.ts` 30/30 通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 Echarts dynamic-import 与 chunk-size warning。
-  - ✅ **安全红线**：trace detail 经后端脱敏，inspection finding 只含聚合计数、target、errorType、status、omittedReason 等元数据；自动巡检零 LLM 调用，不读取 `draw_data` / `clean_data` 文件正文；failure 状态更新只写 `trace_failure_states` metadata，不删除 `trace_events`。
-  - 📌 **残留风险 / 下一波建议**：真实长周期 trace 数据量性能未压测；detail 脱敏覆盖率需随真实日志样本扩充；巡检阈值是否需要 workspace 级配置待观察。另 failure status 前端本地过滤超量不完整、巡检 API 失败保留旧列表，后续可小修。
-- 本批（2026-06-29 · 业务环境迭代专题，总控规划/派发）：
-  - ✅ **X-BC0 已完成拆卡**：围绕业务环境说明页列出的 4 个优化方向，拆为 `X-BC0`（契约/派发，done）→ `D-BC1`（元数据字段、冲突检测、CSV/JSON 导入导出、过期过滤）→ `E-BC2`（business_context 注入痕迹采集）→ `D-BC3`（BusinessContextPane 工作台 UI）→ `X-BC4`（全链验收）。
-  - ✅ **D-BC1 已回流并通过总控复核**：后端已接入 `source` / `owner` / `validFrom` / `validUntil`、旧库幂等迁移、create/update 校验、prompt 过期过滤、确定性冲突检测、CSV/JSON import preview/commit/export API、双侧类型/API client 与治理单测；导入导出 UI 未做，留给 `D-BC3`。
-  - ✅ **D-BC1 验证**：`XANTHIL_DATA_DIR=/tmp/pi-xanthil-bc1-review node --test server/src/business-context-governance.test.ts` 6/6，通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 `echarts` dynamic-import 与 chunk-size warning；数据探索隔离 grep 无输出。
-  - ✅ **E-BC2 已回流并通过总控复核**：已新增/接通 `business_context_injection_traces`，从 `MemoryInjectionSnapshot.sources(kind='businessContext')` 提取当前工作区启用/可见条目，记录 title/category/targetScope/targetKind/targetId/injected/tokenEstimate/omittedReason，并在日常 chat、workflow chat、multi-agent run 三处注入点接线；查询 API 为 `GET /api/workspaces/:id/business-contexts/traces`。
-  - ✅ **E-BC2 验证**：`XANTHIL_DATA_DIR=/tmp/pi-xanthil-ebc2-review node --experimental-strip-types --test server/src/metric-injection-trace.test.ts` 17/17，通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 `echarts` dynamic-import 与 chunk-size warning；数据探索隔离 grep 无输出。
-  - ✅ **D-BC3 已回流并通过总控静态复核**：`BusinessContextPane` 升级为管理、冲突治理、导入导出、使用痕迹、说明五视图；管理表单接入 `source/owner/validFrom/validUntil`；冲突页接 D-BC1 API；导入导出支持 CSV/JSON preview→commit 与 export；使用痕迹页接 E-BC2 trace 数据并提供空态/有数据态。另新增 `vizApi.listBusinessContextInjectionTraces` 与 `/api/workspaces/:id/business-context-injection-traces` 便于 viz 域前端消费。
-  - ✅ **D-BC3 验证**：`npm run typecheck` 通过；`npm run build` 通过，仅既有 `echarts` dynamic-import 与 chunk-size warning；数据探索隔离 grep 无输出；回归复跑 `XANTHIL_DATA_DIR=/tmp/pi-xanthil-dbc3-bc1-review node --test server/src/business-context-governance.test.ts` 6/6、`XANTHIL_DATA_DIR=/tmp/pi-xanthil-dbc3-ebc2-review node --experimental-strip-types --test server/src/metric-injection-trace.test.ts` 17/17。
-  - ✅ **X-BC4 已完成总控收口**：专题状态为 `X-BC0 / D-BC1 / E-BC2 / D-BC3 / X-BC4` 全部 done；静态门禁、治理/痕迹回归、数据探索红线与 wiki/notes 收口已完成。浏览器 smoke 原计划覆盖新增 source/owner/validUntil、过期过滤、冲突治理、导入 preview/commit/export 与使用痕迹；按用户指示跳过，由用户后续自行点检。
-  - ✅ **X-BC4 验证**：`XANTHIL_DATA_DIR=/tmp/pi-xanthil-xbc4-bc1 node --test server/src/business-context-governance.test.ts` 6/6，通过；`XANTHIL_DATA_DIR=/tmp/pi-xanthil-xbc4-ebc2 node --experimental-strip-types --test server/src/metric-injection-trace.test.ts` 17/17，通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 `echarts` dynamic-import 与 chunk-size warning；数据探索隔离 grep 无输出。
-  - 📌 **总控口径**：业务环境会进入 LLM prompt，只能保存可共享业务背景；禁止 draw_data 原始行、个人敏感信息、订单样本、客户明细或未脱敏日志。冲突检测、导入校验、痕迹采集全部确定性，不新增 LLM 调用。
-  - 📌 **残留风险 / 下一波建议**：浏览器点击级验收由用户手动执行；trace 查询存在 `business-contexts/traces` 与 `business-context-injection-traces` 两个入口，功能不阻断，后续可收敛到 canonical 路径。下一波增强维持三项：Markdown 导入、冲突处理 workflow、基于使用痕迹/反馈/老化信号的评分降权。
-- 本批（2026-06-29 · onto-knowhow 迭代专题，总控终审）：
-  - ✅ **X-OKH8 全链验收通过**：新增 `server/src/okh-full-acceptance.test.ts`，一条确定性验收覆盖 6 个用户场景：空工作区启用 member 模板、同名指标冲突检测、缺失标准文件体检、metric injection trace 记录、CSV preview/commit/export、metric ↔ ontology object 关联与反查。
-  - ✅ **专题状态**：X-OKH0 / D-OKH1 / D-OKH2 / E-OKH3 / D-OKH4 / V-OKH5 / D-OKH6 / V-OKH7 / X-OKH8 全部 done；`docs/wiki.html` OKH 专题已收口。
-  - ✅ **长期口径**：OKH API 只处理指标口径、标准文件元数据、启用关系、痕迹和 ontology 关联；标准文件体检只做 `stat/access` 与路径元数据判断，不读取正文、不走 LLM；本体联动首版全部人工选择，不做自动抽取/自动匹配。
-  - ✅ **验证**：OKH 相关测试串行 20/20（OKH8 1、import/export 4、ontology link 4、metric injection trace 11）、`npm run typecheck`、`npm run build` 通过；数据探索隔离 grep 无匹配。build 仅既有 `echarts` dynamic-import 与 chunk-size warning。
-  - ⚠️ **残留风险**：真实浏览器点击级验收未自动化；真实 LLM 日常对话触发痕迹未实跑，当前用 deterministic `recordMetricInjectionTraces` 覆盖存储与查询闭环。下一波建议优先补 Playwright 冒烟与真实对话 smoke，再考虑用户自定义模板、冲突处理工作流、Excel/Markdown 导入。
-- 历史批次（2026-06-27 · 监测目标测算专题，总控规划/派发）：
-- 本批（2026-06-27 · 监测目标测算专题，总控规划/派发）：
-  - ✅ **X-MONITOR-TARGET0 总控契约完成**：双侧 `types.ts` 镜像新增 `TargetScenarioKind`/`TargetMetricKind`/`TargetCase`/`TargetPlanStatus` + `TargetAssumptions`/`TargetCalculationInput`/`TargetCaseResult`/`TargetBreakdownItem`/`TargetCalculationResult`/`TargetPlan`。详见 §十三。
-  - ✅ **E-MONITOR-TARGET1 终审通过（含总控两处收口）**：`web/src/lib/monitor-target-calculator.ts:calculateTarget()` 纯函数 + 9 个 node:test 用例。总控收口：① 改从 `@/types` import X 契约类型，避免 calculator 本地重声明；② `upliftFactor` 接入 GMV/订单链路并补回归测试。因工作树已提前接入 `health_target` 但缺组件，总控补 `HealthTargetPane.tsx` 最小编译占位（仅为恢复门禁，不代表 F 卡完成）。
-  - ✅ **F-MONITOR-TARGET2 终审通过（含总控一处收口）**：`HealthTargetPane` 完整页面落地，接 `calculateTarget()`，含场景/指标选择、11 个参数输入、三情景结果卡、周期拆解表、禁用保存按钮；接缝 `health_target` 已挂入监测二级 tab。总控收口：默认 `upliftFactor` 从 0.1 改为 1，避免基准 GMV 被默认压成 10%。
-  - ✅ **D-MONITOR-TARGET3 终审通过（含总控两处收口）**：新增 `target_plans` 表与 create/list/get/adopt CRUD，新增 4 个 target-plans API 与 web client。总控收口：① adopt 写入 `clean_data/monitor/` 的目标数据集由 JSON 改为 CSV（`period/case/scenarioKind/metric/targetValue/value/planId/planName`），确保进入现有 `/api/bi/aggregations` 与观星台数据读取链路；② 已有 `role="goal"` 绑定时后端返回 409，必须显式传 `replaceExisting: true` 才替换，避免静默覆盖。
-  - ✅ **F-MONITOR-TARGET4 终审通过（含总控一处收口）**：`HealthTargetPane` 保存接 `createTargetPlan` + `adoptTargetPlan`，成功后绿色状态条 + 跳观星台；`HealthDashboardPane` 拉取 adopted target plan 并显示目标绑定状态/目标测算快捷入口；`HealthTabs` 透传 `setActiveSubTab`。总控收口：补齐 D 卡 `replaceExisting` 契约，已有 goal 时首次 adopt 409 后显示替换确认条，确认后用同一 draft plan 传 `{ replaceExisting: true }`，避免重复创建与静默覆盖。
-  - ✅ **QA-MONITOR-TARGET5 总控全链验收通过**：临时服务 HTTP smoke 覆盖 create/adopt target plan、goal CSV 进入 `/api/bi/aggregations`、409 + `replaceExisting:true` 替换策略、monitor config 单 goal、最小 metric system 运行观星台产出 `R-GAP-TARGET` finding（`gmv_actual 落后目标 30.0%`）、无目标工作区旧流程为空列表不回归。公式侧复跑 9/9。
-  - ✅ **wiki 新增 6 张任务卡并推进全专题 done**：`X-MONITOR-TARGET0`（契约/红线，done）→ `E-MONITOR-TARGET1`（确定性测算纯函数，done）→ `F-MONITOR-TARGET2`（HealthTargetPane + 二级 tab，done）→ `D-MONITOR-TARGET3`（目标计划 API + adopt 写入 monitor goal，done）→ `F-MONITOR-TARGET4`（保存后跳转观星台/目标状态，done）→ `QA-MONITOR-TARGET5`（全链验收，done）。
-  - ✅ **总控口径**：目标测算定位为“监测前生成/推演/拆解目标”，不是观星台差距发现；首版确定性测算，零 LLM，零 raw row；用户确认后写入 `clean_data/monitor/` 作为 `goal` 数据集，复用现有 `R-GAP-TARGET` actual vs target 监测。
-  - 📌 **派发顺序**：先 X 契约；E 纯函数与 F 页面可并行；D 持久化/绑定接公式稳定后做；最后 F 联动与 QA 终审。
-- 本批（2026-06-27 · Harness 自进化 + 产品 Agent 自进化专题，总控自做 + 多卡终审）：
-  - ✅ **X-HARNESS0（总控自做·契约+回滚预研）**：双侧 `types.ts` 加 EFC 度量（`FeedbackEvent`/`EFC_KAPPA`/`TaskDemand`/`EfcScore`）+ AHE 契约（`HarnessComponent`/`ChangeOutcome`/`ChangeManifest`/`EditVerdict`/`HarnessVariant`/`ScopedRevision`）；`cache.ts` 加 C_raw 只读 getter（`RawComputeUsage`+`getRawComputeForSession/Run`，纯读既有 token 统计、toolCalls 由 E 回填）；§九 记录 + 回滚底座审定（typed scoped revision）。
-  - ✅ **E-EFC1 终审通过（含总控收口契约漂移）**：EFC scorer + 6 runner 接入 + 6 Pane 加 EFC/η 列。终审发现 E 本地重声明 `EfcScore`/`EFC_KAPPA` 绕过 X-HARNESS0 单一真源 → **总控收口 9 文件**：`efc-scoring` import 契约 `EFC_KAPPA`、本地超集改 `EfcScoreDetail extends EfcScore`；6 runner rename；web `EfcScoreView extends` 契约。收口后 EFC 2/2 + runner 45/45 复跑绿。
-  - ✅ **E-AHE1 终审通过（含全局表裁决 + tool lab 补齐）**：`ahe-attribute` 对照器（fix/reg 精确召回 + seesaw 无回归门 + 冲突 fork variant，quality 用 EFC `normalized`）+ 3 表（`change_manifests`/`harness_edits`/`harness_variants`）+ 6 harness 路由 + `AheManifestPanel`。**裁决**：E 把三表设计成「全局」（无 `workspace_id`）偏离 §九 原审定 per-workspace → **追认**（harness=项目级资产更正确、天然规避 §二·五 脆弱性），§九 订正。补 tool lab 接入（5/6→**6/6**）。
-  - ✅ **X-EVOLVE0（总控自做·契约）**：双侧 `types.ts` 加 `AgentTrajectory`/`AgentTrajectoryStep`/`AgentTrajectoryModule` + `EvalRecord`/`EvalAnnotationStatus`（脱敏轨迹→eval 沉淀，`sourceFindingId` 复用 `HealthFinding.id`）；bounded-change **复用 AHE `ChangeManifest` 不新造**；§十 记录 + 审定（EVOLVE 轨迹/eval 应 per-workspace，区别于 §九 harness 全局表）。
-  - ✅ **E-SKILLOPT1 终审通过**：skill 受控回写器（slow-update 守门 + 严格接受门「平手也拒」+ rejected buffer + Creator/Evaluator 沙箱）+ `skill_rejected_edits` 表（per-workspace）+ 6 路由。**契约卫生达标**（`SkillRewrite*` 为 api/engine E 域内部类型、不污染 `@/types`，E-EFC1 教训已吸取）。新测 20/20。点名 4 设计边界（防作弊行为级非硬隔离 / 未复用 subagent-core / `resolveSkillScore` efc 分支 no-op stub / accept 不服务端复检严格门），均非阻塞。
-  - ✅ **E-EVOLVE1 终审通过（含总控红线脱敏硬化）**：`evolve-engine.ts`（finding→脱敏 trajectory→candidate EvalRecord→AHE ChangeManifest package）+ `agent_trajectories`/`eval_records` 两表（**per-workspace + 硬 FK + ON DELETE CASCADE**，source_finding_id UNIQUE 去重；优于 §九 harness 全局表）+ EVOLVE 路由（monitor run 后 recurring/worsening 自动沉淀 / flow·AnaX 失败存脱敏轨迹）。契约全 import 无重声明、ChangeManifest 复用、human gate 硬编码 `outcome:"defer"`。**总控收口红线**：E 原 `redactSensitive` 精确键匹配漏复合键（`sampleRows`/`rawValue`/`topRecords`）+ `010_raw` 裸路径 → 改大小写不敏感**子串匹配** + regex 加 `\d{3}_raw`，补复合键测试。复跑 evolve+monitor+ahe **22/22**、typecheck/build 绿。
-  - ✅ **D-EVOLVE2 终审通过（含总控两处红线收口）·EVOLVE 链闭环**：3 入口（`HealthReportPane`/`ReportReviewPane`/`GoldenStrategyPane`）加「提为 eval 候选」按钮 + `engineApi.createEvalRecord`（跨域调 E 端点 HTTP）。**收口 2 处红线**：① **D 偏离自卡脱敏 spec**——`HealthReportPane` output 含 `evidence: finding.evidence` 原值（卡只允许 kind/severity/comparisons/suggestion）→ 去原值改发衍生字段；② **服务端 ingress 不脱敏**——`POST /evolve/eval-records` 的 `parseAgentTrajectory` 只校验形状、手动路径绕过 `sanitizeTrajectoryText` → 入站 input/output 一律再脱敏（抓 draw_data/`0NN_raw` + 2400 截断），不信任客户端、与自动路径同口径。验证 evolve 7/7、typecheck/build 绿、数据探索隔离 grep 净。
-  - ✅ **解冻链推进**：X-EVOLVE0/E-SKILLOPT1（前置满足）→ E-EVOLVE1/D-EVOLVE2 解冻并**全部 done**。**产品 Agent 自进化 EVOLVE 链全闭环**（X-EVOLVE0 契约 → E-EVOLVE1 引擎沉淀 ↔ D-EVOLVE2 注释入口；D 标注→eval 候选→E 持久化/AHE bounded change·human gate）。AgingBench(P1)/HarnessAudit(P2) 维持冻结。
-  - ✅ **wiki 7 卡转 done**：X-HARNESS0 / E-EFC1 / E-AHE1 / X-EVOLVE0 / E-SKILLOPT1 / E-EVOLVE1 / D-EVOLVE2。
-  - ✅ **剩余冻结卡全解冻（用户授意·暂不开发）**：AgingBench P1（X-AGING0/E-AGING1/D-AGING2）+ HarnessAudit P2（X-AUDIT0/E-AUDIT1）去【冻结】标记、状态保持 `todo`，待排期捞出。**wiki 已无任何冻结卡**。卡面留语境提示：AGING 前置=X-AGING0 契约先行；AUDIT 原冻结理由=「待多 agent 协作规模上来」（非技术前置，捞出前先评估价值）。注：line 560/714 两处分组 `//` 注释含历史「冻结」语境，已 stale 但属注释非卡状态，未动。
-  - ✅ **fast-follow backlog 开卡**（§十一 零残留）：`docs/backlog/SkillOpt-fast-follow-防作弊硬隔离与EFC接入.md`（#1 防作弊硬隔离=接 pi-sandbox/真实 access log；#2 EFC 真接 `resolveSkillScore`）+ README 登记。捞出建议先 EFC（小独立）后硬隔离（随「安全红线·统一单点守卫」立项）。
-  - ✅ **AgingBench 全链 + 去重 + 测试隔离**（§十一）：X-AGING0 契约 → E-AGING1（Dream Worker 巡检，含脱敏直读裁决）→ D-AGING2（memory 老化信号 GET，红线净）→ **X-AGING-DEDUP**（总控抽 `memory-aging-core.ts` 共享核消两套重复算法）→ §二·五 测试隔离收口（3 memory test 文件设临时 XANTHIL_DATA_DIR）。
-  - ✅ **HarnessAudit**（§十二）：X-AUDIT0 契约（Π/Φ/Σ + 四类违规 V-OT/OR/IC/ID + SAR + YAML 策略规约 schema）→ E-AUDIT1（`harness-audit.ts` 确定性 checker + SAR 报表 + multi-agent auditLogPath opt-in + px-hook-runner PX_TRAJECTORY_LOG）。终审守住 px-hook-runner 门控 return 完整（opt-in best-effort，无 execSync/self-HTTP/越权门控）。
-  - ✅ **技能工程子波（3 卡终审通过）**：**E-SKILLINJECT1**（运行时瘦-context 动态注入：`skill-retrieval` 选授权集子集 + utility/diversity，**显式 skillPaths:[] 守卫——只选已授权子集绝不自主引入**，四模块红线完整）+ **E-SUBSKILL1**（`skill-distillation` additive 加 `distillSubSkillsFromTraces` 2-5 切片，无重叠）+ **D-SAFEDISTILL1**（红线·`safe-distiller.ts`：`assertSafeInput` 递归守门 + SQL skeleton 字面量全剥 + topology 元数据零 payload + report 仅路径名；`skill_proposals` per-workspace；RulesPane「💡提案」人审）。**flag**：① D-SAFEDISTILL1 approve 用 self-HTTP（`await fetch` async 非 execSync，避开 V-OBS 死锁；user-triggered；smell 待改 E 经 GET 消费）② `skill_proposals` 无 CASCADE（归档政策下无碍）。
-  - 📌 **Harness 全专题完成**：五篇论文（EFC/AHE/产品自进化/AgingBench/HarnessAudit）+ 技能工程子波 全部 done；wiki 已无冻结/待派 harness 卡。
-  - ✅ **验证**：每卡 server+web `typecheck`/`build` 绿；EFC 2/2、6 runner 45/45、AHE 2/2、SkillOpt 新 20/20；红线 grep（draw_data/data-exploration 隔离）全净；双侧 types 镜像对齐、无本地重声明（E-EFC1 收口后）。
-  - 待用户提交：`server/src/{types,cache,efc-scoring(.test),ahe-attribute(.test),evolve-engine(.test),skill-rewrite-gate(.test),skill-rejected-buffer,skill-sandbox(.test)}`、6 `*-evaluation-runner`、`db/engine`、`skill-curator`、`routes/engine`、`web/src/{types,lib/api/engine,lib/efc,components/{6×LabPane,AheManifestPanel,SkillManagementPane,HealthReportPane,ReportReviewPane,GoldenStrategyPane}}`、`docs/{notes-infra §九/§十,wiki(7 卡 done+4 卡解冻),backlog 2 文件}`（+ E 自维护 `notes-engine`）。
-- 历史批次（2026-06-27 · subagents 体系 readme，总控自做）：
-  - ✅ **subagents 说明 readme**：梳理 subagents 全貌（三种委派形态/模板/黑板/回流/Save as Skill/自愈/运行看板/红线/存储表/入口）成产品内 readme，挂为「控制·subagents 管理」第三个**内层 tab「说明」**，与运行看板/模板管理并列。
-  - **改动（3 文件，全 additive、未碰接缝骨架）**：🆕 `web/src/docs/subagents-readme.md`（正文 9 节）、🆕 `web/src/components/SubAgentsReadmePane.tsx`（仿 `AggregateReadmePane` 范式）、`SubAgentManagementPane.tsx`（`view` 加 `readme` 态 + 内层 tab 按钮 + 内容区分支 + badge 文案）。未改 constants/types/App/api——内层 tab 非新 subtab，零接缝改动。
-  - ✅ **验证**：web `typecheck` 绿、`build` 绿。
-  - 📌 小注：`SubAgentManagementPane.tsx` 渲染在 DataTabs（D 域分发），本次由总控加内层 readme tab（文档+内层 tab 微调，低风险，非接缝骨架）。
-- 历史批次（2026-06-27 · subagents 管理进阶 4 卡终审，E 代笔回流）：
-  - ✅ **进阶 A·复合单元（Planner→Coder→Reviewer）**：`index.ts:runCompositeSubAgentUnit` 串行编排，每角色起独立 `SubAgentTask`（复用 `runDelegatedSubAgent`），`taskDigest`(summary+report+error) 串接上下文；Reviewer 输出 `REVIEW_DECISION: pass/revise`，`reviewerPassed` 判定，耗尽 `maxReviewRounds`(1–5，默认2) 转 `waiting_for_help`。builtin 模板 `COMPOSITE_SUBAGENT_TEMPLATES`(subagent-core.ts) `dataScope` 全锁 clean_data、persona 强制禁输出明细，`source:"builtin"`，`resolveSubAgentTemplate` 先查 builtin。契约 `CompositeSubAgentRun` 双侧 types + `composite_subagent_runs` 表(db/shared)。端点 `POST /sessions/:id/delegate-composite`·`GET /composite-subagent-runs`。
-  - ✅ **进阶 B·共享黑板（parent_session 作用域）**：`subagent_blackboard_entries` 表 + `SubAgentBlackboardEntry/Kind` 双侧 types(`scope` 编译期锁 `parent_session`)。写入走 `validateBlackboardContent` 启发式护栏(长度4000/表格行>8/JSON 数组/rows·records 键/`row N:` 模式 → 400)，符合"只存聚合口径/衍生结论、禁原始明细"行为级红线。`subAgentSystemPromptWithBlackboard` 把黑板注入**所有** runDelegatedSubAgent/resume 的 systemPrompt(限 12 条 + "禁扩写明细"声明)。端点 `GET/POST /sessions/:id/subagent-blackboard`。
-  - ✅ **进阶 C·Save as Skill（不绕人审门）**：`POST /subagent-tasks/:id/save-skill` 仅 `status==="success"` 可保存，复用 `distillSkillCandidate()`(engine.ts)，产物硬编码 `status:"candidate"/source:"distilled"`，active distilled 需 `confirmed=true`(:1850) → **不自动 active**。transcript = brief + clean_data 路径名 + summary + report 摘录(`latestTaskReportText` 经 basename+resolve+startsWith 路径守卫，report 是绿衍生物)。**按用户裁决：先只固化 Skill、不自动生成 ExtractionTool**(避免工具目录写入+安全审计扩大)。前端按钮提示"去实验场 Skill Registry 评测后再采纳"。
-  - ✅ **看板·方案 C·节点级落库**：`flow_node_runs` 表(无硬 FK，JOIN flows 取 workspace/name) + `FlowNodeRun` 双侧 types。`multi-agent-runner` 加 **optional `nodeRunWriter`** DI hook(start→INSERT running / finish→UPDATE 终态 success·failed·blocked·aborted)，**纯观测不改执行路径**；`routes/engine.ts handleExecuteMultiAgent` 接线 `startFlowNodeRun/finishFlowNodeRun`。`GET /api/workflow-agents` 返回加 `nodeRuns`，`SubAgentBoard` 下钻 node 粒度(老历史 `nodeRuns ?? []` 向后兼容)。
-  - ✅ **验证**：server+web `typecheck` 绿、`build` 绿(仅既有 chunk 警告)、数据探索 LLM 隔离 grep 空、新链路未引用 draw_data。双侧 types.ts 字面对齐、无本地重声明；三新表无硬 FK 不撞他域。
-  - 📌 **范围外顺手改（已追认）**：`skills.ts` 移除 `~/.agents/skills` 扫描(全局+项目两处)——防 arkcli connect 装的外部 skill 混入 pi 选择器，与 Save as Skill 走 `.pi/skills` 自洽，合理收口。
-  - ⚠️ **记一笔（非阻断，3 项）**：① `composite_subagent_runs` 表无 `workspace_id` 列但 Row 接口/parse 读 `r.workspace_id`(恒 undefined)、create 也不存 → composite run 无法按 workspace 过滤，后续补列或删字段；② 三新表无硬 FK、`deleteWorkspace` 未纳入(已登记进 §二·五 清单，按现政策归档替代物理删除，无待办)；③ 黑板护栏为 best-effort 启发式可绕过，靠 prompt 约束兜底(同既有行为级红线姿态)。
-  - 待用户提交：本批改 `db/shared.ts`·`index.ts`·`multi-agent-runner.ts`·`routes/engine.ts`·`skills.ts`·`subagent-core.ts`·双侧 `types.ts`·`DelegateSubAgentCard.tsx`·`SubAgentBoard.tsx`·`lib/api/engine.ts`(+ E 自维护 `notes-engine.md`)。
-- 历史批次（2026-06-26 · 记忆 v2.0 缺口1/3/4 收尾 UI+闭环）：
-  - ✅ **缺口1·chat dataPaths boost（X，总控自做 index.ts）**：chat 注入点(`index.ts` handleSend)原 query-only，本批补 `dataPaths` boost 与 flow 侧一致。把 `forkBranch`/`pathScopeSessionId` 提前到 `buildMemoryInjectionSnapshot` 前计算（供记忆注入 + 下方输出路径作用域**单源共用**，删原 5011-5012 重复），构造带 `dataPaths` 的 `chatRetrievalCtx`（`listWorkspacePaths(ws,"clean_data",pathScopeSessionId)` 的 file 项 path），`buildMemoryInjectionSnapshot` 与 `withRulesPrompt` 两处 ctx 同步带 dataPaths。守 `RetrievalContext` 既定语义（dataPaths→`boostTags` 仅加权、`deriveTags` 不硬过滤、untagged 不清空）；fork 作用域回退父任务与输出路径同源；缓存稳定前缀不回退（仅影响检索打分）。
-  - ✅ **缺口3·维护 UI / 缺口4·升级 Skill UI（D）**：两张面板接线卡（RulesPane「立即维护」+ dryRun 预览 / 「从记忆升级 Skill」+ dryRun 列簇），已审核通过转 done。
-  - ✅ **缺口4·评测闭环（E，回流终审通过·一次过）**：仅改 `SkillLabPane.tsx`（E slot）——「Registry 候选」勾选区(`listSkillRegistry candidate`)→载入为 eval variant(`registry_<id>`)→baseline vs candidate 对照→评测后「采纳(PATCH status=active,confirmed=true)/弃用(DELETE=archive，保留 SKILL.md)」决策区(pairwise+Δ+activation)。复用既有 `api/engine.ts` 三方法（本会话无改动）+ 后端 10 条 skill-registry 路由，**零接缝零新后端**；三道人工在环不自动启用；红线净。**注：此即开场标记的 `SkillLabPane.tsx +175` 改动，归属已坐实。**
-  - ✅ **验证**：`npm run typecheck` 绿；`npm run build` 绿；全量记忆测试 **83/83**。
-  - 📌 **记忆 v2.0 缺口1/3/4 全部完成**；缺口2（向量层）按既定暂缓。
-- 历史批次（2026-06-26 · 零幻觉·数据可信地基 v2.3 终审归档）：
-  - ✅ **产品边界声明**：本系统验证 LLM 输出是否忠实于已登记数据、来源与计算结果；不保证原始数据、业务口径或因果解释天然正确，重要结论仍需人工复核。
-  - ✅ **四模块红线矩阵**：监测/日常/专题 web_search 硬禁；重复仅 workflow.allowWeb=true 显式授权放行。主对话/专题/flow chat 默认 `skillPaths=[]` 禁自主 skill；显式白名单仍可审计。collect 是独立联网窗口，不混入四模块口径。
-  - ✅ **证据与核验闭环**：EvidenceLevel/MetricSourceRef/renderSourceLabel + fabricated/label_mismatch + causal layering + coverage check + C-mini + reconciliation 已完成并经 X-ZH9 终审。
-  - ✅ **验证**：关键回归 110/110；`npm run typecheck`；`npm run build`；数据探索 LLM 隔离 grep 全绿。
-  - ⚠️ **边界外风险**：GIGO（源数据/ETL 错）、选择性叙事、实质因果谬误、common-mode failure（两条路径共享同一错误逻辑）仍需人工审查或外部真源。
-- 历史批次（2026-06-25 · 数字锁产出侧校验）：
-  - ✅ **X-MLOCK0 契约 + 校验核心**：双侧 `types.ts` 新增 `MetricVerification` / `MetricVerificationHit`；新增 `server/src/metric-verification.ts:verifyMetricUsage()` 纯函数，支持千分位、小数、`万`/`亿`、百分比归一；容差常量 `ε_ok=0.5%`、`ε_suspect=20%`；`matched/suspect/unreferenced` 明细 + `verdict` 聚合。新增 `metric-verification.test.ts` 覆盖 matched/suspect/unreferenced/万亿/百分比/verdict。
-  - ✅ **X-MLOCK1 tool-use 链路接入 + ChatPane 告警**：新增 `server/src/metric-verification-events.ts` 从 `tool_result` / `turn_end.toolResults` / MCP 文本块中 best-effort 提取本轮 `MetricSnapshot[]`，在 `handleSend`(`index.ts`) 与 `handleSendFlow`(`routes/engine.ts`) 的 assistant `message_end` 后跑 `verifyMetricUsage()`；仅 `verdict="mismatch"` 时追加 `{type:"metric_verification"}` content block。前端 `ContentBlock` 增加该 block，`MessageRow` 默认可见地渲染琥珀色告警条（列 suspect 的 name/expected/foundInText）。无 snapshot 或正常引用零变化；不自动重试、不阻断、不改写。
-  - ✅ **验证**：`node --experimental-strip-types --test server/src/metric-verification.test.ts server/src/metric-verification-events.test.ts` 8/8 通过；`npm run typecheck` 绿；`npm run build` 绿（仅既有 Vite chunk/dynamic import 警告）；红线 grep 无 `draw_data` / `dataset.rows` / raw path / 文件读取命中。未跑真实 LLM tool-use 端到端（需可用 analysis 工具 + 模型实跑环境）。
-- 仍待提交的既有批次（本批未处理）：
-  - **全局池池化扩展（2026-06-23）**：prompts + 知识库从「工作区独占」升级「全局池 + 按工作区启用」，X-POOL0/D-POOL1/X-POOL2 已 done，门禁记录为全绿，待用户提交。关键踩坑：依赖新列的 `CREATE INDEX` 必须在 idempotent `ALTER` 之后，schema 终审需旧库 boot 实测。
-  - **知识库新模块**：`knowledge-injection/retrieval(.ts/.test)`、`system-prompts(.ts/.test)`、前端 `KnowledgeBasePane`/`KnowledgeBaseReadmePane`/`MemoryReadmePane` 已存在；wiki 标 done，但总控尚未逐卡运行时实跑终审。
-  - 汇报可视化 / prompts 管理 / 规则记忆重构 / 知识库等跨批改动仍处于工作区未提交状态，本批未清理、不回滚。
+- 最近更新：2026-07-01 · infra 总控 session 收尾。
+- 进度：
+  - 当前仓库门禁通过：`npm run typecheck` 通过，`npm run build` 通过；build 仅保留既有 Vite/ECharts dynamic import 与 chunk-size warning。
+  - 本次收尾未改业务代码；仅按 SOP 收敛 infra notes 的当前状态，避免 `§0` 继续堆叠历史批次。历史决策仍保留在下方正文专题章节。
+  - 已完成专题的当前可靠锚点：tool-use 治理中枢 v1、业务需求沟通闭环、业务需求双子 tab 与确认需求贯通链路均已终审；接缝层骨架继续冻结，新增能力仍落各域 slot。
+  - 数据安全红线继续有效：`draw_data` 原始行与 `data_exploration` 字段值/样本/剖析结果不得进入 LLM；`clean_data` 只按受控说明/元信息路径进入允许链路。
 - 下一步：
-  - **监测·目标测算专题全链完成**：当前无代码阻塞。可选后续为浏览器点击级 Playwright 点检，以及用真实业务 metric system/actual 数据跑一次人工验收；工程闭环已通过 HTTP/API smoke 与门禁。
-  - **Harness 全专题已完成**（五论文 + 技能工程子波，wiki 无冻结/待派 harness 卡）；后续皆可选增强，非阻塞按需排期：
-    - **D-SAFEDISTILL1 self-HTTP 清理**（flag）：approve 现 `await fetch` 自调 E skill-registry 端点（async 安全、非 V-OBS 死锁，但 smell）；更净=E 经 GET 消费 approved 提案 + 自写 registry，消自调。
-    - EVOLVE：eval 候选→AHE attribute 实跑、注释→confirmed 复核 UI、bounded change 应用（守 human gate）。
-    - 技能工程：动态注入/子技能蒸馏的真实 pi/browser smoke（当前仅 deterministic runner 测试覆盖）。
-    - HarnessAudit/AgingBench 均 P1/P2，实跑验证按规模/需要再排。
-  - **SkillOpt fast-follow 可随时捞**：`docs/backlog/SkillOpt-fast-follow-*` 的 #2 EFC 真接入（小、独立、软依赖 E-EFC1 已满足）可优先；#1 防作弊硬隔离待「安全红线·统一单点守卫」立项一起做。
-  - **command 场景调用框收口**（工作树未提交，§六-外的在飞批）：`command-expand`/`routes/engine.ts`/双侧 `types.ts`(toolIds/toolParamMap)/`CommandManagementPane`/`ChatPane`/`ManualAnalysisToolCard`。backlog 标已落地，但需总控核 §0 未记的这批：跑 command 单测 + typecheck/build，并核 `ChatPane`/`ManualAnalysisToolCard` 仍走 `@工具`/`/api/extraction-tools/:id/run` 的 `source=ai` 闸门、不绕 clean_data 红线。
-  - 优先做 **数字锁真实 tool-use smoke**：准备一个 `analysis` 工具返回 `metricSnapshots`，让模型故意把注入值改写，确认 `ChatPane` 出现“模型引用数值与代码计算值不符”；再跑正常引用确认无告警。也要覆盖 `send_flow` 的 flow chat 消费侧是否能看到同一 block。
-  - 继续补 **知识库新模块运行时终审**：API/DB/前端逐卡实跑，尤其全局/专属 scope、enablement、检索注入、系统 prompt 聚合与旧库迁移。
-  - LLM 管理补测：`llm-config.ts` 三处脱敏链路逐行终审 + node:test 覆盖 key 保留/OAuth 不写 key/settings 局部写。
-- 阻塞：无代码阻塞；真实数字锁 smoke 依赖本机可用模型与 analysis 工具运行环境。
-- 开放问题（待总控/后续拍板）：
-  - `metric_verification` block 当前随消息 content 持久化；是否需要后续在 DB/trace 中单独索引为可筛选的质量信号，待 X 后续拍板。
-  - 数字锁目前只对 tool-use 链路自由文本做 best-effort 告警；是否要做自动纠偏/重试，需要结合预算上限与误报风险另行设计。
-  - 工作区大量跨批次 untracked/modified 累积未提交；§0 与历史里程碑的对齐依赖 `Orchestration §八`。
+  - 优先补浏览器点击级 smoke：业务需求日常 / 专题 / 重复三入口各跑一条“需求沟通 → 确认正式需求 → 基于确认需求生成分析框架 → 查看版本 / review context”链路。
+  - 继续做知识库新模块运行时终审：全局 / 专属 scope、enablement、检索注入、system prompt 聚合与旧库迁移需要逐卡实跑。
+  - command 场景调用框仍需总控复核：跑 command 相关单测、typecheck/build，并确认 `ChatPane` / `ManualAnalysisToolCard` 仍只经 `@工具` 与 `/api/extraction-tools/:id/run` 的 `source=ai` 闸门。
+  - 数字锁真实 tool-use smoke 待补：用 analysis 工具返回 `metricSnapshots`，验证模型改写数值时 `metric_verification` block 可见，正常引用时无告警；同时覆盖 flow chat。
+  - LLM 管理补测：逐行复核 `llm-config.ts` 脱敏链路，并补 key 保留、OAuth 不写 key、settings 局部写的 node:test。
+- 阻塞：
+  - 无代码阻塞。真实数字锁 smoke 依赖本机可用模型与 analysis 工具运行环境。
+- 开放问题（待总控 / 后续拍板）：
+  - `metric_verification` block 当前随消息 content 持久化；是否需要在 DB / trace 中单独索引为可筛选质量信号。
+  - 数字锁是否从 best-effort 告警升级为自动纠偏 / 重试，需要结合预算上限与误报风险另行设计。
+  - 工作区跨批次改动是否按专题分批提交，仍由用户手动决定；本 SOP 不做 git 操作。
 
 ---
 

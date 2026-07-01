@@ -1,5 +1,6 @@
 import { HeartPulse } from "lucide-react";
 import { Placeholder } from "@/components/Placeholder";
+import { HealthOverviewPane } from "@/components/HealthOverviewPane";
 import { HealthDataPane } from "@/components/HealthDataPane";
 import { HealthTargetPane } from "@/components/HealthTargetPane";
 import { HealthDashboardPane } from "@/components/HealthDashboardPane";
@@ -12,6 +13,8 @@ export function HealthTabs({ ctx }: { ctx: TabContext }) {
   const ws = ctx.activeWorkspaceId;
 
   switch (ctx.activeSubTab) {
+    case "health_overview":
+      return <HealthOverviewPane workspaceId={ws} setActiveSubTab={ctx.setActiveSubTab} />;
     case "health_data":
       return <HealthDataPane workspaceId={ws} />;
     case "health_target":

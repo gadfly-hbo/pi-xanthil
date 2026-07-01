@@ -1,7 +1,9 @@
 import { useEffect, useMemo, useState } from "react";
 import { dataApi } from "@/lib/api/data";
-import { vizApi } from "@/lib/api/viz";
+import { vizApi, type MonitorWatchlist } from "@/lib/api/viz";
 import { api } from "@/lib/api";
+import { getHealthSelectedWatchlistId, setHealthSelectedWatchlistId } from "@/lib/health-ui-state";
+import { MonitorWatchlistSelector } from "@/components/monitor/MonitorWatchlistSelector";
 import type {
   BiAggregationDataset,
   SqlConnection,
@@ -28,6 +30,8 @@ const ROLES: { value: MonitorSourceRole; label: string; color: string }[] = [
   { value: "competitor", label: "竞品数据", color: "bg-rose-100 text-rose-800 border-rose-300 dark:bg-rose-900/40 dark:text-rose-200 dark:border-rose-700" },
 ];
 
+const ROLE_ORDER: Array<MonitorSourceRole | "unbound"> = ["source", "goal", "industry", "competitor", "unbound"];
+
 function fmtTime(ts?: number): string {
   if (!ts) return "—";
   const d = new Date(ts);
@@ -41,6 +45,8 @@ const BTN_GHOST = "h-8 rounded-md border border-neutral-300 bg-white px-3 text-[
 
 export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) {
   const [view, setView] = useState<"main" | "readme">("main");
+  const [watchlistId, setWatchlistId] = useState(getHealthSelectedWatchlistId());
+  const [watchlists, setWatchlists] = useState<MonitorWatchlist[]>([]);
   // 监测专用导入数据 + 角色绑定
   const [datasets, setDatasets] = useState<BiAggregationDataset[]>([]);
   const [bindings, setBindings] = useState<Map<string, MonitorDatasetBinding>>(new Map());
@@ -77,6 +83,7 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
       setSelectedOntologyId("");
       setSystems([]);
       setDraft(null);
+      setWatchlists([]);
       return;
     }
     let cancelled = false;
@@ -116,6 +123,34 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
   }, [workspaceId]);
 
   useEffect(() => {
+    if (!workspaceId) return;
+    if (watchlistId === "default") {
+      let cancelled = false;
+      vizApi.getMonitorConfig(workspaceId)
+        .then((config) => {
+          if (cancelled) return;
+          const map = new Map<string, MonitorDatasetBinding>();
+          if (config) {
+            for (const b of config.datasetBindings) map.set(b.datasetPathId, b);
+            setConfigMeta({ ontologyId: config.ontologyId, metricSystemId: config.metricSystemId, thresholds: config.thresholds });
+            if (config.ontologyId) setSelectedOntologyId(config.ontologyId);
+          } else {
+            setConfigMeta({});
+          }
+          setBindings(map);
+        })
+        .catch((e) => { if (!cancelled) setError(`加载默认监测配置失败: ${String(e)}`); });
+      return () => { cancelled = true; };
+    }
+    const current = watchlists.find((item) => item.id === watchlistId);
+    if (!current) return;
+    const map = new Map<string, MonitorDatasetBinding>();
+    for (const binding of current.datasetBindings) map.set(binding.datasetPathId, binding);
+    setBindings(map);
+    setConfigMeta((prev) => ({ ...prev, metricSystemId: current.metricSystemId, thresholds: current.thresholds }));
+  }, [workspaceId, watchlistId, watchlists]);
+
+  useEffect(() => {
     setSchemaTables([]);
     setSelectedTable("");
     setSqlText("");
@@ -152,6 +187,16 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
   // 持久化 monitor config：保留 ontology/metricSystem/thresholds，避免覆盖 D-MONITOR3 既有字段。
   const persistBindings = async (nextBindings: MonitorDatasetBinding[]) => {
     if (!workspaceId) return;
+    if (watchlistId !== "default") {
+      const current = watchlists.find((item) => item.id === watchlistId);
+      if (!current) throw new Error("当前监测计划不存在");
+      const updated = await vizApi.updateMonitorWatchlist(workspaceId, watchlistId, { datasetBindings: nextBindings });
+      setWatchlists((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+      const map = new Map<string, MonitorDatasetBinding>();
+      for (const b of updated.datasetBindings) map.set(b.datasetPathId, b);
+      setBindings(map);
+      return;
+    }
     const config = await vizApi.saveMonitorConfig(workspaceId, {
       suite: "monthly",
       datasetBindings: nextBindings,
@@ -231,14 +276,20 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
     setError(null);
     try {
       const r = await vizApi.adoptMonitorMetricSystem(workspaceId, { draft });
-      const saved = await vizApi.saveMonitorConfig(workspaceId, {
-        suite: "monthly",
-        datasetBindings: Array.from(bindings.values()),
-        ontologyId: selectedOntologyId || undefined,
-        metricSystemId: r.metricSystemId,
-        thresholds: configMeta.thresholds,
-      });
-      setConfigMeta({ ontologyId: saved.ontologyId, metricSystemId: saved.metricSystemId, thresholds: saved.thresholds });
+      if (watchlistId === "default") {
+        const saved = await vizApi.saveMonitorConfig(workspaceId, {
+          suite: "monthly",
+          datasetBindings: Array.from(bindings.values()),
+          ontologyId: selectedOntologyId || undefined,
+          metricSystemId: r.metricSystemId,
+          thresholds: configMeta.thresholds,
+        });
+        setConfigMeta({ ontologyId: saved.ontologyId, metricSystemId: saved.metricSystemId, thresholds: saved.thresholds });
+      } else {
+        const updated = await vizApi.updateMonitorWatchlist(workspaceId, watchlistId, { metricSystemId: r.metricSystemId });
+        setWatchlists((prev) => prev.map((item) => item.id === updated.id ? updated : item));
+        setConfigMeta((prev) => ({ ...prev, metricSystemId: r.metricSystemId }));
+      }
       setDraft(null);
       vizApi.listMonitorMetricSystems(workspaceId).then(setSystems).catch(() => {});
     } catch (e) {
@@ -258,6 +309,17 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
     [bindings, datasets],
   );
 
+  const onboardingSteps = useMemo(() => {
+    const hasSource = Array.from(bindings.values()).some((b) => b.role === "source" && datasets.some((d) => d.pathId === b.datasetPathId));
+    const hasGoal = Array.from(bindings.values()).some((b) => b.role === "goal" && datasets.some((d) => d.pathId === b.datasetPathId));
+    return [
+      { label: "数据接入", ok: datasets.length > 0 },
+      { label: "角色绑定", ok: hasSource },
+      { label: "指标体系", ok: !!configMeta.metricSystemId },
+      { label: "可运行", ok: hasSource && hasGoal && !!configMeta.metricSystemId },
+    ];
+  }, [bindings, configMeta.metricSystemId, datasets]);
+
   // hint：生成指标体系前提示缺少 source/goal（不硬阻塞）
   const missingRoles = useMemo(() => {
     const present = new Set(Array.from(bindings.values())
@@ -265,6 +327,18 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
       .map((b) => b.role));
     return (["source", "goal"] as MonitorSourceRole[]).filter((r) => !present.has(r));
   }, [bindings, datasets]);
+
+  const qualityHints = useMemo(() => {
+    const hints: string[] = [];
+    const sourceDatasets = datasets.filter((ds) => bindings.get(ds.pathId)?.role === "source");
+    const goalDatasets = datasets.filter((ds) => bindings.get(ds.pathId)?.role === "goal");
+    if (sourceDatasets.length === 0) hints.push("缺 source 经营数据，观星台无法判断主指标异常。");
+    if (goalDatasets.length === 0) hints.push("缺 goal 目标数据，可先去目标测算采纳计划或绑定 goal 数据集。");
+    if (!selectedOntologyId && !configMeta.ontologyId) hints.push("未选择 ontology，引擎会降级按数据元数据生成指标体系。");
+    if (!sourceDatasets.some((ds) => ds.columns.some((col) => /date|time|day|month|日期|时间|月份/.test(col.toLowerCase())))) hints.push("source 数据未识别到明显时间列，趋势/环比类规则可能降级。");
+    if (sourceDatasets.some((ds) => ds.rowCount < 30)) hints.push("source 历史行数偏少，趋势判断置信度可能较低。");
+    return hints;
+  }, [bindings, configMeta.ontologyId, datasets, selectedOntologyId]);
 
   return (
     <div className="flex h-full min-h-0 flex-1 flex-col bg-neutral-50/40 text-[12.5px] dark:bg-neutral-950/40">
@@ -295,13 +369,43 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
       ) : (
         <div className="flex-1 overflow-y-auto">
           <div className="mx-auto w-full max-w-5xl space-y-4 p-5">
-            <header>
+        <header>
           <h2 className="text-base font-semibold text-neutral-900 dark:text-neutral-100">监测初始化 · 数据接入</h2>
           <p className="mt-1 text-[12px] text-neutral-500 dark:text-neutral-400">
             通过数据库连接将表或 SELECT 查询导入到当前工作区的「监测聚合数据」目录（<code>clean_data/monitor/</code>）。
             本页只展示监测专用数据集，工作区其他 clean_data 不在此处出现。
           </p>
         </header>
+
+        <MonitorWatchlistSelector
+          workspaceId={workspaceId}
+          value={watchlistId}
+          onChange={(id) => {
+            setHealthSelectedWatchlistId(id);
+            setWatchlistId(id);
+            if (id === "default" && workspaceId) {
+              void vizApi.getMonitorConfig(workspaceId).then((config) => {
+                const map = new Map<string, MonitorDatasetBinding>();
+                for (const binding of config?.datasetBindings ?? []) map.set(binding.datasetPathId, binding);
+                setBindings(map);
+                setConfigMeta({ ontologyId: config?.ontologyId, metricSystemId: config?.metricSystemId, thresholds: config?.thresholds });
+              }).catch(() => {});
+            }
+          }}
+          onWatchlistsChange={setWatchlists}
+        />
+
+        <div className="grid grid-cols-2 gap-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900 sm:grid-cols-4">
+          {onboardingSteps.map((step, idx) => (
+            <div key={step.label} className="flex items-center gap-2">
+              <span className={`flex h-6 w-6 items-center justify-center rounded-full text-[11px] font-medium ${step.ok ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-200" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400"}`}>{idx + 1}</span>
+              <div>
+                <div className="text-[12px] font-medium text-neutral-800 dark:text-neutral-100">{step.label}</div>
+                <div className="text-[10px] text-neutral-400">{step.ok ? "已完成" : "待完成"}</div>
+              </div>
+            </div>
+          ))}
+        </div>
 
         {error && (
           <div className="rounded-md border border-red-300 bg-red-50 px-3 py-2 text-[12.5px] text-red-700 dark:border-red-700 dark:bg-red-950/40 dark:text-red-300">
@@ -407,6 +511,9 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
   }
 
   function renderDatasetSection() {
+    const grouped = new Map<MonitorSourceRole | "unbound", BiAggregationDataset[]>();
+    for (const key of ROLE_ORDER) grouped.set(key, []);
+    for (const ds of datasets) grouped.get(bindings.get(ds.pathId)?.role ?? "unbound")!.push(ds);
     return (
       <div className="space-y-2">
         <div className="flex items-center justify-between">
@@ -414,44 +521,55 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
           <button onClick={() => void refreshDatasets()} className="text-xs text-blue-500 hover:underline">刷新</button>
         </div>
         {loading && <p className="text-[12px] text-neutral-400">加载中…</p>}
-        {datasets.map((ds) => {
-          const b = bindings.get(ds.pathId);
+        {ROLE_ORDER.map((role) => {
+          const list = grouped.get(role) ?? [];
+          if (list.length === 0) return null;
+          const roleMeta = ROLES.find((item) => item.value === role);
           return (
-            <div key={ds.pathId} className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
-              <div className="flex items-start justify-between gap-3">
-                <div className="min-w-0 flex-1">
-                  <p className="truncate text-[12.5px] font-medium text-neutral-900 dark:text-neutral-100">{ds.name}</p>
-                  <p className="mt-0.5 text-xs text-neutral-400">
-                    {ds.rowCount} 行 · {ds.columns.length} 列 · pathId={ds.pathId}
-                    {b?.updatedAt && <span className="ml-2">绑定于 {fmtTime(b.updatedAt)}</span>}
-                  </p>
-                </div>
+            <section key={role} className="space-y-2 rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-800 dark:bg-neutral-900">
+              <div className="flex items-center justify-between">
+                <h3 className="text-[12px] font-medium text-neutral-800 dark:text-neutral-100">{roleMeta?.label ?? "未绑定数据"}</h3>
+                <span className="text-[11px] text-neutral-400">{list.length} 个</span>
               </div>
-              <div className="mt-2 flex flex-wrap items-center gap-1.5">
-                {ROLES.map((r) => {
-                  const active = b?.role === r.value;
-                  return (
-                    <button
-                      key={r.value}
-                      onClick={() => void setRole(ds.pathId, active ? null : r.value, ds.name)}
-                      className={`rounded-md border px-2 py-0.5 text-[11px] transition ${active ? r.color : "border-neutral-200 bg-neutral-50 text-neutral-500 hover:border-neutral-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400"}`}
-                    >
-                      {r.label}
-                    </button>
-                  );
-                })}
-                {b && (
-                  <button onClick={() => void setRole(ds.pathId, null)} className="text-[11px] text-neutral-400 hover:text-red-500">
-                    清除
-                  </button>
-                )}
-              </div>
-            </div>
+              {list.map((ds) => renderDatasetCard(ds))}
+            </section>
           );
         })}
         {datasets.length === 0 && !loading && (
           <p className="text-sm text-neutral-400">暂无监测聚合数据。请在上方「数据库连接导入」选择连接并导入。</p>
         )}
+      </div>
+    );
+  }
+
+  function renderDatasetCard(ds: BiAggregationDataset) {
+    const b = bindings.get(ds.pathId);
+    return (
+      <div key={ds.pathId} className="rounded-md border border-neutral-100 bg-neutral-50 p-3 dark:border-neutral-800 dark:bg-neutral-950/40">
+        <div className="flex items-start justify-between gap-3">
+          <div className="min-w-0 flex-1">
+            <p className="truncate text-[12.5px] font-medium text-neutral-900 dark:text-neutral-100">{ds.name}</p>
+            <p className="mt-0.5 text-xs text-neutral-400">
+              {ds.rowCount} 行 · {ds.columns.length} 列 · pathId={ds.pathId}
+              {b?.updatedAt && <span className="ml-2">绑定于 {fmtTime(b.updatedAt)}</span>}
+            </p>
+          </div>
+        </div>
+        <div className="mt-2 flex flex-wrap items-center gap-1.5">
+          {ROLES.map((r) => {
+            const active = b?.role === r.value;
+            return (
+              <button
+                key={r.value}
+                onClick={() => void setRole(ds.pathId, active ? null : r.value, ds.name)}
+                className={`rounded-md border px-2 py-0.5 text-[11px] transition ${active ? r.color : "border-neutral-200 bg-white text-neutral-500 hover:border-neutral-300 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400"}`}
+              >
+                {r.label}
+              </button>
+            );
+          })}
+          {b && <button onClick={() => void setRole(ds.pathId, null)} className="text-[11px] text-neutral-400 hover:text-red-500">清除</button>}
+        </div>
       </div>
     );
   }
@@ -475,6 +593,14 @@ export function HealthDataPane({ workspaceId }: { workspaceId: string | null }) 
         {missingRoles.length > 0 && (
           <div className="mt-2 rounded-md border border-amber-300 bg-amber-50 px-2 py-1 text-[11px] text-amber-800 dark:border-amber-700 dark:bg-amber-950/40 dark:text-amber-200">
             提示：当前监测数据集尚未绑定 {missingRoles.map((r) => ROLES.find((x) => x.value === r)?.label).join(" / ")}；生成草案仍可继续，但建议先补齐角色以提高质量。
+          </div>
+        )}
+        {qualityHints.length > 0 && (
+          <div className="mt-2 rounded-md border border-blue-200 bg-blue-50 px-2 py-1 text-[11px] text-blue-800 dark:border-blue-900 dark:bg-blue-950/30 dark:text-blue-200">
+            <div className="font-medium">生成前质量提示</div>
+            <ul className="mt-1 list-disc pl-4">
+              {qualityHints.map((hint) => <li key={hint}>{hint}</li>)}
+            </ul>
           </div>
         )}
         <div className="mt-2 flex items-center gap-2">
@@ -530,7 +656,12 @@ function renderDraftPreview(
   return (
     <div className="mt-3 space-y-2 rounded-md border border-amber-200 bg-amber-50/50 p-2 dark:border-amber-900 dark:bg-amber-950/30">
       <div className="flex items-center justify-between">
-        <span className="text-[12px] font-medium text-amber-900 dark:text-amber-100">草案预览</span>
+        <div>
+          <span className="text-[12px] font-medium text-amber-900 dark:text-amber-100">草案预览</span>
+          <p className="mt-0.5 text-[11px] text-amber-800/80 dark:text-amber-200/80">
+            需要确认：{draft.metrics.length} 个指标 · {draft.missingData.length} 项缺失数据 · {draft.assumptions.length} 条假设 · {draft.metrics.filter((m) => m.confidence < 0.7).length} 个低置信指标
+          </p>
+        </div>
         <div className="flex gap-2">
           <button onClick={onDiscard} className={BTN_GHOST}>丢弃</button>
           <button
@@ -538,7 +669,7 @@ function renderDraftPreview(
             disabled={adopting}
             className="rounded-md bg-amber-600 px-2 py-0.5 text-[11px] font-medium text-white disabled:opacity-50"
           >
-            {adopting ? "采纳中…" : "采纳"}
+            {adopting ? "采纳中…" : "采纳，观星台可运行"}
           </button>
         </div>
       </div>
@@ -605,4 +736,3 @@ function renderDraftPreview(
     </div>
   );
 }
-

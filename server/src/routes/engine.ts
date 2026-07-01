@@ -1,4 +1,4 @@
-import express, { Router, type Request } from "express";
+import express, { Router, type Request, type Response } from "express";
 import multer from "multer";
 import type { WebSocket } from "ws";
 import { dirname, resolve, join, sep } from "node:path";
@@ -3781,15 +3781,32 @@ export function abortAnaxPrecheck(precheckId: string): void {
 import { PORT as MON_PORT } from "../config.ts";
 import { draftMetricSystem } from "../monitor-llm.ts";
 import { runMonitorChecks, type MonitorDatasetInput, type MonitorRunContext } from "../monitor-engine.ts";
+import { summarizeMonitorRun } from "../monitor-priority.ts";
 import {
   createMonitorMetricSystem, getMonitorMetricSystem, listMonitorMetricSystems,
   deleteMonitorMetricSystem, insertMonitorRun, finishMonitorRun, insertMonitorFindings,
   listMonitorRuns as listMonRuns, listMonitorFindings, findPriorMonitorFindings,
+  archiveMonitorWatchlist, createMonitorWatchlist, getMonitorWatchlist, listMonitorWatchlists, updateMonitorWatchlist,
+  type MonitorWatchlist, type MonitorWatchlistInput, type MonitorWatchlistType,
 } from "../db/engine.ts";
-import type { ActionItemDraft, BiAggregationDataset, BiCell, HealthFinding, HealthSuite, LinkType, LogicRule, MetricDefinition, MonitorMetricSystemDraft, ObjectType } from "../types.ts";
+import type { ActionItemDraft, BiAggregationDataset, BiCell, HealthFinding, HealthSuite, LinkType, LogicRule, MetricDefinition, MonitorDatasetBinding, MonitorMetricSystemDraft, MonitorSourceRole, ObjectType } from "../types.ts";
 
 const MON_BASE = `http://localhost:${MON_PORT}`;
 const VALID_MSUITE = new Set<HealthSuite>(["daily","weekly","monthly","quarterly","yearly"]);
+const VALID_MONITOR_ROLES = new Set<MonitorSourceRole>(["goal", "source", "industry", "competitor"]);
+const VALID_WATCHLIST_TYPES = new Set<MonitorWatchlistType>(["daily", "campaign", "member", "store", "custom"]);
+const DEFAULT_WATCHLIST_ID = "default";
+
+type LegacyMonitorConfig = {
+  suite?: HealthSuite;
+  datasetBindings?: MonitorDatasetBinding[];
+  metricSystemId?: string;
+  thresholds?: Record<string, number>;
+  createdAt?: number;
+  updatedAt?: number;
+};
+
+type ResolvedWatchlist = MonitorWatchlist & { virtual?: boolean };
 
 async function fetchMonitorAggregations(workspaceId: string): Promise<BiAggregationDataset[]> {
   const resp = await fetch(`${MON_BASE}/api/bi/aggregations?workspaceId=${encodeURIComponent(workspaceId)}`);
@@ -3826,12 +3843,179 @@ async function fetchMonitorMetrics(workspaceId: string): Promise<MetricDefinitio
   return resp.ok ? await resp.json() as MetricDefinition[] : [];
 }
 
-async function fetchMonitorConfig(workspaceId: string): Promise<{ metricSystemId?: string; thresholds?: Record<string, number> } | null> {
+async function fetchMonitorConfig(workspaceId: string): Promise<LegacyMonitorConfig | null> {
   const resp = await fetch(`${MON_BASE}/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/config`);
   if (resp.status === 404) return null;
   if (!resp.ok) throw new Error(`monitor config fetch: ${resp.status}`);
-  return await resp.json() as { metricSystemId?: string; thresholds?: Record<string, number> } | null;
+  return await resp.json() as LegacyMonitorConfig | null;
 }
+
+async function validateTargetPlan(workspaceId: string, targetPlanId: string | undefined): Promise<string | null> {
+  if (!targetPlanId) return null;
+  const resp = await fetch(`${MON_BASE}/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/target-plans/${encodeURIComponent(targetPlanId)}`);
+  if (resp.status === 404) return "targetPlanId not found in this workspace";
+  if (!resp.ok) return `targetPlanId validation failed: ${resp.status}`;
+  return null;
+}
+
+function normalizeThresholds(raw: unknown): Record<string, number> | undefined {
+  if (!raw || typeof raw !== "object" || Array.isArray(raw)) return undefined;
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(raw as Record<string, unknown>)) {
+    if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function parseWatchlistInput(body: unknown, base?: ResolvedWatchlist): MonitorWatchlistInput {
+  const raw = body && typeof body === "object" ? body as Record<string, unknown> : {};
+  const name = typeof raw.name === "string" && raw.name.trim()
+    ? raw.name.trim()
+    : base?.name ?? "默认监测";
+  const description = typeof raw.description === "string" ? raw.description.trim() : base?.description ?? "";
+  if (raw.type !== undefined && !VALID_WATCHLIST_TYPES.has(raw.type as MonitorWatchlistType)) {
+    throw new Error("invalid watchlist type");
+  }
+  if (raw.suite !== undefined && !VALID_MSUITE.has(raw.suite as HealthSuite)) {
+    throw new Error("invalid suite");
+  }
+  const type = VALID_WATCHLIST_TYPES.has(raw.type as MonitorWatchlistType)
+    ? raw.type as MonitorWatchlistType
+    : base?.type ?? "custom";
+  const suite = VALID_MSUITE.has(raw.suite as HealthSuite)
+    ? raw.suite as HealthSuite
+    : base?.suite ?? "monthly";
+  const frequency = typeof raw.frequency === "string" && raw.frequency.trim() ? raw.frequency.trim() : base?.frequency;
+  const owner = typeof raw.owner === "string" && raw.owner.trim() ? raw.owner.trim() : base?.owner;
+  const datasetBindings = Array.isArray(raw.datasetBindings)
+    ? parseMonitorDatasetBindings(raw.datasetBindings)
+    : base?.datasetBindings ?? [];
+  const targetPlanId = typeof raw.targetPlanId === "string" && raw.targetPlanId.trim() ? raw.targetPlanId.trim() : base?.targetPlanId;
+  const goalDatasetPathId = typeof raw.goalDatasetPathId === "string" && raw.goalDatasetPathId.trim() ? raw.goalDatasetPathId.trim() : base?.goalDatasetPathId;
+  const metricSystemId = typeof raw.metricSystemId === "string" && raw.metricSystemId.trim() ? raw.metricSystemId.trim() : base?.metricSystemId;
+  const thresholdPolicy = typeof raw.thresholdPolicy === "string" && raw.thresholdPolicy.trim() ? raw.thresholdPolicy.trim() : base?.thresholdPolicy;
+  const thresholds = raw.thresholds !== undefined ? normalizeThresholds(raw.thresholds) : base?.thresholds;
+  return { name, description, type, suite, frequency, owner, datasetBindings, targetPlanId, goalDatasetPathId, metricSystemId, thresholdPolicy, thresholds };
+}
+
+function parseMonitorDatasetBindings(rawBindings: unknown[]): MonitorDatasetBinding[] {
+  return rawBindings.map((raw) => {
+    const item = raw && typeof raw === "object" ? raw as Record<string, unknown> : {};
+    const datasetPathId = typeof item.datasetPathId === "string" ? item.datasetPathId.trim() : "";
+    const role = item.role as MonitorSourceRole;
+    if (!datasetPathId || !VALID_MONITOR_ROLES.has(role)) {
+      throw new Error(`invalid binding: ${JSON.stringify(raw)}`);
+    }
+    const label = typeof item.label === "string" && item.label.trim() ? item.label.trim() : undefined;
+    const updatedAt = typeof item.updatedAt === "number" && Number.isFinite(item.updatedAt) ? item.updatedAt : Date.now();
+    return { datasetPathId, role, label, updatedAt };
+  });
+}
+
+function buildVirtualDefaultWatchlist(workspaceId: string, config: LegacyMonitorConfig | null): ResolvedWatchlist {
+  const goalBinding = (config?.datasetBindings ?? []).find((binding) => binding.role === "goal");
+  const now = Date.now();
+  return {
+    id: DEFAULT_WATCHLIST_ID,
+    workspaceId,
+    name: "默认监测",
+    description: "兼容旧 monitor config 的虚拟默认计划",
+    type: "custom",
+    suite: config?.suite ?? "monthly",
+    frequency: "manual",
+    status: "active",
+    datasetBindings: config?.datasetBindings ?? [],
+    goalDatasetPathId: goalBinding?.datasetPathId,
+    metricSystemId: config?.metricSystemId,
+    thresholdPolicy: "legacy-config",
+    thresholds: config?.thresholds,
+    createdAt: config?.createdAt ?? now,
+    updatedAt: config?.updatedAt ?? now,
+    archivedAt: null,
+    virtual: true,
+  };
+}
+
+async function listWatchlistsWithDefault(workspaceId: string): Promise<ResolvedWatchlist[]> {
+  const real = listMonitorWatchlists(workspaceId);
+  if (real.length > 0) return real;
+  const config = await fetchMonitorConfig(workspaceId);
+  return [buildVirtualDefaultWatchlist(workspaceId, config)];
+}
+
+async function resolveWatchlist(workspaceId: string, watchlistId: string): Promise<ResolvedWatchlist | null> {
+  if (watchlistId === DEFAULT_WATCHLIST_ID) {
+    return buildVirtualDefaultWatchlist(workspaceId, await fetchMonitorConfig(workspaceId));
+  }
+  const watchlist = getMonitorWatchlist(watchlistId);
+  if (!watchlist || watchlist.workspaceId !== workspaceId || watchlist.status === "archived") return null;
+  return watchlist;
+}
+
+async function validateMonitorWatchlistInput(workspaceId: string, input: MonitorWatchlistInput): Promise<string | null> {
+  if (!VALID_MSUITE.has(input.suite)) return "invalid suite";
+  const pathIds = new Set<string>();
+  for (const binding of input.datasetBindings ?? []) pathIds.add(binding.datasetPathId);
+  if (input.goalDatasetPathId) pathIds.add(input.goalDatasetPathId);
+  if (pathIds.size > 0) {
+    const aggs = await fetchMonitorAggregations(workspaceId);
+    const valid = new Set(aggs.map((agg) => agg.pathId));
+    const invalid = Array.from(pathIds).filter((pathId) => !valid.has(pathId));
+    if (invalid.length > 0) return `pathIds not in this workspace clean_data: ${invalid.join(",")}`;
+  }
+  if (input.metricSystemId) {
+    const metricSystem = getMonitorMetricSystem(input.metricSystemId);
+    if (!metricSystem || metricSystem.workspaceId !== workspaceId) return "metricSystemId not found in this workspace";
+  }
+  return await validateTargetPlan(workspaceId, input.targetPlanId);
+}
+
+engineRouter.get("/api/workspaces/:id/monitor/watchlists", async (req, res) => {
+  const wid = req.params.id;
+  if (!getWorkspace(wid)) { res.status(404).json({ error: "workspace not found" }); return; }
+  try {
+    res.json(await listWatchlistsWithDefault(wid));
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+engineRouter.post("/api/workspaces/:id/monitor/watchlists", async (req, res) => {
+  const wid = req.params.id;
+  if (!getWorkspace(wid)) { res.status(404).json({ error: "workspace not found" }); return; }
+  try {
+    const input = parseWatchlistInput(req.body);
+    const validationError = await validateMonitorWatchlistInput(wid, input);
+    if (validationError) { res.status(400).json({ error: validationError }); return; }
+    res.json(createMonitorWatchlist(wid, input));
+  } catch (e) { res.status(400).json({ error: String(e) }); }
+});
+
+engineRouter.patch("/api/workspaces/:id/monitor/watchlists/:watchlistId", async (req, res) => {
+  const wid = req.params.id;
+  if (!getWorkspace(wid)) { res.status(404).json({ error: "workspace not found" }); return; }
+  try {
+    const current = await resolveWatchlist(wid, req.params.watchlistId);
+    if (!current) { res.status(404).json({ error: "watchlist not found" }); return; }
+    const input = parseWatchlistInput(req.body, current);
+    const validationError = await validateMonitorWatchlistInput(wid, input);
+    if (validationError) { res.status(400).json({ error: validationError }); return; }
+    if (current.virtual) {
+      res.json(createMonitorWatchlist(wid, input));
+      return;
+    }
+    const updated = updateMonitorWatchlist(current.id, input);
+    res.json(updated);
+  } catch (e) { res.status(400).json({ error: String(e) }); }
+});
+
+engineRouter.delete("/api/workspaces/:id/monitor/watchlists/:watchlistId", (req, res) => {
+  const wid = req.params.id;
+  if (!getWorkspace(wid)) { res.status(404).json({ error: "workspace not found" }); return; }
+  if (req.params.watchlistId === DEFAULT_WATCHLIST_ID) { res.status(400).json({ error: "default watchlist cannot be archived" }); return; }
+  const current = getMonitorWatchlist(req.params.watchlistId);
+  if (!current || current.workspaceId !== wid) { res.status(404).json({ error: "watchlist not found" }); return; }
+  const archived = archiveMonitorWatchlist(current.id);
+  res.json(archived);
+});
 
 engineRouter.get("/api/workspaces/:id/monitor/metric-systems", (req, res) => {
   const wid = req.params.id;
@@ -3877,23 +4061,38 @@ engineRouter.post("/api/workspaces/:id/monitor/metric-system/adopt", (req, res) 
   try { const e = createMonitorMetricSystem(wid, name, draft); res.json({ metricSystemId: e.id, entry: e }); } catch (err) { res.status(500).json({ error: String(err) }); }
 });
 
-engineRouter.post("/api/workspaces/:id/monitor/runs", async (req, res) => {
+async function runMonitorForWorkspace(req: Request, res: Response, forcedWatchlistId?: string): Promise<void> {
   const wid = req.params.id;
+  if (!wid) { res.status(400).json({ error: "workspace id required" }); return; }
   if (!getWorkspace(wid)) { res.status(404).json({ error: "workspace not found" }); return; }
-  const suite = String(req.body?.suite ?? "monthly") as HealthSuite;
-  if (!VALID_MSUITE.has(suite)) { res.status(400).json({ error: "invalid suite" }); return; }
+  const requestedWatchlistId = forcedWatchlistId ?? (typeof req.body?.watchlistId === "string" ? req.body.watchlistId : undefined);
+  const watchlist = requestedWatchlistId ? await resolveWatchlist(wid, requestedWatchlistId) : null;
+  if (requestedWatchlistId && !watchlist) { res.status(404).json({ error: "watchlist not found" }); return; }
+  const cfg = requestedWatchlistId ? null : await fetchMonitorConfig(wid);
+  if (req.body?.suite !== undefined && !VALID_MSUITE.has(req.body.suite as HealthSuite)) {
+    res.status(400).json({ error: "invalid suite" });
+    return;
+  }
+  const suite = VALID_MSUITE.has(req.body?.suite as HealthSuite)
+    ? req.body.suite as HealthSuite
+    : watchlist?.suite ?? cfg?.suite ?? "monthly";
   let msId: string | null = typeof req.body?.metricSystemId === "string" ? req.body.metricSystemId : null;
-  let thresh: Record<string, number> | undefined = req.body?.thresholds ?? undefined;
+  let thresh: Record<string, number> | undefined = normalizeThresholds(req.body?.thresholds);
   let ms: MonitorMetricSystemDraft | null = null;
   let runRec: ReturnType<typeof insertMonitorRun> | null = null;
   try {
-    const cfg = await fetchMonitorConfig(wid);
-    if (!msId && cfg?.metricSystemId) msId = cfg.metricSystemId;
-    if (!thresh && cfg?.thresholds) thresh = cfg.thresholds;
+    if (!msId) msId = watchlist?.metricSystemId ?? cfg?.metricSystemId ?? null;
+    if (!thresh) thresh = watchlist?.thresholds ?? cfg?.thresholds;
+    if (watchlist) {
+      const validationError = await validateMonitorWatchlistInput(wid, watchlist);
+      if (validationError) { res.status(400).json({ error: validationError }); return; }
+    }
     if (msId) { const e = getMonitorMetricSystem(msId); if (!e || e.workspaceId !== wid) { res.status(404).json({ error: "metric-system not found" }); return; } ms = e.draft; }
     if (!ms) { res.status(400).json({ error: "metricSystemId required: initialize and adopt a monitor metric system first" }); return; }
     const pids = new Set<string>();
     for (const m of ms.metrics) for (const b of m.bindings) if (b.datasetPathId) pids.add(b.datasetPathId);
+    for (const binding of watchlist?.datasetBindings ?? []) pids.add(binding.datasetPathId);
+    if (watchlist?.goalDatasetPathId) pids.add(watchlist.goalDatasetPathId);
     const aggs = await fetchMonitorAggregations(wid);
     const validPathIds = new Set(aggs.map((a) => a.pathId));
     const invalid = Array.from(pids).filter((pid) => !validPathIds.has(pid));
@@ -3901,7 +4100,7 @@ engineRouter.post("/api/workspaces/:id/monitor/runs", async (req, res) => {
       res.status(400).json({ error: `pathIds not in this workspace clean_data: ${invalid.join(",")}` });
       return;
     }
-    runRec = insertMonitorRun(wid, suite, msId);
+    runRec = insertMonitorRun(wid, suite, msId, watchlist && !watchlist.virtual ? watchlist.id : null);
     const datasets: MonitorDatasetInput[] = [];
     for (const pid of pids) {
       const dr = await fetch(`${MON_BASE}/api/bi/aggregations/${encodeURIComponent(pid)}/data?limit=100000`);
@@ -3912,7 +4111,7 @@ engineRouter.post("/api/workspaces/:id/monitor/runs", async (req, res) => {
     const ontologyIds = await fetchMonitorOntologyIds(wid);
     const ontoCtx = await fetchMonitorOntologyContext(ontologyIds);
     const metrics = await fetchMonitorMetrics(wid);
-    const prior = findPriorMonitorFindings(wid, suite, msId, runRec.id);
+    const prior = findPriorMonitorFindings(wid, suite, msId, runRec.id, runRec.watchlistId);
     const { findings } = runMonitorChecks({ suite, datasets, metricSystem: ms, metrics, links: ontoCtx.links, objects: ontoCtx.objects, logicRules: ontoCtx.logics, thresholds: thresh, priorFindings: prior }, runRec.id);
     insertMonitorFindings(findings);
     const pc = findings.filter((f) => f.kind === "问题").length;
@@ -3930,6 +4129,7 @@ engineRouter.post("/api/workspaces/:id/monitor/runs", async (req, res) => {
     res.json({
       run: finishedRun,
       findings,
+      summary: summarizeMonitorRun(findings),
       evolve: {
         scannedFindings: findings.length,
         candidateFindings: evolve.length,
@@ -3941,10 +4141,22 @@ engineRouter.post("/api/workspaces/:id/monitor/runs", async (req, res) => {
     if (runRec) finishMonitorRun(runRec.id, { problemCount: 0, riskCount: 0, status: "error" });
     res.status(500).json({ error: String(e) });
   }
+}
+
+engineRouter.post("/api/workspaces/:id/monitor/runs", async (req, res) => {
+  await runMonitorForWorkspace(req, res);
+});
+
+engineRouter.post("/api/workspaces/:id/monitor/watchlists/:watchlistId/run", async (req, res) => {
+  await runMonitorForWorkspace(req, res, req.params.watchlistId);
 });
 
 engineRouter.get("/api/workspaces/:id/monitor/runs", (req, res) => {
-  try { res.json(listMonRuns(req.params.id)); } catch (e) { res.status(500).json({ error: String(e) }); }
+  try {
+    const watchlistId = typeof req.query.watchlistId === "string" ? req.query.watchlistId : undefined;
+    if (watchlistId === DEFAULT_WATCHLIST_ID) { res.json(listMonRuns(req.params.id, { watchlistId: null })); return; }
+    res.json(watchlistId ? listMonRuns(req.params.id, { watchlistId }) : listMonRuns(req.params.id));
+  } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 
 engineRouter.get("/api/workspaces/:id/monitor/runs/:runId/findings", (req, res) => {
@@ -3952,6 +4164,14 @@ engineRouter.get("/api/workspaces/:id/monitor/runs/:runId/findings", (req, res) 
     const runs = listMonRuns(req.params.id);
     if (!runs.some((r) => r.id === req.params.runId)) { res.status(404).json({ error: "run not found" }); return; }
     res.json(listMonitorFindings(req.params.runId));
+  } catch (e) { res.status(500).json({ error: String(e) }); }
+});
+
+engineRouter.get("/api/workspaces/:id/monitor/runs/:runId/summary", (req, res) => {
+  try {
+    const runs = listMonRuns(req.params.id);
+    if (!runs.some((r) => r.id === req.params.runId)) { res.status(404).json({ error: "run not found" }); return; }
+    res.json(summarizeMonitorRun(listMonitorFindings(req.params.runId)));
   } catch (e) { res.status(500).json({ error: String(e) }); }
 });
 

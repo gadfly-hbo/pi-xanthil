@@ -78,6 +78,32 @@ export interface BusinessContextInjectionTrace {
   createdAt: number;
 }
 
+export type MonitorWatchlistType = "daily" | "campaign" | "member" | "store" | "custom";
+
+export interface MonitorWatchlist {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  type: MonitorWatchlistType;
+  suite: HealthSuite;
+  frequency?: string;
+  status: "active" | "archived";
+  owner?: string;
+  datasetBindings: MonitorDatasetBinding[];
+  targetPlanId?: string;
+  goalDatasetPathId?: string;
+  metricSystemId?: string;
+  thresholdPolicy?: string;
+  thresholds?: Record<string, number>;
+  createdAt: number;
+  updatedAt: number;
+  archivedAt?: number | null;
+  virtual?: boolean;
+}
+
+export type MonitorWatchlistInput = Omit<MonitorWatchlist, "id" | "workspaceId" | "status" | "createdAt" | "updatedAt" | "archivedAt" | "virtual">;
+
 const jsonBody = (method: string, body?: unknown): RequestInit => ({
   method,
   headers: { "Content-Type": "application/json" },
@@ -257,10 +283,22 @@ export const vizApi = {
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/metric-systems`).then(json<MonitorMetricSystemEntry[]>),
   deleteMonitorMetricSystem: (workspaceId: string, metricSystemId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/metric-systems/${encodeURIComponent(metricSystemId)}`, jsonBody("DELETE")).then(json<{ ok: true }>),
-  runMonitorSuite: (workspaceId: string, body: { suite?: HealthSuite; metricSystemId?: string; thresholds?: Record<string, number> }) =>
+  listMonitorWatchlists: (workspaceId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/watchlists`).then(json<MonitorWatchlist[]>),
+  createMonitorWatchlist: (workspaceId: string, body: MonitorWatchlistInput) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/watchlists`, jsonBody("POST", body)).then(json<MonitorWatchlist>),
+  updateMonitorWatchlist: (workspaceId: string, watchlistId: string, body: Partial<MonitorWatchlistInput>) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/watchlists/${encodeURIComponent(watchlistId)}`, jsonBody("PATCH", body)).then(json<MonitorWatchlist>),
+  archiveMonitorWatchlist: (workspaceId: string, watchlistId: string) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/watchlists/${encodeURIComponent(watchlistId)}`, jsonBody("DELETE")).then(json<MonitorWatchlist>),
+  runMonitorWatchlist: (workspaceId: string, watchlistId: string, body?: { suite?: HealthSuite; metricSystemId?: string; thresholds?: Record<string, number> }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/watchlists/${encodeURIComponent(watchlistId)}/run`, jsonBody("POST", body ?? {})).then(json<{ run: MonitorRun; findings: HealthFinding[] }>),
+  runMonitorSuite: (workspaceId: string, body: { suite?: HealthSuite; metricSystemId?: string; thresholds?: Record<string, number>; watchlistId?: string }) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/runs`, jsonBody("POST", body)).then(json<{ run: MonitorRun; findings: HealthFinding[] }>),
-  listMonitorRuns: (workspaceId: string) =>
-    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/runs`).then(json<MonitorRun[]>),
+  listMonitorRuns: (workspaceId: string, opts?: { watchlistId?: string }) => {
+    const qs = opts?.watchlistId ? `?watchlistId=${encodeURIComponent(opts.watchlistId)}` : "";
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/runs${qs}`).then(json<MonitorRun[]>);
+  },
   listMonitorFindings: (workspaceId: string, runId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/monitor/runs/${encodeURIComponent(runId)}/findings`).then(json<HealthFinding[]>),
   draftMonitorActions: (workspaceId: string, body: MonitorActionSource & { model?: string }) =>

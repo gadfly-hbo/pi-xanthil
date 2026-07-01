@@ -360,9 +360,31 @@ export function initEngineTables(): void {
       updated_at   INTEGER NOT NULL
     );
     CREATE INDEX IF NOT EXISTS idx_monitor_metric_systems_ws ON monitor_metric_systems(workspace_id, updated_at DESC);
+    CREATE TABLE IF NOT EXISTS monitor_watchlists (
+      id                    TEXT PRIMARY KEY,
+      workspace_id          TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      name                  TEXT NOT NULL,
+      description           TEXT NOT NULL DEFAULT '',
+      type                  TEXT NOT NULL DEFAULT 'custom',
+      suite                 TEXT NOT NULL DEFAULT 'monthly',
+      frequency             TEXT,
+      status                TEXT NOT NULL DEFAULT 'active',
+      owner                 TEXT,
+      dataset_bindings_json TEXT NOT NULL DEFAULT '[]',
+      target_plan_id        TEXT,
+      goal_dataset_path_id  TEXT,
+      metric_system_id      TEXT REFERENCES monitor_metric_systems(id) ON DELETE SET NULL,
+      threshold_policy      TEXT,
+      thresholds_json       TEXT,
+      created_at            INTEGER NOT NULL,
+      updated_at            INTEGER NOT NULL,
+      archived_at           INTEGER
+    );
+    CREATE INDEX IF NOT EXISTS idx_monitor_watchlists_ws ON monitor_watchlists(workspace_id, status, updated_at DESC);
     CREATE TABLE IF NOT EXISTS monitor_runs (
       id              TEXT PRIMARY KEY,
       workspace_id    TEXT NOT NULL REFERENCES workspaces(id) ON DELETE CASCADE,
+      watchlist_id    TEXT REFERENCES monitor_watchlists(id) ON DELETE SET NULL,
       suite           TEXT NOT NULL,
       metric_system_id TEXT REFERENCES monitor_metric_systems(id) ON DELETE SET NULL,
       started_at      INTEGER NOT NULL,
@@ -416,6 +438,7 @@ export function initEngineTables(): void {
     CREATE INDEX IF NOT EXISTS idx_eval_records_ws ON eval_records(workspace_id, created_at DESC);
     CREATE UNIQUE INDEX IF NOT EXISTS idx_eval_records_source_finding ON eval_records(workspace_id, source_finding_id);
   `);
+  try { db.exec("ALTER TABLE monitor_runs ADD COLUMN watchlist_id TEXT"); } catch { /* column exists or read-only */ }
 }
 
 type ChangeManifestRow = Omit<ChangeManifest, "predictedFix" | "predictedRegression"> & {
@@ -1774,7 +1797,35 @@ function parseSkillEvaluationResultRow(row: SkillEvaluationResultRow): SkillEval
 
 // ── E-MONITOR2: monitor_metric_systems CRUD ──
 
-import type { MonitorMetricSystemDraft as _MMSDraft, HealthFinding as _HF, MonitorMetricSystemEntry, MonitorRun } from "../types.ts";
+import type { HealthSuite, MonitorDatasetBinding, MonitorMetricSystemDraft as _MMSDraft, HealthFinding as _HF, MonitorMetricSystemEntry, MonitorRun } from "../types.ts";
+
+export type MonitorWatchlistType = "daily" | "campaign" | "member" | "store" | "custom";
+export type MonitorWatchlistStatus = "active" | "archived";
+
+export interface MonitorWatchlist {
+  id: string;
+  workspaceId: string;
+  name: string;
+  description: string;
+  type: MonitorWatchlistType;
+  suite: HealthSuite;
+  frequency?: string;
+  status: MonitorWatchlistStatus;
+  owner?: string;
+  datasetBindings: MonitorDatasetBinding[];
+  targetPlanId?: string;
+  goalDatasetPathId?: string;
+  metricSystemId?: string;
+  thresholdPolicy?: string;
+  thresholds?: Record<string, number>;
+  createdAt: number;
+  updatedAt: number;
+  archivedAt?: number | null;
+}
+
+export type MonitorWatchlistInput = Omit<MonitorWatchlist, "id" | "workspaceId" | "status" | "createdAt" | "updatedAt" | "archivedAt"> & {
+  status?: MonitorWatchlistStatus;
+};
 
 type MonitorMSRow = {
   id: string;
@@ -1821,14 +1872,177 @@ export function deleteMonitorMetricSystem(id: string): boolean {
   return r.changes > 0;
 }
 
-// ── monitor_runs / monitor_findings CRUD ──
+// ── E-MONITOR-PROD6: monitor_watchlists CRUD ──
 
-export function insertMonitorRun(workspaceId: string, suite: MonitorRun["suite"], metricSystemId: string | null): MonitorRun {
+type MonitorWatchlistRow = {
+  id: string;
+  workspace_id: string;
+  name: string;
+  description: string;
+  type: string;
+  suite: string;
+  frequency: string | null;
+  status: string;
+  owner: string | null;
+  dataset_bindings_json: string;
+  target_plan_id: string | null;
+  goal_dataset_path_id: string | null;
+  metric_system_id: string | null;
+  threshold_policy: string | null;
+  thresholds_json: string | null;
+  created_at: number;
+  updated_at: number;
+  archived_at: number | null;
+};
+
+function parseWatchlistBindings(raw: string): MonitorDatasetBinding[] {
+  return parseJsonObject<MonitorDatasetBinding[]>(raw, []).filter((item) =>
+    item && typeof item.datasetPathId === "string" && typeof item.role === "string"
+  );
+}
+
+function parseWatchlistThresholds(raw: string | null): Record<string, number> | undefined {
+  if (!raw) return undefined;
+  const parsed = parseJsonObject<Record<string, unknown>>(raw, {});
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(parsed)) {
+    if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? out : undefined;
+}
+
+function rowToMonitorWatchlist(row: MonitorWatchlistRow): MonitorWatchlist {
+  return {
+    id: row.id,
+    workspaceId: row.workspace_id,
+    name: row.name,
+    description: row.description,
+    type: row.type as MonitorWatchlistType,
+    suite: row.suite as HealthSuite,
+    frequency: row.frequency ?? undefined,
+    status: row.status as MonitorWatchlistStatus,
+    owner: row.owner ?? undefined,
+    datasetBindings: parseWatchlistBindings(row.dataset_bindings_json),
+    targetPlanId: row.target_plan_id ?? undefined,
+    goalDatasetPathId: row.goal_dataset_path_id ?? undefined,
+    metricSystemId: row.metric_system_id ?? undefined,
+    thresholdPolicy: row.threshold_policy ?? undefined,
+    thresholds: parseWatchlistThresholds(row.thresholds_json),
+    createdAt: row.created_at,
+    updatedAt: row.updated_at,
+    archivedAt: row.archived_at,
+  };
+}
+
+function serializeWatchlistThresholds(thresholds: Record<string, number> | undefined): string | null {
+  if (!thresholds) return null;
+  const out: Record<string, number> = {};
+  for (const [key, value] of Object.entries(thresholds)) {
+    if (typeof value === "number" && Number.isFinite(value)) out[key] = value;
+  }
+  return Object.keys(out).length > 0 ? JSON.stringify(out) : null;
+}
+
+export function createMonitorWatchlist(workspaceId: string, input: MonitorWatchlistInput): MonitorWatchlist {
   const id = randomUUID();
   const now = Date.now();
-  db.prepare("INSERT INTO monitor_runs (id, workspace_id, suite, metric_system_id, started_at, status) VALUES (?, ?, ?, ?, ?, 'running')")
-    .run(id, workspaceId, suite, metricSystemId, now);
-  return { id, workspaceId, suite, metricSystemId, startedAt: now, finishedAt: null, problemCount: 0, riskCount: 0, status: "running" };
+  db.prepare(
+    `INSERT INTO monitor_watchlists (
+      id, workspace_id, name, description, type, suite, frequency, status, owner, dataset_bindings_json,
+      target_plan_id, goal_dataset_path_id, metric_system_id, threshold_policy, thresholds_json, created_at, updated_at, archived_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`,
+  ).run(
+    id,
+    workspaceId,
+    input.name,
+    input.description,
+    input.type,
+    input.suite,
+    input.frequency ?? null,
+    input.status ?? "active",
+    input.owner ?? null,
+    JSON.stringify(input.datasetBindings ?? []),
+    input.targetPlanId ?? null,
+    input.goalDatasetPathId ?? null,
+    input.metricSystemId ?? null,
+    input.thresholdPolicy ?? null,
+    serializeWatchlistThresholds(input.thresholds),
+    now,
+    now,
+    input.status === "archived" ? now : null,
+  );
+  return getMonitorWatchlist(id)!;
+}
+
+export function getMonitorWatchlist(id: string): MonitorWatchlist | undefined {
+  const row = db.prepare("SELECT * FROM monitor_watchlists WHERE id = ?").get(id) as MonitorWatchlistRow | undefined;
+  return row ? rowToMonitorWatchlist(row) : undefined;
+}
+
+export function listMonitorWatchlists(workspaceId: string, options: { includeArchived?: boolean } = {}): MonitorWatchlist[] {
+  const rows = options.includeArchived
+    ? db.prepare("SELECT * FROM monitor_watchlists WHERE workspace_id = ? ORDER BY updated_at DESC").all(workspaceId) as MonitorWatchlistRow[]
+    : db.prepare("SELECT * FROM monitor_watchlists WHERE workspace_id = ? AND status != 'archived' ORDER BY updated_at DESC").all(workspaceId) as MonitorWatchlistRow[];
+  return rows.map(rowToMonitorWatchlist);
+}
+
+export function updateMonitorWatchlist(id: string, patch: Partial<MonitorWatchlistInput>): MonitorWatchlist | undefined {
+  const current = getMonitorWatchlist(id);
+  if (!current) return undefined;
+  const now = Date.now();
+  const next: MonitorWatchlist = {
+    ...current,
+    ...patch,
+    name: patch.name ?? current.name,
+    description: patch.description ?? current.description,
+    type: patch.type ?? current.type,
+    suite: patch.suite ?? current.suite,
+    status: patch.status ?? current.status,
+    datasetBindings: patch.datasetBindings ?? current.datasetBindings,
+    updatedAt: now,
+    archivedAt: patch.status === "archived" ? (current.archivedAt ?? now) : current.archivedAt,
+  };
+  db.prepare(
+    `UPDATE monitor_watchlists SET
+      name = ?, description = ?, type = ?, suite = ?, frequency = ?, status = ?, owner = ?,
+      dataset_bindings_json = ?, target_plan_id = ?, goal_dataset_path_id = ?, metric_system_id = ?,
+      threshold_policy = ?, thresholds_json = ?, updated_at = ?, archived_at = ?
+      WHERE id = ?`,
+  ).run(
+    next.name,
+    next.description,
+    next.type,
+    next.suite,
+    next.frequency ?? null,
+    next.status,
+    next.owner ?? null,
+    JSON.stringify(next.datasetBindings ?? []),
+    next.targetPlanId ?? null,
+    next.goalDatasetPathId ?? null,
+    next.metricSystemId ?? null,
+    next.thresholdPolicy ?? null,
+    serializeWatchlistThresholds(next.thresholds),
+    now,
+    next.archivedAt ?? null,
+    id,
+  );
+  return getMonitorWatchlist(id);
+}
+
+export function archiveMonitorWatchlist(id: string): MonitorWatchlist | undefined {
+  return updateMonitorWatchlist(id, { status: "archived" });
+}
+
+// ── monitor_runs / monitor_findings CRUD ──
+
+export type MonitorRunRecord = MonitorRun & { watchlistId: string | null };
+
+export function insertMonitorRun(workspaceId: string, suite: MonitorRun["suite"], metricSystemId: string | null, watchlistId: string | null = null): MonitorRunRecord {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare("INSERT INTO monitor_runs (id, workspace_id, watchlist_id, suite, metric_system_id, started_at, status) VALUES (?, ?, ?, ?, ?, ?, 'running')")
+    .run(id, workspaceId, watchlistId, suite, metricSystemId, now);
+  return { id, workspaceId, watchlistId, suite, metricSystemId, startedAt: now, finishedAt: null, problemCount: 0, riskCount: 0, status: "running" };
 }
 
 export function finishMonitorRun(runId: string, patch: { problemCount: number; riskCount: number; status: "done" | "error" }): void {
@@ -1836,11 +2050,15 @@ export function finishMonitorRun(runId: string, patch: { problemCount: number; r
     .run(Date.now(), patch.problemCount, patch.riskCount, patch.status, runId);
 }
 
-export function listMonitorRuns(workspaceId: string): MonitorRun[] {
-  type Row = { id: string; workspace_id: string; suite: string; metric_system_id: string | null; started_at: number; finished_at: number | null; problem_count: number; risk_count: number; status: string };
-  const rows = db.prepare("SELECT * FROM monitor_runs WHERE workspace_id = ? ORDER BY started_at DESC").all(workspaceId) as Row[];
+export function listMonitorRuns(workspaceId: string, options: { watchlistId?: string | null } = {}): MonitorRunRecord[] {
+  type Row = { id: string; workspace_id: string; watchlist_id: string | null; suite: string; metric_system_id: string | null; started_at: number; finished_at: number | null; problem_count: number; risk_count: number; status: string };
+  const rows = options.watchlistId === undefined
+    ? db.prepare("SELECT * FROM monitor_runs WHERE workspace_id = ? ORDER BY started_at DESC").all(workspaceId) as Row[]
+    : options.watchlistId === null
+      ? db.prepare("SELECT * FROM monitor_runs WHERE workspace_id = ? AND watchlist_id IS NULL ORDER BY started_at DESC").all(workspaceId) as Row[]
+      : db.prepare("SELECT * FROM monitor_runs WHERE workspace_id = ? AND watchlist_id = ? ORDER BY started_at DESC").all(workspaceId, options.watchlistId) as Row[];
   return rows.map((r) => ({
-    id: r.id, workspaceId: r.workspace_id, suite: r.suite as MonitorRun["suite"], metricSystemId: r.metric_system_id,
+    id: r.id, workspaceId: r.workspace_id, watchlistId: r.watchlist_id, suite: r.suite as MonitorRun["suite"], metricSystemId: r.metric_system_id,
     startedAt: r.started_at, finishedAt: r.finished_at, problemCount: r.problem_count, riskCount: r.risk_count, status: r.status as MonitorRun["status"],
   }));
 }
@@ -1872,15 +2090,20 @@ export function listMonitorFindings(runId: string): _HF[] {
 }
 
 // 跨 run 取 prior findings：同 workspace + 同 suite + 同 metricSystem 最近一次 done 的 findings
-export function findPriorMonitorFindings(workspaceId: string, suite: string, metricSystemId: string | null, excludeRunId?: string): _HF[] {
+export function findPriorMonitorFindings(workspaceId: string, suite: string, metricSystemId: string | null, excludeRunId?: string, watchlistId: string | null = null): _HF[] {
   type Row = { id: string };
   const metricSql = metricSystemId ? "metric_system_id = ?" : "metric_system_id IS NULL";
+  const watchlistSql = watchlistId ? "watchlist_id = ?" : "watchlist_id IS NULL";
   const sql = excludeRunId
-    ? `SELECT id FROM monitor_runs WHERE workspace_id = ? AND suite = ? AND ${metricSql} AND status = 'done' AND id != ? ORDER BY started_at DESC LIMIT 1`
-    : `SELECT id FROM monitor_runs WHERE workspace_id = ? AND suite = ? AND ${metricSql} AND status = 'done' ORDER BY started_at DESC LIMIT 1`;
+    ? `SELECT id FROM monitor_runs WHERE workspace_id = ? AND suite = ? AND ${metricSql} AND ${watchlistSql} AND status = 'done' AND id != ? ORDER BY started_at DESC LIMIT 1`
+    : `SELECT id FROM monitor_runs WHERE workspace_id = ? AND suite = ? AND ${metricSql} AND ${watchlistSql} AND status = 'done' ORDER BY started_at DESC LIMIT 1`;
   const params = metricSystemId
-    ? excludeRunId ? [workspaceId, suite, metricSystemId, excludeRunId] : [workspaceId, suite, metricSystemId]
-    : excludeRunId ? [workspaceId, suite, excludeRunId] : [workspaceId, suite];
+    ? watchlistId
+      ? excludeRunId ? [workspaceId, suite, metricSystemId, watchlistId, excludeRunId] : [workspaceId, suite, metricSystemId, watchlistId]
+      : excludeRunId ? [workspaceId, suite, metricSystemId, excludeRunId] : [workspaceId, suite, metricSystemId]
+    : watchlistId
+      ? excludeRunId ? [workspaceId, suite, watchlistId, excludeRunId] : [workspaceId, suite, watchlistId]
+      : excludeRunId ? [workspaceId, suite, excludeRunId] : [workspaceId, suite];
   const r = db.prepare(sql).get(...params) as Row | undefined;
   if (!r) return [];
   return listMonitorFindings(r.id);

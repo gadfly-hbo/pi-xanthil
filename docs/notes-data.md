@@ -10,8 +10,15 @@
 
 > **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-06-30 · **D/V-BREQ-LINK1/3/3B/5 已完成业务需求贯通前端主链路；KG D-KG3/D-KG4 仍待 X-KG5 总控终审**
+- 最近更新：2026-07-01 · **X-MONITOR-PROD8 监测工作台静态/安全验收已收口，浏览器手测由用户接管；KG D-KG3/D-KG4 仍待 X-KG5 总控终审**
 - 进度：
+  - **D-MONITOR-PROD1（监测总览）**：新增 `health_overview` subtab（常量接缝 + App 默认进入 health 改为总览 + `HealthTabs` 分支），新增 `HealthOverviewPane`。总览聚合现有 `getMonitorConfig` / `listMonitorRuns` / `listMonitorFindings` / `listTargetPlans` / `listActionItems` / `listActionTasks` / `listMonitorImports`，展示最近 run、问题/风险/critical/warn、目标绑定、指标体系状态、就绪 checklist、Top findings 与 monitor:* 待处理行动入口；不新增后端表/路由。
+  - **D-MONITOR-PROD2（finding 详情抽屉）**：新增 `components/monitor/FindingDetailDrawer.tsx`，接入 `HealthDashboardPane` 与 `HealthReportPane`。抽屉展示 severity/kind/lifecycle/category/rule/signature、comparisons、诊断、建议、折叠 evidence（UI 侧对 rows/records/values/samples 做 redacted），支持单条生成行动项草案（复用 `/monitor/actions/draft`，只传 findingIds）、采纳建 task、忽略为 dismissed ActionItem、提为 eval 候选（沿用 D-EVOLVE2 脱敏字段口径）。行动去重增加 `metricRef=monitor-finding:<findingId>` marker。
+  - **D-MONITOR-PROD3（初始化 onboarding + 阈值预设）**：`HealthDataPane` 增加“数据接入→角色绑定→指标体系→可运行”步骤条；数据集按经营数据/source、运营目标/goal、行业、竞品、未绑定分区；生成指标体系前展示 source/goal/ontology/时间列/历史行数 best-effort 质量提示；草案预览突出指标数、缺失数据、假设、低置信指标，并明确“采纳后观星台可运行”。`HealthDashboardPane` 阈值主路径改为敏感/标准/保守三预设，高级设置折叠显示内部 key。
+  - **E-MONITOR-PROD4（finding 优先级 + run 摘要）**：新增 `server/src/monitor-priority.ts` 与单测，沉淀 `prioritizeMonitorFindings()` / `summarizeMonitorRun()` 纯函数；run 响应附带 summary，并新增 `GET /monitor/runs/:runId/summary`。当前 summary API 尚未组装 actionStates，action-aware 降权能力保留在纯函数入参，后续需要时再接 actions 表。
+  - **E-MONITOR-PROD6（Watchlist 后端）**：新增 `server/src/db/engine.ts` 的 `monitor_watchlists`，`monitor_runs` 增 nullable `watchlist_id` 且旧库用 ALTER TABLE 补列；新增 watchlist CRUD/archive、watchlist run、run body/query `watchlistId` 过滤。无真实 watchlist 时返回虚拟 `default` 读取 legacy `monitor_configs`；`watchlistId=default` 只查旧 `watchlist_id IS NULL` runs。create/update/run 均校验 clean_data 白名单、metricSystemId、targetPlanId 归属；非法 pathId 不落 run。
+  - **D-MONITOR-PROD7（Watchlist 前端，总控终审通过）**：`web/src/lib/api/viz.ts` 增 watchlist 局部类型与 `list/create/update/archive/runMonitorWatchlist` client，`listMonitorRuns` 支持 `watchlistId` query，`runMonitorSuite` 支持 body `watchlistId`。新增 `MonitorWatchlistSelector` + 创建向导，支持场景类型、数据角色、目标计划、指标体系、阈值策略（前端转换为 concrete thresholds）、保存/保存并运行；客户端始终保留 `default` 选项以兼容旧 monitor config。`HealthOverviewPane` / `HealthDashboardPane` / `HealthReportPane` 按当前 watchlist 过滤 runs/findings/action items；切换 watchlist 会清空本地 run/finding/drawer 状态。`HealthDataPane` 在 default 下仍写 legacy `monitor/config`，在真实 watchlist 下角色绑定与采纳指标体系写 `updateMonitorWatchlist()`。总控补丁已修复从真实 watchlist 切回 default 时未重载 legacy config 的问题，避免真实计划 bindings 误写入 default config。
+  - **X-MONITOR-PROD8（P0 工作台验收收口）**：总控完成静态/安全验收：health 默认总览、就绪检查、finding 解释抽屉、观星台留本页、行动环反馈、初始化 onboarding、阈值预设、Watchlist default/真实计划过滤链路均已在代码层复核并构建通过。浏览器点击级 smoke 未继续执行，用户已明确后续手动测试；测试结果需回填本区开放问题。
   - **D/V-BREQ-LINK1（activeConfirmedRequirement）**：`BusinessRequirementPane` 父容器新增 `activeConfirmedRequirement`。需求沟通确认成功后写入确认需求源、刷新版本列表、自动切到“分析框架”，打开历史确认需求版本时同步该状态；打开旧分析框架版本不会覆盖确认源。
   - **D/V-BREQ-LINK3（沟通材料 UI）**：需求沟通 tab 增加“导入沟通材料”工作区，支持登记材料、粘贴文本、上传文本；材料只进入沟通输入、澄清问题、假设和风险提示，不会直接生成分析框架或成为 confirmed facts。分析框架 tab 已移除旧“导入需求文档/提取草稿/本地文件”主入口。
   - **D/V-BREQ-LINK3B（导入接线）**：`web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()`，消费 E-BREQ-LINK2 专用 `/api/workspaces/:id/business-requirement-communication/import-documents`。登记 report/business_requirements/clean_data、粘贴/上传文本均先走专用 API；API 失败才显式 fallback 到“本地启发式，未走服务端导入”。`clean_data` 只传路径元信息，正文由服务端安全策略决定且前端不自行落正文 trace。
@@ -21,19 +28,34 @@
   - **D-KG4（KG history 记录与查询 API）**：新增 `kg_history_events` 表（落 D slot `db/data.ts`）与 `recordKgHistoryEvent` / `listKgHistoryEvents`；新增 `GET /api/workspaces/:id/knowledge-graph/history?limit=50`，limit clamp 1–200。已记录 `sync`、`extract`、`node_hidden`、`node_recovered`、`edge_added`、`edge_deleted`；history 仅存元数据摘要，不存报告正文/prompt 正文/客户明细/订单样本/原始明细。
   - **接缝注意**：本任务按 wiki brief 接入了现有 legacy KG 路由所在的 `server/src/index.ts`、现有 KG 表所在的 `server/src/db.ts`、双侧 `types.ts` 与 legacy `web/src/lib/api.ts`；这些属于接缝/legacy 文件，需总控按 X-KG5 加重终审。
 - 校验：
+  - `node --experimental-strip-types --test server/src/monitor-watchlist.test.ts`：✅ 5/5 通过（2026-07-01 E-MONITOR-PROD6 总控复核）
+  - `node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/monitor-priority.test.ts`：✅ 18/18 通过（2026-07-01 E-MONITOR-PROD4/6 总控复核）
+  - `npm run typecheck`：✅ server + web 0 错（2026-07-01 监测产品深化总控复核）
+  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-07-01 监测产品深化总控复核）
+  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-07-01 监测产品深化总控复核）
+  - `npm run typecheck`：✅ server + web 0 错（2026-07-01 D-MONITOR-PROD7 session 收尾）
+  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-07-01 D-MONITOR-PROD7 session 收尾）
+  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-07-01 D-MONITOR-PROD7 session 收尾）
+  - `npm run typecheck`：✅ server + web 0 错（2026-07-01 X-MONITOR-PROD8 静态验收）
+  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-07-01 X-MONITOR-PROD8 静态验收）
+  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-07-01 X-MONITOR-PROD8 静态验收）
   - `npm run typecheck`：✅ server + web 0 错（2026-06-30 D/V-BREQ-LINK1/3/3B/5）
   - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-06-30 D/V-BREQ-LINK1/3/3B/5）
   - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-06-30 D/V-BREQ-LINK1/3/3B/5）
   - `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts`：✅ 19/19 通过（2026-06-30 D/V-BREQ-LINK5 补跑）
 - 下一步（接续优先级）：
-  - ① BREQ 浏览器 smoke：分别从日常/专题/重复进入业务需求，验证“需求沟通 → 导入沟通材料 → 生成澄清 → 确认正式需求 → 自动进入分析框架 → 左侧确认需求源面板 → 基于确认需求生成分析框架 → 版本列表区分确认需求/分析框架”的完整链路。
-  - ② 回流总控终审 BREQ 跨域最小接入：重点看 `BusinessRequirementPane.tsx` 消费 E-BREQ-LINK2/LINK4 专用 API 的边界是否接受，以及 `web/src/lib/api/engine.ts` 新增 client 是否符合 E 域契约。
-  - ③ 后续瘦身可继续把 `RequirementCommunicationPane` / `AnalysisFrameworkPane` 从内部组件迁成独立文件；当前仍是单文件局部改造，避免 props-heavy 搬迁引发流程回归。
-  - ④ 回流总控做 X-KG5：重点审 `index.ts` / `db.ts` / 双侧 `types.ts` / `web/src/lib/api.ts` 的接缝改动是否接受，确认 KG history schema 与 preview reason 枚举是否冻结。
-  - ⑤ 若总控接受 KG，前端后续可在 KG 面板接 `api.previewKgExtraction` 与 `api.listKgHistoryEvents`；建议仍尽量保持 `KnowledgeGraphPane.tsx` 主体结构不大改。
+  - ① 用户浏览器手测回填：无配置工作区进入 health 默认落总览，检查缺项 CTA；已配置工作区检查最近 run、Top findings、行动待办、finding 抽屉“生成草案→采纳/忽略→行动环可见”；Watchlist 验证创建两个计划、切换 run/finding/action 过滤、default 旧 config 仍可用。
+  - ② 若手测通过，Watchlist P1 可继续补轻量验收：归档计划后 selector/default 行为、保存并运行失败提示、action-aware summary 是否需要接 actions 表。
+  - ③ BREQ 浏览器 smoke：分别从日常/专题/重复进入业务需求，验证“需求沟通 → 导入沟通材料 → 生成澄清 → 确认正式需求 → 自动进入分析框架 → 左侧确认需求源面板 → 基于确认需求生成分析框架 → 版本列表区分确认需求/分析框架”的完整链路。
+  - ④ 回流总控终审 BREQ 跨域最小接入：重点看 `BusinessRequirementPane.tsx` 消费 E-BREQ-LINK2/LINK4 专用 API 的边界是否接受，以及 `web/src/lib/api/engine.ts` 新增 client 是否符合 E 域契约。
+  - ⑤ 回流总控做 X-KG5：重点审 `index.ts` / `db.ts` / 双侧 `types.ts` / `web/src/lib/api.ts` 的接缝改动是否接受，确认 KG history schema 与 preview reason 枚举是否冻结。
 - 阻塞 / 待确认：
   - 无硬阻塞。
 - 开放问题：
+  - **⓪ 监测浏览器手测待回填**：总控因用户接管后续手测，未继续执行 Playwright/浏览器点击级 smoke；待用户回填 health 总览默认入口、finding 抽屉单条闭环、行动环可见性。
+  - **⓪-0 Watchlist 浏览器手测待回填**：待用户验证“创建两个 watchlist → 保存并运行 → 总览/观星台/行动环按计划过滤 → default 兼容旧 run”。
+  - **⓪-1 监测接缝变更需总控确认**：本次按任务要求修改 `web/src/lib/constants.ts` 增 `health_overview`，并修改 `App.tsx` 默认 health subtab；需总控接受该接缝变更。
+  - **⓪-2 Watchlist 前端类型接缝口径**：D-MONITOR-PROD7 为避免触碰双侧 `types.ts`，在 `web/src/lib/api/viz.ts` 使用局部 `MonitorWatchlist` 类型过渡；后续如多模块消费或总控要求契约上提，再同步双侧 `types.ts`。
   - **① BREQ 浏览器实跑未完成**：本 session 已完成代码与构建/单测校验，但未启动浏览器走真实 UI；需下个 session 或总控实跑确认 LINK2/LINK4 在真实工作区、真实 report path 下交互无断点。
   - **② BREQ 跨域 client 归属**：本次在 `web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()` 与 `generateAnalysisFrameworkFromConfirmed()`，是 D/V Pane 消费 E 专用 API 的最小接线；需总控确认该跨域接法继续接受，还是后续由 E 统一封装。
   - **③ BREQ 后续拆文件节奏**：当前 `BusinessRequirementPane.tsx` 已继续增大；建议 smoke 稳定后拆 `RequirementCommunicationPane` / `AnalysisFrameworkPane` 独立文件，但是否现在拆需总控拍板，避免在贯通期扩大 diff。
@@ -105,6 +127,10 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **tool-use 与 ExtractionPane 差异**：ExtractionPane 允许手动输入任意本地路径（通用提取工具），ToolUsePane 仅允许 clean_data 已登记路径（计算工具链安全约束）。
 - **工具用途分类体系（2026-06-12）**：`ExtractionToolManifest.category` ∈ `"ingestion" | "analysis"`，由 `registry.ts` 的 `normalizeCategory` 默认 `"ingestion"`。`ingestion`=读 HTML/原始 Excel 等半结构化数据，仅「数据提取」面板手动触发，不向 AI 暴露；`analysis`=读 clean_data 聚合 CSV 产出分析结果，经 MCP 暴露给 pi-agent。分类是 manifest 内禀属性，UI 只展示不强改。
 - **监测配置 monitor_configs（2026-06-23，D-MONITOR1）**：每 workspace 单条 upsert（UNIQUE workspace_id），`dataset_bindings` 整列 JSON 替换（不拆 binding 级 CRUD，YAGNI）。**pathId 归属校验范式**：PUT 路由 fetch self `${SELF_BASE}/api/bi/aggregations?workspaceId=...` 拿 clean_data 白名单，非白名单 pathId → 400 不落库——这是 D/viz 跨域读取数据集时的标准防越权范式，沿用 health/runs 模式，不直 import D 域函数（守 §五.3 接缝纪律），不 readFileSync workspace_paths（守数据安全）。后续 monitor metric-system / runs 等若涉及 pathId 引用都按此校验。
+- **监测 Watchlist 契约（2026-07-01，X-MONITOR-PROD5）**：Watchlist=一个可运行的监测计划，用来表达「日常经营 / 大促 / 会员复购 / 门店 / 自定义」等多套监测对象；首版只支持手动运行和切换，不做定时调度、通知或 owner 工作流。新增 `monitor_watchlists` 审定落 `server/src/db/engine.ts`，与 `monitor_metric_systems` / `monitor_runs` 同域；`monitor_configs` 保留为 legacy singleton fallback，不迁移、不删除。旧 workspace 没有 watchlist 时，后端返回虚拟 `default` watchlist 读取现有 `monitor_configs`；只有用户编辑/创建时才落真实行。`monitor_runs` 增 nullable `watchlist_id`；findings 仍只经 runId 归属，按 watchlist 过滤时先筛 runs 再取 findings，不给 `monitor_findings` 冗余加列。create/update/run 都必须校验 `datasetBindings` 内 `datasetPathId` 属于当前 workspace clean_data 白名单，`targetPlanId` / `goalDatasetPathId` / `metricSystemId` 属于当前 workspace；Watchlist 只存配置和聚合目标引用，不存原始 rows/cells。
+- **监测 Watchlist 后端落地（2026-07-01，E-MONITOR-PROD6）**：`monitor_watchlists` 已落 `server/src/db/engine.ts`，`monitor_runs.watchlist_id` fresh DB 带 FK，旧库用 `ALTER TABLE monitor_runs ADD COLUMN watchlist_id TEXT` 兼容。API 已支持 `GET/POST/PATCH/DELETE /monitor/watchlists`、`POST /monitor/watchlists/:watchlistId/run`、`POST /monitor/runs` body `watchlistId`、`GET /monitor/runs?watchlistId=...`；`watchlistId=default` 表示 legacy/default 视图，只查 `watchlist_id IS NULL` 的旧 run。注意：D-MONITOR-PROD7 前端接入前，双侧 `MonitorRun`/Watchlist 类型与 `vizApi` client 还未完整上提/接线；该接缝需总控明确授权后再改，避免无计划触碰 `types.ts` / API 骨架。
+- **监测 Watchlist 前端接入（2026-07-01，D-MONITOR-PROD7）**：前端首版不上提双侧 `types.ts`，在 `web/src/lib/api/viz.ts` 用局部 `MonitorWatchlist` 类型承接后端 HTTP 契约；若未来跨模块复用再上提。selector 客户端永远保留 `default` 选项，即使后端存在真实 watchlist 后不再返回虚拟 default，也允许用户回到旧 `monitor_configs` / `watchlist_id IS NULL` 视图。真实 watchlist 的运行路径调用 `/monitor/watchlists/:id/run` 且不传本地 suite/threshold override，避免覆盖保存语义；default 路径才使用观星台本地 suite/threshold。`HealthDataPane` 的角色绑定/指标体系采纳按 watchlist 分支：default 写 legacy `saveMonitorConfig()`，真实 watchlist 写 `updateMonitorWatchlist()`；从真实 watchlist 切回 default 必须重新加载 legacy config，避免把真实计划 bindings 误写回 default。切换 watchlist 时各 Pane 必须清空 selectedRun/findings/drawer/action 状态，并在 drawer 内校验 `finding.runId === run.id` 后才允许行动/eval 操作。
+- **监测 P0 安全验收口径（2026-07-01，X-MONITOR-PROD8）**：`/monitor/actions/draft` 的 LLM 输入只允许 finding 衍生产物：kind/severity/lifecycle/category/title/suggestion/comparisons/diagnosis，不传 `evidence`、rows/records/values/samples 或原始数据；eval candidate 只发 run/finding 元数据、comparisons、diagnosis、suggestion。UI 可展示折叠 evidence，但必须 redacted row/rows/records/values/samples。后续任何“finding → LLM/action/eval”的扩展都按此最小字段白名单，不直接消费 raw evidence。
 - **viz slot 归 D 承接（2026-06-19 起）**：Orchestration §一明确 V-agent 停用后 viz/前端归 D；本期 D-MONITOR1 改 `db/viz.ts` / `routes/viz.ts` / `HealthDataPane.tsx` 即此条款下的合规操作。后续监测改造（D-MONITOR3）同理。修改前看 wiki 卡 brief 是否点明「落点=…+ monitor 前端」即可。
 - **复用 actions 三表承接监测行动（2026-06-23，D-MONITOR3）**：监测的「finding → 行动项 → 任务 → 反馈」闭环**不另起表**——`HealthReportPane` 用 `ActionItem.sourceKind="session"` + `scopeId=workspaceId` + `reportPath="monitor:${runId}"` 复用 actions 三表与端点。识别 monitor 行动项靠 `reportPath` 前缀 `monitor:`；当前 `sourceKind` 枚举未扩 `"monitor"`，是有意取舍——若后续要按 sourceKind 过滤/统计需总控扩 types。同理 viz slot 内任何"业务实体 → 行动闭环"接入都该走此 reportPath 前缀范式，避免重复造闭环。
 - **workspace 文件路径沙箱二次校验范式（2026-06-23，D-MONITOR6）**：任何由前端可控字符串（如 `datasetName`、文件名）参与的 server 端落盘路径，必须**两步防御**：① 先用 `sanitize` 把非法字符（`/`、`..`、控制符）替换为 `_`；② 再用 `resolve(base, name)` + `target.startsWith(base + "/")` 二次校验路径必须严格在 base 沙箱内。两步是叠加而非可选——sanitize 是字符过滤、resolve 校验是路径语义校验，单独任一项都有漏过的可能（例如 sanitize 漏判某 unicode 字符，或路径含 symlink 时 startsWith 误判）。`resolveMonitorPath()` 是此范式的样板，后续任何「前端传名 → server 落盘」场景都按此结构防穿越。
