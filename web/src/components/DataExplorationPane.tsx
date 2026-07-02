@@ -5,7 +5,7 @@
 
 import { useCallback, useEffect, useMemo, useState } from "react";
 import { DndContext, type DragEndEvent } from "@dnd-kit/core";
-import { ShieldAlert, Loader2, Compass, Check, X, Link2, Sparkles } from "lucide-react";
+import { ShieldAlert, Loader2, Compass, Check, X, Link2, Sparkles, LayoutDashboard } from "lucide-react";
 import { FileSelector, type FileChoice, type Scope } from "./data-exploration/FileSelector";
 import { FieldList } from "./data-exploration/FieldList";
 import { ConfigPanel, type ChartConfig } from "./data-exploration/ConfigPanel";
@@ -13,6 +13,7 @@ import { ChartCanvas } from "./data-exploration/ChartCanvas";
 import { ProfileReport } from "./data-exploration/ProfileReport";
 import { JoinBuilder } from "./data-exploration/JoinBuilder";
 import { InsightsReport } from "./data-exploration/InsightsReport";
+import { ExplorationOverview } from "./data-exploration/ExplorationOverview";
 import { registerFile, runQuery, quoteIdent } from "@/lib/duckdb";
 import { profileTable, type ColumnProfile, type FieldSchema, type FieldKind } from "@/lib/profiling";
 import type { ExploreSeed } from "@/types";
@@ -49,7 +50,7 @@ interface LoadedTable {
   isJoined?: boolean;
 }
 
-type ViewTab = "chart" | "profile" | "insights";
+type ViewTab = "overview" | "chart" | "profile" | "insights";
 
 function fileKey(choice: FileChoice): string {
   return `${choice.pathId}:${choice.relativePath}`;
@@ -79,7 +80,7 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [config, setConfig] = useState<ChartConfig>(DEFAULT_CONFIG);
-  const [viewTab, setViewTab] = useState<ViewTab>("chart");
+  const [viewTab, setViewTab] = useState<ViewTab>("overview");
   const [showJoin, setShowJoin] = useState(false);
 
   const activeTable = useMemo(
@@ -109,6 +110,7 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
   // Reset chart config when switching tables (fields belong to a specific table).
   useEffect(() => {
     setConfig(DEFAULT_CONFIG);
+    setViewTab(activeTableName ? "overview" : "chart");
   }, [activeTableName]);
 
   // Pick a unique table name (avoid clobbering an already-loaded table).
@@ -262,6 +264,11 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
     });
   }, [fieldsByName]);
 
+  const applySuggestedConfig = useCallback((nextConfig: ChartConfig) => {
+    setConfig(nextConfig);
+    setViewTab("chart");
+  }, []);
+
   const tabBtn = (id: ViewTab, label: string) => (
     <button
       onClick={() => setViewTab(id)}
@@ -392,6 +399,17 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
                     关联 (JOIN)
                   </button>
                 )}
+                <button
+                  onClick={() => setViewTab("overview")}
+                  className={`inline-flex items-center gap-1 rounded px-2 py-0.5 text-[11px] ${
+                    viewTab === "overview"
+                      ? "bg-neutral-900 text-white dark:bg-neutral-100 dark:text-neutral-900"
+                      : "text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                  }`}
+                >
+                  <LayoutDashboard className="h-3.5 w-3.5" strokeWidth={1.75} />
+                  总览
+                </button>
                 {tabBtn("chart", "图表")}
                 {tabBtn("profile", "剖析报告")}
                 <button
@@ -442,6 +460,18 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
                     从左侧选择 csv / xlsx 文件开始探索
                   </div>
                 )}
+                {!loading && !error && activeTable && viewTab === "overview" && (
+                  <ExplorationOverview
+                    label={activeTable.label}
+                    rowCount={activeTable.rowCount}
+                    fields={activeTable.fields}
+                    columns={activeTable.columns}
+                    baseConfig={config}
+                    onApplyConfig={applySuggestedConfig}
+                    onOpenProfile={() => setViewTab("profile")}
+                    onOpenInsights={() => setViewTab("insights")}
+                  />
+                )}
                 {!loading && !error && activeTable && viewTab === "chart" && (
                   <ChartCanvas tableName={activeTable.tableName} config={config} fieldsByName={fieldsByName} />
                 )}
@@ -462,9 +492,11 @@ export function DataExplorationPane({ scope, seed, onSeedDismiss }: Props) {
                 )}
               </div>
 
-              <div className="w-64 shrink-0">
-                <ConfigPanel config={config} onChange={setConfig} fields={activeTable?.fields ?? []} />
-              </div>
+              {viewTab === "chart" && (
+                <div className="w-64 shrink-0">
+                  <ConfigPanel config={config} onChange={setConfig} fields={activeTable?.fields ?? []} />
+                </div>
+              )}
             </div>
           </div>
         </div>
