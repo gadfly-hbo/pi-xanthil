@@ -104,7 +104,8 @@
 
   .hgroup { margin-left: auto; display: flex; gap: 8px; }
   .hbtn { background: var(--panel2); color: var(--fg); border: 1px solid var(--border);
-    border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit; }
+    border-radius: 8px; padding: 6px 12px; font-size: 13px; cursor: pointer; font-family: inherit;
+    text-decoration: none; display: inline-flex; align-items: center; gap: 4px; }
   .hbtn:hover { background: #2a2d33; }
   .hbtn.ok { background: #10331f; border-color: #1f6b3b; color: #4ade80; }
 
@@ -145,7 +146,10 @@
   <header>
     <h1>苍耳 pi-Xanthil</h1>
     <span class="ver" id="verBadge">v2.0</span>
-    <button id="themeToggle" class="hbtn" style="margin-left:auto; display:flex; align-items:center; gap:4px">🌓 切换主题</button>
+    <div class="hgroup">
+      <a class="hbtn" href="file:///Users/huangbo/Dev/Projects/pi-xanthil" title="/Users/huangbo/Dev/Projects/pi-xanthil">📂 项目文件夹</a>
+      <button id="themeToggle" class="hbtn">🌓 切换主题</button>
+    </div>
   </header>
   <p class="tagline">本地优先的 AI 数据分析工作台 · 多 Agent 协同开发 Wiki（任务派发 + 快修 + 随手记 + 版本历史）</p>
 

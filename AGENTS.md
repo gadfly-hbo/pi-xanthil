@@ -95,3 +95,15 @@ grep -rE "(generate|chat|extract|clarify|sink|distill).*api\." web/src/component
 - 全局 `git diff --check` 可能因无关 trailing whitespace 失败（用户已明确跳过），**不要主动修无关文件**
 - 业务需求字段级来源引用采用 `sourceRefs` 字段路径 + quote 最小闭环，**不要擅自升级**为字符 offset 定位
 - **pi CLI 调用陷阱**：`runPiPrompt()` 不要用 `--no-extensions`（会禁用模型 provider 扩展导致 LLM 调用失败），用 `--no-skills`。`server/src/pi-adapter.ts:165` 已修复。
+
+<!-- AGENTOPS:BEGIN -->
+## AgentOps Product Entry
+
+This product is registered in the multi-agent coding system.
+
+- System root: `/Users/huangbo/Dev/AgentOps/coding-system`
+- Product overlay: `/Users/huangbo/Dev/AgentOps/coding-system/products/pi-xanthil/AGENTS.overlay.md`
+- Routing guide: `/Users/huangbo/Dev/AgentOps/coding-system/docs/agent-routing.md`
+
+This section does not replace the rules above. Existing product rules remain authoritative.
+<!-- AGENTOPS:END -->
