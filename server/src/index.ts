@@ -170,7 +170,20 @@ import { archiveSkillEvaluation, archiveToolEvaluation, listEvaluationArchives }
 import { applySkillCurationProposals, autoTriggerCuration, curateSkillEvaluation } from "./skill-curator.ts";
 import { parseToolEvaluationCases, resolveToolEvaluationCasePaths } from "./tool-evaluation-api.ts";
 import { getSkillEvaluation, getToolEvaluation } from "./db/engine.ts";
-import { DEFAULT_REVIEW_PROMPT, buildReviewPrompt, buildAutoFixPrompt, AUTO_FIX_SYSTEM_PROMPT, parseReviewScore, type ReviewAnnotation, type ReviewHistoryEntry } from "./report-review.ts";
+import {
+  DEFAULT_REVIEW_PROMPT,
+  buildReviewPrompt,
+  buildAutoFixPrompt,
+  buildContractAutoFixPrompt,
+  buildContractReviewPrompt,
+  reviewReportAgainstContract,
+  validateContractRevisionResult,
+  AUTO_FIX_SYSTEM_PROMPT,
+  parseReviewScore,
+  type ContractReviewResult,
+  type ReviewAnnotation,
+  type ReviewHistoryEntry,
+} from "./report-review.ts";
 import { readFlowFile, readTree, safeResolve, writeFlowFile } from "./flow-fs.ts";
 import { compactPiSession, getPiSessionStats, runPiPrompt, runPiTurn, type PiRun } from "./pi-adapter.ts";
 import { prepareCollectCwd, COLLECT_SYSTEM_PROMPT } from "./collect-mcp.ts";
@@ -181,6 +194,17 @@ import { traceFlowEvent } from "./flow-trace.ts";
 import { getActiveChatRun, abortChatRun } from "./runtime.ts";
 import { flowMessageText } from "./message-text.ts";
 import { handleSendFlow, handleExecuteMultiAgent, handleAnaxPrecheck, abortAnaxPrecheck, readCommandsFile, distillSkillCandidate } from "./routes/engine.ts";
+import {
+  buildReportContractContextFromAnalysisFramework,
+  buildReportContractContextFromConfirmedRequirement,
+  buildReportContractTracePayload,
+  buildReportContractPromptBlock,
+  isAnalysisFrameworkJsonPath,
+  isConfirmedBusinessRequirementJsonPath,
+  type BusinessRequirementAnalysisFrameworkStructured,
+  type ConfirmedBusinessRequirementStructured,
+  type ReportContractContext,
+} from "./business-requirement-communication.ts";
 
 import { buildModelLabPrompt, SUPPORTED_MODELS, type ModelLabId } from "./model-lab.ts";
 import { buildRegisteredPathContext, resolveOutputTarget } from "./output-paths.ts";
@@ -3276,6 +3300,8 @@ ${userPrompt}${requirementContext}${datasetContext}
 6. 故事线要极简，突出讲解顺序和故事脉络，不要复刻完整报告。建议包含 5-7 个步骤：开场目标、关键问题、核心发现、证据支撑、影响判断、建议行动、决策点。
 7. 删除冗长过程、内部执行细节和不适合汇报沟通的内容。
 8. 如果原报告证据不足，请明确写出“不确定”或“需补充验证”。
+9. 如果用户场景包含 ReportContractContext，presentationMarkdown 必须先输出“本次报告实例大纲”，列出每章对应契约 section、必答问题和将使用的证据类型；正文逐章回应 keyQuestions，并标注 requiredEvidence 是否已满足。
+10. 禁止把 openQuestions/deferredQuestions 写成已确认事实；证据不足时必须写“未覆盖/待确认”，不得编造数据。
 
 报告文件：${reportName}
 
@@ -3467,6 +3493,7 @@ function loadBusinessRequirementContextForChat(ref: unknown): string {
   const record = ref as Record<string, unknown>;
   const pathId = Number(record.pathId);
   const markdownPath = String(record.markdownPath ?? "");
+  const jsonPath = String(record.jsonPath ?? "");
   if (!Number.isFinite(pathId) || !markdownPath) return "";
   const { outputDir } = resolveBusinessRequirementOutputDir(pathId);
   validateArtifactPath(markdownPath, "业务需求上下文");
@@ -3475,13 +3502,58 @@ function loadBusinessRequirementContextForChat(ref: unknown): string {
   }
   const content = readFlowFile(outputDir, markdownPath).content.trim();
   if (!content) return "";
+  let reportContractContext = "";
+  if (jsonPath) {
+    validateArtifactPath(jsonPath, "业务需求上下文 JSON");
+    if (!jsonPath.startsWith("business_requirements/") || !jsonPath.endsWith(".json")) {
+      throw new Error("business requirement context json must be under business_requirements");
+    }
+    if (isConfirmedBusinessRequirementJsonPath(jsonPath)) {
+      const structured = JSON.parse(readFlowFile(outputDir, jsonPath).content) as ConfirmedBusinessRequirementStructured;
+      reportContractContext = buildReportContractPromptBlock(buildReportContractContextFromConfirmedRequirement(structured, { jsonPath, markdownPath }));
+    } else if (isAnalysisFrameworkJsonPath(jsonPath)) {
+      const structured = JSON.parse(readFlowFile(outputDir, jsonPath).content) as BusinessRequirementAnalysisFrameworkStructured;
+      reportContractContext = buildReportContractPromptBlock(buildReportContractContextFromAnalysisFramework(structured, { jsonPath, markdownPath }));
+    } else {
+      throw new Error("business requirement context json must be a confirmed requirement or analysis framework json");
+    }
+  }
   return [
     "[业务需求上下文]",
     "下面是用户选择的业务需求与分析框架。后续任务应优先围绕该需求目标、指标口径、数据需求、风险和待确认问题展开；不要把待确认问题当成已确认事实。",
     content.slice(0, 40_000),
     "[/业务需求上下文]",
+    reportContractContext,
     "",
   ].join("\n");
+}
+
+function loadReportContractContextForReview(outputDir: string, value: unknown): ReportContractContext {
+  if (typeof value !== "object" || value === null) throw new Error("reportContractContext or contractSource required");
+  const record = value as Record<string, unknown>;
+  if (typeof record.projectName === "string" && typeof record.source === "object" && Array.isArray(record.sections)) {
+    return record as unknown as ReportContractContext;
+  }
+  const requirementJsonPath = String(record.requirementJsonPath ?? "");
+  const frameworkJsonPath = String(record.frameworkJsonPath ?? "");
+  if (!requirementJsonPath && !frameworkJsonPath) throw new Error("contractSource requires requirementJsonPath or frameworkJsonPath");
+  const jsonPath = frameworkJsonPath || requirementJsonPath;
+  validateArtifactPath(jsonPath, "报告契约 JSON");
+  if (!jsonPath.startsWith("business_requirements/") || !jsonPath.endsWith(".json")) {
+    throw new Error("report contract source must be a business_requirements json");
+  }
+  const markdownPath = jsonPath.replace(/\.json$/, ".md");
+  const markdownExists = (() => {
+    try { readFlowFile(outputDir, markdownPath); return true; } catch { return false; }
+  })();
+  if (frameworkJsonPath) {
+    if (!isAnalysisFrameworkJsonPath(frameworkJsonPath)) throw new Error("frameworkJsonPath must point to an analysis framework json");
+    const structured = JSON.parse(readFlowFile(outputDir, frameworkJsonPath).content) as BusinessRequirementAnalysisFrameworkStructured;
+    return buildReportContractContextFromAnalysisFramework(structured, { jsonPath: frameworkJsonPath, ...(markdownExists ? { markdownPath } : {}) });
+  }
+  if (!isConfirmedBusinessRequirementJsonPath(requirementJsonPath)) throw new Error("requirementJsonPath must point to a confirmed requirement json");
+  const structured = JSON.parse(readFlowFile(outputDir, requirementJsonPath).content) as ConfirmedBusinessRequirementStructured;
+  return buildReportContractContextFromConfirmedRequirement(structured, { jsonPath: requirementJsonPath, ...(markdownExists ? { markdownPath } : {}) });
 }
 
 app.post("/api/business-requirements/documents/preview", async (req, res) => {
@@ -3760,6 +3832,52 @@ app.post("/api/report-review/review", async (req, res) => {
   }
 });
 
+app.post("/api/report-review/contract-review", async (req, res) => {
+  const pathId = Number(req.body?.pathId);
+  const relPath = String(req.body?.relPath ?? "");
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
+  try {
+    const entry = getWorkspacePath(pathId);
+    if (!entry) return res.status(404).json({ error: "path not found" });
+    if (entry.folder !== "report") return res.status(400).json({ error: "only report output paths can be contract-reviewed" });
+    const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+    const sourceRelPath = entry.kind === "dir" ? relPath : basename(entry.path);
+    if (entry.kind === "dir" && !sourceRelPath) return res.status(400).json({ error: "relPath required for directory report paths" });
+    if (entry.kind === "file" && relPath) return res.status(400).json({ error: "file report paths do not accept relPath" });
+    validateArtifactPath(sourceRelPath, "报告 tab 登记路径");
+    const report = readFlowFile(outputDir, sourceRelPath);
+    const sourceName = sourceRelPath ? basename(sourceRelPath) : basename(entry.path);
+    if (!TEXT_PREVIEW_EXTENSIONS.has(extname(sourceName).toLowerCase())) {
+      return res.status(400).json({ error: "selected report is not a text file" });
+    }
+    const contract = loadReportContractContextForReview(outputDir, req.body?.reportContractContext ?? req.body?.contractSource);
+    const contractReview = reviewReportAgainstContract(sanitizeReportForLlm(report.content), contract);
+    const historyEntry = {
+      id: randomUUID(),
+      kind: "contract_review",
+      reportName: sourceName,
+      reviewedAt: Date.now(),
+      model: "deterministic-contract-review",
+      totalScore: contractReview.totalScore,
+      pathId,
+      relPath: sourceRelPath,
+      reviewMarkdown: contractReview.reviewMarkdown,
+      contractSource: buildReportContractTracePayload(contract),
+      coverageSummary: contractReview.coverageSummary,
+      sectionCount: contractReview.sectionResults.length,
+      questionCount: contractReview.questionResults.length,
+      evidenceGapCount: contractReview.evidenceGaps.length,
+      unsupportedClaimCount: contractReview.unsupportedClaims.length,
+      openQuestionMisuseCount: contractReview.openQuestionMisuse.length,
+    };
+    const historyRelPath = `review_history/${sanitizeFilenamePart(sourceName)}-契约审查-${timestampForFilename()}.json`;
+    writeFlowFile(outputDir, historyRelPath, `${JSON.stringify(historyEntry, null, 2)}\n`);
+    return res.json({ ...contractReview, model: "deterministic-contract-review", reportContent: report.content, contractSource: buildReportContractTracePayload(contract) });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
+  }
+});
+
 app.post("/api/report-review/auto-fix", async (req, res) => {
   const pathId = Number(req.body?.pathId);
   const relPath = String(req.body?.relPath ?? "");
@@ -3811,6 +3929,85 @@ app.post("/api/report-review/auto-fix", async (req, res) => {
     res.json({ path: outputRelPath, content: fixedContent, model });
   } catch (err) {
     res.status(500).json({ error: String(err) });
+  }
+});
+
+app.post("/api/report-review/contract-auto-fix", async (req, res) => {
+  const pathId = Number(req.body?.pathId);
+  const relPath = String(req.body?.relPath ?? "");
+  if (!Number.isFinite(pathId)) return res.status(400).json({ error: "pathId required" });
+  try {
+    const entry = getWorkspacePath(pathId);
+    if (!entry) return res.status(404).json({ error: "path not found" });
+    if (entry.folder !== "report") return res.status(400).json({ error: "only report output paths can be contract-revised" });
+
+    const workspace = getWorkspace(entry.workspaceId);
+    if (!workspace) return res.status(404).json({ error: "workspace not found" });
+    const model = resolveRequestedModel(req.body?.model, DEFAULT_PRESENTATION_VERSION_MODEL);
+    const outputDir = entry.kind === "dir" ? resolve(entry.path) : dirname(resolve(entry.path));
+    const sourceRelPath = entry.kind === "dir" ? relPath : basename(entry.path);
+    if (entry.kind === "dir" && !sourceRelPath) return res.status(400).json({ error: "relPath required for directory report paths" });
+    if (entry.kind === "file" && relPath) return res.status(400).json({ error: "file report paths do not accept relPath" });
+    validateArtifactPath(sourceRelPath, "报告 tab 登记路径");
+    const report = readFlowFile(outputDir, sourceRelPath);
+    const sourceName = sourceRelPath ? basename(sourceRelPath) : basename(entry.path);
+    const ext = extname(sourceName).toLowerCase();
+    if (!TEXT_PREVIEW_EXTENSIONS.has(ext)) return res.status(400).json({ error: "selected report is not a text file" });
+    const contract = loadReportContractContextForReview(outputDir, req.body?.reportContractContext ?? req.body?.contractSource);
+    const contractReview = typeof req.body?.contractReview === "object" && req.body.contractReview !== null
+      ? req.body.contractReview as ContractReviewResult
+      : reviewReportAgainstContract(sanitizeReportForLlm(report.content), contract);
+    const fixPrompt = buildContractAutoFixPrompt(sanitizeReportForLlm(report.content), contract, contractReview);
+    const rawOutput = await runPiPrompt({
+      workspaceRoot: workspace.rootPath,
+      text: fixPrompt,
+      model,
+      systemPrompt: `${AUTO_FIX_SYSTEM_PROMPT}\n必须严格遵守 ReportContractContext；不得新增无来源数字；openQuestions/deferredQuestions 只能写为待确认事项。`,
+      timeoutMs: 300_000,
+      onEvent: (event) => trackUsageEvent({
+        workspaceId: workspace.id,
+        targetKind: "report_version",
+        targetId: `contract-fix:${pathId}:${sourceRelPath}`,
+        title: `契约驱动报告修订：${sourceName}`,
+      }, event),
+    });
+    const parsed = validateContractRevisionResult(parseJsonObject(rawOutput), report.content, contractReview);
+    const timestamp = timestampForFilename();
+    const cleanName = sanitizeFilenamePart(sourceName.replace(/\.[^.]+$/, ""));
+    const outputRelPath = `reviewed_versions/${cleanName}-contract-revised-${timestamp}${ext || ".md"}`;
+    writeFlowFile(outputDir, outputRelPath, parsed.revisedMarkdown.endsWith("\n") ? parsed.revisedMarkdown : `${parsed.revisedMarkdown}\n`);
+    const revisedReview = reviewReportAgainstContract(sanitizeReportForLlm(parsed.revisedMarkdown), contract);
+    const historyEntry = {
+      id: randomUUID(),
+      kind: "contract_auto_fix",
+      reportName: sourceName,
+      reviewedAt: Date.now(),
+      model,
+      pathId,
+      relPath: sourceRelPath,
+      revisedRelPath: outputRelPath,
+      contractSource: buildReportContractTracePayload(contract),
+      coverageDelta: revisedReview.totalScore - contractReview.totalScore,
+      revisionSummary: parsed.revisionSummary,
+      unresolvedGaps: parsed.unresolvedGaps,
+      originalScore: contractReview.totalScore,
+      revisedScore: revisedReview.totalScore,
+    };
+    const historyRelPath = `review_history/${sanitizeFilenamePart(sourceName)}-契约修订-${timestampForFilename()}.json`;
+    writeFlowFile(outputDir, historyRelPath, `${JSON.stringify(historyEntry, null, 2)}\n`);
+    return res.json({
+      path: outputRelPath,
+      content: parsed.revisedMarkdown,
+      model,
+      revisionSummary: parsed.revisionSummary,
+      unresolvedGaps: parsed.unresolvedGaps,
+      contractSource: buildReportContractTracePayload(contract),
+      coverageDelta: revisedReview.totalScore - contractReview.totalScore,
+      originalScore: contractReview.totalScore,
+      revisedScore: revisedReview.totalScore,
+    });
+  } catch (err) {
+    return res.status(500).json({ error: String(err) });
   }
 });
 

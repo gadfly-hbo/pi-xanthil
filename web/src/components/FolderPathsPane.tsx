@@ -13,6 +13,7 @@ interface Props {
   scope: Scope | null;
   folder: WorkspaceFolderName;
   onPathsChange?: (paths: WorkspacePath[]) => void;
+  onSelectFile?: (entryId: number, relPath: string) => void;
 }
 
 const META: Record<WorkspaceFolderName, { title: string; hint: string }> = {
@@ -43,6 +44,13 @@ function formatBytes(size: number): string {
 function isMarkdown(name: string): boolean {
   const lower = name.toLowerCase();
   return lower.endsWith(".md") || lower.endsWith(".markdown");
+}
+
+function joinRegisteredReportPath(entry: WorkspacePath, relPath: string): string {
+  if (entry.kind === "file") return entry.path;
+  const normalizedRelPath = relPath.replace(/^\/+/, "");
+  if (!normalizedRelPath) return entry.path;
+  return `${entry.path.replace(/\/+$/, "")}/${normalizedRelPath}`;
 }
 
 function PathTreeNode({ node, depth, onPreview }: { node: FlowTreeNode; depth: number; onPreview: (path: string) => void }) {
@@ -78,7 +86,7 @@ function PathTreeNode({ node, depth, onPreview }: { node: FlowTreeNode; depth: n
   );
 }
 
-export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
+export function FolderPathsPane({ scope, folder, onPathsChange, onSelectFile }: Props) {
   const [paths, setPaths] = useState<WorkspacePath[]>([]);
   const [addingKind, setAddingKind] = useState<WorkspacePathKind | null>(null);
   const [draft, setDraft] = useState("");
@@ -244,9 +252,20 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
   };
 
   const previewFile = async (entryId: number, path = "") => {
+    onSelectFile?.(entryId, path);
     setPreview({ entryId, name: path || "加载中", relPath: path, size: 0, loading: true, previewable: true, truncated: false });
     try {
       const file = await api.workspacePathFileGet(entryId, path);
+      const registeredPath = paths.find((item) => item.id === entryId);
+      if (folder === "report" && registeredPath && file.previewable) {
+        try {
+          const fullContent = await api.getReportFileContent(joinRegisteredReportPath(registeredPath, path));
+          setPreview({ entryId, ...file, content: fullContent, truncated: false, relPath: path, loading: false });
+          return;
+        } catch {
+          // Fall back to the bounded workspace-path preview for report paths outside the report file endpoint scope.
+        }
+      }
       setPreview({ entryId, ...file, relPath: path, loading: false });
     } catch (err) {
       setPreview({ entryId, name: path || "无法预览", relPath: path, size: 0, loading: false, previewable: false, truncated: false, error: String(err) });
@@ -435,7 +454,7 @@ export function FolderPathsPane({ scope, folder, onPathsChange }: Props) {
         </div>
 
         {/* preview */}
-        <div className="min-h-[240px] rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="max-h-[calc(100vh-220px)] min-h-[240px] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
           {!preview ? (
             <p className="flex h-full items-center justify-center text-[12.5px] text-neutral-400">选择文件后在这里预览</p>
           ) : preview.loading ? (

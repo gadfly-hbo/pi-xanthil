@@ -1,5 +1,7 @@
+import { useState } from "react";
 import { OntologyPane } from "@/components/OntologyPane";
 import { FolderPathsPane } from "@/components/FolderPathsPane";
+import { ReportContractPane } from "@/components/ReportContractPane";
 import { PresentationVersionPane } from "@/components/PresentationVersionPane";
 import { ReportReviewPane } from "@/components/ReportReviewPane";
 import { GoldenStrategyPane } from "@/components/GoldenStrategyPane";
@@ -18,10 +20,25 @@ export function VizTabs({ ctx }: { ctx: TabContext }) {
   const { activeTab, activeSubTab } = ctx;
   const exploreOrMultiOrZhuanti = activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti";
   const bump = () => ctx.setArtifactRefreshKey((current) => current + 1);
+  const [selectedReportPath, setSelectedReportPath] = useState<{ pathId: number; relPath: string } | null>(null);
   return (
     <>
       {exploreOrMultiOrZhuanti && activeSubTab === "report" && (
-        <FolderPathsPane scope={ctx.folderScope} folder="report" onPathsChange={ctx.handleReportPathsChange} />
+        <>
+          <FolderPathsPane
+            scope={ctx.folderScope}
+            folder="report"
+            onPathsChange={ctx.handleReportPathsChange}
+            onSelectFile={(entryId, relPath) => setSelectedReportPath({ pathId: entryId, relPath })}
+          />
+          <ReportContractPane
+            scope={ctx.folderScope}
+            workspaceId={ctx.activeWorkspaceId}
+            selectedReportPath={selectedReportPath}
+            onNavigateToBusinessRequirement={() => ctx.setActiveSubTab("business_requirement")}
+            onNavigateToReportReview={() => ctx.setActiveSubTab("report_review")}
+          />
+        </>
       )}
       {exploreOrMultiOrZhuanti && activeSubTab === "presentation_version" && (
         <PresentationVersionPane scope={ctx.folderScope} model={ctx.model} onGenerated={bump} />

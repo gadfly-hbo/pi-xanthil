@@ -281,6 +281,37 @@ export interface RequirementAnalysisFrameworkFromConfirmedResult {
   sourceConfirmedRequirement?: unknown;
 }
 
+export interface ReportContractContext {
+  projectName: string;
+  source: {
+    jsonPath: string;
+    markdownPath?: string;
+    kind: "confirmed_requirement" | "analysis_framework";
+    scene?: RequirementCommunicationScene;
+    confirmedAt?: number;
+  };
+  fallback: boolean;
+  objective: string;
+  audience?: string;
+  decisionScenario?: string;
+  requiredQuestions: string[];
+  sections: Array<{
+    title: string;
+    purpose: string;
+    keyQuestions: string[];
+    requiredEvidence: string[];
+    outputGuidance: string;
+    zeroHallucinationCheck: string;
+  }>;
+  styleRules: string[];
+  forbiddenPatterns: string[];
+  acceptanceCriteria: string[];
+  openQuestions: string[];
+  risks: string[];
+  confirmedFacts: string[];
+  confirmedAssumptions: string[];
+}
+
 // 记忆 v2.0 缺口4 · 从记忆升级 Skill 候选（响应结构对齐 server/src/memory-to-skill.ts:32）。
 export interface MemorySkillThresholds {
   highConfidence: number;
@@ -938,6 +969,16 @@ export const engineApi = {
     return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/business-requirement-communication/review-context?${qs.toString()}`)
       .then(json<{ context: string; requirement: unknown; jsonPath?: string }>);
   },
+
+  getReportContractContext: (
+    workspaceId: string,
+    body: { pathId: number; requirementJsonPath?: string; frameworkJsonPath?: string },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/report-contracts/context`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }).then(json<{ context: ReportContractContext }>),
 
   // ---- 数据库 · the-crowd（E-CROWD5/E-CROWD8 后续实现；X-CROWD0 只定契约） ----
   // 画像生成只允许传聚合摘要可推导的 segmentId + 人工 businessContext；server 端不得读取/注入原始行级标签明细。

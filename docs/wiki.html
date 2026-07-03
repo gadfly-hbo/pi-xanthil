@@ -36,9 +36,9 @@
   .ver { background: linear-gradient(135deg,#0ea5e9,#6366f1); color: #fff;
     font-size: 13px; font-weight: 700; padding: 3px 12px; border-radius: 999px; }
   .tagline { color: var(--muted); font-size: 14px; margin: 0 0 24px; }
-  .tabs { display: flex; gap: 8px; margin-bottom: 28px; border-bottom: 1px solid var(--border); }
+  .tabs { display: flex; gap: 8px; margin-bottom: 28px; border-bottom: 1px solid var(--border); overflow-x: auto; }
   .tab { background: none; border: none; color: var(--muted); font-size: 15px; cursor: pointer;
-    padding: 10px 16px; border-bottom: 2px solid transparent; font-family: inherit; }
+    padding: 10px 16px; border-bottom: 2px solid transparent; font-family: inherit; white-space: nowrap; }
   .tab.active { color: var(--fg); border-bottom-color: var(--accent); font-weight: 600; }
   .view { display: none; } .view.active { display: block; }
 
@@ -134,6 +134,20 @@
   .bar-body { display: none; padding: 2px 12px 12px; }
   .bar.open .bar-body { display: block; }
   .bar-body pre.brief { max-height: 420px; }
+  .asset-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(260px, 1fr)); gap: 12px; margin: 16px 0 24px; }
+  .asset-card { background: var(--panel); border: 1px solid var(--border); border-radius: 10px; padding: 14px 16px; }
+  .asset-card h3 { margin: 0 0 8px; font-size: 15px; }
+  .asset-card p { margin: 6px 0; color: var(--muted); font-size: 13px; }
+  .asset-card ul, .asset-block ul, .asset-block ol { margin: 8px 0 0; padding-left: 20px; }
+  .asset-card li, .asset-block li { color: #cdd2d7; font-size: 13px; margin: 4px 0; }
+  .asset-block { background: var(--panel); border: 1px solid var(--border); border-radius: 12px; padding: 18px 20px; margin-bottom: 16px; }
+  .asset-block h3 { margin: 0 0 10px; font-size: 16px; }
+  .asset-block h4 { margin: 14px 0 6px; font-size: 14px; color: var(--fg); }
+  .asset-table { width: 100%; border-collapse: collapse; margin-top: 10px; font-size: 13px; }
+  .asset-table th, .asset-table td { border-top: 1px solid var(--border); padding: 8px 10px; text-align: left; vertical-align: top; }
+  .asset-table th { color: var(--muted); font-weight: 600; background: var(--panel2); }
+  .asset-table td { color: #cdd2d7; }
+  .light .asset-card li, .light .asset-block li, .light .asset-table td { color: #334155; }
 </style>
 <script>
   if (localStorage.getItem("px_theme") === "light") {
@@ -158,6 +172,7 @@
     <button class="tab" data-view="hotfix">🔧 快修任务</button>
     <button class="tab" data-view="notes">📝 随手记</button>
     <button class="tab" data-view="prompts">🧩 常用 prompts</button>
+    <button class="tab" data-view="agentAssets">🧠 Agent 技能</button>
     <button class="tab" data-view="changelog">📖 版本历史</button>
   </div>
 
@@ -307,6 +322,167 @@
 ⛔ **不要执行任何 git 操作**（add / commit / push / PR）。提交时只 `git add server/tools/` 本批目录，**不要**裹入工作树里其它工作线的未提交改动。最后提示用户："工具注册快修已就绪并通过自检，待总控终审后可自行提交。"</script>
   </section>
 
+  <section id="agentAssets" class="view">
+    <p class="legend">四个 agent 当前由 AgentOps 统一管理技能资产。Codex 是主控；OpenCode、MimoCode、Antigravity CLI 是辅 agent。执行复杂任务时，必须先给目标、非目标、允许改动范围、验证方式和 handoff 格式。</p>
+
+    <div class="asset-grid">
+      <div class="asset-card">
+        <h3>Codex</h3>
+        <p><code>/Users/huangbo/.codex</code></p>
+        <ul>
+          <li>主控 agent：澄清、拆解、编排、集成、最终验证。</li>
+          <li>直接使用全套 skills / commands / agents。</li>
+        </ul>
+      </div>
+      <div class="asset-card">
+        <h3>OpenCode</h3>
+        <p><code>/Users/huangbo/.opencode</code> + <code>~/.config/opencode</code></p>
+        <ul>
+          <li>辅助实现 agent：适合边界清晰的小实现和局部重构。</li>
+          <li>当前与 Codex 同步同一套 AgentOps skills / commands / agents。</li>
+        </ul>
+      </div>
+      <div class="asset-card">
+        <h3>MimoCode</h3>
+        <p><code>/Users/huangbo/.config/mimocode</code></p>
+        <ul>
+          <li>独立检查 agent：适合第二意见、回归检查、轻量实现。</li>
+          <li>当前与 Codex 同步同一套 AgentOps skills / commands / agents。</li>
+        </ul>
+      </div>
+      <div class="asset-card">
+        <h3>Antigravity CLI</h3>
+        <p><code>/Users/huangbo/.gemini/config</code></p>
+        <ul>
+          <li>长流程 / 自动化团队实验 agent。</li>
+          <li>除 skills / commands / agents 外，额外同步 <code>workflows</code> 和 UI <code>.toml</code> commands。</li>
+          <li>UI 改造推荐用 <code>/ui</code>，不要用 <code>/product-ui-redesign</code>。</li>
+        </ul>
+      </div>
+    </div>
+
+    <div class="asset-block">
+      <h3>Skills 清单</h3>
+      <table class="asset-table">
+        <thead><tr><th>Skill</th><th>用途</th><th>Coding 时怎么用</th></tr></thead>
+        <tbody>
+          <tr><td><code>agentops-orchestration</code></td><td>多 agent 编排纪律</td><td>Codex 主控拆任务、写 brief、派发辅 agent、收 handoff 时使用。</td></tr>
+          <tr><td><code>antigravity-workflow-briefing</code></td><td>给 Antigravity 写任务 brief</td><td>让 Antigravity 做长流程或实验前，先生成边界清晰的 brief。</td></tr>
+          <tr><td><code>antigravity-result-synthesis</code></td><td>汇总 Antigravity 输出</td><td>Antigravity 完成后，由 Codex 判断采纳、返工或丢弃。</td></tr>
+          <tr><td><code>matt-ask-matt</code> / <code>ask-matt</code></td><td>选择流程</td><td>不确定该用 TDD、review、PRD、handoff 时使用。</td></tr>
+          <tr><td><code>matt-grilling</code> / <code>grilling</code></td><td>压测方案</td><td>需求不清、架构选择多、风险大时先追问和压力测试。</td></tr>
+          <tr><td><code>matt-grill-with-docs</code> / <code>grill-with-docs</code></td><td>压测并沉淀文档</td><td>大功能、架构决策、长期项目方向用，输出 ADR / 术语沉淀。</td></tr>
+          <tr><td><code>matt-tdd</code> / <code>tdd</code></td><td>测试驱动开发</td><td>修 bug、加核心逻辑、需要行为保障时用，按 red-green-refactor 小步推进。</td></tr>
+          <tr><td><code>matt-diagnosing-bugs</code> / <code>diagnosing-bugs</code></td><td>系统化排查 bug</td><td>先复现、定位、加证据，再修复和验证，不直接猜。</td></tr>
+          <tr><td><code>matt-code-review</code> / <code>code-review</code></td><td>代码审查</td><td>完成一轮改动后，按标准和规格双线 review。</td></tr>
+          <tr><td><code>matt-handoff</code> / <code>handoff</code></td><td>交接文档</td><td>长任务中断、切换 agent、交给辅 agent 前后使用。</td></tr>
+          <tr><td><code>matt-to-prd</code> / <code>to-prd</code></td><td>讨论转 PRD</td><td>需求已经清楚，需要固化为产品 / 工程说明时使用。</td></tr>
+          <tr><td><code>matt-to-issues</code> / <code>to-issues</code></td><td>计划拆 issues</td><td>把大功能拆成可独立执行、可验收的小任务。</td></tr>
+          <tr><td><code>matt-prototype</code> / <code>prototype</code></td><td>快速原型</td><td>UI、状态模型、交互不确定时先做 throwaway prototype。</td></tr>
+          <tr><td><code>matt-codebase-design</code> / <code>codebase-design</code></td><td>模块设计</td><td>重构、抽象、接口设计、深模块设计时使用。</td></tr>
+          <tr><td><code>matt-domain-modeling</code> / <code>domain-modeling</code></td><td>领域建模</td><td>复杂业务、概念混乱、数据模型设计时统一术语和边界。</td></tr>
+          <tr><td><code>ui</code></td><td>UI 改造短入口</td><td>日常推荐入口，会转发到 <code>product-ui-redesign</code>。</td></tr>
+          <tr><td><code>product-ui-redesign</code></td><td>产品 UI 改造完整流程</td><td>截图审计、设计原则、组件系统、实现、Playwright / browser 验证、polish。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="asset-block">
+      <h3>Commands 清单</h3>
+      <ul>
+        <li><code>agentops-plan</code>：先做多 agent 任务计划。</li>
+        <li><code>agentops-review</code>：对当前改动做 AgentOps 风格 review。</li>
+        <li><code>agentops-handoff</code>：生成交接摘要。</li>
+        <li><code>matt-tdd</code>：进入 TDD 流程。</li>
+        <li><code>matt-code-review</code>：审查当前分支或改动。</li>
+        <li><code>matt-diagnosing-bugs</code>：诊断 bug。</li>
+        <li><code>matt-grilling</code> / <code>matt-grill-with-docs</code>：压测方案，后者会沉淀文档。</li>
+        <li><code>matt-to-prd</code> / <code>matt-to-issues</code>：输出 PRD 或拆 issues。</li>
+        <li><code>matt-prototype</code>：做原型。</li>
+        <li><code>ui-screenshot-audit</code>：只做 UI 截图审计。</li>
+        <li><code>ui-redesign-plan</code>：只做 UI 改造计划。</li>
+        <li><code>ui-polish-pass</code>：做一轮 UI polish。</li>
+        <li><code>ui-visual-verify</code>：做视觉验证。</li>
+      </ul>
+    </div>
+
+    <div class="asset-block">
+      <h3>Auxiliary Agents</h3>
+      <table class="asset-table">
+        <thead><tr><th>Agent</th><th>建议用途</th></tr></thead>
+        <tbody>
+          <tr><td><code>codex-lead</code></td><td>主控，负责拆解、集成、验证和最终回复。</td></tr>
+          <tr><td><code>opencode-implementer</code></td><td>OpenCode 辅助实现。</td></tr>
+          <tr><td><code>mimo-independent-check</code></td><td>MimoCode 独立检查或第二意见。</td></tr>
+          <tr><td><code>antigravity-workflow-runner</code></td><td>Antigravity 长流程 / 自动化实验。</td></tr>
+          <tr><td><code>antigravity-architect</code></td><td>架构方案。</td></tr>
+          <tr><td><code>antigravity-implementer</code></td><td>实现任务。</td></tr>
+          <tr><td><code>antigravity-reviewer</code></td><td>独立 review。</td></tr>
+          <tr><td><code>antigravity-test-runner</code></td><td>独立测试验证。</td></tr>
+          <tr><td><code>ui-design-auditor</code></td><td>UI 审计。</td></tr>
+          <tr><td><code>design-system-architect</code></td><td>组件系统 / 设计系统。</td></tr>
+          <tr><td><code>frontend-polisher</code></td><td>前端实现和 polish。</td></tr>
+          <tr><td><code>visual-regression-reviewer</code></td><td>视觉回归验证。</td></tr>
+        </tbody>
+      </table>
+    </div>
+
+    <div class="asset-block">
+      <h3>推荐使用流程</h3>
+      <h4>小修小改</h4>
+      <ol>
+        <li>Codex 直接读代码、改代码。</li>
+        <li>需要测试保障时用 <code>matt-tdd</code>。</li>
+        <li>完成后用 <code>matt-code-review</code> 或 <code>agentops-review</code>。</li>
+        <li>跑最小验证，Codex 汇总结论。</li>
+      </ol>
+      <h4>复杂功能</h4>
+      <ol>
+        <li>用 <code>matt-grilling</code> 或 <code>matt-grill-with-docs</code> 压测需求。</li>
+        <li>用 <code>matt-to-prd</code> 固化需求。</li>
+        <li>用 <code>matt-to-issues</code> 拆任务。</li>
+        <li>Codex 主控实现；必要时派 OpenCode / MimoCode / Antigravity 做独立子任务。</li>
+        <li>每个辅 agent 必须交 handoff。</li>
+        <li>Codex 集成、测试、最终说明。</li>
+      </ol>
+      <h4>Bug 修复</h4>
+      <ol>
+        <li>用 <code>matt-diagnosing-bugs</code> 先复现和定位。</li>
+        <li>明确根因后再改。</li>
+        <li>关键逻辑用 <code>matt-tdd</code> 补测试。</li>
+        <li>用 <code>matt-code-review</code> 检查回归风险。</li>
+      </ol>
+      <h4>UI 改造</h4>
+      <ol>
+        <li>用 <code>ui</code> 或 <code>product-ui-redesign</code>。</li>
+        <li>先截图审计，不先改颜色。</li>
+        <li>写 3-5 条产品 UI 原则。</li>
+        <li>定义组件系统或页面切片。</li>
+        <li>实现一页或一个 workflow。</li>
+        <li>用 Playwright / browser 截图验证桌面和移动端。</li>
+        <li>用 <code>ui-polish-pass</code> 做最后一轮细节。</li>
+      </ol>
+    </div>
+
+    <div class="asset-block">
+      <h3>调用示例</h3>
+      <pre class="brief">Codex:
+使用 matt-tdd 修这个 bug
+使用 matt-code-review review 当前改动
+使用 ui skill 改造 pi-xanthil 的核心页面
+把这个方案用 matt-to-prd 固化
+给 Antigravity 生成一个 workflow briefing
+
+Antigravity CLI:
+cd /Users/huangbo/Dev/Projects/pi-xanthil
+agy
+/ui 先审计当前产品 UI，只做截图审计和改造计划，不要改代码
+
+或：
+使用 ui skill，按 product-ui-redesign 流程审计并改造当前项目 UI</pre>
+    </div>
+  </section>
+
   <section id="changelog" class="view">
     <div id="clList"></div>
     <p class="note">1.x（pi-xanthil1.3 ~ 1.32）为单人开发阶段，历史见 <code>git tag</code>。2.0 起进入多 Agent 协同体系。</p>
@@ -316,7 +492,7 @@
 
 <script>
 /* ════════════ 数据区（迭代时在此追加；渲染逻辑见下方） ════════════ */
-const VERSION = "2.3";
+const VERSION = "2.4";
 
 const DOMAINS = {
   D: { name: "数据基座", agent: "opencode (deepseek/glm)", color: "var(--d)" },
@@ -1023,6 +1199,294 @@ POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed
 完成标准：分析框架主路径不再要求用户二次导入和填写需求；确认需求成为分析框架的明确输入源。如旧表单 fallback 仍保留，必须默认折叠且列为过渡残留。
 
 ✅ 总控终审通过（2026-06-30）：X-BREQ-LINK6 完成并收口。导入沟通材料主路径已接专用 import-documents API，导入结果只进入摘要、待确认问题、假设、建议诉求与风险提示，不直接成为 confirmed facts；draw_data / data_exploration 在 source 与路径守卫两层拒绝，clean_data 仅传路径元信息并有 UI 知情提示。确认需求成功后写入 business_requirements/*-确认需求-*.md/json，activeConfirmedRequirement 记录 markdownPath/jsonPath/content/structured/source/scene/confirmedAt，并自动切到“分析框架”。分析框架左侧为“确认需求源”面板，主按钮走 generateAnalysisFrameworkFromConfirmed() / E-BREQ-LINK4 专用 API；旧表单和 legacy generateBusinessRequirement() 仅保留在默认折叠的“旧路径 / 直接生成（不推荐）”。deferred/skipped/assumed/pending 只进入 deferredQuestions/openQuestions/risks/zeroHallucinationCheck，不进入 confirmed facts 或 businessFacts；review-context 继续只接受确认需求 JSON 并返回目标、成功标准、假设和未确认问题；trace 只记录脱敏 metadata。总控补一处小修：打开历史确认需求版本时 activeConfirmedRequirement 也显式记录 scene。验证：npm run typecheck 通过；npm run build 通过，仅既有 Vite/ECharts chunk warning；business-requirement-communication.test 19/19 通过，覆盖 JSON repair、import-documents 路径守卫、from-confirmed 路径守卫、deferred 不进 facts；数据探索隔离 grep 无输出；BusinessRequirementPane 残留检查无 pickLocalPath / extractBusinessRequirementDraft / generateBusinessRequirementClarifyingQuestions / 通用 chat/extract/clarify 调用；docs/wiki.html script parse 通过。API smoke 由用户手动完成。残留：浏览器点击级日常/专题/重复三入口未由总控亲自复跑，后续点检重点是旧路径折叠 fallback 是否会误导用户。` },
+
+  // ════ 【业务需求 × 分析报告契约贯通】（总控拆卡 2026-07-03；来源=用户反馈：直接让 agent 输出分析报告时，如果没有报告框架与内容约束，生成后往往需要大改；业务需求模块已有“报告框架”，应作为数据分析与报告输出的上游契约源）。定位：不另建第二套报告模板系统，把 business_requirements 里的 reportFramework 从展示材料升级为报告生成、审查、修订的可执行契约。主链路：确认需求 → 分析框架/报告框架 → 数据分析生成报告 → 契约审查 → 自动修订 → 最终报告。红线：不读 draw_data 原始行；不接数据探索反向回流；报告输出只消费 report / business_requirements / clean_data 已知情聚合材料，不把原始明细塞进 LLM。════
+  { dom: "X", status: "done", created: "2026-07-03 10:45", title: "【业务需求×分析报告·契约·P0】X-REPORTCONTRACT0：报告契约产品边界 + 全链路拆卡", brief:
+`目标：冻结“业务需求模块报告框架 → 数据分析报告生成/审查/修订”的产品边界，避免报告输出另建一套模板系统。
+
+背景：
+- 业务需求模块已能基于确认需求生成 reportFramework。
+- 当前 reportFramework 主要停留在业务需求页展示，数据分析 agent 与报告输出/审核没有强制消费。
+- 用户痛点是正式报告生成后才发现方向、章节、证据或行动建议不贴合需求，返工成本高。
+
+产品契约：
+1. 上游唯一真源：业务需求模块的确认需求 JSON / 分析框架 JSON 中的 reportFramework。
+2. 报告输出不编辑 reportFramework，不另建“报告模板”真源；若要修改契约，回到业务需求模块创建修订版。
+3. 数据分析生成报告必须先消费报告契约，再生成本次报告实例大纲，最后写正文。
+4. 报告输出/报告审核负责按契约审查、修订和展示覆盖情况。
+5. 缺证据时必须写“待确认/未覆盖/证据不足”，不得补编数字或事实。
+
+标准流程：
+- 需求沟通确认
+- 生成分析框架与报告框架
+- 选择业务需求作为数据分析上下文
+- 生成契约化报告实例大纲
+- 生成 Markdown 报告
+- 按报告契约审查贴合度
+- 按审查结果自动修订
+- 输出最终报告与审查记录
+
+红线：
+- 不读取 draw_data 原始行或明细整体。
+- 不接 data_exploration → 业务需求/报告输出的反向数据回流。
+- clean_data 如被用于报告上下文，必须遵守 AGENTS.md 知情与受控口径。
+- trace / review history 只记录路径、覆盖率、问题类别、计数和短引用，不写客户/订单/原始明细样本。
+
+拆卡：
+- E-REPORTCONTRACT1：ReportContractContext 标准化 API。
+- E-REPORTCONTRACT2：数据分析生成时注入报告契约。
+- D/V-REPORTCONTRACT3：报告输出页契约选择与展示。
+- E-REPORTCONTRACT4：按报告框架做贴合度审查。
+- E-REPORTCONTRACT5：契约驱动自动修订。
+- D/V-REPORTCONTRACT6：端到端 UI 串联。
+- X-REPORTCONTRACT7：全链验收与 notes 收口。
+
+验收：本卡只冻结契约和派发，不写产品代码；后续实现必须逐条对照本卡。
+
+✅ 总控自做 done（2026-07-03）：已冻结“业务需求 reportFramework → 数据分析报告生成 / 审查 / 修订”的产品边界，并拆出 E-REPORTCONTRACT1 / E-REPORTCONTRACT2 / D/V-REPORTCONTRACT3 / E-REPORTCONTRACT4 / E-REPORTCONTRACT5 / D/V-REPORTCONTRACT6 / X-REPORTCONTRACT7 七张后续卡。长期口径已定：reportFramework 的上游唯一真源是业务需求模块的确认需求 JSON / 分析框架 JSON；报告输出不编辑 reportFramework、不另建报告模板系统；修改契约必须回业务需求模块创建修订版。标准链路为“确认需求 → 分析框架 / 报告框架 → 数据分析生成报告 → 契约审查 → 自动修订 → 最终报告”。数据红线固定：不读 draw_data 原始行，不接 data_exploration 反向数据回流，clean_data 只按 AGENTS.md 受控知情口径进入上下文，trace / review history 只记录路径、覆盖率、问题类别、计数和短引用。未写产品代码、未执行 git。验证：wiki runtime script 语法检查通过；npm run typecheck 通过；npm run build 通过，仅既有 Vite/ECharts chunk warning。` },
+
+  { dom: "E", status: "done", created: "2026-07-03 10:46", title: "【业务需求×分析报告·上下文API·P1】E-REPORTCONTRACT1：ReportContractContext 标准化读取与摘要", brief:
+`前置：X-REPORTCONTRACT0；复用 E-BREQ-LINK4 的确认需求 / 分析框架路径守卫。
+
+目标：把业务需求产物中的 reportFramework 标准化为后续数据分析、报告输出、报告审核都能消费的 ReportContractContext。
+
+建议 API：
+- GET /api/workspaces/:id/report-contracts/context?pathId=...&requirementJsonPath=...
+- 或 POST /api/workspaces/:id/report-contracts/context，body 显式传 pathId / requirementJsonPath / frameworkJsonPath。
+
+输入范围：
+- business_requirements/*-确认需求-*.json
+- business_requirements/*-分析框架-*.json
+- 不接受 business_requirements/communications/*.json 作为事实源。
+
+输出建议：
+- projectName
+- source: { jsonPath, markdownPath?, kind: confirmed_requirement | analysis_framework, scene?, confirmedAt? }
+- objective
+- audience?
+- decisionScenario?
+- requiredQuestions
+- sections: { title, purpose, keyQuestions, requiredEvidence, outputGuidance, zeroHallucinationCheck }[]
+- styleRules
+- forbiddenPatterns
+- acceptanceCriteria
+- openQuestions
+- risks
+- confirmedFacts / confirmedAssumptions 的安全摘要
+
+实现要求：
+- 不改 reportFramework 真源，只做读取、标准化、缺省补齐。
+- 缺 reportFramework 的旧版本可用 BusinessRequirementPane 里的默认框架口径生成 fallback，但 response 必须标记 fallback=true。
+- deferred/skipped/assumed/pending 只能进入 openQuestions / risks / zeroHallucinationCheck。
+- trace 只记 source basename、section count、question count、fallback 标记。
+
+验收：
+- node:test 覆盖确认需求 JSON、分析框架 JSON、communications 拒绝、路径逃逸拒绝、缺 reportFramework fallback。
+- npm run typecheck 通过。
+- 不读取 draw_data / data_exploration / clean_data 文件正文。
+
+✅ 回流总控审核通过（2026-07-03）：E-REPORTCONTRACT1 完成并收口。server/src/business-requirement-communication.ts 新增 ReportContractContext 域内类型、确认需求/分析框架两类来源标准化纯函数、默认 fallback reportFramework、trace payload 与 prompt block 构造；server/src/routes/engine.ts 新增 GET/POST /api/workspaces/:id/report-contracts/context，读取范围限定在 report 登记路径下的 business_requirements/*-确认需求-*.json 或 business_requirements/*-分析框架-*.json，拒绝 communications/*.json、路径逃逸与非白名单路径。trace 只记录 source basename、source kind、section count、question count、fallback。web/src/lib/api/engine.ts 新增前端域内 ReportContractContext 类型与 getReportContractContext()。总控核验：实现未读取 draw_data / data_exploration / clean_data 文件正文，readFlowFile 仍经登记 report 输出目录与 safeResolve 限制。验证：business-requirement-communication.test 23/23 通过；npm run typecheck 通过；npm run build 通过，仅既有 Vite/ECharts chunk warning。` },
+
+  { dom: "E", status: "done", created: "2026-07-03 10:47", title: "【业务需求×分析报告·生成注入·P1】E-REPORTCONTRACT2：数据分析报告生成消费报告契约", brief:
+`前置：E-REPORTCONTRACT1。
+
+目标：当用户选择业务需求作为数据分析上下文时，正式报告生成必须消费 ReportContractContext，先校准报告实例大纲，再生成正文，减少生成后大改。
+
+范围：
+1. 找到数据分析 / Chat / report persona 当前注入业务需求上下文的位置。
+2. 在选择确认需求或分析框架后，追加 ReportContractContext。
+3. 正式报告任务 prompt 增加两阶段要求：
+   - 先输出“本次报告实例大纲”：每章对应契约 section、必答问题、将使用的证据类型。
+   - 再写正文：逐章回应 keyQuestions，并标注 requiredEvidence 是否已满足。
+4. 若证据不足，正文必须写“未覆盖/待确认”，不得编造数据。
+
+输出约束：
+- 报告章节应优先对齐 reportFramework.sections。
+- 每个关键结论必须能回指业务问题或报告章节目的。
+- 每个数字/指标必须保留来源或证据等级，沿用已有正式报告零幻觉约束。
+- 禁止把 openQuestions / deferredQuestions 写成已确认事实。
+
+边界：
+- 本卡不改报告输出 UI。
+- 不把 reportFramework 复制为新的模板表。
+- 不读取 draw_data 原始行；只消费已允许进入 LLM 的业务需求、报告、聚合/衍生材料。
+
+验收：
+- 后端测试或 prompt snapshot 覆盖 ReportContractContext 注入。
+- 至少一个 API / smoke 能证明选中业务需求后生成 prompt 含报告契约章节和必答问题。
+- npm run typecheck、npm run build 通过。
+
+✅ 回流总控审核通过（2026-07-03）：E-REPORTCONTRACT2 完成并收口。server/src/index.ts 在既有 loadBusinessRequirementContextForChat() 注入点做最小接线：当业务需求上下文携带 jsonPath 且命中确认需求或分析框架 JSON 时，追加 ReportContractContext prompt block；block 明确要求先输出“本次报告实例大纲”，再逐章写正文并标注 requiredEvidence 满足情况，且不得把 openQuestions/deferredQuestions 写成事实。为避免新增接缝契约，未改双侧共享 types.ts。总控核验：该接线会随既有 businessRequirementContext 被 Chat/数据分析、黄金策、汇报版本等正式报告/衍生产物链路消费，范围略宽于“数据分析生成”，但仍围绕用户显式选择的业务需求上下文，且不新增敏感数据读取；予以追认。验证同 E-REPORTCONTRACT1：business-requirement-communication.test 23/23、npm run typecheck、npm run build 均通过，仅既有 Vite/ECharts chunk warning。` },
+
+  { dom: "D", delegate: "V", status: "done", created: "2026-07-03 10:48", title: "【业务需求×分析报告·报告输出UI·P1】D/V-REPORTCONTRACT3：报告输出页展示契约来源与覆盖入口", brief:
+`前置：E-REPORTCONTRACT1；可与 E-REPORTCONTRACT2 并行。
+
+目标：在“报告输出”页让用户看见当前报告受哪份业务需求/报告框架约束，并提供覆盖检查入口，但不在这里编辑契约真源。
+
+页面能力：
+1. 对选中的报告文件展示：
+   - 契约来源：确认需求 / 分析框架名称、jsonPath basename、scene、confirmedAt。
+   - 报告章节要求摘要。
+   - 必答问题数量、证据要求数量、open questions / risks 数量。
+2. 操作入口：
+   - 按当前报告框架审查。
+   - 查看契约覆盖。
+   - 回业务需求模块修订报告框架。
+3. 若报告未绑定业务需求：
+   - 提示“选择业务需求/报告框架后可按契约审查”。
+   - 不强制阻断普通预览。
+
+工程边界：
+- 复用 FolderPathsPane / 报告输出现有路径树。
+- 不改 App.tsx / constants.ts 等导航接缝。
+- 不编辑 business_requirements 文件；修改契约必须跳回业务需求模块。
+- 可先用显式选择业务需求版本，后续再做报告文件元数据绑定。
+
+验收：
+- 报告输出页可选择或展示 ReportContractContext。
+- Markdown/HTML 报告预览不回退。
+- UI 不读取 draw_data，不接 data_exploration 内容。
+- npm run typecheck、npm run build 通过。
+
+✅ 回流总控审核通过（2026-07-03）：D/V-REPORTCONTRACT3 完成并收口。新增 web/src/components/ReportContractPane.tsx，并在 web/src/tabs/VizTabs.tsx 的 report subtab 中追加渲染；报告输出页现在可显式选择业务需求/报告框架版本，展示契约来源、章节摘要、统计卡片、fallback 提示和覆盖清单入口，并提供跳转 report_review 与 business_requirement 的操作。该实现复用 useBusinessRequirementContexts 与 api.getReportContractContext，不编辑 business_requirements 文件，不改 App.tsx / constants.ts / FolderPathsPane，不阻断既有 Markdown/HTML 预览。总控核验：ReportContractPane 未引用 draw_data / data_exploration / LLM 调用词，数据探索红线 grep 0 匹配；npm run typecheck、npm run build 通过，仅既有 Vite/ECharts chunk warning。` },
+
+  { dom: "E", status: "done", created: "2026-07-03 10:49", title: "【业务需求×分析报告·契约审查·P1】E-REPORTCONTRACT4：按报告框架做贴合度审查", brief:
+`前置：E-REPORTCONTRACT1；可复用现有 /api/report-review/review 与 report-review.ts。
+
+目标：让报告评审不只按通用报告质量打分，而是对照 ReportContractContext 审查“需求贴合度”。
+
+建议 API：
+- 扩展 POST /api/report-review/review，body 增加 contractSource? 或 reportContractContext?
+- 或新增 POST /api/report-review/contract-review，避免影响旧评审路径。
+
+审查维度：
+- requiredQuestionsCoverage：必答问题覆盖情况。
+- sectionCoverage：契约章节覆盖情况。
+- evidenceCoverage：必需证据/数据是否出现。
+- unsupportedClaims：无证据结论或空泛建议。
+- openQuestionMisuse：待确认问题是否被写成事实。
+- actionability：行动建议是否回应决策场景。
+- rewritePlan：建议删除、补写、改写清单。
+
+输出建议：
+- totalScore
+- coverageSummary
+- sectionResults[]
+- questionResults[]
+- evidenceGaps[]
+- unsupportedClaims[]
+- rewritePlan[]
+- reviewMarkdown
+
+红线：
+- 审查 prompt 可以读取报告正文与 ReportContractContext；不得读取 draw_data 原始行。
+- 审查结果引用报告内容时只保留必要短 quote，不粘贴大段正文。
+- trace / history 不存敏感样本。
+
+验收：
+- node:test 覆盖报告缺章节、缺证据、open question 被写成事实、全部覆盖四类场景。
+- npm run typecheck 通过。
+- 旧普通报告评审不回归。
+
+✅ 回流总控审核通过（2026-07-03）：E-REPORTCONTRACT4 完成并收口。server/src/report-review.ts 新增 reviewReportAgainstContract()，确定性输出章节覆盖、必答问题覆盖、证据缺口、无证据结论、open question 误用、行动建议和 rewrite plan；server/src/index.ts 新增 POST /api/report-review/contract-review，限定 report 登记路径与文本报告，history 仅记录契约来源 metadata、覆盖摘要和计数，不存报告正文。旧 POST /api/report-review/review 保持原行为，测试覆盖旧 buildReviewPrompt 不含 ReportContractContext。总控核验：新增审查 prompt 明确不得读取或推断 draw_data，引用只保留短 quote；29/29 node:test、npm run typecheck、npm run build 通过，仅既有 Vite/ECharts chunk warning。` },
+
+  { dom: "E", status: "done", created: "2026-07-03 10:50", title: "【业务需求×分析报告·自动修订·P2】E-REPORTCONTRACT5：契约驱动自动修订并保留版本", brief:
+`前置：E-REPORTCONTRACT4。
+
+目标：基于契约审查结果自动修订报告，把“生成后大改”收敛为可控的小修订，并保留原报告。
+
+范围：
+1. 扩展现有 report-review auto-fix 能力，支持输入 ReportContractContext 与 contract review 结果。
+2. 修订策略：
+   - 补写未覆盖的必答问题。
+   - 调整章节顺序以贴合 reportFramework。
+   - 删除或降级无证据结论。
+   - 把 openQuestions / deferredQuestions 改写为待确认事项。
+   - 补充证据限制、口径说明和行动建议。
+3. 输出：
+   - 新 Markdown 文件，写入同一 report 登记路径。
+   - 文件名带 contract-revised 或类似后缀。
+   - 返回新文件路径、修订摘要、未能修订的缺口。
+4. 历史：
+   - review history 记录原报告、新报告、契约来源、coverage delta、修订摘要。
+
+红线：
+- 修订不得新增无来源数字。
+- 修订不得读取 draw_data 原始行。
+- 修订不得覆盖原文件，必须保留原报告。
+
+验收：
+- node:test 或 API smoke 覆盖：原报告保留、新版本写出、无证据数字不新增、open question 不写成事实。
+- npm run typecheck、npm run build 通过。
+
+✅ 回流总控审核通过（2026-07-03）：E-REPORTCONTRACT5 完成并收口。server/src/report-review.ts 新增契约自动修订 prompt 与 validateContractRevisionResult()；server/src/index.ts 新增 POST /api/report-review/contract-auto-fix，修订结果写入 reviewed_versions/*-contract-revised-*.md，不覆盖原报告。review history 记录 contractSource metadata、coverage delta、修订摘要和未解决缺口，不写原报告/新报告正文。修订 prompt 和 system prompt 均明确不得新增无来源数字，openQuestions/deferredQuestions 只能写待确认。总控核验：普通 /api/report-review/auto-fix 保持旧行为；29/29 node:test、npm run typecheck、npm run build 通过，仅既有 Vite/ECharts chunk warning。后续 UI 串联建议默认传 contractSource 路径，由服务端重建 ReportContractContext，避免完整上下文对象成为第二真源。` },
+
+  { dom: "D", delegate: "V", status: "done", created: "2026-07-03 10:51", title: "【业务需求×分析报告·端到端UI·P2】D/V-REPORTCONTRACT6：业务需求到报告输出的契约化操作流", brief:
+`前置：D/V-REPORTCONTRACT3、E-REPORTCONTRACT4；自动修订按钮依赖 E-REPORTCONTRACT5。
+
+目标：把用户操作流做顺：从业务需求确认后的报告框架，进入数据分析和报告输出时能持续看到同一份契约，而不是重复选择和重复解释。
+
+UI 流程：
+1. 业务需求 / 分析框架页：
+   - 增加“用此报告框架生成分析报告”或“带入数据分析”入口。
+   - 传递 activeConfirmedRequirement / frameworkJsonPath。
+2. 数据分析 / Chat：
+   - 显示当前使用的业务需求上下文与报告契约摘要。
+   - 支持清除或切换，但切换必须显式。
+3. 报告输出：
+   - 选中报告后展示契约来源。
+   - 一键“按框架审查”。
+   - 若 E-REPORTCONTRACT5 完成，展示“一键按审查结果修订”。
+   - 展示覆盖结果：已覆盖、缺证据、待确认误用、建议修订。
+
+体验要求：
+- 不让用户在多个 tab 重复选择同一需求。
+- 普通无契约报告仍可预览，不阻断既有 workflow。
+- 报告输出页不编辑契约真源，只提供回跳业务需求模块。
+
+验收：
+- 手动 smoke：确认需求 → 生成分析框架 → 带契约生成报告 → 报告输出审查 → 修订。
+- npm run typecheck、npm run build 通过。
+- 窄屏下报告输出工具栏和覆盖面板不重叠。
+
+✅ 回流总控审核通过（2026-07-03）：D/V-REPORTCONTRACT6 完成端到端 UI 串联主体并收口。新增 web/src/lib/activeContractContext.ts 作为跨子 tab 的临时选择 store；BusinessRequirementPane 新增“带入工作视图”，EngineTabs 负责跳转工作视图；ChatPane 能从 store 预选业务需求版本，并显示报告契约摘要徽章；FolderPathsPane 暴露 onSelectFile，VizTabs 将选中报告传给 ReportContractPane；ReportContractPane 接入 server 端 contract-review 并展示覆盖率、章节状态、证据缺口、无依据断言、待确认误用和修订建议。总控修正一处边界：前端默认审查调用改为传 contractSource 路径，由服务端重新读取业务需求 JSON 构建 ReportContractContext，避免完整上下文对象成为第二真源；contractAutoFix API 方法也补齐契约参数。未接 data_exploration 反向回流，普通报告预览不阻断。npm run typecheck、npm run build 通过，仅既有 Vite/ECharts chunk warning；数据探索红线 grep 0 匹配。保留事项：本卡未实际接出“一键按审查结果修订”按钮，E5 后端能力已就绪，是否进入 UI 在 X-REPORTCONTRACT7 全链验收时确认。` },
+
+  { dom: "X", status: "done", created: "2026-07-03 10:52", title: "【业务需求×分析报告·验收·P3】X-REPORTCONTRACT7：全链验收 + 数据红线 + wiki/notes 收口", brief:
+`前置：E-REPORTCONTRACT1、E-REPORTCONTRACT2、D/V-REPORTCONTRACT3、E-REPORTCONTRACT4、E-REPORTCONTRACT5、D/V-REPORTCONTRACT6。
+
+目标：总控终审“业务需求 → 数据分析 → 报告输出”的报告契约贯通，确认 reportFramework 已从展示材料变成可执行质量门。
+
+验收链路：
+1. 需求沟通确认一份正式业务需求。
+2. 基于确认需求生成分析框架与 reportFramework。
+3. 数据分析选择该业务需求上下文。
+4. 生成报告前能看到/注入报告契约。
+5. 输出 Markdown 报告到 report 登记路径。
+6. 报告输出页能预览全文并展示契约来源。
+7. 按报告框架审查，得到覆盖率、证据缺口、改写清单。
+8. 自动修订生成新报告版本并保留原报告。
+
+安全验收：
+- 不读取 draw_data 原始行。
+- 不把 data_exploration 字段值、样本、剖析结果反向带入 LLM。
+- clean_data 只按 AGENTS.md 受控知情口径进入上下文。
+- review / trace / history 不保存原始明细样本。
+
+文档收口：
+- docs/wiki.html 更新本组卡状态。
+- docs/notes-data.md 记录长期口径：reportFramework 是上游契约源，报告输出不另建模板系统。
+- 如发现需要跨模块共享 hook，再由总控决定是否抽 useReportContract / report-contracts API。
+
+验证命令：
+- npm run typecheck
+- npm run build
+- 相关 node:test
+- 数据探索隔离 grep
+- 浏览器手动 smoke：业务需求、数据分析、报告输出、报告审核全链。
+
+完成标准：生成正式分析报告时，系统能在生成前约束方向，在生成后按同一契约审查和修订，显著降低报告成稿后的大改概率。
+
+✅ 总控全链验收通过（2026-07-03）：REPORTCONTRACT 专题收口。已确认 reportFramework 从业务需求展示材料升级为正式报告生成、审查、修订的可执行质量门：E1 标准化 ReportContractContext，E2 在业务需求上下文进入报告生成链路时注入契约，D/V3 在报告输出页展示契约来源，E4 按契约确定性审查覆盖率/证据缺口/rewrite plan，E5 自动修订写 reviewed_versions 且保留原报告，D/V6 串起业务需求 → 工作视图 → 报告输出 → 覆盖审查。X7 总控补齐报告输出页“按审查结果修订”按钮，调用 contract-auto-fix 并展示新版本路径、分数变化和未解决缺口；默认审查/修订均传 contractSource 路径，由服务端重建 ReportContractContext，避免前端对象成为第二真源。API smoke 使用临时工作区验证：report-contracts/context sections=2，contract-review 得到 score=44/evidenceGaps=2，contract-auto-fix 写出 reviewed_versions/01_report-contract-revised-20260703T054759Z.md，原报告仍存在，review_history 不含 reportContent/content/revisedMarkdown 正文字段。验证：report-contract-review + business-requirement-communication node:test 29/29 通过；npm run typecheck 通过；npm run build 通过，仅既有 Vite/ECharts chunk warning；数据探索隔离 grep 0 匹配；wiki runtime script syntax 通过。浏览器点击级 smoke 未自动化，已用 UI 构建 + API 全链 smoke 覆盖功能链路。未执行 git。` },
 
   // ════ 【控制·tool-use 治理中枢专题】（Infra 总控拆卡 2026-06-30；来源=控制台 tool-use 核心模块审视 + 用户补充“tools 承载数据分析 Python 固化代码，后续工具会持续增长，需要标签与搜索”）。定位：把 tool-use 从工具列表升级为跨 Chat / workflow / subagent / command / MCP / 实验场的受控计算能力层。红线：数据探索 tab 永不接 LLM/tool-use 自动调用；draw_data 原始行级内容不得直接进 LLM；analysis 工具可经 source=ai 网关处理已登记数据路径，但产物不得包含原始行级明细；ingestion 工具不暴露给 AI。专题真源即本组 TOOLUSE wiki 任务卡。════
   { dom: "X", status: "done", created: "2026-06-30 07:35", title: "【控制·tool-use·契约·P0】X-TOOLUSE0：治理中枢专题契约 + manifest v2 + 调用矩阵口径", brief:

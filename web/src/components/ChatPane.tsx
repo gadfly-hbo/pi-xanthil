@@ -9,6 +9,8 @@ import { PromptSelector } from "@/components/PromptSelector";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
 import { api } from "@/lib/api";
+import { getActiveContractContext } from "@/lib/activeContractContext";
+import type { ReportContractContext } from "@/lib/api/engine";
 import { cn } from "@/lib/cn";
 import { textOf, type FlowTreeNode, type PiModel, type PromptDraft, type PromptTemplateInput, type SessionArtifactTree, type SessionRuntime, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
 
@@ -401,6 +403,38 @@ export function ChatPane(p: Props) {
     setSelectedId: setSelectedBusinessRequirementId,
     selectedContext: selectedBusinessRequirement,
   } = useBusinessRequirementContexts(p.folderScope);
+
+  // Contract summary for selected business requirement.
+  const [contractSummary, setContractSummary] = useState<ReportContractContext | null>(null);
+  const [contractSummaryLoading, setContractSummaryLoading] = useState(false);
+
+  // Fetch contract when business requirement selection changes.
+  useEffect(() => {
+    if (!selectedBusinessRequirement || !p.workspaceId) {
+      setContractSummary(null);
+      return;
+    }
+    setContractSummaryLoading(true);
+    const body = /(^|\/)business_requirements\/[^/]*-确认需求-[^/]*\.json$/.test(selectedBusinessRequirement.jsonPath)
+      ? { pathId: selectedBusinessRequirement.pathId, requirementJsonPath: selectedBusinessRequirement.jsonPath }
+      : { pathId: selectedBusinessRequirement.pathId, frameworkJsonPath: selectedBusinessRequirement.jsonPath };
+    api.getReportContractContext(p.workspaceId, body)
+      .then((result) => setContractSummary(result.context ?? null))
+      .catch(() => setContractSummary(null))
+      .finally(() => setContractSummaryLoading(false));
+  }, [selectedBusinessRequirement, p.workspaceId]);
+
+  // Pre-select business requirement from module-level store (set by BusinessRequirementPane).
+  useEffect(() => {
+    const active = getActiveContractContext();
+    if (active && businessRequirementContexts.length > 0) {
+      const match = businessRequirementContexts.find(
+        (ctx) => ctx.pathId === active.pathId && ctx.jsonPath === active.jsonPath,
+      );
+      if (match) setSelectedBusinessRequirementId(match.id);
+    }
+  }, [businessRequirementContexts, setSelectedBusinessRequirementId]);
+
   const [showTrace, setShowTrace] = useState(false);
   const rootRef = useRef<HTMLDivElement>(null);
   const bottomRef = useRef<HTMLDivElement>(null);
@@ -1239,6 +1273,18 @@ export function ChatPane(p: Props) {
                       ))}
                     </select>
                   </label>
+                )}
+                {!p.hideBizReq && contractSummary && (
+                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400" title={contractSummary.objective || contractSummary.projectName}>
+                    <FileText className="h-3 w-3" />
+                    {contractSummary.projectName}
+                    <span className="text-emerald-500">·</span>
+                    {contractSummary.sections.length} 章
+                    {contractSummary.fallback && <span className="text-amber-500">·默认</span>}
+                  </span>
+                )}
+                {!p.hideBizReq && contractSummaryLoading && selectedBusinessRequirement && (
+                  <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-400" />
                 )}
               </div>
               <button

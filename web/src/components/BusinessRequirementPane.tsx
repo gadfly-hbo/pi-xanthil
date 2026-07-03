@@ -2,6 +2,7 @@ import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } fro
 import { AlertTriangle, BookOpen, ClipboardList, Compass, FileText, Loader2, Pencil, RefreshCw, Save, Sparkles, X } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
+import { setActiveContractContext } from "@/lib/activeContractContext";
 import type { RequirementCommunicationAssumption, RequirementCommunicationQuestion, RequirementCommunicationResult, RequirementCommunicationScene, RequirementImportDocumentInput, RequirementImportDocumentsResult } from "@/lib/api/engine";
 import { useResumableTask } from "@/lib/resumableTask";
 import type { BusinessContextCategory, FlowTreeNode, WorkspacePath } from "@/types";
@@ -20,6 +21,8 @@ interface Props {
   onBusinessContextChanged?: () => void;
   // One-way: 业务需求 → 数据探索. Passes field-name hints only (never data).
   onExploreFields?: (fieldHints: string[], source: string) => void;
+  // One-way: 业务需求 → 工作视图 (chat). Navigates with active confirmed requirement context.
+  onBringToChat?: () => void;
 }
 
 interface RequirementDraft {
@@ -834,7 +837,7 @@ function draftFromCommunication(result: RequirementCommunicationResult, current:
   };
 }
 
-export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene = "daily", model, onGenerated, onBusinessContextChanged, onExploreFields }: Props) {
+export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene = "daily", model, onGenerated, onBusinessContextChanged, onExploreFields, onBringToChat }: Props) {
   const [paths, setPaths] = useState<WorkspacePath[]>([]);
   const [selectedPathId, setSelectedPathId] = useState("");
   const [documentOptions, setDocumentOptions] = useState<RequirementDocumentOption[]>([]);
@@ -2114,6 +2117,24 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
                       >
                         <Compass className="h-3.5 w-3.5" strokeWidth={1.75} />
                         在数据探索中验证
+                      </button>
+                    )}
+                    {onBringToChat && activeConfirmedRequirement && !structuredJsonStale && (
+                      <button
+                        onClick={() => {
+                          setActiveContractContext({
+                            pathId: selectedPath?.id ?? 0,
+                            markdownPath: activeConfirmedRequirement.markdownPath,
+                            jsonPath: activeConfirmedRequirement.jsonPath,
+                          });
+                          onBringToChat();
+                        }}
+                        disabled={editingFramework}
+                        className="inline-flex h-8 shrink-0 items-center gap-1.5 rounded-md border border-emerald-200 px-2.5 text-[12px] font-medium text-emerald-700 hover:bg-emerald-50 disabled:opacity-50 dark:border-emerald-900/60 dark:text-emerald-300 dark:hover:bg-emerald-950/40"
+                        title="携带当前确认需求/分析框架进入工作视图，开始对话式数据分析"
+                      >
+                        <Compass className="h-3.5 w-3.5" strokeWidth={1.75} />
+                        带入工作视图
                       </button>
                     )}
                     <button

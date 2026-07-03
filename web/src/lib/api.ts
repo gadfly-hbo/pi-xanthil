@@ -14,6 +14,38 @@ import { engineApi } from "./api/engine";
 import { vizApi } from "./api/viz";
 import { sharedApi } from "./api/shared";
 
+// ---- 契约审查响应类型（对齐 server/src/report-review.ts） ----
+interface ContractReviewFinding {
+  status: "covered" | "partial" | "missing";
+  title: string;
+  detail: string;
+  quote?: string;
+}
+
+export interface ContractReviewResult {
+  totalScore: number;
+  coverageSummary: string;
+  sectionResults: ContractReviewFinding[];
+  questionResults: ContractReviewFinding[];
+  evidenceGaps: ContractReviewFinding[];
+  unsupportedClaims: ContractReviewFinding[];
+  openQuestionMisuse: ContractReviewFinding[];
+  actionability: ContractReviewFinding;
+  rewritePlan: string[];
+  reviewMarkdown: string;
+}
+
+export interface ContractAutoFixResult {
+  path: string;
+  content: string;
+  model: string;
+  revisionSummary: string[];
+  unresolvedGaps: string[];
+  coverageDelta: number;
+  originalScore: number;
+  revisedScore: number;
+}
+
 const legacyApi = {
   listModels: () => fetch("/api/models").then(json<PiModel[]>),
   generateTocGraph: (payload: { reportName: string; content: string; model?: string; sessionId?: string; flowId?: string }) =>
@@ -49,6 +81,21 @@ const legacyApi = {
   listReviewHistory: (payload: { pathId: number; relPath?: string }) =>
     fetch(`/api/report-review/history?pathId=${encodeURIComponent(payload.pathId)}${payload.relPath ? `&relPath=${encodeURIComponent(payload.relPath)}` : ""}`)
       .then(json<{ entries: Array<{ id: string; reportName: string; reviewedAt: number; model: string; totalScore: number; pathId: number; relPath: string; reviewMarkdown: string; annotations: Array<{ quote: string; issue: string; suggestion: string; severity: "P0" | "P1" | "P2" }> }> }>),
+
+  // ---- 契约审查（E-REPORTCONTRACT4/5 已就绪的 server 端点，D 侧接入） ----
+  contractReview: (pathId: number, relPath: string, contractContext?: unknown, contractSource?: unknown) =>
+    fetch("/api/report-review/contract-review", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pathId, relPath, reportContractContext: contractContext, contractSource }),
+    }).then(json<ContractReviewResult>),
+
+  contractAutoFix: (pathId: number, relPath: string, model?: string, contractReview?: unknown, contractContext?: unknown, contractSource?: unknown) =>
+    fetch("/api/report-review/contract-auto-fix", {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pathId, relPath, model, contractReview, reportContractContext: contractContext, contractSource }),
+    }).then(json<ContractAutoFixResult>),
 
   generateBusinessRequirement: (payload: {
     pathId: number;

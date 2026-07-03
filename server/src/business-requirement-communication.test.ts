@@ -11,12 +11,17 @@ import {
   buildRequirementImportDocumentsPrompt,
   buildAnalysisFrameworkFromConfirmedTracePayload,
   buildConfirmedBusinessRequirement,
+  buildReportContractContextFromAnalysisFramework,
+  buildReportContractContextFromConfirmedRequirement,
+  buildReportContractPromptBlock,
+  buildReportContractTracePayload,
   buildRequirementConfirmationTracePayload,
   buildRequirementImportTracePayload,
   buildRequirementReviewContext,
   isConfirmedBusinessRequirementJsonPath,
   makeRequirementImportDocumentFromText,
   parseAnalysisFrameworkFromConfirmedRequest,
+  parseReportContractContextRequest,
   parseRequirementImportDocumentsJson,
   parseRequirementImportDocumentsRequest,
   parseRequirementCommunicationJson,
@@ -355,6 +360,79 @@ test("validateAnalysisFrameworkFromConfirmedResult rejects deferred facts by nor
   assert.match(result.openQuestions.join("\n"), /是否包含线下/);
 });
 
+test("ReportContractContext normalizes confirmed requirement and fallback framework", () => {
+  const confirmed = buildConfirmedBusinessRequirement(parseRequirementCommunicationConfirmInput({
+    scene: "daily",
+    pathId: 1,
+    title: "复购报告契约",
+    confirmedBy: "qa",
+    clarifyingQuestions: [
+      { id: "q-1", priority: "must_confirm", category: "目标", question: "目标？", why: "必要", status: "answered", answer: "解释复购率下降" },
+      { id: "q-2", priority: "should_confirm", category: "范围", question: "是否包含私域？", why: "影响范围", status: "pending" },
+    ],
+    assumptions: [{ id: "a-1", text: "沿用已确认复购率口径", status: "confirmed", source: "metric" }],
+    requirementDraft: { background: "复购下降", objective: "解释复购率下降", scope: ["会员"], metrics: ["复购率"], questions: ["复购为什么下降？"], outputs: ["正式报告"], successCriteria: ["解释下降来源"], risks: [], assumptions: [] },
+    riskNotes: [],
+  }), "business_requirements/communications/qa.json", 1_800_000_000_000);
+  confirmed.reportFramework = [];
+
+  const context = buildReportContractContextFromConfirmedRequirement(confirmed, {
+    jsonPath: "business_requirements/复购报告契约-确认需求-20260630-101500.json",
+    markdownPath: "business_requirements/复购报告契约-确认需求-20260630-101500.md",
+  });
+  assert.equal(context.source.kind, "confirmed_requirement");
+  assert.equal(context.fallback, true);
+  assert.match(context.sections.map((item) => item.title).join("\n"), /执行摘要/);
+  assert.doesNotMatch(context.confirmedFacts.join("\n"), /是否包含私域/);
+  assert.match(context.openQuestions.join("\n"), /是否包含私域/);
+
+  const promptBlock = buildReportContractPromptBlock(context);
+  assert.match(promptBlock, /本次报告实例大纲/);
+  assert.match(promptBlock, /requiredEvidence|必需证据/);
+  assert.match(promptBlock, /未覆盖\/待确认/);
+  assert.match(promptBlock, /不得写成事实/);
+
+  const tracePayload = JSON.stringify(buildReportContractTracePayload(context));
+  assert.match(tracePayload, /sourceBasename/);
+  assert.match(tracePayload, /sectionCount/);
+  assert.doesNotMatch(tracePayload, /解释复购率下降|是否包含私域/);
+});
+
+test("ReportContractContext normalizes analysis framework and request path guards", () => {
+  assert.throws(
+    () => parseReportContractContextRequest({ pathId: 1, requirementJsonPath: "business_requirements/communications/复购-沟通记录-20260630-101500.json" }),
+    /requirementJsonPath/,
+  );
+  assert.throws(
+    () => parseReportContractContextRequest({ pathId: 1, frameworkJsonPath: "../business_requirements/复购-分析框架-20260630-101500.json" }),
+    /forbidden segments/,
+  );
+  assert.deepEqual(parseReportContractContextRequest({ pathId: "2", frameworkJsonPath: "business_requirements/复购-分析框架-20260630-101500.json" }), {
+    pathId: 2,
+    frameworkJsonPath: "business_requirements/复购-分析框架-20260630-101500.json",
+  });
+
+  const context = buildReportContractContextFromAnalysisFramework({
+    projectName: "复购分析框架",
+    businessFacts: ["目标：定位下降来源"],
+    inferredNeeds: ["沿用复购率口径"],
+    analysisQuestions: ["下降来自哪些维度？"],
+    metrics: [],
+    dimensions: ["渠道"],
+    dataNeeds: [],
+    analysisFramework: [],
+    reportFramework: [{ section: "结论", purpose: "回答下降来源", keyQuestions: ["主因是什么？"], requiredEvidence: ["复购率"], outputGuidance: "先结论后证据", zeroHallucinationCheck: "数字标来源" }],
+    deliverables: [],
+    openQuestions: ["是否含私域？"],
+    risks: [],
+  }, { jsonPath: "business_requirements/复购-分析框架-20260630-101500.json" });
+  assert.equal(context.source.kind, "analysis_framework");
+  assert.equal(context.fallback, false);
+  assert.equal(context.sections[0]?.title, "结论");
+  assert.match(context.requiredQuestions.join("\n"), /主因是什么/);
+  assert.match(context.risks.join("\n"), /待确认：是否含私域/);
+});
+
 test("X-BRC4 acceptance covers daily topic and recurring confirmation contract", () => {
   const cases = [
     {
@@ -504,6 +582,76 @@ console.log(JSON.stringify({
     const reportDir = join(workspace.rootPath, "reports");
     mkdirSync(reportDir, { recursive: true });
     const reportPath = db.addWorkspacePath(workspace.id, "report", reportDir, "dir");
+    const brDir = join(reportDir, "business_requirements");
+    mkdirSync(join(brDir, "communications"), { recursive: true });
+    const confirmedForContract = buildConfirmedBusinessRequirement(parseRequirementCommunicationConfirmInput({
+      scene: "daily",
+      pathId: reportPath.id,
+      title: "会员复购契约",
+      confirmedBy: "qa",
+      clarifyingQuestions: [
+        { id: "q-1", priority: "must_confirm", category: "目标", question: "目标？", why: "必要", status: "answered", answer: "解释会员复购下降" },
+        { id: "q-2", priority: "should_confirm", category: "范围", question: "是否包含私域？", why: "影响范围", status: "deferred" },
+      ],
+      assumptions: [{ id: "a-1", text: "沿用复购率口径", status: "confirmed", source: "metric" }],
+      requirementDraft: { background: "复购下降", objective: "解释会员复购下降", scope: ["会员"], metrics: ["复购率"], questions: ["复购为什么下降？"], outputs: ["正式报告"], successCriteria: ["解释下降来源"], risks: [], assumptions: [] },
+      riskNotes: [],
+    }), "business_requirements/communications/会员复购契约-沟通记录-20260630-101500.json", 1_800_000_000_000);
+    const confirmedJsonPath = "business_requirements/会员复购契约-确认需求-20260630-101500.json";
+    const confirmedMdPath = "business_requirements/会员复购契约-确认需求-20260630-101500.md";
+    writeFileSync(join(reportDir, confirmedJsonPath), `${JSON.stringify(confirmedForContract, null, 2)}\n`);
+    writeFileSync(join(reportDir, confirmedMdPath), renderConfirmedBusinessRequirementMarkdown(confirmedForContract));
+
+    const frameworkJsonPath = "business_requirements/会员复购契约-分析框架-20260630-101500.json";
+    writeFileSync(join(reportDir, frameworkJsonPath), `${JSON.stringify({
+      projectName: "会员复购契约",
+      businessFacts: ["目标：解释会员复购下降"],
+      inferredNeeds: ["沿用复购率口径"],
+      analysisQuestions: ["复购为什么下降？"],
+      metrics: [],
+      dimensions: ["会员"],
+      dataNeeds: [],
+      analysisFramework: [],
+      reportFramework: [{ section: "结论", purpose: "回答下降来源", keyQuestions: ["主因是什么？"], requiredEvidence: ["复购率"], outputGuidance: "先结论后证据", zeroHallucinationCheck: "数字标来源" }],
+      deliverables: ["正式报告"],
+      openQuestions: ["是否包含私域？"],
+      risks: [],
+    }, null, 2)}\n`);
+
+    const confirmedContractRes = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/report-contracts/context`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pathId: reportPath.id, requirementJsonPath: confirmedJsonPath }),
+    });
+    const confirmedContractText = await confirmedContractRes.text();
+    assert.equal(confirmedContractRes.status, 200, confirmedContractText);
+    const confirmedContract = JSON.parse(confirmedContractText) as { context: { source: { kind: string }; sections: unknown[]; openQuestions: string[] } };
+    assert.equal(confirmedContract.context.source.kind, "confirmed_requirement");
+    assert.ok(confirmedContract.context.sections.length > 0);
+    assert.match(confirmedContract.context.openQuestions.join("\n"), /是否包含私域/);
+
+    const frameworkContractRes = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/report-contracts/context?pathId=${reportPath.id}&frameworkJsonPath=${encodeURIComponent(frameworkJsonPath)}`);
+    const frameworkContractText = await frameworkContractRes.text();
+    assert.equal(frameworkContractRes.status, 200, frameworkContractText);
+    assert.match(frameworkContractText, /analysis_framework/);
+    assert.match(frameworkContractText, /主因是什么/);
+
+    const communicationContractRes = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/report-contracts/context`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pathId: reportPath.id, requirementJsonPath: "business_requirements/communications/会员复购契约-沟通记录-20260630-101500.json" }),
+    });
+    assert.equal(communicationContractRes.status, 400);
+    assert.match(await communicationContractRes.text(), /requirementJsonPath/);
+
+    const escapeContractRes = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/report-contracts/context`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ pathId: reportPath.id, frameworkJsonPath: "../business_requirements/会员复购契约-分析框架-20260630-101500.json" }),
+    });
+    assert.equal(escapeContractRes.status, 400);
+    assert.match(await escapeContractRes.text(), /forbidden segments/);
+
     const analysisJsonRes = await fetch(`${baseUrl}/api/workspaces/${workspace.id}/business-requirements/analysis-framework-from-confirmed`, {
       method: "POST",
       headers: { "content-type": "application/json" },

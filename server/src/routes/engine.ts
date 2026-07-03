@@ -185,13 +185,18 @@ import {
   parseRequirementCommunicationConfirmInput,
   parseRequirementImportDocumentsRequest,
   parseAnalysisFrameworkFromConfirmedRequest,
+  parseReportContractContextRequest,
   validateRequirementImportDocumentAccess,
   buildAnalysisFrameworkFromConfirmedTracePayload,
   buildConfirmedBusinessRequirement,
+  buildReportContractContextFromAnalysisFramework,
+  buildReportContractContextFromConfirmedRequirement,
+  buildReportContractTracePayload,
   buildRequirementCommunicationRecord,
   buildRequirementConfirmationTracePayload,
   buildRequirementImportTracePayload,
   buildRequirementReviewContext,
+  isAnalysisFrameworkJsonPath,
   isConfirmedBusinessRequirementJsonPath,
   makeRequirementImportDocumentFromText,
   renderAnalysisFrameworkFromConfirmedMarkdown,
@@ -4410,6 +4415,37 @@ function readConfirmedRequirementForFramework(outputDir: string, jsonPath: strin
   }
 }
 
+function markdownPathForBusinessRequirementJson(jsonPath: string): string {
+  return jsonPath.replace(/\.json$/, ".md");
+}
+
+function optionalBusinessRequirementMarkdownPath(outputDir: string, jsonPath: string): string | undefined {
+  const markdownPath = markdownPathForBusinessRequirementJson(jsonPath);
+  try {
+    readFlowFile(outputDir, markdownPath);
+    return markdownPath;
+  } catch {
+    return undefined;
+  }
+}
+
+function readReportContractContext(outputDir: string, input: ReturnType<typeof parseReportContractContextRequest>) {
+  if (input.frameworkJsonPath) {
+    if (!isAnalysisFrameworkJsonPath(input.frameworkJsonPath)) throw new Error("frameworkJsonPath must point to an analysis framework json");
+    const structured = JSON.parse(readFlowFile(outputDir, input.frameworkJsonPath).content) as BusinessRequirementAnalysisFrameworkStructured;
+    return buildReportContractContextFromAnalysisFramework(structured, {
+      jsonPath: input.frameworkJsonPath,
+      markdownPath: optionalBusinessRequirementMarkdownPath(outputDir, input.frameworkJsonPath),
+    });
+  }
+  if (!input.requirementJsonPath) throw new Error("requirementJsonPath or frameworkJsonPath required");
+  const source = readConfirmedRequirementForFramework(outputDir, input.requirementJsonPath);
+  return buildReportContractContextFromConfirmedRequirement(source.structured, {
+    jsonPath: source.jsonPath,
+    markdownPath: source.markdownPath,
+  });
+}
+
 function attachAnalysisFrameworkVersion(
   structured: BusinessRequirementAnalysisFrameworkStructured,
   markdownPath: string,
@@ -4629,6 +4665,56 @@ engineRouter.post("/api/workspaces/:id/business-requirements/analysis-framework-
     });
   } catch (error) {
     const message = error instanceof Error ? error.message : "analysis framework generation failed";
+    return res.status(400).json({ error: message });
+  }
+});
+
+engineRouter.get("/api/workspaces/:id/report-contracts/context", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const input = parseReportContractContextRequest({
+      pathId: req.query.pathId,
+      requirementJsonPath: req.query.requirementJsonPath,
+      frameworkJsonPath: req.query.frameworkJsonPath,
+    });
+    const { outputDir } = resolveRequirementOutputDirForEngine(input.pathId, req.params.id);
+    const context = readReportContractContext(outputDir, input);
+    addTraceEvent({
+      workspaceId: req.params.id,
+      targetKind: "business_requirement",
+      targetId: context.source.jsonPath,
+      type: "report_contract_context_read",
+      target: context.projectName,
+      status: "success",
+      detail: `报告契约上下文读取 · ${context.projectName}`,
+      payload: buildReportContractTracePayload(context),
+    });
+    return res.json({ context });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "report contract context failed";
+    return res.status(400).json({ error: message });
+  }
+});
+
+engineRouter.post("/api/workspaces/:id/report-contracts/context", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const input = parseReportContractContextRequest(req.body);
+    const { outputDir } = resolveRequirementOutputDirForEngine(input.pathId, req.params.id);
+    const context = readReportContractContext(outputDir, input);
+    addTraceEvent({
+      workspaceId: req.params.id,
+      targetKind: "business_requirement",
+      targetId: context.source.jsonPath,
+      type: "report_contract_context_read",
+      target: context.projectName,
+      status: "success",
+      detail: `报告契约上下文读取 · ${context.projectName}`,
+      payload: buildReportContractTracePayload(context),
+    });
+    return res.json({ context });
+  } catch (error) {
+    const message = error instanceof Error ? error.message : "report contract context failed";
     return res.status(400).json({ error: message });
   }
 });

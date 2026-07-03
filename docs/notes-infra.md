@@ -8,21 +8,28 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-- 最近更新：2026-07-01 · infra 总控 session 收尾。
+- 最近更新：2026-07-03 · X-REPORTCONTRACT7 全链验收收尾。
 - 进度：
-  - 当前仓库门禁通过：`npm run typecheck` 通过，`npm run build` 通过；build 仅保留既有 Vite/ECharts dynamic import 与 chunk-size warning。
-  - 本次收尾未改业务代码；仅按 SOP 收敛 infra notes 的当前状态，避免 `§0` 继续堆叠历史批次。历史决策仍保留在下方正文专题章节。
-  - 已完成专题的当前可靠锚点：tool-use 治理中枢 v1、业务需求沟通闭环、业务需求双子 tab 与确认需求贯通链路均已终审；接缝层骨架继续冻结，新增能力仍落各域 slot。
-  - 数据安全红线继续有效：`draw_data` 原始行与 `data_exploration` 字段值/样本/剖析结果不得进入 LLM；`clean_data` 只按受控说明/元信息路径进入允许链路。
+  - **REPORTCONTRACT 专题已全链收口**：X-REPORTCONTRACT0/1/2/3/4/5/6/7 均已终审，`docs/wiki.html` 本组卡已置 done；长期记录落 `docs/notes-infra.md §十九` 与 `docs/notes-data.md` 业务需求沟通小节。
+  - 产品边界冻结：业务需求模块确认需求 JSON / 分析框架 JSON 中的 `reportFramework` 是正式分析报告的上游唯一契约源；报告输出不另建模板系统、不编辑契约真源，修订契约必须回业务需求模块生成修订版。
+  - 生成前链路已接通：数据分析选择业务需求上下文后，`ReportContractContext` prompt block 随既有 `businessRequirementContext` 注入，要求先输出“本次报告实例大纲”再写正文，并标注证据满足情况。
+  - 生成后链路已接通：报告输出页可预览全文、展示契约来源、选择报告文件、运行契约审查、展示覆盖率/证据缺口/rewrite plan，并可按审查结果生成 `reviewed_versions/*-contract-revised-*.md`，原报告保留。
+  - 总控已修正两处边界：前端审查/修订默认传 `contractSource` 路径，由服务端重建 `ReportContractContext`；`contractAutoFix` client 补齐契约参数，避免调用时缺契约输入。
+  - 当前仓库门禁通过：`node --experimental-strip-types --test server/src/report-contract-review.test.ts server/src/business-requirement-communication.test.ts` 29/29 通过；`npm run typecheck` 通过；`npm run build` 通过，仅保留既有 Vite/ECharts dynamic import 与 chunk-size warning；数据探索 LLM 隔离 grep 0 匹配；`npm run check:wiki` 通过。
+  - API 全链 smoke 通过：临时工作区验证 `report-contracts/context`、`contract-review`、`contract-auto-fix`，新版本写入 `reviewed_versions/01_report-contract-revised-20260703T054759Z.md`，原报告仍存在，`review_history` 不含 `reportContent` / `content` / `revisedMarkdown` 正文字段。
+  - 数据安全红线继续有效：`draw_data` 原始行与 `data_exploration` 字段值/样本/剖析结果不得进入 LLM；`clean_data` 只按 AGENTS.md 知情受控口径进入允许链路；review/trace/history 只记录 metadata、计数、短 quote、修订摘要和未解决缺口。
 - 下一步：
-  - 优先补浏览器点击级 smoke：业务需求日常 / 专题 / 重复三入口各跑一条“需求沟通 → 确认正式需求 → 基于确认需求生成分析框架 → 查看版本 / review context”链路。
+  - 优先做浏览器点击级 smoke：在现有服务上走“业务需求确认 → 分析框架 → 带入工作视图 → 生成/选择报告 → 报告输出契约审查 → 按审查结果修订”的真实 UI 链路，重点看窄屏布局、按钮启用状态、报告预览滚动和错误提示。
+  - 若 UI smoke 通过，可按用户节奏提交 REPORTCONTRACT 批次；如发现交互缺口，先小修 `ReportContractPane` / `ChatPane` / `BusinessRequirementPane`，不扩大到接缝骨架。
   - 继续做知识库新模块运行时终审：全局 / 专属 scope、enablement、检索注入、system prompt 聚合与旧库迁移需要逐卡实跑。
   - command 场景调用框仍需总控复核：跑 command 相关单测、typecheck/build，并确认 `ChatPane` / `ManualAnalysisToolCard` 仍只经 `@工具` 与 `/api/extraction-tools/:id/run` 的 `source=ai` 闸门。
   - 数字锁真实 tool-use smoke 待补：用 analysis 工具返回 `metricSnapshots`，验证模型改写数值时 `metric_verification` block 可见，正常引用时无告警；同时覆盖 flow chat。
   - LLM 管理补测：逐行复核 `llm-config.ts` 脱敏链路，并补 key 保留、OAuth 不写 key、settings 局部写的 node:test。
 - 阻塞：
-  - 无代码阻塞。真实数字锁 smoke 依赖本机可用模型与 analysis 工具运行环境。
+  - 无代码阻塞。REPORTCONTRACT 浏览器点击级 smoke 未自动化，需用户或后续总控在现有本地服务上手动确认。
 - 开放问题（待总控 / 后续拍板）：
+  - 是否把 `ReportContractContext` 前端临时选择 store 升级为正式 `useReportContract` hook / report-contracts API 消费层；当前 module-level store 足够支撑跨子 tab 预选，但若后续多面板复用，建议另开小卡抽象。
+  - 是否将契约覆盖审查结果与修订记录在报告输出页做历史列表；当前 server 已写 `review_history`，UI 只展示本次运行结果。
   - `metric_verification` block 当前随消息 content 持久化；是否需要在 DB / trace 中单独索引为可筛选质量信号。
   - 数字锁是否从 best-effort 告警升级为自动纠偏 / 重试，需要结合预算上限与误报风险另行设计。
   - 工作区跨批次改动是否按专题分批提交，仍由用户手动决定；本 SOP 不做 git 操作。
@@ -705,3 +712,92 @@
 
 **后续顺序**：
 - 本组专题完成。后续可另开低优先级卡做浏览器点击级 smoke 自动化，或把 legacy fallback 从主组件继续外移。
+
+---
+
+## 十九、业务需求 × 分析报告契约贯通（X-REPORTCONTRACT0，2026-07-03 总控自做）
+
+**背景**：用户指出，直接让 agent 输出分析报告时，如果没有报告框架与内容约束，生成后的报告经常需要大改；而业务需求模块已经能基于确认需求生成 `reportFramework`。总控裁决：不要在报告输出另建第二套模板系统，应把业务需求模块里的 `reportFramework` 升级为数据分析报告生成、审查、修订的上游契约。
+
+**产品边界**：
+- 上游唯一真源：业务需求模块的确认需求 JSON / 分析框架 JSON 中的 `reportFramework`。
+- 报告输出不编辑 `reportFramework`，不另建“报告模板”真源；若要修改契约，必须回到业务需求模块创建修订版。
+- 数据分析生成正式报告时，必须先消费报告契约，再生成本次报告实例大纲，最后写正文。
+- 报告输出 / 报告审核负责按契约审查、修订和展示覆盖情况。
+- 缺证据时必须写“待确认 / 未覆盖 / 证据不足”，不得补编数字或事实。
+
+**标准链路**：
+1. 需求沟通确认。
+2. 生成分析框架与报告框架。
+3. 选择业务需求作为数据分析上下文。
+4. 生成契约化报告实例大纲。
+5. 生成 Markdown 报告。
+6. 按报告契约审查贴合度。
+7. 按审查结果自动修订。
+8. 输出最终报告与审查记录。
+
+**数据红线**：
+- 不读取 `draw_data` 原始行或明细整体。
+- 不接 `data_exploration` → 业务需求 / 报告输出的反向数据回流。
+- `clean_data` 如被用于报告上下文，必须遵守 AGENTS.md 的知情与受控口径。
+- trace / review history 只记录路径、覆盖率、问题类别、计数和短引用，不写客户 / 订单 / 原始明细样本。
+
+**后续卡边界**：
+- **E-REPORTCONTRACT1**：标准化 `ReportContractContext` 读取 API；只读确认需求 / 分析框架 JSON，不改真源。
+- **E-REPORTCONTRACT2**：数据分析生成时注入报告契约；要求先出实例大纲再写正文。
+- **D/V-REPORTCONTRACT3**：报告输出页展示契约来源与覆盖入口；不编辑契约。
+- **E-REPORTCONTRACT4**：按报告框架做贴合度审查；输出覆盖率、证据缺口、改写清单。
+- **E-REPORTCONTRACT5**：契约驱动自动修订；必须保留原报告，不新增无来源数字。
+- **D/V-REPORTCONTRACT6**：业务需求到报告输出的端到端 UI 串联。
+- **X-REPORTCONTRACT7**：全链验收、安全红线和 notes/wiki 收口。
+
+**✅ E-REPORTCONTRACT1 终审通过（2026-07-03）**：
+- 新增 `ReportContractContext` 域内类型与标准化纯函数，支持确认需求 JSON 与分析框架 JSON 两类来源。
+- 新增 GET/POST `/api/workspaces/:id/report-contracts/context`，读取 report 登记路径下的 `business_requirements/*-确认需求-*.json` 或 `business_requirements/*-分析框架-*.json`。
+- `business_requirements/communications/*.json`、路径逃逸、非白名单路径会拒绝。
+- 缺 `reportFramework` 时生成默认 fallback，并返回 `fallback: true`。
+- trace 只记录 source basename、source kind、section count、question count、fallback，不记录业务正文、客户/订单/原始明细样本。
+- 前端 `web/src/lib/api/engine.ts` 新增域内 `ReportContractContext` 类型与 `getReportContractContext()`。
+
+**✅ E-REPORTCONTRACT2 终审通过（2026-07-03）**：
+- 新增 `buildReportContractPromptBlock()`，在既有 `loadBusinessRequirementContextForChat()` 注入点追加报告契约上下文。
+- 当业务需求上下文带 `jsonPath` 且命中确认需求 / 分析框架 JSON 时，正式报告链路会看到 `ReportContractContext`。
+- prompt block 要求先输出“本次报告实例大纲”，再逐章写正文，并标注 `requiredEvidence` 是否满足；证据不足必须写“未覆盖 / 待确认”。
+- `server/src/index.ts` 的接线是 legacy 注入点最小增强，未迁移路由、未改共享类型契约。
+- 总控追认一处范围扩展：注入会随既有 businessRequirementContext 被 Chat / 数据分析、黄金策、汇报版本等正式报告/衍生产物链路消费；该范围仍围绕用户显式选择的业务需求上下文，不新增敏感数据读取。
+
+**✅ D/V-REPORTCONTRACT3 终审通过（2026-07-03）**：
+- 新增 `web/src/components/ReportContractPane.tsx`，报告输出页可显式选择业务需求 / 报告框架版本，并展示契约来源、章节摘要、统计卡片、fallback 提示和覆盖清单入口。
+- `web/src/tabs/VizTabs.tsx` 在 `report` subtab 中追加渲染契约面板，保留 `FolderPathsPane` 的 Markdown/HTML 预览能力。
+- 操作入口按契约边界落在跳转：审查跳 `report_review`，修订跳 `business_requirement`；本页不编辑 `business_requirements` 真源。
+- 未改 `App.tsx` / `constants.ts` / `FolderPathsPane`，未接入 `draw_data` / `data_exploration`，未新增 LLM 调用。
+
+**✅ E-REPORTCONTRACT4 终审通过（2026-07-03）**：
+- `server/src/report-review.ts` 新增 `reviewReportAgainstContract()`，按 `ReportContractContext` 确定性输出章节覆盖、必答问题覆盖、证据缺口、无证据结论、open question 误用、行动建议和 rewrite plan。
+- `server/src/index.ts` 新增 `POST /api/report-review/contract-review`，限定 report 登记路径与文本报告；普通 `/api/report-review/review` 保持旧行为。
+- 契约审查 history 只记录契约来源 metadata、覆盖摘要和计数，不存报告正文；引用报告内容时仅保留短 quote。
+
+**✅ E-REPORTCONTRACT5 终审通过（2026-07-03）**：
+- `server/src/report-review.ts` 新增契约自动修订 prompt 与 `validateContractRevisionResult()`。
+- `server/src/index.ts` 新增 `POST /api/report-review/contract-auto-fix`，修订结果写入 `reviewed_versions/*-contract-revised-*.md`，不覆盖原报告。
+- 修订 history 记录 `contractSource` metadata、coverage delta、修订摘要和未解决缺口，不写原报告 / 新报告正文。
+- 修订 prompt 与 system prompt 均约束不得新增无来源数字，`openQuestions` / `deferredQuestions` 只能写待确认；普通 `/api/report-review/auto-fix` 保持旧行为。
+- 后续 UI 串联建议默认传 `contractSource` 路径，由服务端重建 `ReportContractContext`；完整 `reportContractContext` 只作为派生上下文兼容输入，避免形成第二真源。
+
+**✅ D/V-REPORTCONTRACT6 终审通过（2026-07-03）**：
+- 新增 `web/src/lib/activeContractContext.ts`，作为业务需求页到工作视图的临时选择 store，不改 `App.tsx` / `TabContext`。
+- `BusinessRequirementPane` 新增“带入工作视图”，`EngineTabs` 负责跳到 `view`；`ChatPane` 从 store 预选业务需求版本，并显示契约摘要徽章。
+- `FolderPathsPane` 新增 `onSelectFile`，`VizTabs` 将选中报告传给 `ReportContractPane`，报告输出页可直接对当前报告运行契约覆盖审查。
+- `ReportContractPane` 展示服务端 `contract-review` 的覆盖率、章节状态、证据缺口、无依据断言、待确认误用和修订建议。
+- 总控修正一处边界：前端默认审查调用改为传 `contractSource` 路径，由服务端重建 `ReportContractContext`；`contractAutoFix` API 方法补齐契约参数，避免调用时缺契约输入。
+- X-REPORTCONTRACT7 已补齐“一键按审查结果修订”入口：按钮只在已有覆盖审查结果后启用，调用 `contract-auto-fix` 写新版本，不覆盖原报告。
+
+**✅ X-REPORTCONTRACT7 全链验收通过（2026-07-03）**：
+- 业务需求模块的确认需求 JSON / 分析框架 JSON 仍是 `reportFramework` 唯一真源；报告输出页只消费契约并提供回跳修订，不编辑真源。
+- 生成前链路：数据分析选择业务需求上下文后，`ReportContractContext` prompt block 会随既有 `businessRequirementContext` 注入，要求先输出“本次报告实例大纲”再写正文。
+- 生成后链路：报告输出页可选择契约版本、选中报告文件、运行契约审查、查看覆盖率/证据缺口/rewrite plan，并可按审查结果生成 `reviewed_versions/*-contract-revised-*.md`。
+- 总控 API smoke 使用临时工作区验证：`report-contracts/context` 返回 2 个章节；`contract-review` 返回 score=44、evidenceGaps=2；`contract-auto-fix` 写出 `reviewed_versions/01_report-contract-revised-20260703T054759Z.md`；原报告仍存在；`review_history` 不含 `reportContent` / `content` / `revisedMarkdown` 正文字段。
+- 安全结论：未读取 `draw_data` 原始行；未接 `data_exploration` 反向回流；`clean_data` 未进入本次 smoke；history 只保留 metadata、计数、短 quote 与修订摘要。
+- 残留：浏览器点击级 smoke 未自动化，已用 UI 构建通过 + API 全链 smoke 覆盖功能链路；后续用户可在现有服务上手动点击确认窄屏与交互细节。
+
+**验证**：`node --experimental-strip-types --test server/src/report-contract-review.test.ts server/src/business-requirement-communication.test.ts` 29/29 通过；`npm run typecheck` 通过；`npm run build` 通过，仅既有 Vite/ECharts chunk warning。数据探索红线 grep 0 匹配；`ReportContractPane` 敏感引用 grep 0 匹配。E1/E2/DV3/E4/E5/DV6/X7 未读取 `draw_data` / `data_exploration` / `clean_data` 文件正文。

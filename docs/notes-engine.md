@@ -9,40 +9,38 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新:2026-07-01 · **E-MONITOR-PROD4/E-MONITOR-PROD6 完成：观星台 Finding 优先级/摘要纯函数 + Watchlist 后端**
+- 最近更新:2026-07-03 · **E-REPORTCONTRACT1/2/4/5 完成：业务需求 reportFramework → ReportContractContext → 报告生成/审查/修订闭环**
 - 进度:
-  - **E-MONITOR-PROD4：Finding 优先级评分 + 运行摘要纯函数**
-    - 新增 `server/src/monitor-priority.ts`，定义 `MonitorFindingPriority` / `MonitorRunSummary` 与 `scoreMonitorFindingPriority()` / `prioritizeMonitorFindings()` / `summarizeMonitorRun()`。
-    - 评分因子覆盖 severity、lifecycle、`deltaRate`、target gap、`firstSeenRunId` 连续复现、adopted/doing action 降权；每项都进入 `reasons`，便于 UI 解释“为什么先处理它”。
-    - `suggestedFocus` 为确定性模板文本，只组合 finding 衍生产物（title、band、score、counts），不调用 LLM、不读取数据文件、不读取 rows/cells。
-    - `POST /api/workspaces/:id/monitor/runs` 额外返回 `summary`；新增 `GET /api/workspaces/:id/monitor/runs/:runId/summary`，保持既有 `/findings` 数组响应不变。
-  - **E-MONITOR-PROD6：Watchlist CRUD + run 关联 + legacy config 兼容**
-    - `server/src/db/engine.ts` 新增 `monitor_watchlists`（engine 域表），字段覆盖 X-MONITOR-PROD5：name/description/type/suite/frequency/status/owner/datasetBindings/targetPlan/goalDataset/metricSystem/thresholdPolicy/thresholds/timestamps。
-    - `monitor_runs` 新增 nullable `watchlist_id`；旧 run 为 `null`，旧查询仍可用；按 watchlist 过滤时先筛 runs，findings 仍只经 runId 归属，不给 `monitor_findings` 冗余加列。
-    - 新增 `GET/POST/PATCH/DELETE /api/workspaces/:id/monitor/watchlists`；DELETE 语义为 archive；新增 `POST /api/workspaces/:id/monitor/watchlists/:watchlistId/run`。
-    - 无真实 watchlist 时返回虚拟 `id:"default"`，读取 legacy `monitor_configs`（仍归 `db/viz.ts`，不迁移、不删除）；PATCH default 会 lazy 创建真实 watchlist。
-    - create/update/run 都校验 `datasetBindings` 与 `goalDatasetPathId` 属当前 workspace clean_data 白名单、`metricSystemId` 属当前 workspace、`targetPlanId` 属当前 workspace；非法 pathId 在 `insertMonitorRun` 前 400，不落空 run。
-    - 旧 `/api/workspaces/:id/monitor/runs` 保持可用，并支持 body `watchlistId`；`GET /monitor/runs?watchlistId=default` 返回 `watchlist_id IS NULL` 的旧 run。
-  - **前序状态仍有效**：E-BREQ-LINK2/4、E-BRC1/3 已完成；E-TOOLUSE2/4/5 已完成；X-TRACE8 / E-OKH3 / E-CROWD11 / E-CROWD8 / E-CROWD5 均已完成；DLF 模拟实验专题 done；MONITOR-TARGET1 done。
+  - **E-REPORTCONTRACT1：ReportContractContext 标准化读取与摘要**
+    - `server/src/business-requirement-communication.ts` 新增 E 域内部 `ReportContractContext`、标准化纯函数、fallback 默认报告框架、trace metadata builder、prompt block builder。
+    - `server/src/routes/engine.ts` 新增 `GET/POST /api/workspaces/:id/report-contracts/context`，只接受 `business_requirements/*-确认需求-*.json` 与 `business_requirements/*-分析框架-*.json`；拒绝 `business_requirements/communications/*.json` 与路径逃逸。
+    - `web/src/lib/api/engine.ts` 新增域内 `ReportContractContext` 类型与 `getReportContractContext()`，未扩双侧 `types.ts`。
+  - **E-REPORTCONTRACT2：报告生成消费报告契约**
+    - 复用既有 `businessRequirementContext` 选择，当请求带 `jsonPath` 时追加 `[ReportContractContext]` prompt block，要求先输出“本次报告实例大纲”，再逐章回应 keyQuestions，并标注 requiredEvidence 是否满足。
+    - `server/src/index.ts` 的 presentation/report 生成 prompt 增加契约两阶段要求；openQuestions/deferredQuestions 不得写成已确认事实，证据不足写“未覆盖/待确认”。
+  - **E-REPORTCONTRACT4：按报告框架做贴合度审查**
+    - `server/src/report-review.ts` 新增 `reviewReportAgainstContract()` 确定性审查：requiredQuestionsCoverage、sectionCoverage、evidenceCoverage、unsupportedClaims、openQuestionMisuse、actionability、rewritePlan。
+    - 新增 `POST /api/report-review/contract-review`，旧 `/api/report-review/review` 不改；history 只存契约 source basename/kind、coverage counts、score 等 metadata，不存报告正文或大段 quote。
+  - **E-REPORTCONTRACT5：契约驱动自动修订并保留版本**
+    - 新增 `buildContractAutoFixPrompt()` / `validateContractRevisionResult()` 与 `POST /api/report-review/contract-auto-fix`。
+    - 修订结果写入 `reviewed_versions/*-contract-revised-*.md`，不覆盖原报告；history 记录原路径、新路径、契约来源 metadata、coverage delta、修订摘要、未解决缺口。
+  - **前序状态仍有效**：E-MONITOR-PROD4/6、E-BREQ-LINK2/4、E-BRC1/3、E-TOOLUSE2/4/5 已完成；X-TRACE8 / E-OKH3 / E-CROWD11 / E-CROWD8 / E-CROWD5 均已完成；DLF 模拟实验专题 done；MONITOR-TARGET1 done。
 - 校验:
-  - `node --experimental-strip-types --test server/src/monitor-priority.test.ts` ✅(5/5)
-  - `node --experimental-strip-types --test server/src/monitor-watchlist.test.ts` ✅(5/5)
-  - `node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/monitor-priority.test.ts` ✅(18/18)
+  - `node --experimental-strip-types --test server/src/report-contract-review.test.ts server/src/business-requirement-communication.test.ts` ✅(29/29)
   - `npm run typecheck` ✅(server + web)
   - `npm run build` ✅(仅既有 Vite chunk warning)
 - 下一步:
-  - D-MONITOR-PROD7 可接前端：顶部 watchlist selector、创建/编辑向导、按 `watchlistId` 过滤总览/观星台/行动环；旧 workspace 应显示虚拟“默认监测”。
-  - 建议补一条浏览器/API smoke：legacy `monitor_configs` workspace → `GET /monitor/watchlists` 显示 default → PATCH default 创建真实行 → 按 watchlist run → run 历史按 `watchlistId` 过滤。
-  - 建议 D/V 前端消费 `summary`：观星台顶部展示 `suggestedFocus`、`topProblems/topRisks`、new/worsening/resolved/targetGap counts；若要展示 action 降权，需要把 action 状态映射为 `MonitorFindingActionStates` 后再由 API 或前端调用纯函数。
-  - 仍待 BRC 人工浏览器 smoke：日常/专题/重复三入口 clarify→confirm→版本列表→review-context，以及 import-documents 与 confirmed requirement→analysis framework 两条链路。
-  - 仍待：E-SKILLINJECT1 真实 workflow smoke、E-SKILLOPT1 浏览器 smoke；KICKOFF-P0 的 E2E 验证补课（AnaX 8 阶段真跑 / skill 蒸馏全链路 smoke / SQL 连接真实库）仍未执行。
+  - 建议补浏览器/API smoke：选择确认需求/分析框架 → `report-contracts/context` 返回章节/必答问题 → 生成汇报版本 prompt 含 ReportContractContext → `contract-review` 识别缺章节/证据 → `contract-auto-fix` 写出 `contract-revised` 新文件且原报告保留。
+  - 建议 D/V 前端接入：报告审核 UI 增加“按业务需求契约审查”和“契约驱动修订”入口，并展示 section/question/evidence/rewritePlan。
+  - 建议总控评估是否把 legacy `/api/report-review/*` 迁入 `routes/viz.ts` 或按快修/代笔机制收口；本次为完成链路做了最小 legacy 接线。
+  - 仍待 D-MONITOR-PROD7 前端接 watchlist/summary；仍待 BRC 人工浏览器 smoke；仍待 E-SKILLINJECT1 真实 workflow smoke、E-SKILLOPT1 浏览器 smoke；KICKOFF-P0 的 E2E 验证补课（AnaX 8 阶段真跑 / skill 蒸馏全链路 smoke / SQL 连接真实库）仍未执行。
 - 阻塞: 无硬阻塞。
 - 开放问题(需总控):
-  - `MonitorWatchlist` / `MonitorRunSummary` 是否需要上提到双侧 `types.ts`，供 D-MONITOR-PROD7 前端稳定消费；本卡为避免接缝层扩散，暂放 E 域内部类型。
-  - summary 中 adopted/doing action 降权当前只在纯函数入参支持，run/summary API 暂未跨域查询 `action_items`；是否由 D/V 前端传入 action 状态，还是由总控定义统一后端聚合口径。
-  - BRC 沟通历史是否需要从 `business_requirements/communications/*.json` 升级为 DB 表，以支持跨 workspace 检索、治理和 trace drill-down。
-  - 报告审核是否由 V/D 在 UI 层展示 BRC review-context，还是由总控迁移 legacy `/api/report-review/review` 到域 router 后统一拼接上下文。
-  - 沿用前序开放项（失败 run → candidate case 是否独立 proposal 表、trace_events 是否迁为独立 `tool_runs` 表、动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等）。
+  - 本次 E-REPORTCONTRACT2/4/5 为完成报告生成/审核链路，最小修改了 legacy `server/src/index.ts` 中既有 `/api/report-review/*` 与 `businessRequirementContext` 注入点；需总控确认是否追认为允许的 legacy 小接线，或后续迁移到域 router。
+  - `ReportContractContext` 是否需要上提双侧 `types.ts` 供 D/V 前端稳定消费；当前按 SkillPackage 先例保留在 E 域内部类型。
+  - 契约审查当前首版为确定性规则审查，LLM prompt builder 已预留但 API 未调用 LLM；是否需要后续增加 LLM judge 版本，还是保持确定性以降低成本和敏感内容留存风险。
+  - 旧报告若只有 markdown、缺 JSON 真源时是否允许从 Markdown 反解析 reportFramework；当前不做，避免把展示文本当事实源。
+  - 沿用前序开放项：MonitorWatchlist/MonitorRunSummary 是否上提 types、summary action 降权是否跨域聚合 action_items、BRC 沟通历史是否入 DB、失败 run → candidate case 是否独立 proposal 表、trace_events 是否迁为独立 `tool_runs` 表、动态注入 selection plan 持久化、EFC per-skill 执行效用历史表、micro-skill 关系图入库、子技能蒸馏脱敏边界等。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -264,6 +262,10 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **BRC 确认写入口径**：`POST /api/workspaces/:id/business-requirement-communication/confirm` 只写用户确认后的草案、问题状态与假设状态；正式需求落 `business_requirements/*-确认需求-*.md/json`，沟通记录落 `business_requirements/communications/*.json`，避免被现有版本列表误认为正式需求。正式 JSON 必须显式区分 `confirmedFacts` / `confirmedAssumptions` / `deferredQuestions` / `rejectedAssumptions`；`deferred/skipped/pending` 问题不得写成 confirmed facts。
 - **BRC trace/review 边界**：trace 事件只存脱敏 metadata（scene、数量、状态分布、路径 basename、风险/输出数量），不得存用户长文本、文件正文、样本值。`GET /api/workspaces/:id/business-requirement-communication/review-context` 只返回确认后的目标、成功标准、确认假设、未确认问题，供报告审核展示或拼接；首版不自动 judge。
 - **BRC 材料导入与确认需求生成分析框架边界（E-BREQ-LINK2/E-BREQ-LINK4，2026-06-30）**：沟通材料导入使用专用 `POST /api/workspaces/:id/business-requirement-communication/import-documents`，不得让前端复用通用 extract/chat/generate/clarify。导入可读 `report` / `business_requirements` 衍生产物正文；`clean_data` 首版只允许路径元信息/聚合说明，禁止读正文；`draw_data` / `data_exploration` 禁入；`localText` 仅限用户显式上传/粘贴并截断。分析框架生成使用专用 `POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed`，采用方案 B 而非扩 legacy `index.ts` 旧表单端点，避免触碰接缝层；只接受 `business_requirements/*-确认需求-*.json` 与同名 Markdown，拒绝 `*-分析框架-*.json` 和 `business_requirements/communications/*.json`。生成结果仍写 `business_requirements/*-分析框架-*`，保持版本列表兼容；`deferred/skipped/assumed/pending` 只能进入 openQuestions/risks/zeroHallucinationCheck，不得进入 businessFacts。两类 trace 均只存 basename / 数量 / 长度 metadata，不存正文。
+- **ReportContractContext 报告契约闭环（E-REPORTCONTRACT1/2/4/5，2026-07-03）**：业务需求产物中的 `reportFramework` 被标准化为 E 域内部 `ReportContractContext`，供报告生成、契约审查、契约修订消费。读取真源只接受 `business_requirements/*-确认需求-*.json` 与 `business_requirements/*-分析框架-*.json`；`business_requirements/communications/*.json` 只是沟通记录，不能作为事实源；路径必须仍走 report 登记目录 + `readFlowFile` 围栏，拒绝 parent/hidden 逃逸。缺 `reportFramework` 的旧 JSON 可用 BusinessRequirementPane 同口径默认框架 fallback，但 response/prompt 必须标记 `fallback=true`，避免误认为用户确认过的报告框架。`deferred/skipped/assumed/pending` 与 openQuestions 只能进入 openQuestions/risks/zeroHallucinationCheck，不得进入 confirmed facts。
+- **ReportContractContext 注入策略（2026-07-03）**：不新建模板表、不复制 `reportFramework` 为新真源，只在用户选择业务需求上下文且请求带 `jsonPath` 时，把标准化后的 `[ReportContractContext]` 追加到既有业务需求上下文。正式报告/汇报生成必须两阶段：先输出“本次报告实例大纲”（每章对应契约 section、必答问题、证据类型），再写正文（逐章回应 keyQuestions，标注 requiredEvidence 是否满足）。证据不足必须写“未覆盖/待确认”，不得编造数据或把 openQuestions/deferredQuestions 写成事实。
+- **契约审查与修订边界（2026-07-03）**：契约贴合度首版选择确定性规则审查，而非默认 LLM judge：按章节、必答问题、证据关键词、无证据结论、open question 事实化、行动建议回应决策场景生成 `ContractReviewResult`，成本低且 trace/history 只存 metadata 与短 quote。自动修订复用既有 report-review auto-fix 的 LLM 能力，但新增契约 prompt 强约束：不得新增无来源数字、不得读取 draw_data、不得覆盖原报告；输出写 `reviewed_versions/*-contract-revised-*` 新文件。旧 `/api/report-review/review` 与 `/api/report-review/auto-fix` 行为保持不变，契约能力走新增 `/contract-review` 与 `/contract-auto-fix`。
+- **legacy 接线说明（2026-07-03）**：报告生成/审核 REST 仍主要在 legacy `server/src/index.ts`，本次为完成 E-REPORTCONTRACT2/4/5 做了最小接线（业务需求上下文注入、`/api/report-review/contract-review`、`/api/report-review/contract-auto-fix`）。这属于既有报告链路邻近修改而非新架构迁移；需总控后续决定是否追认为快修/代笔式 legacy 小接线，或迁移到 `routes/viz.ts` / 域 router。
 - fork 分支/委派子 agent 的**回流不是特殊消息类型**：前端弹可编辑摘要框，用户确认后调用主线 `onSend`，保持主 transcript 只有用户主动回流的摘要/报告路径；分支中间多轮和子 agent 运行细节不污染主线。
 - fork 前端不要回到旧 WebSocket 方案重新设计协议：后端契约已交付为 `POST /api/sessions/:id/fork` + 分支真实 session + 现有 gateway send/messages/pi_event；委派契约已交付为 REST delegate/task/abort + 轮询。
 - **memory evaluation runner 检索上下文单一真源（2026-06-18 E-EVAL）**：baseline vs memory 评估必须用同一 evaluation prompt 构造 `RetrievalContext`（当前 `query = prompt.trim()`），并把同一个 ctx 同时传给 `buildMemoryInjectionSnapshot(..., {}, ctx)` 与 `buildMemoryPrompt(..., {}, ctx)`。否则 snapshot 中看到的候选/命中可能与实际 pi system prompt 不一致，评估数据会失真。baseline candidate 仍只记录 `requested:false` snapshot，不注入 memory；memory candidate 走 `memory_item` 新检索。runner 读记忆只经 `memory-injection.ts`，不要为了评估直接 import D 的 db CRUD。

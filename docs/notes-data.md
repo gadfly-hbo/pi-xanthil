@@ -10,57 +10,43 @@
 
 > **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-07-01 · **X-MONITOR-PROD8 监测工作台静态/安全验收已收口，浏览器手测由用户接管；KG D-KG3/D-KG4 仍待 X-KG5 总控终审**
+- 最近更新：2026-07-03 · **D/V-REPORTCONTRACT3 + D/V-REPORTCONTRACT6 已完成；报告契约化操作流前端落地**
 - 进度：
-  - **D-MONITOR-PROD1（监测总览）**：新增 `health_overview` subtab（常量接缝 + App 默认进入 health 改为总览 + `HealthTabs` 分支），新增 `HealthOverviewPane`。总览聚合现有 `getMonitorConfig` / `listMonitorRuns` / `listMonitorFindings` / `listTargetPlans` / `listActionItems` / `listActionTasks` / `listMonitorImports`，展示最近 run、问题/风险/critical/warn、目标绑定、指标体系状态、就绪 checklist、Top findings 与 monitor:* 待处理行动入口；不新增后端表/路由。
-  - **D-MONITOR-PROD2（finding 详情抽屉）**：新增 `components/monitor/FindingDetailDrawer.tsx`，接入 `HealthDashboardPane` 与 `HealthReportPane`。抽屉展示 severity/kind/lifecycle/category/rule/signature、comparisons、诊断、建议、折叠 evidence（UI 侧对 rows/records/values/samples 做 redacted），支持单条生成行动项草案（复用 `/monitor/actions/draft`，只传 findingIds）、采纳建 task、忽略为 dismissed ActionItem、提为 eval 候选（沿用 D-EVOLVE2 脱敏字段口径）。行动去重增加 `metricRef=monitor-finding:<findingId>` marker。
-  - **D-MONITOR-PROD3（初始化 onboarding + 阈值预设）**：`HealthDataPane` 增加“数据接入→角色绑定→指标体系→可运行”步骤条；数据集按经营数据/source、运营目标/goal、行业、竞品、未绑定分区；生成指标体系前展示 source/goal/ontology/时间列/历史行数 best-effort 质量提示；草案预览突出指标数、缺失数据、假设、低置信指标，并明确“采纳后观星台可运行”。`HealthDashboardPane` 阈值主路径改为敏感/标准/保守三预设，高级设置折叠显示内部 key。
-  - **E-MONITOR-PROD4（finding 优先级 + run 摘要）**：新增 `server/src/monitor-priority.ts` 与单测，沉淀 `prioritizeMonitorFindings()` / `summarizeMonitorRun()` 纯函数；run 响应附带 summary，并新增 `GET /monitor/runs/:runId/summary`。当前 summary API 尚未组装 actionStates，action-aware 降权能力保留在纯函数入参，后续需要时再接 actions 表。
-  - **E-MONITOR-PROD6（Watchlist 后端）**：新增 `server/src/db/engine.ts` 的 `monitor_watchlists`，`monitor_runs` 增 nullable `watchlist_id` 且旧库用 ALTER TABLE 补列；新增 watchlist CRUD/archive、watchlist run、run body/query `watchlistId` 过滤。无真实 watchlist 时返回虚拟 `default` 读取 legacy `monitor_configs`；`watchlistId=default` 只查旧 `watchlist_id IS NULL` runs。create/update/run 均校验 clean_data 白名单、metricSystemId、targetPlanId 归属；非法 pathId 不落 run。
-  - **D-MONITOR-PROD7（Watchlist 前端，总控终审通过）**：`web/src/lib/api/viz.ts` 增 watchlist 局部类型与 `list/create/update/archive/runMonitorWatchlist` client，`listMonitorRuns` 支持 `watchlistId` query，`runMonitorSuite` 支持 body `watchlistId`。新增 `MonitorWatchlistSelector` + 创建向导，支持场景类型、数据角色、目标计划、指标体系、阈值策略（前端转换为 concrete thresholds）、保存/保存并运行；客户端始终保留 `default` 选项以兼容旧 monitor config。`HealthOverviewPane` / `HealthDashboardPane` / `HealthReportPane` 按当前 watchlist 过滤 runs/findings/action items；切换 watchlist 会清空本地 run/finding/drawer 状态。`HealthDataPane` 在 default 下仍写 legacy `monitor/config`，在真实 watchlist 下角色绑定与采纳指标体系写 `updateMonitorWatchlist()`。总控补丁已修复从真实 watchlist 切回 default 时未重载 legacy config 的问题，避免真实计划 bindings 误写入 default config。
-  - **X-MONITOR-PROD8（P0 工作台验收收口）**：总控完成静态/安全验收：health 默认总览、就绪检查、finding 解释抽屉、观星台留本页、行动环反馈、初始化 onboarding、阈值预设、Watchlist default/真实计划过滤链路均已在代码层复核并构建通过。浏览器点击级 smoke 未继续执行，用户已明确后续手动测试；测试结果需回填本区开放问题。
-  - **D/V-BREQ-LINK1（activeConfirmedRequirement）**：`BusinessRequirementPane` 父容器新增 `activeConfirmedRequirement`。需求沟通确认成功后写入确认需求源、刷新版本列表、自动切到“分析框架”，打开历史确认需求版本时同步该状态；打开旧分析框架版本不会覆盖确认源。
-  - **D/V-BREQ-LINK3（沟通材料 UI）**：需求沟通 tab 增加“导入沟通材料”工作区，支持登记材料、粘贴文本、上传文本；材料只进入沟通输入、澄清问题、假设和风险提示，不会直接生成分析框架或成为 confirmed facts。分析框架 tab 已移除旧“导入需求文档/提取草稿/本地文件”主入口。
-  - **D/V-BREQ-LINK3B（导入接线）**：`web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()`，消费 E-BREQ-LINK2 专用 `/api/workspaces/:id/business-requirement-communication/import-documents`。登记 report/business_requirements/clean_data、粘贴/上传文本均先走专用 API；API 失败才显式 fallback 到“本地启发式，未走服务端导入”。`clean_data` 只传路径元信息，正文由服务端安全策略决定且前端不自行落正文 trace。
-  - **D/V-BREQ-LINK5（确认需求源面板 + LINK4 生成）**：分析框架左侧从旧大表单改为“确认需求源”面板，展示当前确认需求版本、确认时间、scene、来源、业务目标、成功标准、confirmed facts、confirmed assumptions、open questions、风险与限制。主按钮改为“基于确认需求生成分析框架”，有 `activeConfirmedRequirement` 时调用 E-BREQ-LINK4 专用 `analysis-framework-from-confirmed` API；无确认需求时提示回需求沟通。旧直接生成表单仅保留在默认关闭的“不推荐旧路径”高级区。
-  - **版本列表防御**：前端防御性过滤 `business_requirements/communications/` 记录，不让 communication record 进入正式版本列表；下拉中视觉区分 `[确认需求]` / `[分析框架]` / `[旧版本]`。
-  - **D-KG3（AI 语义提取 preview 只读接口）**：新增 `previewKgExtraction()` 与 `GET /api/workspaces/:id/knowledge-graph/extract-preview`，返回 report id/path/title/status/reason/updatedAt、processLimit、estimatedProcessCount、skippedCount。preview 只基于现有 `kg_nodes` report 元数据和文件存在性判断，不读取报告正文、不调用 LLM、不写 `kg_nodes` / `kg_edges`。
-  - **D-KG4（KG history 记录与查询 API）**：新增 `kg_history_events` 表（落 D slot `db/data.ts`）与 `recordKgHistoryEvent` / `listKgHistoryEvents`；新增 `GET /api/workspaces/:id/knowledge-graph/history?limit=50`，limit clamp 1–200。已记录 `sync`、`extract`、`node_hidden`、`node_recovered`、`edge_added`、`edge_deleted`；history 仅存元数据摘要，不存报告正文/prompt 正文/客户明细/订单样本/原始明细。
-  - **接缝注意**：本任务按 wiki brief 接入了现有 legacy KG 路由所在的 `server/src/index.ts`、现有 KG 表所在的 `server/src/db.ts`、双侧 `types.ts` 与 legacy `web/src/lib/api.ts`；这些属于接缝/legacy 文件，需总控按 X-KG5 加重终审。
+  - **D/V-REPORTCONTRACT3（报告输出页展示契约来源与覆盖入口）**：新建 `web/src/components/ReportContractPane.tsx`，复用 `useBusinessRequirementContexts` hook 列出确认需求/分析框架版本，选中版本后调 `api.getReportContractContext` 展示契约来源（项目名/场景/确认时间/章节要求摘要/统计卡片/fallback 提示）。三个操作入口：「按当前报告框架审查」跳 report_review、「查看契约覆盖」折叠检查清单、「回业务需求模块修订」跳 business_requirement。`VizTabs.tsx` 在 report subtab 追加渲染。FolderPathsPane 未触碰，Markdown/HTML 预览不回退。
+  - **D/V-REPORTCONTRACT6（业务需求到报告输出的契约化操作流）**：4 子任务全交付——
+    - T1: `BusinessRequirementPane` 新增 `onBringToChat` prop + 「带入工作视图」按钮，点击存确认需求上下文到模块级 store → 跳 view subtab。`EngineTabs.tsx` wiring `onBringToChat={() => ctx.setActiveSubTab("view")}`。
+    - T2: `ChatPane` 新增契约摘要徽章（项目名·章节数·fallback 标记），选中业务需求版本后调 `getReportContractContext` 获取契约并展示。模块级 store `getActiveContractContext()` 预选版本。
+    - T3: `ReportContractPane` 新增 `selectedReportPath` prop + 自动化覆盖检查——调 `api.contractReview`（server 端 `reviewReportAgainstContract` 确定性算法），展示覆盖率评分 + 章节覆盖状态（✓已覆盖/△部分/✗缺失）+ 缺证据 + 无依据断言 + 误用待确认问题 + 建议修订。E-REPORTCONTRACT5「一键修订」按钮预留条件渲染（当前隐藏）。
+    - T4: `FolderPathsPane` 新增 `onSelectFile?: (entryId, relPath) => void` prop，文件点击时触发回调传递给 ReportContractPane。
+  - **模块级 store 新建**：`web/src/lib/activeContractContext.ts`（19行），跨子 tab 持久化"当前活跃契约上下文"（BusinessRequirementPane 写 / ChatPane 读），不碰 App.tsx。
+  - **api.ts 新增**：`contractReview` + `contractAutoFix` 方法 + `ContractReviewResult` / `ContractAutoFixResult` 类型定义（对齐 server `report-review.ts`）。
+  - 既有的 D-MONITOR-PROD1~7、D/V-BREQ-LINK1/3/3B/5、D-KG3/KG4 状态不变（见前一版 §0 记录）。
 - 校验：
-  - `node --experimental-strip-types --test server/src/monitor-watchlist.test.ts`：✅ 5/5 通过（2026-07-01 E-MONITOR-PROD6 总控复核）
-  - `node --experimental-strip-types --test server/src/monitor-engine.test.ts server/src/monitor-priority.test.ts`：✅ 18/18 通过（2026-07-01 E-MONITOR-PROD4/6 总控复核）
-  - `npm run typecheck`：✅ server + web 0 错（2026-07-01 监测产品深化总控复核）
-  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-07-01 监测产品深化总控复核）
-  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-07-01 监测产品深化总控复核）
-  - `npm run typecheck`：✅ server + web 0 错（2026-07-01 D-MONITOR-PROD7 session 收尾）
-  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-07-01 D-MONITOR-PROD7 session 收尾）
-  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-07-01 D-MONITOR-PROD7 session 收尾）
-  - `npm run typecheck`：✅ server + web 0 错（2026-07-01 X-MONITOR-PROD8 静态验收）
-  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-07-01 X-MONITOR-PROD8 静态验收）
-  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-07-01 X-MONITOR-PROD8 静态验收）
-  - `npm run typecheck`：✅ server + web 0 错（2026-06-30 D/V-BREQ-LINK1/3/3B/5）
-  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-06-30 D/V-BREQ-LINK1/3/3B/5）
-  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-06-30 D/V-BREQ-LINK1/3/3B/5）
-  - `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts`：✅ 19/19 通过（2026-06-30 D/V-BREQ-LINK5 补跑）
+  - `npm run typecheck`：✅ server + web 0 错（2026-07-03 D/V-REPORTCONTRACT3 + D/V-REPORTCONTRACT6）
+  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-07-03 D/V-REPORTCONTRACT3 + D/V-REPORTCONTRACT6）
+  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-07-03 D/V-REPORTCONTRACT3 + D/V-REPORTCONTRACT6）
 - 下一步（接续优先级）：
-  - ① 用户浏览器手测回填：无配置工作区进入 health 默认落总览，检查缺项 CTA；已配置工作区检查最近 run、Top findings、行动待办、finding 抽屉“生成草案→采纳/忽略→行动环可见”；Watchlist 验证创建两个计划、切换 run/finding/action 过滤、default 旧 config 仍可用。
-  - ② 若手测通过，Watchlist P1 可继续补轻量验收：归档计划后 selector/default 行为、保存并运行失败提示、action-aware summary 是否需要接 actions 表。
-  - ③ BREQ 浏览器 smoke：分别从日常/专题/重复进入业务需求，验证“需求沟通 → 导入沟通材料 → 生成澄清 → 确认正式需求 → 自动进入分析框架 → 左侧确认需求源面板 → 基于确认需求生成分析框架 → 版本列表区分确认需求/分析框架”的完整链路。
-  - ④ 回流总控终审 BREQ 跨域最小接入：重点看 `BusinessRequirementPane.tsx` 消费 E-BREQ-LINK2/LINK4 专用 API 的边界是否接受，以及 `web/src/lib/api/engine.ts` 新增 client 是否符合 E 域契约。
-  - ⑤ 回流总控做 X-KG5：重点审 `index.ts` / `db.ts` / 双侧 `types.ts` / `web/src/lib/api.ts` 的接缝改动是否接受，确认 KG history schema 与 preview reason 枚举是否冻结。
+  - ① 报告契约化浏览器 smoke：业务需求确认 → 「带入工作视图」→ ChatPane 自动选中 + 契约摘要 → 发送消息 → 报告输出选文件 → 「按框架审查」→ 覆盖结果展示。
+  - ② 监测浏览器手测回填（同前版 ①）。
+  - ③ Watchlist P1 轻量验收（同前版 ②）。
+  - ④ BREQ 浏览器 smoke（同前版 ③）。
+  - ⑤ 回流总控终审 BREQ 跨域最小接入 + X-KG5。
+  - ⑥ E-REPORTCONTRACT5 就绪后接「一键按审查结果修订」按钮。
 - 阻塞 / 待确认：
   - 无硬阻塞。
 - 开放问题：
-  - **⓪ 监测浏览器手测待回填**：总控因用户接管后续手测，未继续执行 Playwright/浏览器点击级 smoke；待用户回填 health 总览默认入口、finding 抽屉单条闭环、行动环可见性。
-  - **⓪-0 Watchlist 浏览器手测待回填**：待用户验证“创建两个 watchlist → 保存并运行 → 总览/观星台/行动环按计划过滤 → default 兼容旧 run”。
-  - **⓪-1 监测接缝变更需总控确认**：本次按任务要求修改 `web/src/lib/constants.ts` 增 `health_overview`，并修改 `App.tsx` 默认 health subtab；需总控接受该接缝变更。
-  - **⓪-2 Watchlist 前端类型接缝口径**：D-MONITOR-PROD7 为避免触碰双侧 `types.ts`，在 `web/src/lib/api/viz.ts` 使用局部 `MonitorWatchlist` 类型过渡；后续如多模块消费或总控要求契约上提，再同步双侧 `types.ts`。
-  - **① BREQ 浏览器实跑未完成**：本 session 已完成代码与构建/单测校验，但未启动浏览器走真实 UI；需下个 session 或总控实跑确认 LINK2/LINK4 在真实工作区、真实 report path 下交互无断点。
-  - **② BREQ 跨域 client 归属**：本次在 `web/src/lib/api/engine.ts` 新增 `runRequirementImportDocuments()` 与 `generateAnalysisFrameworkFromConfirmed()`，是 D/V Pane 消费 E 专用 API 的最小接线；需总控确认该跨域接法继续接受，还是后续由 E 统一封装。
-  - **③ BREQ 后续拆文件节奏**：当前 `BusinessRequirementPane.tsx` 已继续增大；建议 smoke 稳定后拆 `RequirementCommunicationPane` / `AnalysisFrameworkPane` 独立文件，但是否现在拆需总控拍板，避免在贯通期扩大 diff。
-  - **④ 接缝层加重终审**：KG 既有实现仍在 legacy `index.ts` / `db.ts` / `api.ts` / `types.ts`，D-KG3/D-KG4 为最小落地触及这些文件；需总控确认是否接受本次最小补丁，还是后续迁入 data/viz slot。
-  - **⑤ history schema / preview reason 口径**：KG history metadata 当前为 `Record<string, unknown>`，preview reason 中 `content_unchanged` 与 `already_processed` 是否保留两个枚举仍待总控冻结。
+  - **⓪ 监测浏览器手测待回填**：同前版。
+  - **⓪-0 Watchlist 浏览器手测待回填**：同前版。
+  - **⓪-1 监测接缝变更需总控确认**：同前版。
+  - **⓪-2 Watchlist 前端类型接缝口径**：同前版。
+  - **① BREQ 浏览器实跑未完成**：同前版。
+  - **② BREQ 跨域 client 归属**：同前版。
+  - **③ BREQ 后续拆文件节奏**：同前版。
+  - **④ 接缝层加重终审**：同前版。
+  - **⑤ history schema / preview reason 口径**：同前版。
+  - **⑥ ReportContractPane 的 `onNavigateToReportReview` prop 已移除**：原计划"按框架审查"跳转到 report_review tab，实施中改为直接在 ReportContractPane 内调 `contractReview` 展示覆盖结果。VizTabs 不再传该 prop。若后续需跳转 report_review（如 E-REPORTCONTRACT4 提供更详细审查视图），可恢复。
+  - **⑦ `activeContractContext.ts` 模块级 store 范围**：仅在 explore tab 内有效（BusinessRequirementPane 和 ChatPane 同 tab）；multi/zhuanti tab 的 ChatPane 不消费该 store（各自有独立的 `useBusinessRequirementContexts` 实例）。若后续需跨 tab 持久化，需升级为 TabContext 级 state（需总控扩接缝）。
+  - **⑧ `api.ts` 新增 `ContractReviewResult` / `ContractAutoFixResult` 类型**：对齐 server `report-review.ts`，但未上提双侧 `types.ts`（仅 D 域消费 + 跨域走 HTTP）。若 E 域或其他模块需消费，再上提。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -223,6 +209,11 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 - **沟通材料导入只消费 E 专用 API（D/V-BREQ-LINK3B, 2026-06-30）**：前端通过 `api.runRequirementImportDocuments()` 调 `/business-requirement-communication/import-documents`；禁止走通用 `chat/generate/extract/clarify`。登记 report/business_requirements 传 `pathId/relPath/name`，`clean_data` 只允许路径元信息/聚合说明，粘贴/上传文本走 `localText`，不传本机绝对路径。
 - **分析框架生成走 LINK4 专用 API（D/V-BREQ-LINK5, 2026-06-30）**：主按钮调用 `api.generateAnalysisFrameworkFromConfirmed()` → `/business-requirements/analysis-framework-from-confirmed`，传 `confirmedRequirementJsonPath`。旧 `api.generateBusinessRequirement()` 只保留在默认关闭的“不推荐旧路径 / 直接生成”高级区，且 `documents: []`，避免沟通材料绕过确认链路。
 - **版本列表防御性过滤 communications（D/V-BREQ-LINK5, 2026-06-30）**：即使后端已过滤，前端仍过滤 `business_requirements/communications/`，并用 `[确认需求] / [分析框架] / [旧版本]` 标记下拉项。communication record 是审计/追踪材料，不是正式需求版本。
+- **报告契约长期口径（X-REPORTCONTRACT7, 2026-07-03）**：业务需求模块确认需求 JSON / 分析框架 JSON 中的 `reportFramework` 是正式分析报告的上游唯一契约源。报告输出页不得另建“报告模板”真源，也不得编辑 `reportFramework`；需要改契约时回业务需求模块生成修订版。数据分析生成报告前消费 `ReportContractContext`，先输出“本次报告实例大纲”再写正文；报告输出 / 审核按同一契约审查覆盖率、证据缺口、待确认误用和 rewrite plan；自动修订只能写入 `reviewed_versions/*-contract-revised-*.md`，必须保留原报告。
+- **报告契约数据安全边界（X-REPORTCONTRACT7, 2026-07-03）**：契约链路只消费 `business_requirements` / `report` 衍生产物，以及按 AGENTS.md 知情受控的 `clean_data` 聚合材料；不读取 `draw_data` 原始行，不接 `data_exploration` 字段值/样本/剖析结果的反向回流。review / trace / history 只记录契约来源 metadata、覆盖率、问题类别、计数、短 quote、修订摘要和未解决缺口，不写原始明细样本或整篇报告/修订正文。
+- **报告契约模块级 store 跨子 tab 持久化（D/V-REPORTCONTRACT6, 2026-07-03）**：`web/src/lib/activeContractContext.ts` 用模块级单例实现 BusinessRequirementPane → ChatPane 的契约上下文传递，不碰 App.tsx / TabContext。与 `resumableTask.ts` 同范式。局限：仅 explore tab 内有效；multi/zhuanti tab 的 ChatPane 不消费该 store。
+- **「按框架审查」从跳转改为内联（D/V-REPORTCONTRACT6, 2026-07-03）**：原计划「按框架审查」按钮跳 report_review tab，实施中改为直接在 ReportContractPane 内调 `api.contractReview`（server 端 `reviewReportAgainstContract` 确定性算法）展示覆盖结果。原因：避免用户在多个 tab 间跳转，覆盖结果与契约面板在同一上下文更自然。VizTabs 不再传 `onNavigateToReportReview` prop 给 ReportContractPane。
+- **FolderPathsPane `onSelectFile` 回调范式（D/V-REPORTCONTRACT6, 2026-07-03）**：通用组件新增可选 `onSelectFile?: (entryId: number, relPath: string) => void` prop，在内部 `previewFile` 入口触发。回调签名足够通用，不限于 report folder。VizTabs 管理 selectedReportPath 状态，传递给 ReportContractPane 作为审查目标。
 
 **规则记忆（数据部分）**
 - AI 提取跳过逻辑用专属列 `kg_nodes.ai_extracted_hash`（仿 `hidden` 列），不用 `tags`（sync 会覆写 tags）。

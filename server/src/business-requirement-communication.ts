@@ -99,6 +99,45 @@ export interface AnalysisFrameworkFromConfirmedRequest {
   model?: string;
 }
 
+export interface ReportContractContextRequest {
+  pathId: number;
+  requirementJsonPath?: string;
+  frameworkJsonPath?: string;
+}
+
+export interface ReportContractSection {
+  title: string;
+  purpose: string;
+  keyQuestions: string[];
+  requiredEvidence: string[];
+  outputGuidance: string;
+  zeroHallucinationCheck: string;
+}
+
+export interface ReportContractContext {
+  projectName: string;
+  source: {
+    jsonPath: string;
+    markdownPath?: string;
+    kind: "confirmed_requirement" | "analysis_framework";
+    scene?: RequirementCommunicationScene;
+    confirmedAt?: number;
+  };
+  fallback: boolean;
+  objective: string;
+  audience?: string;
+  decisionScenario?: string;
+  requiredQuestions: string[];
+  sections: ReportContractSection[];
+  styleRules: string[];
+  forbiddenPatterns: string[];
+  acceptanceCriteria: string[];
+  openQuestions: string[];
+  risks: string[];
+  confirmedFacts: string[];
+  confirmedAssumptions: string[];
+}
+
 export interface BusinessRequirementAnalysisFrameworkStructured {
   projectName: string;
   businessFacts: string[];
@@ -231,6 +270,31 @@ export function parseAnalysisFrameworkFromConfirmedRequest(value: unknown): Anal
     pathId,
     confirmedRequirementJsonPath,
     model: cleanText(body.model, 200) || undefined,
+  };
+}
+
+export function isAnalysisFrameworkJsonPath(value: string): boolean {
+  const normalized = value.replace(/\\/g, "/");
+  return /^business_requirements\/[^/]+-分析框架-\d{8}-\d{6}\.json$/.test(normalized);
+}
+
+export function parseReportContractContextRequest(value: unknown): ReportContractContextRequest {
+  const body = asRecord(value, "request body");
+  const pathId = Number(body.pathId);
+  if (!Number.isFinite(pathId)) throw new Error("pathId required");
+  const requirementJsonPath = cleanRelPath(body.requirementJsonPath) ?? "";
+  const frameworkJsonPath = cleanRelPath(body.frameworkJsonPath) ?? "";
+  if (!requirementJsonPath && !frameworkJsonPath) throw new Error("requirementJsonPath or frameworkJsonPath required");
+  if (requirementJsonPath && !isConfirmedBusinessRequirementJsonPath(requirementJsonPath)) {
+    throw new Error("requirementJsonPath must point to a confirmed requirement json");
+  }
+  if (frameworkJsonPath && !isAnalysisFrameworkJsonPath(frameworkJsonPath)) {
+    throw new Error("frameworkJsonPath must point to an analysis framework json");
+  }
+  return {
+    pathId,
+    ...(requirementJsonPath ? { requirementJsonPath } : {}),
+    ...(frameworkJsonPath ? { frameworkJsonPath } : {}),
   };
 }
 
@@ -1042,6 +1106,224 @@ export function buildRequirementReviewContext(result: ConfirmedBusinessRequireme
     `未确认问题：${result.deferredQuestions.join("；") || "无"}`,
     "报告审核时请检查：报告是否回应目标、成功标准和假设；是否把未确认问题当成事实。",
   ].join("\n");
+}
+
+function defaultReportFramework(): ReportContractSection[] {
+  return [
+    {
+      title: "执行摘要",
+      purpose: "概述分析目标、关键结论和限制",
+      keyQuestions: ["本次分析回答什么业务问题", "结论可支持什么决策"],
+      requiredEvidence: ["已验证关键指标", "指标口径", "数据范围"],
+      outputGuidance: "先给结论，再列证据和限制",
+      zeroHallucinationCheck: "每个数字标注来源与证据等级，缺证据时写待确认",
+    },
+    {
+      title: "背景与口径",
+      purpose: "说明业务背景、分析范围、对象定义和对比基准",
+      keyQuestions: ["分析对象如何定义", "时间范围和门店/区域范围是什么", "对比基准是否一致"],
+      requiredEvidence: ["业务需求", "字段字典", "口径说明", "已登记聚合数据"],
+      outputGuidance: "先列已确认口径，再列待确认口径",
+      zeroHallucinationCheck: "不得把待确认口径写成事实",
+    },
+    {
+      title: "观察 Observation",
+      purpose: "只呈现数据事实，不写因果判断",
+      keyQuestions: ["哪些指标发生变化", "变化集中在哪些维度"],
+      requiredEvidence: ["工具计算值", "聚合表字段", "MetricSnapshot", "数据探索验证结果"],
+      outputGuidance: "每条观察编号，避免混入推断",
+      zeroHallucinationCheck: "观察段禁止因果词；每个数字必须有来源和证据等级",
+    },
+    {
+      title: "推断 Inference",
+      purpose: "基于观察形成可证伪假设",
+      keyQuestions: ["哪些假设能解释观察", "还需要什么数据证伪"],
+      requiredEvidence: ["观察项编号", "对比维度", "可证伪条件"],
+      outputGuidance: "每条推断包含假设、支撑观察和证伪条件",
+      zeroHallucinationCheck: "推断必须引用观察项编号，不得孤立下判断",
+    },
+    {
+      title: "建议 Action",
+      purpose: "把推断转成可执行动作",
+      keyQuestions: ["建议对应哪条推断", "谁在什么时候执行", "如何衡量效果"],
+      requiredEvidence: ["推断编号", "影响指标", "执行约束"],
+      outputGuidance: "每条建议绑定推断和衡量指标",
+      zeroHallucinationCheck: "禁止无推断支撑的孤立建议",
+    },
+    {
+      title: "风险与待确认",
+      purpose: "列出数据、口径、样本和因果解释的限制",
+      keyQuestions: ["哪些结论证据不足", "哪些口径需要业务方确认"],
+      requiredEvidence: ["缺失字段", "口径冲突", "样本覆盖", "未完成验证项"],
+      outputGuidance: "明确降置信内容和下一步验证动作",
+      zeroHallucinationCheck: "证据不足时必须写不确定或待确认",
+    },
+  ];
+}
+
+function normalizeReportFrameworkSections(value: unknown): { sections: ReportContractSection[]; fallback: boolean } {
+  const rows = (Array.isArray(value) ? value : []).map((raw) => {
+    const row = typeof raw === "object" && raw !== null ? raw as Record<string, unknown> : {};
+    const title = cleanText(row.section ?? row.title, 200);
+    if (!title) return null;
+    return {
+      title,
+      purpose: cleanText(row.purpose, 500) || "回应业务需求与报告目标",
+      keyQuestions: cleanStringArray(row.keyQuestions, 20, 600),
+      requiredEvidence: cleanStringArray(row.requiredEvidence, 20, 600),
+      outputGuidance: cleanText(row.outputGuidance, 800) || "逐章回答关键问题，并标注证据是否充分。",
+      zeroHallucinationCheck: cleanText(row.zeroHallucinationCheck, 800) || "证据不足时写未覆盖/待确认，不得编造数据。",
+    };
+  }).filter((row): row is ReportContractSection => row !== null).slice(0, 20);
+  return rows.length > 0 ? { sections: rows, fallback: false } : { sections: defaultReportFramework(), fallback: true };
+}
+
+function objectiveFromFacts(facts: string[], fallback: string): string {
+  const goal = facts.find((item) => item.startsWith("目标："));
+  return goal ? goal.replace(/^目标：/, "").trim() : fallback;
+}
+
+function versionInput(value: Record<string, unknown> | undefined): Record<string, unknown> {
+  const version = value && typeof value.version === "object" && value.version !== null ? value.version as Record<string, unknown> : undefined;
+  const input = version && typeof version.requirementInput === "object" && version.requirementInput !== null ? version.requirementInput as Record<string, unknown> : undefined;
+  return input ?? {};
+}
+
+export function buildReportContractContextFromConfirmedRequirement(
+  confirmed: ConfirmedBusinessRequirementStructured,
+  source: { jsonPath: string; markdownPath?: string },
+): ReportContractContext {
+  const record = confirmed as unknown as Record<string, unknown>;
+  const communication = typeof record.communication === "object" && record.communication !== null ? record.communication as Record<string, unknown> : {};
+  const businessFacts = cleanStringArray(record.businessFacts, 30, 1000);
+  const confirmedFacts = cleanStringArray(record.confirmedFacts, 30, 1000);
+  const confirmedAssumptions = cleanStringArray(record.confirmedAssumptions, 30, 1000);
+  const analysisQuestions = cleanStringArray(record.analysisQuestions, 30, 1000);
+  const openQuestionItems = cleanStringArray(record.openQuestions, 30, 1000);
+  const deferredQuestions = cleanStringArray(record.deferredQuestions, 30, 1000);
+  const riskItems = cleanStringArray(record.risks, 30, 1000);
+  const normalized = normalizeReportFrameworkSections(record.reportFramework);
+  const input = versionInput(confirmed as unknown as Record<string, unknown>);
+  const openQuestions = [...new Set([...openQuestionItems, ...deferredQuestions])].filter(Boolean).slice(0, 30);
+  const risks = [...new Set([...riskItems, ...openQuestions.map((item) => `待确认：${item}`)])].filter(Boolean).slice(0, 30);
+  return {
+    projectName: cleanText(record.projectName, 200) || "业务需求",
+    source: {
+      jsonPath: source.jsonPath,
+      ...(source.markdownPath ? { markdownPath: source.markdownPath } : {}),
+      kind: "confirmed_requirement",
+      scene: SCENES.has(communication.scene as RequirementCommunicationScene) ? communication.scene as RequirementCommunicationScene : undefined,
+      confirmedAt: typeof communication.confirmedAt === "number" ? communication.confirmedAt : undefined,
+    },
+    fallback: normalized.fallback,
+    objective: cleanText(input.businessGoal, 1000) || objectiveFromFacts(businessFacts, cleanText(record.projectName, 200) || "业务需求"),
+    audience: cleanText(input.stakeholders, 500) || undefined,
+    decisionScenario: cleanText(input.decisionScenario, 1000) || undefined,
+    requiredQuestions: [...new Set([...analysisQuestions, ...normalized.sections.flatMap((item) => item.keyQuestions)])].filter(Boolean).slice(0, 40),
+    sections: normalized.sections,
+    styleRules: ["先输出本次报告实例大纲，再写正文", "逐章对齐 reportFramework.sections", "每个关键结论回指业务问题或章节目的"],
+    forbiddenPatterns: ["不得把 openQuestions/deferredQuestions 写成已确认事实", "不得编造缺失数据、指标或口径", "不得读取或引用 draw_data/data_exploration 原始内容"],
+    acceptanceCriteria: normalized.sections.flatMap((item) => item.keyQuestions).filter(Boolean).slice(0, 30),
+    openQuestions,
+    risks,
+    confirmedFacts: confirmedFacts.length > 0 ? confirmedFacts : businessFacts,
+    confirmedAssumptions,
+  };
+}
+
+export function buildReportContractContextFromAnalysisFramework(
+  framework: BusinessRequirementAnalysisFrameworkStructured,
+  source: { jsonPath: string; markdownPath?: string },
+): ReportContractContext {
+  const record = framework as unknown as Record<string, unknown>;
+  const sourceConfirmedRequirement = typeof record.sourceConfirmedRequirement === "object" && record.sourceConfirmedRequirement !== null ? record.sourceConfirmedRequirement as Record<string, unknown> : {};
+  const businessFacts = cleanStringArray(record.businessFacts, 30, 1000);
+  const inferredNeeds = cleanStringArray(record.inferredNeeds, 30, 1000);
+  const analysisQuestions = cleanStringArray(record.analysisQuestions, 30, 1000);
+  const dimensions = cleanStringArray(record.dimensions, 20, 500);
+  const normalized = normalizeReportFrameworkSections(record.reportFramework);
+  const input = versionInput(record);
+  const openQuestions = cleanStringArray(record.openQuestions, 30, 1000);
+  const risks = [...new Set([...cleanStringArray(record.risks, 30, 1000), ...openQuestions.map((item) => `待确认：${item}`)])].filter(Boolean).slice(0, 30);
+  return {
+    projectName: cleanText(record.projectName, 200) || "分析框架",
+    source: {
+      jsonPath: source.jsonPath,
+      ...(source.markdownPath ? { markdownPath: source.markdownPath } : {}),
+      kind: "analysis_framework",
+      scene: SCENES.has(sourceConfirmedRequirement.scene as RequirementCommunicationScene) ? sourceConfirmedRequirement.scene as RequirementCommunicationScene : undefined,
+      confirmedAt: typeof sourceConfirmedRequirement.confirmedAt === "number" ? sourceConfirmedRequirement.confirmedAt : undefined,
+    },
+    fallback: normalized.fallback,
+    objective: cleanText(input.businessGoal, 1000) || objectiveFromFacts(businessFacts, cleanText(record.projectName, 200) || "分析框架"),
+    audience: cleanText(input.stakeholders, 500) || undefined,
+    decisionScenario: cleanText(input.decisionScenario, 1000) || dimensions.join("；") || undefined,
+    requiredQuestions: [...new Set([...analysisQuestions, ...normalized.sections.flatMap((item) => item.keyQuestions)])].filter(Boolean).slice(0, 40),
+    sections: normalized.sections,
+    styleRules: ["先输出本次报告实例大纲，再写正文", "逐章对齐 reportFramework.sections", "每个关键结论回指业务问题或章节目的"],
+    forbiddenPatterns: ["不得把 openQuestions/deferredQuestions 写成已确认事实", "不得编造缺失数据、指标或口径", "不得读取或引用 draw_data/data_exploration 原始内容"],
+    acceptanceCriteria: normalized.sections.flatMap((item) => item.keyQuestions).filter(Boolean).slice(0, 30),
+    openQuestions,
+    risks,
+    confirmedFacts: businessFacts,
+    confirmedAssumptions: inferredNeeds,
+  };
+}
+
+export function buildReportContractTracePayload(context: ReportContractContext): Record<string, unknown> {
+  return {
+    sourceBasename: context.source.jsonPath.split("/").pop() ?? "",
+    sourceKind: context.source.kind,
+    sectionCount: context.sections.length,
+    questionCount: context.requiredQuestions.length,
+    fallback: context.fallback,
+  };
+}
+
+export function buildReportContractPromptBlock(context: ReportContractContext): string {
+  const list = (items: string[]) => items.length > 0 ? items.map((item) => `- ${item}`).join("\n") : "- 无";
+  const sections = context.sections.map((section, index) => [
+    `${index + 1}. ${section.title}`,
+    `   - 目的：${section.purpose}`,
+    `   - 必答问题：${section.keyQuestions.join("；") || "待确认"}`,
+    `   - 必需证据：${section.requiredEvidence.join("；") || "待确认"}`,
+    `   - 输出要求：${section.outputGuidance}`,
+    `   - 零幻觉检查：${section.zeroHallucinationCheck}`,
+  ].join("\n")).join("\n");
+  return [
+    "[ReportContractContext]",
+    `项目：${context.projectName}`,
+    `来源：${context.source.kind} · ${context.source.jsonPath}${context.fallback ? " · fallback=true" : ""}`,
+    `目标：${context.objective || "待确认"}`,
+    context.audience ? `受众：${context.audience}` : "",
+    context.decisionScenario ? `决策场景：${context.decisionScenario}` : "",
+    "",
+    "正式报告生成必须分两阶段：",
+    "1. 先输出“本次报告实例大纲”：每章对应契约 section、必答问题、将使用的证据类型。",
+    "2. 再写正文：逐章回应 keyQuestions，并标注 requiredEvidence 是否已满足；证据不足必须写“未覆盖/待确认”。",
+    "",
+    "契约章节：",
+    sections,
+    "",
+    "必答问题：",
+    list(context.requiredQuestions),
+    "",
+    "已确认事实摘要：",
+    list(context.confirmedFacts),
+    "",
+    "已确认假设摘要：",
+    list(context.confirmedAssumptions),
+    "",
+    "待确认/开放问题（只能进入 openQuestions、risks 或 zeroHallucinationCheck，不得写成事实）：",
+    list(context.openQuestions),
+    "",
+    "风险：",
+    list(context.risks),
+    "",
+    "禁止模式：",
+    list(context.forbiddenPatterns),
+    "[/ReportContractContext]",
+  ].filter((line) => line !== "").join("\n");
 }
 
 export function buildRequirementConfirmationTracePayload(input: RequirementCommunicationConfirmInput, structured: ConfirmedBusinessRequirementStructured): Record<string, unknown> {

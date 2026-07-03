@@ -171,6 +171,7 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
           onGenerated={() => ctx.setArtifactRefreshKey((current) => current + 1)}
           onBusinessContextChanged={() => void ctx.refreshRulesPromptInfo()}
           onExploreFields={(fieldHints, source) => { ctx.setExploreSeed({ fieldHints, source }); ctx.setActiveSubTab("data_exploration"); }}
+          onBringToChat={() => ctx.setActiveSubTab("view")}
         />
       )}
 
