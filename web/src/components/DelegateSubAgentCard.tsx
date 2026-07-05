@@ -4,7 +4,7 @@ import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { gateway } from "@/lib/ws";
 import { SkillSelector } from "@/components/SkillSelector";
-import type { CompositeSubAgentRun, PiEvent, PiModel, ServerMessage, SubAgentBlackboardEntry, SubAgentBlackboardKind, SubAgentTask, SubAgentTemplate, SubAgentTraceKind, WorkspacePath } from "@/types";
+import type { CompositeSubAgentRun, FlowTreeNode, PiEvent, PiModel, ServerMessage, SubAgentBlackboardEntry, SubAgentBlackboardKind, SubAgentTask, SubAgentTemplate, SubAgentTraceKind, WorkspacePath } from "@/types";
 
 function ModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (value: string) => void }) {
   const groups = models.reduce<Record<string, PiModel[]>>((acc, model) => {
@@ -49,6 +49,11 @@ type TraceRow = {
   title: string;
   body: string;
   createdAt: number;
+};
+
+type CleanFileOption = {
+  id: string;
+  path: string;
 };
 
 function stringifyTraceValue(value: unknown): string {
@@ -142,13 +147,59 @@ function TraceList({ rows }: { rows: TraceRow[] }) {
 interface Props {
   sessionId: string;
   workspaceId: string | null;
+  folderScope?: FolderScope | null;
   model: string;
   models: PiModel[];
   onBackflow: (text: string) => void;
   embedded?: boolean;
 }
 
-export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, onBackflow, embedded = false }: Props) {
+type FolderScope =
+  | { type: "workspace"; workspaceId: string }
+  | { type: "session"; sessionId: string }
+  | { type: "flow"; flowId: string };
+
+function scopeKey(scope: FolderScope | null | undefined, workspaceId: string | null): string {
+  if (scope?.type === "session") return `session:${scope.sessionId}`;
+  if (scope?.type === "flow") return `flow:${scope.flowId}`;
+  if (scope?.type === "workspace") return `workspace:${scope.workspaceId}`;
+  return workspaceId ? `workspace:${workspaceId}` : "";
+}
+
+function listCleanFiles(scope: FolderScope | null | undefined, workspaceId: string | null): Promise<WorkspacePath[]> {
+  if (scope?.type === "session") return api.listSessionPaths(scope.sessionId, "clean_data");
+  if (scope?.type === "flow") return api.listFlowPaths(scope.flowId, "clean_data");
+  if (scope?.type === "workspace") return api.listWorkspacePaths(scope.workspaceId, "clean_data");
+  return workspaceId ? api.listWorkspacePaths(workspaceId, "clean_data") : Promise.resolve([]);
+}
+
+function joinPath(rootAbs: string, rel: string): string {
+  return `${rootAbs.replace(/[\\/]+$/, "")}/${rel.replace(/^[\\/]+/, "")}`;
+}
+
+function basename(path: string): string {
+  return path.split(/[\\/]/).filter(Boolean).at(-1) ?? path;
+}
+
+function collectTreeFiles(rootAbs: string, node: FlowTreeNode): CleanFileOption[] {
+  if (node.kind === "file") return [{ id: `${rootAbs}:${node.path}`, path: joinPath(rootAbs, node.path) }];
+  return (node.children ?? []).flatMap((child) => collectTreeFiles(rootAbs, child));
+}
+
+async function expandCleanFileOptions(paths: WorkspacePath[]): Promise<CleanFileOption[]> {
+  const directFiles = paths
+    .filter((path) => path.kind === "file")
+    .map((path) => ({ id: String(path.id), path: path.path }));
+  const dirFiles = await Promise.all(
+    paths
+      .filter((path) => path.kind === "dir")
+      .map(async (path) => collectTreeFiles(path.path, await api.workspacePathTree(path.id))),
+  );
+  const options = [...directFiles, ...dirFiles.flat()];
+  return Array.from(new Map(options.map((option) => [option.path, option])).values());
+}
+
+export function DelegateSubAgentCard({ sessionId, workspaceId, folderScope, model, models, onBackflow, embedded = false }: Props) {
   const [brief, setBrief] = useState("");
   const [dispatchMode, setDispatchMode] = useState<"single" | "composite">("single");
   const [selectedModel, setSelectedModel] = useState(model);
@@ -157,7 +208,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
   const [loadingTemplates, setLoadingTemplates] = useState(false);
   const [skillMode, setSkillMode] = useState<"default" | "specified">("default");
   const [specifiedSkillPaths, setSpecifiedSkillPaths] = useState<string[]>([]);
-  const [cleanFiles, setCleanFiles] = useState<WorkspacePath[]>([]);
+  const [cleanFiles, setCleanFiles] = useState<CleanFileOption[]>([]);
   const [selectedFiles, setSelectedFiles] = useState<string[]>([]);
   const [tasks, setTasks] = useState<SubAgentTask[]>([]);
   const [compositeRuns, setCompositeRuns] = useState<CompositeSubAgentRun[]>([]);
@@ -184,6 +235,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
     () => templates.find((template) => template.id === selectedTemplateId) ?? null,
     [selectedTemplateId, templates],
   );
+  const cleanFileScopeKey = useMemo(() => scopeKey(folderScope, workspaceId), [folderScope, workspaceId]);
   const canSubmit = brief.trim().length > 0 && !submitting && (skillMode !== "specified" || specifiedSkillPaths.length > 0);
 
   async function refreshTasks() {
@@ -248,14 +300,19 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
 
   useEffect(() => {
     let cancelled = false;
-    if (!workspaceId) {
+    if (!cleanFileScopeKey) {
       setCleanFiles([]);
+      setSelectedFiles([]);
       return;
     }
     setLoadingFiles(true);
-    api.listWorkspacePaths(workspaceId, "clean_data")
-      .then((paths) => {
-        if (!cancelled) setCleanFiles(paths.filter((path) => path.kind === "file"));
+    listCleanFiles(folderScope, workspaceId)
+      .then(expandCleanFileOptions)
+      .then((files) => {
+        if (cancelled) return;
+        const allowed = new Set(files.map((file) => file.path));
+        setCleanFiles(files);
+        setSelectedFiles((current) => current.filter((path) => allowed.has(path)));
       })
       .catch((err) => {
         if (!cancelled) setError(String(err));
@@ -266,7 +323,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
     return () => {
       cancelled = true;
     };
-  }, [workspaceId]);
+  }, [cleanFileScopeKey, folderScope, workspaceId]);
 
   useEffect(() => {
     if (!running) return;
@@ -608,7 +665,7 @@ export function DelegateSubAgentCard({ sessionId, workspaceId, model, models, on
                     onChange={() => toggleFile(file.path)}
                     className="h-3.5 w-3.5"
                   />
-                  <span className="truncate" title={file.path}>{file.path}</span>
+                  <span className="truncate" title={file.path}>{basename(file.path)}</span>
                 </label>
               ))}
             </div>

@@ -3,10 +3,15 @@
   "name": "会员流失预警 (Kaplan-Meier + 风险打分)",
   "version": "1.0.0",
   "description": "客户级流失风险预警。期望客户级 RFM CSV，列（含别名）：customer_id；recency（自上次购买至截止日的天数，距今天数口径）；frequency（历史购买次数）；monetary（累计或均额，可选）。算法：(1) Kaplan-Meier 估计基于 churn_threshold_days 的群体存活函数；(2) 个体风险 = (1 - S(recency)) × 0.7 + 频次/金额劣势分位 × 0.3；(3) 按分位分四层 低/中/高/极高风险。纯 numpy/scipy 实现，无 lifelines 依赖。输出聚合分层规模与 top 高风险客户表（仅含脱敏 customer_id 占位）。",
-  "entry": "churn_risk.py",
+  "entry": "main.py",
   "runtime": "python3",
-  "category": "analysis",
-  "tags": ["churn", "retention", "risk", "python-analysis"],
+  "category": "ingestion",
+  "tags": [
+    "churn",
+    "retention",
+    "risk",
+    "python-analysis"
+  ],
   "input": {
     "accept": [
       ".csv"
@@ -21,8 +26,8 @@
     ".json"
   ],
   "riskLevel": "L0",
-  "allowedUse": "对去标识客户级 RFM 表做流失风险预警；产物为分层聚合与脱敏 top 列表，不回写订单原始行。",
-  "forbiddenUse": "不得用于含 PII 的原始数据；recency 必须为距今天数口径（不是首末购间隔），frequency 必须为已聚合次数。",
+  "allowedUse": "人工对去标识客户级 RFM 表做流失风险预警；产物包含分层聚合与脱敏 top 客户列表，不回写订单原始行。",
+  "forbiddenUse": "不得暴露给 AI/MCP 自动调用；不得用于含 PII 的原始数据；recency 必须为距今天数口径（不是首末购间隔），frequency 必须为已聚合次数。",
   "failureHandling": "缺列时返回 '缺少必需字段'；客户数 < 10 时返回 '客户数过少'；KM 拟合失败回退为基于 recency 阈值的硬分类并标注 fallback=true。",
   "traceFields": [
     "toolId",

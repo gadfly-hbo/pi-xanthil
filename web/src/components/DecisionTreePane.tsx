@@ -13,6 +13,7 @@ import {
 import { AlertTriangle, Download, GitBranch, Loader2, RefreshCw, Sparkles } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import { useResumableTask } from "@/lib/resumableTask";
 import type { DecisionTreeNode, Flow, FlowTreeNode, PiModel } from "@/types";
 
@@ -352,7 +353,7 @@ export function DecisionTreePane({ scope, models }: { scope: Scope; models: PiMo
       const relPath = `graphs/decision_tree_${base}_${ts}.html`;
       const html = generateDecisionTreeHtml(tree);
       const result = await api.workspacePathFilePut(dir.id, relPath, html);
-      setSaveMsg(`已保存 → ${result.path}`);
+      setSaveMsg(`已保存 → ${formatDisplayPath(result.path)}`);
     } catch (err) {
       setError(String(err));
     } finally {

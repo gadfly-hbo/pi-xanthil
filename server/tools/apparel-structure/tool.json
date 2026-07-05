@@ -3,10 +3,15 @@
   "name": "服饰商品结构分析",
   "version": "1.0.0",
   "description": "对服饰类商品/SKU 聚合 CSV 进行商品结构分析，包含价格带分桶分布、连带率(UPT)、动销率、售罄率、库销比、SKU 宽深度等指标，输出结构化 Markdown 报告和 JSON 数据。输入数据需包含商品 SKU 级别的价格、吊牌价、销量、库存、入库等字段。",
-  "entry": "apparel_structure.py",
+  "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
-  "tags": ["apparel", "structure", "category", "python-analysis"],
+  "tags": [
+    "apparel",
+    "structure",
+    "category",
+    "python-analysis"
+  ],
   "input": {
     "accept": [
       ".csv"

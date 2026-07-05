@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { ChevronDown, ChevronRight, DatabaseZap, FolderOpen, Loader2, Play, Plus, RefreshCw, Save, ShieldCheck, ShieldAlert, Trash2, Wifi, WifiOff } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import { SqlImportPanel } from "./sql/SqlImportPanel";
 import { SqlTableExportPanel } from "./sql/SqlTableExportPanel";
 import type { DbType, SavedQuery, SchemaTable, SqlConnection, SqlQueryResult, SqlValidateResult, ToolParameter } from "@/types";
@@ -363,7 +364,7 @@ function ExportPanel({ connId, sql, params, workspaceId }: ExportPanelProps) {
       {result && (
         <div className="rounded bg-emerald-50 px-3 py-2 dark:bg-emerald-950/30">
           <p className="font-medium text-emerald-700 dark:text-emerald-400">导出成功：{result.rowCount.toLocaleString()} 行 {result.appended && "(追加写入)"}</p>
-          <p className="mt-0.5 break-all font-mono text-[11px] text-emerald-600 dark:text-emerald-500">{result.path}</p>
+          <p className="mt-0.5 break-all font-mono text-[11px] text-emerald-600 dark:text-emerald-500" title={result.path}>{formatDisplayPath(result.path)}</p>
         </div>
       )}
     </div>

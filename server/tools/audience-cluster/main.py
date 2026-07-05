@@ -4,7 +4,7 @@ import os
 import sys
 import traceback
 
-from audience_cluster import cluster_portraits
+from script import cluster_portraits
 
 def main():
     parser = argparse.ArgumentParser()

@@ -3,10 +3,15 @@
   "name": "RFM 会员分群",
   "version": "1.0.0",
   "description": "对客户级去标识聚合 CSV 进行 RFM 分群。期望列（含别名）: customer_id（或 顾客ID/用户ID/member_id）、recency（或 最近购买日期/last_purchase_date/recency_days，日期会换算为距今天数）、frequency（或 购买频次/购买次数/orders）、monetary（或 累计金额/总消费/amount/sales）。算法：每维 5 分位打分（1=最差,5=最佳，R 反向）→ 经典 8 群（重要价值/重要发展/重要保持/重要挽留/一般价值/一般发展/一般保持/一般挽留）。输出群规模/占比/各维均值与画像 md+json。",
-  "entry": "rfm_segmentation.py",
+  "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
-  "tags": ["rfm", "segmentation", "membership", "python-analysis"],
+  "tags": [
+    "rfm",
+    "segmentation",
+    "membership",
+    "python-analysis"
+  ],
   "input": {
     "accept": [
       ".csv"

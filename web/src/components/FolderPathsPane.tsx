@@ -2,6 +2,7 @@ import { useCallback, useEffect, useState } from "react";
 import { Check, ChevronDown, ChevronRight, CircleAlert, Copy, FileText, Folder, FolderOpen, Loader2, Plus, RefreshCw, ShieldAlert, Sparkles, Trash2 } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import type { FlowTreeNode, WorkspaceFolderName, WorkspacePath, WorkspacePathKind } from "@/types";
 
 type Scope =
@@ -51,6 +52,15 @@ function joinRegisteredReportPath(entry: WorkspacePath, relPath: string): string
   const normalizedRelPath = relPath.replace(/^\/+/, "");
   if (!normalizedRelPath) return entry.path;
   return `${entry.path.replace(/\/+$/, "")}/${normalizedRelPath}`;
+}
+
+function isNestedUnderDir(path: WorkspacePath, dirs: WorkspacePath[]): boolean {
+  const normalized = path.path.replace(/[\\/]+$/, "");
+  return dirs.some((dir) => {
+    if (dir.id === path.id || dir.kind !== "dir") return false;
+    const root = dir.path.replace(/[\\/]+$/, "");
+    return normalized.startsWith(`${root}/`) || normalized.startsWith(`${root}\\`);
+  });
 }
 
 function PathTreeNode({ node, depth, onPreview }: { node: FlowTreeNode; depth: number; onPreview: (path: string) => void }) {
@@ -296,6 +306,7 @@ export function FolderPathsPane({ scope, folder, onPathsChange, onSelectFile }: 
   };
 
   const { title, hint } = META[folder];
+  const visiblePaths = paths.filter((path) => !isNestedUnderDir(path, paths));
 
   if (!scope) {
     return (
@@ -306,7 +317,7 @@ export function FolderPathsPane({ scope, folder, onPathsChange, onSelectFile }: 
   }
 
   return (
-    <div className="flex flex-col gap-5 p-6">
+    <div className="flex h-full min-h-0 flex-col gap-5 overflow-hidden p-6">
       {/* header */}
       <div className="flex items-start justify-between">
         <div>
@@ -392,10 +403,10 @@ export function FolderPathsPane({ scope, folder, onPathsChange, onSelectFile }: 
         </div>
       )}
 
-      <div className="grid min-h-0 grid-cols-1 gap-4 lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
+      <div className="grid min-h-0 flex-1 grid-cols-1 gap-4 overflow-hidden lg:grid-cols-[minmax(0,1fr)_minmax(320px,0.9fr)]">
         {/* path list */}
-        <div className="space-y-1">
-          {paths.map((p) => (
+        <div className="min-h-0 space-y-1 overflow-y-auto pr-1">
+          {visiblePaths.map((p) => (
             <div key={p.id}>
               <div className="group flex items-center gap-2 rounded-md px-3 py-2 hover:bg-neutral-100 dark:hover:bg-neutral-800/60">
                 <button
@@ -406,7 +417,7 @@ export function FolderPathsPane({ scope, folder, onPathsChange, onSelectFile }: 
                     openDirs.has(p.id) ? <ChevronDown className="h-3.5 w-3.5 shrink-0 text-neutral-400" /> : <ChevronRight className="h-3.5 w-3.5 shrink-0 text-neutral-400" />
                   ) : <span className="w-3.5 shrink-0" />}
                   {p.kind === "dir" ? <Folder className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.75} /> : <FileText className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.75} />}
-                  <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-neutral-800 dark:text-neutral-200">{p.path}</span>
+                  <span className="min-w-0 flex-1 truncate font-mono text-[12.5px] text-neutral-800 dark:text-neutral-200" title={p.path}>{formatDisplayPath(p.path)}</span>
                   {p.status === "missing" && (
                     <span className="shrink-0 rounded bg-red-50 px-1.5 py-0.5 text-[10.5px] text-red-600 dark:bg-red-950/40 dark:text-red-400">路径不存在</span>
                   )}
@@ -446,7 +457,7 @@ export function FolderPathsPane({ scope, folder, onPathsChange, onSelectFile }: 
               )}
             </div>
           ))}
-          {paths.length === 0 && !addingKind && (
+          {visiblePaths.length === 0 && !addingKind && (
             <p className="px-3 py-6 text-center text-[12.5px] text-neutral-400 dark:text-neutral-500">
               还没有文档或文件夹，点击上方按钮添加。
             </p>
@@ -454,7 +465,7 @@ export function FolderPathsPane({ scope, folder, onPathsChange, onSelectFile }: 
         </div>
 
         {/* preview */}
-        <div className="max-h-[calc(100vh-220px)] min-h-[240px] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
+        <div className="min-h-[240px] overflow-y-auto rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
           {!preview ? (
             <p className="flex h-full items-center justify-center text-[12.5px] text-neutral-400">选择文件后在这里预览</p>
           ) : preview.loading ? (
@@ -523,7 +534,7 @@ export function FolderPathsPane({ scope, folder, onPathsChange, onSelectFile }: 
 
                   {htmlGenerateResult && (
                     <div className="mt-2.5 flex items-center justify-between rounded bg-emerald-50 px-2.5 py-1.5 text-[11.5px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400">
-                      <span className="truncate">🎉 生成成功：{htmlGenerateResult.path}</span>
+                      <span className="truncate" title={htmlGenerateResult.path}>🎉 生成成功：{formatDisplayPath(htmlGenerateResult.path)}</span>
                       <button
                         onClick={async () => {
                           await navigator.clipboard.writeText(htmlGenerateResult.path);

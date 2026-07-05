@@ -3,10 +3,14 @@
   "name": "数值特征聚类分群 (K-means + 轮廓)",
   "version": "1.0.0",
   "description": "对实体级数值特征表做无监督聚类。期望 CSV 第 1 列为实体 id（自动识别 customer_id/user_id/sku/entity_id 等别名，识别失败则取首列），其余所有数值列作为特征；非数值列自动忽略。算法：z-score 标准化 → k 在 [k_min, k_max] 区间用纯 numpy K-means(k-means++ 初始化, 多次重启) 拟合 → 用肘部 (相邻 k 间 SSE 改善率) 与轮廓系数 (silhouette, 抽样上限 1500) 综合选 k → 输出群标签 + 各群规模 + 各群标准化空间均值画像 + 原始空间均值画像。纯 numpy 实现，无 sklearn 依赖。",
-  "entry": "clustering.py",
+  "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
-  "tags": ["clustering", "segmentation", "python-analysis"],
+  "tags": [
+    "clustering",
+    "segmentation",
+    "python-analysis"
+  ],
   "input": {
     "accept": [
       ".csv"

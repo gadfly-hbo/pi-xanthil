@@ -13,6 +13,7 @@ import {
   Sparkles,
 } from "lucide-react";
 import { api } from "@/lib/api";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import type { ContractAutoFixResult, ContractReviewResult } from "@/lib/api";
 import type { ReportContractContext } from "@/lib/api/engine";
 import { useBusinessRequirementContexts, type BusinessRequirementContextScope } from "./useBusinessRequirementContexts";
@@ -489,7 +490,7 @@ function ContractDetail({
               {revisionResult && (
                 <div className="rounded border border-emerald-100 bg-emerald-50 px-2.5 py-2 text-[11.5px] text-emerald-800 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300">
                   <p className="font-medium">已生成契约修订版本</p>
-                  <p className="mt-0.5 font-mono text-[11px] break-all">{revisionResult.path}</p>
+                  <p className="mt-0.5 font-mono text-[11px] break-all" title={revisionResult.path}>{formatDisplayPath(revisionResult.path)}</p>
                   <p className="mt-1 text-[11px]">评分变化：{revisionResult.originalScore} → {revisionResult.revisedScore}（Δ {revisionResult.coverageDelta}）</p>
                   {revisionResult.unresolvedGaps.length > 0 && (
                     <p className="mt-1 text-[11px]">未解决缺口：{revisionResult.unresolvedGaps.slice(0, 3).join("；")}</p>

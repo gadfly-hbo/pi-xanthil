@@ -3,10 +3,15 @@
   "name": "同期群留存/复购分析",
   "version": "1.0.0",
   "description": "事件级 cohort 留存分析。期望 CSV 为事件/期级表（同一 customer_id 多行），列（含别名）: customer_id；purchase_date（或 order_date/event_date/购买日期/下单日期）。⚠ 粒度要求：每位客户必须有 ≥1 行，且总行数显著大于客户数（即存在重复购买记录），否则报错。算法：按首购期分 cohort → 留存率三角矩阵（cohort × periodOffset），可选 weekly/monthly 粒度，默认 monthly。输出留存矩阵、cohort 规模、整体留存曲线 (period 0..N 平均留存率) 与 markdown 表格。",
-  "entry": "cohort_retention.py",
+  "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
-  "tags": ["cohort", "retention", "lifecycle", "python-analysis"],
+  "tags": [
+    "cohort",
+    "retention",
+    "lifecycle",
+    "python-analysis"
+  ],
   "input": {
     "accept": [
       ".csv"

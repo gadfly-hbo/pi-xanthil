@@ -3,6 +3,7 @@ import { AlertTriangle, BookOpen, ClipboardList, Compass, FileText, Loader2, Pen
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
 import { setActiveContractContext } from "@/lib/activeContractContext";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import type { RequirementCommunicationAssumption, RequirementCommunicationQuestion, RequirementCommunicationResult, RequirementCommunicationScene, RequirementImportDocumentInput, RequirementImportDocumentsResult } from "@/lib/api/engine";
 import { useResumableTask } from "@/lib/resumableTask";
 import type { BusinessContextCategory, FlowTreeNode, WorkspacePath } from "@/types";
@@ -564,7 +565,7 @@ function renderBusinessRequirementMarkdown(structured: BusinessRequirementStruct
         `${document.size} bytes`,
         document.truncated ? "内容已截断" : "",
       ].filter(Boolean).join(" · ");
-      return `- [D${index + 1}] ${document.name}（${details}）\n  - 路径：${document.path}`;
+    return `- [D${index + 1}] ${document.name}（${details}）\n  - 路径：${formatDisplayPath(document.path)}`;
     }).join("\n")
     : "- 未导入需求调研文档";
   const sourceRefs = structured.sourceRefs && Object.keys(structured.sourceRefs).length > 0
@@ -1475,7 +1476,7 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
         confirmedAt: Date.now(),
       });
       setActiveResult("framework");
-      setCommunicationTurns((current) => [...current, { id: `s-${Date.now()}-confirm`, role: "system", content: `用户已确认并写入正式业务需求：${result.path}` }]);
+      setCommunicationTurns((current) => [...current, { id: `s-${Date.now()}-confirm`, role: "system", content: `用户已确认并写入正式业务需求：${formatDisplayPath(result.path)}` }]);
       const nextVersions = await loadVersions(selectedPath.id);
       const confirmedVersion = nextVersions.find((version) => version.jsonPath === result.jsonPath || version.markdownPath === result.path);
       if (confirmedVersion) setSelectedVersionId(confirmedVersion.id);
@@ -2245,7 +2246,7 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
                               </span>
                             </div>
                             <div className="mt-0.5 truncate pl-8 font-mono text-[10.5px] text-neutral-400" title={document.path}>
-                              {document.path}
+                              {formatDisplayPath(document.path)}
                             </div>
                           </div>
                         ))}

@@ -3,10 +3,15 @@
   "name": "AARRR 关系流转分析",
   "version": "1.0.0",
   "description": "对阶段人数时序做 AARRR / 消费者关系阶段流转分析。期望 CSV 列: period（或 date / week / 期数）+ 至少两个阶段人数列。可识别别名 (大小写+中文): awareness/认知, interest/兴趣, consideration/考虑, purchase/购买/转化, loyalty/忠诚/复购, advocacy/推荐 等；上游也可直接用 stage1..stageN 兜底。算法：(1) 每期阶段间转化率 = 后阶段人数 / 前阶段人数；(2) 关系周加深率 = 末阶段人数 / 首阶段人数；(3) 期间环比变化（每期相对上一期同阶段人数变化）。输出漏斗、分期转化矩阵、整段关系加深曲线 markdown + json。",
-  "entry": "aarrr_flow.py",
+  "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
-  "tags": ["aarrr", "funnel", "conversion", "python-analysis"],
+  "tags": [
+    "aarrr",
+    "funnel",
+    "conversion",
+    "python-analysis"
+  ],
   "input": {
     "accept": [
       ".csv"

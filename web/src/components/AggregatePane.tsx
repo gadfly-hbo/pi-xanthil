@@ -3,6 +3,7 @@ import { Calculator, Check, Clipboard, Download, FileSpreadsheet, FolderOpen, Lo
 import { buildPythonPrompt, profileDataset, readLocalDataset, runAggregation, toCsv, type AggregateDsl, type AggregateOperation, type DateGranularity, type LocalDataset } from "@/lib/aggregate";
 import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import { useResumableTask } from "@/lib/resumableTask";
 import type { PiModel, WorkspacePath } from "@/types";
 import type { FolderScope } from "@/tabs/types";
@@ -192,7 +193,7 @@ export function AggregatePane({ model, models, workspaceId, folderScope }: Props
           await addScopeFile(folderScope, workspaceId, written.path);
         }
       }
-      setSaveMessage(`已保存并登记：${written.path}`);
+      setSaveMessage(`已保存并登记：${formatDisplayPath(written.path)}`);
     } catch (err) {
       setSaveError(String(err));
     } finally {

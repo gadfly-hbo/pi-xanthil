@@ -2,6 +2,7 @@ import { useEffect, useMemo, useState } from "react";
 import { ArrowLeftRight, CheckCircle2, FileText, FolderOpen, Loader2, Play, RefreshCw, Search, Wrench, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import type { ExtractionRun, ExtractionTool, ToolParameter, WorkspacePath } from "@/types";
 
 type ParamValue = string | number | boolean;
@@ -549,7 +550,7 @@ export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, emb
                   </div>
                   {registration.failed.length > 0 && (
                     <ul className="mt-2 space-y-1 text-[11px] text-amber-700 dark:text-amber-200">
-                      {registration.failed.map((item) => <li key={item.path} className="break-all">{item.path}: {item.error}</li>)}
+                      {registration.failed.map((item) => <li key={item.path} className="break-all" title={item.path}>{formatDisplayPath(item.path)}: {item.error}</li>)}
                     </ul>
                   )}
                 </div>

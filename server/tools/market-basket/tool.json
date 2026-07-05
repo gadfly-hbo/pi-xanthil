@@ -3,10 +3,15 @@
   "name": "购物篮关联规则分析 (Apriori)",
   "version": "1.0.0",
   "description": "对订单-商品级 CSV 做购物篮分析。期望列（含别名）: order_id（或 order/transaction_id/订单号）；item（或 sku/product_id/商品/商品ID/商品名称）。支持两种粒度: (a) 每行一条 order×item 长表; (b) 每行一个 order_id + items 列（逗号/分号/竖线分隔的商品列表）。算法：Apriori 频繁项集 + 关联规则 (support / confidence / lift)，纯 pandas/numpy 实现，无 mlxtend 依赖。输出 top-N 频繁项集与按 lift 排序的 top-N 关联规则（聚合衍生产物，不含原始订单行）。",
-  "entry": "market_basket.py",
+  "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
-  "tags": ["basket", "association", "affinity", "python-analysis"],
+  "tags": [
+    "basket",
+    "association",
+    "affinity",
+    "python-analysis"
+  ],
   "input": {
     "accept": [
       ".csv"

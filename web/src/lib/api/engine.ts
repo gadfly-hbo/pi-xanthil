@@ -529,9 +529,11 @@ export const engineApi = {
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidate-trace`, {
       method: "POST",
     }).then(json<SessionConsolidationResult>),
-  distillSessionPrompt: (workspaceId: string, sessionId: string) =>
+  distillSessionPrompt: (workspaceId: string, sessionId: string, input?: { scope?: { type: "latest" } | { type: "session" } | { type: "turn"; userMessageId: number } | { type: "turns"; userMessageIds: number[] }; model?: string }) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/distill-prompt`, {
       method: "POST",
+      headers: input ? { "content-type": "application/json" } : undefined,
+      body: input ? JSON.stringify(input) : undefined,
     }).then(json<{ draft: PromptDraft | null }>),
   getSessionConsolidationCount: (workspaceId: string, sessionId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/sessions/${encodeURIComponent(sessionId)}/consolidation-count`)

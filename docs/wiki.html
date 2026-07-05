@@ -323,7 +323,7 @@
   </section>
 
   <section id="agentAssets" class="view">
-    <p class="legend">四个 agent 当前由 AgentOps 统一管理技能资产。Codex 是主控；OpenCode、MimoCode、Antigravity CLI 是辅 agent。执行复杂任务时，必须先给目标、非目标、允许改动范围、验证方式和 handoff 格式。</p>
+    <p class="legend">五个 agent 当前由 AgentOps 统一管理技能资产。Codex 是主控；OpenCode、MimoCode、Antigravity CLI、Kimi Code 是辅 agent。执行复杂任务时，必须先给目标、非目标、允许改动范围、验证方式和 handoff 格式。</p>
 
     <div class="asset-grid">
       <div class="asset-card">
@@ -348,6 +348,14 @@
         <ul>
           <li>独立检查 agent：适合第二意见、回归检查、轻量实现。</li>
           <li>当前与 Codex 同步同一套 AgentOps skills / commands / agents。</li>
+        </ul>
+      </div>
+      <div class="asset-card">
+        <h3>Kimi Code</h3>
+        <p><code>/Users/huangbo/.kimi-code</code></p>
+        <ul>
+          <li>辅助 coding agent：适合边界清晰的实现、代码库探索和子 agent 辅助验证。</li>
+          <li>全局指令使用 <code>~/.kimi-code/AGENTS.md</code>，用户 skills 使用 <code>~/.kimi-code/skills/</code>。</li>
         </ul>
       </div>
       <div class="asset-card">
@@ -414,6 +422,7 @@
           <tr><td><code>codex-lead</code></td><td>主控，负责拆解、集成、验证和最终回复。</td></tr>
           <tr><td><code>opencode-implementer</code></td><td>OpenCode 辅助实现。</td></tr>
           <tr><td><code>mimo-independent-check</code></td><td>MimoCode 独立检查或第二意见。</td></tr>
+          <tr><td><code>kimi-implementer</code></td><td>Kimi Code 辅助实现、代码库探索和子 agent 辅助验证。</td></tr>
           <tr><td><code>antigravity-workflow-runner</code></td><td>Antigravity 长流程 / 自动化实验。</td></tr>
           <tr><td><code>antigravity-architect</code></td><td>架构方案。</td></tr>
           <tr><td><code>antigravity-implementer</code></td><td>实现任务。</td></tr>
@@ -441,7 +450,7 @@
         <li>用 <code>matt-grilling</code> 或 <code>matt-grill-with-docs</code> 压测需求。</li>
         <li>用 <code>matt-to-prd</code> 固化需求。</li>
         <li>用 <code>matt-to-issues</code> 拆任务。</li>
-        <li>Codex 主控实现；必要时派 OpenCode / MimoCode / Antigravity 做独立子任务。</li>
+        <li>Codex 主控实现；必要时派 OpenCode / MimoCode / Kimi Code / Antigravity 做独立子任务。</li>
         <li>每个辅 agent 必须交 handoff。</li>
         <li>Codex 集成、测试、最终说明。</li>
       </ol>
@@ -492,7 +501,7 @@ agy
 
 <script>
 /* ════════════ 数据区（迭代时在此追加；渲染逻辑见下方） ════════════ */
-const VERSION = "2.4";
+const VERSION = "2.5";
 
 const DOMAINS = {
   D: { name: "数据基座", agent: "opencode (deepseek/glm)", color: "var(--d)" },

@@ -13,6 +13,7 @@ import {
 import { AlertTriangle, Download, Gauge, GitFork, Loader2, RefreshCw, Sparkles, Target } from "lucide-react";
 import { api, type TocGraphItem } from "@/lib/api";
 import { cn } from "@/lib/cn";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import { useResumableTask } from "@/lib/resumableTask";
 import type { Flow, FlowTreeNode, PiModel } from "@/types";
 
@@ -377,7 +378,7 @@ export function TocPane({ scope, models }: { scope: Scope; models: PiModel[] }) 
       const relPath = `graphs/toc_${base}_${ts}.html`;
       const html = generateTocHtml(graph);
       const result = await api.workspacePathFilePut(dir.id, relPath, html);
-      setSaveMsg(`已保存 → ${result.path}`);
+      setSaveMsg(`已保存 → ${formatDisplayPath(result.path)}`);
     } catch (err) {
       setError(String(err));
     } finally {

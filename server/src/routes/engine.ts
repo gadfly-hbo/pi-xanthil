@@ -119,7 +119,7 @@ import { fireMemoryConsolidation, postMemoryCandidateToDIngest, runMemoryConsoli
 import { runMemoryMaintenance } from "../memory-maintenance.ts";
 import { runMemoryAgingInspection, type CounterfactualProbeRun } from "../memory-aging-inspector.ts";
 import { DEFAULT_MEMORY_SKILL_THRESHOLDS, fetchMemoryExperiences, runMemoryToSkillPromotion, type MemorySkillThresholds } from "../memory-to-skill.ts";
-import { runPromptDistillation } from "../prompt-distillation.ts";
+import { runPromptDistillation, type PromptDistillationScope } from "../prompt-distillation.ts";
 import { validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
 import type { AgentTrajectory, ClientMessage, EvalAnnotationStatus, Flow, MetricSnapshot, PiEvent, RetrievalContext, Session } from "../types.ts";
@@ -2029,13 +2029,16 @@ engineRouter.post("/api/workspaces/:id/sessions/:sessionId/distill-prompt", asyn
   if (!session) return res.status(404).json({ error: "session not found" });
   if (session.workspaceId !== workspace.id) return res.status(403).json({ error: "session belongs to another workspace" });
 
-  const traceEventId = traceEngineSessionEvent(session, "prompt_distillation", "running", "手动沉淀 prompt", { trigger: "manual" });
+  const scope = parsePromptDistillationScope(req.body?.scope);
+  if (!scope) return res.status(400).json({ error: "invalid distillation scope" });
+  const traceEventId = traceEngineSessionEvent(session, "prompt_distillation", "running", "手动沉淀 prompt", { trigger: "manual", scope });
   const model = String(req.body?.model ?? "").trim() || undefined;
   try {
     const draft = await runPromptDistillation({
       workspaceRoot: workspace.rootPath,
       sessionId: session.id,
       messages: listMessages(session.id),
+      scope,
       model,
       timeoutMs: 180_000,
       onEvent: (event) => trackUsageEvent({
@@ -2049,7 +2052,7 @@ engineRouter.post("/api/workspaces/:id/sessions/:sessionId/distill-prompt", asyn
       traceEventId,
       "success",
       draft ? `Prompt 草稿已生成：${draft.title}` : "本轮无可沉淀 Prompt",
-      { trigger: "manual", hasDraft: Boolean(draft) },
+      { trigger: "manual", scope, hasDraft: Boolean(draft) },
     );
     res.json({ draft });
   } catch (err) {
@@ -2062,6 +2065,26 @@ engineRouter.post("/api/workspaces/:id/sessions/:sessionId/distill-prompt", asyn
     res.status(500).json({ error });
   }
 });
+
+function parsePromptDistillationScope(value: unknown): PromptDistillationScope | null {
+  if (!value || typeof value !== "object") return { type: "latest" };
+  const input = value as { type?: unknown; userMessageId?: unknown; userMessageIds?: unknown };
+  if (input.type === "latest") return { type: "latest" };
+  if (input.type === "session") return { type: "session" };
+  if (input.type === "turn") {
+    const userMessageId = Number(input.userMessageId);
+    return Number.isInteger(userMessageId) && userMessageId > 0 ? { type: "turn", userMessageId } : null;
+  }
+  if (input.type === "turns") {
+    const rawIds = input.userMessageIds;
+    const userMessageIds: number[] = Array.isArray(rawIds)
+      ? rawIds.map((id: unknown) => Number(id)).filter((id: number) => Number.isInteger(id) && id > 0)
+      : [];
+    const uniqueIds = [...new Set(userMessageIds)];
+    return uniqueIds.length > 0 ? { type: "turns", userMessageIds: uniqueIds } : null;
+  }
+  return null;
+}
 
 // 方式2：AI 改写——基于用户「修改说明」对给定 SKILL.md 内容做最小修改，返回改写结果供预览，
 // 不写盘/不建版本（保存仍走既有「保存为新版本」）。operate on 请求体提供的 content（即编辑框当前文本），

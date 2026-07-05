@@ -7,6 +7,7 @@ import { useCallback, useEffect, useMemo, useRef, useState } from "react";
 import { Check, Copy, FileText, Globe, Library, Plus, RefreshCw, Search, Trash2, Upload, X } from "lucide-react";
 import { api } from "@/lib/api";
 import { sharedApi } from "@/lib/api/shared";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import { Markdown } from "@/components/Markdown";
 import type { KnowledgeChunk, KnowledgeDoc, KnowledgeDocSearchResult } from "@/types";
 
@@ -396,7 +397,7 @@ function DocsView({ workspaceId, onDocsChanged }: { workspaceId: string; onDocsC
                     <div className="mt-0.5 text-[11px] text-neutral-500">
                       创建 {fmtTs(detail.doc.createdAt)} · 更新 {fmtTs(detail.doc.updatedAt)} ·{" "}
                       {detail.chunks.length} chunks
-                      {detail.doc.path && <> · 路径 <code className="font-mono">{detail.doc.path}</code></>}
+                      {detail.doc.path && <> · 路径 <code className="font-mono" title={detail.doc.path}>{formatDisplayPath(detail.doc.path)}</code></>}
                     </div>
                   </div>
                   <button
@@ -819,7 +820,7 @@ function DocFullTextDrawer({
                   <span>{detail.chunks.length} chunks</span>
                   {detail.doc.path && (
                     <span className="truncate" title={detail.doc.path}>
-                      来源 <code className="font-mono">{detail.doc.path}</code>
+                      来源 <code className="font-mono">{formatDisplayPath(detail.doc.path)}</code>
                     </span>
                   )}
                 </div>

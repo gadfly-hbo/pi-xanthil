@@ -12,7 +12,7 @@ import { api } from "@/lib/api";
 import { getActiveContractContext } from "@/lib/activeContractContext";
 import type { ReportContractContext } from "@/lib/api/engine";
 import { cn } from "@/lib/cn";
-import { textOf, type FlowTreeNode, type PiModel, type PromptDraft, type PromptTemplateInput, type SessionArtifactTree, type SessionRuntime, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
+import { asBlocks, textOf, type FlowTreeNode, type PiModel, type PromptDraft, type PromptTemplateInput, type SessionArtifactTree, type SessionRuntime, type StoredMessage, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
 
 type FolderScope =
   | { type: "workspace"; workspaceId: string }
@@ -62,6 +62,15 @@ interface ComposerAttachment {
   text: string;
 }
 
+type PromptDistillScope =
+  | { type: "turns"; userMessageIds: number[] };
+
+interface PromptDistillTurnOption {
+  userMessageId: number;
+  label: string;
+  summary: string;
+}
+
 const TEXT_UPLOAD_EXTENSIONS = new Set([
   ".txt",
   ".md",
@@ -103,6 +112,33 @@ function summarizeExecutionText(text: string): string {
     .trim();
   if (!compact) return "";
   return compact.length > 260 ? `${compact.slice(0, 260)}…` : compact;
+}
+
+function buildPromptDistillTurnOptions(messages: UiMessage[]): PromptDistillTurnOption[] {
+  const options: PromptDistillTurnOption[] = [];
+  let turn = 0;
+  for (let index = 0; index < messages.length; index++) {
+    const message = messages[index];
+    if (!message || message.role !== "user" || message.error) continue;
+    const userMessageId = Number(message.id);
+    if (!Number.isInteger(userMessageId) || userMessageId <= 0) continue;
+    const userText = textOf(message.content).trim();
+    if (!userText) continue;
+    const nextUserIndex = messages.findIndex((item, itemIndex) => itemIndex > index && item.role === "user");
+    const endIndex = nextUserIndex >= 0 ? nextUserIndex : messages.length;
+    const hasAssistant = messages.slice(index + 1, endIndex).some((item) =>
+      item.role === "assistant" && !item.error && textOf(item.content).trim().length > 0,
+    );
+    if (!hasAssistant) continue;
+    turn++;
+    const summary = summarizeExecutionText(userText);
+    options.push({
+      userMessageId,
+      label: `第 ${turn} 轮 · ${summary || `消息 ${userMessageId}`}`,
+      summary,
+    });
+  }
+  return options.reverse();
 }
 
 function countArtifactFiles(node: FlowTreeNode | null): number {
@@ -367,6 +403,103 @@ function CommandParamDialog({
   );
 }
 
+function PromptDistillScopeDialog({
+  turnOptions,
+  loadingTurns,
+  running,
+  onCancel,
+  onSubmit,
+}: {
+  turnOptions: PromptDistillTurnOption[];
+  loadingTurns: boolean;
+  running: boolean;
+  onCancel: () => void;
+  onSubmit: (scope: PromptDistillScope) => void;
+}) {
+  const [selectedIds, setSelectedIds] = useState<number[]>([]);
+  const allIds = useMemo(() => turnOptions.map((option) => option.userMessageId), [turnOptions]);
+  const allSelected = allIds.length > 0 && allIds.every((id) => selectedIds.includes(id));
+
+  useEffect(() => {
+    setSelectedIds(allIds);
+  }, [allIds]);
+
+  function submit() {
+    onSubmit({ type: "turns", userMessageIds: selectedIds });
+  }
+
+  function toggleAll() {
+    setSelectedIds(allSelected ? [] : allIds);
+  }
+
+  function toggleTurn(id: number) {
+    setSelectedIds((current) => current.includes(id) ? current.filter((item) => item !== id) : [...current, id]);
+  }
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/35 px-4">
+      <div className="w-full max-w-[560px] rounded-lg border border-neutral-200 bg-white shadow-xl dark:border-neutral-800 dark:bg-neutral-950">
+        <div className="flex items-start gap-3 border-b border-neutral-200 px-4 py-3 dark:border-neutral-800">
+          <div className="min-w-0 flex-1">
+            <div className="text-[13px] font-medium text-neutral-900 dark:text-neutral-100">选择 Prompt 沉淀轮次</div>
+            <div className="mt-1 text-[12px] text-neutral-500 dark:text-neutral-400">可全选所有轮次，也可只选择其中几轮一起提炼通用模板。</div>
+          </div>
+          <button type="button" onClick={onCancel} disabled={running} className="inline-flex h-7 w-7 items-center justify-center rounded-md text-neutral-500 hover:bg-neutral-100 disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800" title="关闭">
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+        <div className="space-y-3 px-4 py-4">
+          <div className="flex items-center justify-between gap-3">
+            <label className="flex items-center gap-2 text-[12px] font-medium text-neutral-800 dark:text-neutral-100">
+              <input
+                type="checkbox"
+                checked={allSelected}
+                onChange={toggleAll}
+                disabled={running || loadingTurns || turnOptions.length === 0}
+                className="h-3.5 w-3.5"
+              />
+              全选所有轮次
+            </label>
+            <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              已选 {selectedIds.length} / {turnOptions.length}
+            </span>
+          </div>
+          <div className="max-h-[42vh] space-y-2 overflow-y-auto rounded-md border border-neutral-200 p-2 dark:border-neutral-800">
+            {loadingTurns ? (
+              <div className="px-2 py-6 text-center text-[12px] text-neutral-400">正在读取轮次...</div>
+            ) : turnOptions.length === 0 ? (
+              <div className="px-2 py-6 text-center text-[12px] text-neutral-400">暂无可选轮次</div>
+            ) : (
+              turnOptions.map((option) => (
+                <label key={option.userMessageId} className="flex cursor-pointer gap-2 rounded-md px-2 py-2 text-[12px] hover:bg-neutral-50 dark:hover:bg-neutral-900">
+                  <input
+                    type="checkbox"
+                    checked={selectedIds.includes(option.userMessageId)}
+                    onChange={() => toggleTurn(option.userMessageId)}
+                    disabled={running}
+                    className="mt-0.5 h-3.5 w-3.5 shrink-0"
+                  />
+                  <span className="min-w-0">
+                    <span className="block truncate font-medium text-neutral-800 dark:text-neutral-100" title={option.label}>{option.label}</span>
+                    <span className="mt-1 line-clamp-2 text-[11px] leading-4 text-neutral-500 dark:text-neutral-400">{option.summary || "（空摘要）"}</span>
+                  </span>
+                </label>
+              ))
+            )}
+          </div>
+        </div>
+        <div className="flex justify-end gap-2 border-t border-neutral-200 px-4 py-3 dark:border-neutral-800">
+          <button type="button" onClick={onCancel} disabled={running} className="rounded-md border border-neutral-200 px-3 py-1.5 text-[12px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-900">取消</button>
+          <button type="button" onClick={submit} disabled={running || loadingTurns || selectedIds.length === 0} className="inline-flex items-center gap-1.5 rounded-md bg-neutral-900 px-3 py-1.5 text-[12px] text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white">
+            {running && <Loader2 className="h-3.5 w-3.5 animate-spin" />}
+            {running ? "提炼中…" : "开始提炼"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function ChatPane(p: Props) {
   const [input, setInput] = useState("");
   const [selectedSkillPaths, setSelectedSkillPaths] = useState<string[]>([]);
@@ -386,6 +519,9 @@ export function ChatPane(p: Props) {
   const [consolidatingTrace, setConsolidatingTrace] = useState(false);
   const [consolidationNotice, setConsolidationNotice] = useState<{ tone: "success" | "error"; text: string } | null>(null);
   const [distillingPrompt, setDistillingPrompt] = useState(false);
+  const [promptScopeDialogOpen, setPromptScopeDialogOpen] = useState(false);
+  const [promptTurnOptions, setPromptTurnOptions] = useState<PromptDistillTurnOption[]>([]);
+  const [promptTurnOptionsLoading, setPromptTurnOptionsLoading] = useState(false);
   const [promptDraft, setPromptDraft] = useState<PromptDraft | null>(null);
   const [savingPrompt, setSavingPrompt] = useState(false);
   const [promptDistillError, setPromptDistillError] = useState("");
@@ -502,6 +638,9 @@ export function ChatPane(p: Props) {
   useEffect(() => {
     setCurrentRoundStartedAt(null);
     setCurrentRoundMessageStartIndex(null);
+    setPromptScopeDialogOpen(false);
+    setPromptTurnOptions([]);
+    setPromptTurnOptionsLoading(false);
   }, [activeSessionId]);
 
   useEffect(() => {
@@ -556,15 +695,16 @@ export function ChatPane(p: Props) {
     }
   }
 
-  async function distillPrompt() {
+  async function distillPrompt(scope: PromptDistillScope) {
     if (!p.workspaceId || !activeSessionId || distillingPrompt) return;
     setDistillingPrompt(true);
     setPromptNotice(null);
     setPromptDistillError("");
     try {
-      const result = await api.distillSessionPrompt(p.workspaceId, activeSessionId);
+      const result = await api.distillSessionPrompt(p.workspaceId, activeSessionId, { scope });
+      setPromptScopeDialogOpen(false);
       if (!result.draft) {
-        setPromptNotice({ tone: "success", text: "本轮暂无可沉淀 Prompt" });
+        setPromptNotice({ tone: "success", text: "所选范围暂无可沉淀 Prompt" });
         return;
       }
       setPromptDraft(result.draft);
@@ -572,6 +712,28 @@ export function ChatPane(p: Props) {
       setPromptNotice({ tone: "error", text: `Prompt 沉淀失败：${error instanceof Error ? error.message : String(error)}` });
     } finally {
       setDistillingPrompt(false);
+    }
+  }
+
+  async function openPromptDistillScopeDialog() {
+    if (!activeSessionId || distillingPrompt) return;
+    setPromptScopeDialogOpen(true);
+    setPromptNotice(null);
+    setPromptTurnOptions(buildPromptDistillTurnOptions(p.messages));
+    setPromptTurnOptionsLoading(true);
+    try {
+      const rows = await api.listMessages(activeSessionId);
+      const storedMessages: UiMessage[] = (rows as StoredMessage[]).map((row) => ({
+        id: String(row.id),
+        role: row.role,
+        content: asBlocks(row.content),
+        error: row.errorMessage ?? undefined,
+      }));
+      setPromptTurnOptions(buildPromptDistillTurnOptions(storedMessages));
+    } catch (error) {
+      setPromptNotice({ tone: "error", text: `轮次读取失败：${error instanceof Error ? error.message : String(error)}` });
+    } finally {
+      setPromptTurnOptionsLoading(false);
     }
   }
 
@@ -918,9 +1080,9 @@ export function ChatPane(p: Props) {
         )}
         {!p.hideSediment && (
         <button
-          onClick={() => void distillPrompt()}
+          onClick={() => void openPromptDistillScopeDialog()}
           disabled={!p.workspaceId || !activeSessionId || distillingPrompt}
-          title="从本轮成功对话提炼可复用 Prompt 草稿"
+          title="选择对话轮次或整个 session，提炼可复用 Prompt 草稿"
           className="inline-flex h-7 items-center gap-1 rounded-md px-2 text-[11.5px] text-neutral-500 hover:bg-neutral-100 disabled:cursor-not-allowed disabled:opacity-40 dark:text-neutral-400 dark:hover:bg-neutral-800"
         >
           {distillingPrompt ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <WandSparkles className="h-3.5 w-3.5" strokeWidth={1.75} />}
@@ -1335,6 +1497,18 @@ export function ChatPane(p: Props) {
         />
       )}
 
+      {promptScopeDialogOpen && (
+        <PromptDistillScopeDialog
+          turnOptions={promptTurnOptions}
+          loadingTurns={promptTurnOptionsLoading}
+          running={distillingPrompt}
+          onCancel={() => {
+            if (!distillingPrompt) setPromptScopeDialogOpen(false);
+          }}
+          onSubmit={(scope) => void distillPrompt(scope)}
+        />
+      )}
+
       {promptDraft && (
         <PromptDistillDialog
           draft={promptDraft}
@@ -1383,6 +1557,7 @@ export function ChatPane(p: Props) {
               <DelegateSubAgentCard
                 sessionId={activeSessionId}
                 workspaceId={p.workspaceId}
+                folderScope={p.folderScope}
                 model={p.model}
                 models={p.models}
                 onBackflow={(text) => p.onSend(text)}

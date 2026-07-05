@@ -18,6 +18,7 @@ import { Markdown } from "@/components/Markdown";
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
 import { cn } from "@/lib/cn";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import type { AnaxGateConfig, Flow, FlowRun, FlowTreeNode, GateVerdict, PiEvent, PiModel, ServerMessage, WorkflowNode, WorkspacePath } from "@/types";
 
 interface Props {
@@ -748,7 +749,7 @@ export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled, knowl
                     >
                       {checked && <CheckCircle2 className="h-3 w-3" strokeWidth={3} />}
                     </span>
-                    <span className="truncate font-mono text-[10.5px] text-neutral-600 dark:text-neutral-400">{p.path}</span>
+                    <span className="truncate font-mono text-[10.5px] text-neutral-600 dark:text-neutral-400">{formatDisplayPath(p.path)}</span>
                   </button>
                 );
               })}

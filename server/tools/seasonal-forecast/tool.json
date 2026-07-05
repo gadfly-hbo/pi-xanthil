@@ -3,10 +3,15 @@
   "name": "季节性分解与预测",
   "version": "1.0.0",
   "description": "对时序聚合 CSV（日期+指标）进行 STL 季节分解（趋势/季节/残差分量）和 Holt-Winters 指数平滑预测，输出下 N 期预测值及 95% 置信区间。特别适用于服饰等强季节性品类的销售、流量或其他 KPI 预测。输入文件需包含日期列和指标列。",
-  "entry": "seasonal_forecast.py",
+  "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
-  "tags": ["forecast", "seasonality", "time-series", "python-analysis"],
+  "tags": [
+    "forecast",
+    "seasonality",
+    "time-series",
+    "python-analysis"
+  ],
   "input": {
     "accept": [
       ".csv"

@@ -15,6 +15,7 @@ import { useBusinessRequirementContexts, type BusinessRequirementContextScope } 
 import { api } from "@/lib/api";
 import { engineApi } from "@/lib/api/engine";
 import { cn } from "@/lib/cn";
+import { formatDisplayPath } from "@/lib/pathDisplay";
 import { useResumableTask } from "@/lib/resumableTask";
 import type { Flow, FlowTreeNode, GoldenStrategyError, GoldenStrategyModelId, GoldenStrategyNode, GoldenStrategyResult, PiModel } from "@/types";
 
@@ -575,7 +576,7 @@ export function GoldenStrategyPane({
               );
             })}
           </div>
-          {activeResult && <span className="truncate">{activeResult.path}</span>}
+          {activeResult && <span className="truncate" title={activeResult.path}>{formatDisplayPath(activeResult.path)}</span>}
         </div>
       )}
       {resultErrors.length > 0 && (
