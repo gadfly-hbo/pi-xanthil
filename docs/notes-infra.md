@@ -485,9 +485,29 @@
 
 **manifest v2 最小口径**：
 - 已审定字段：`category?: "ingestion" | "analysis"`、`tags?: string[]`、`riskLevel?: "L0"|"L1"|"L2"|"L3"`、`allowedUse?`、`forbiddenUse?`、`failureHandling?`、`input`、`output`、`parameters?`、`resultColumns?`、`metricHints?`。
+- 已扩展字段（X-TOOLUSE7 实现）：`aiExposure?: ToolAiExposure[]`、`outputContract?: ToolOutputContract`、`deprecated?: boolean`、`replacementToolId?: string`。
+- 已扩展字段（X-TOOLUSE7 已声明但未完全落库）：`owner?: string`。当前 `web/src/types.ts` 已声明为 `string` 仅用于 UI 展示与治理 warning；`server/tools/registry.ts` 尚未解析/校验/透传该字段，因此服务端 `listExtractionTools()` 暂不会返回 `owner`，工具 JSON 中即使填写也不会生效。
+- `category` 缺省或非法值一律归一为 `ingestion`，保守不暴露给 AI。
 - `category` 缺省或非法值一律归一为 `ingestion`，保守不暴露给 AI。
 - `tags` 只用于搜索、筛选、治理和候选理解，不代表权限；加载时 trim、去重、过滤空字符串。数据分析 Python 工具建议至少包含 `python-analysis`，并补业务域/任务/算法标签，如 `membership`、`retention`、`rfm`、`forecast`。
-- 预留但本轮不实现：`owner`、`deprecated`、`replacementToolId`、`aiExposure`、`outputContract`。这些字段需要另立卡，不要由 D/E/V 私自扩展语义。
+- `aiExposure` 采用多值能力集合；缺省且 `category=analysis` 时推导为 v1 等价集合 `manual_confirmed/mcp/command/subagent/workflow/eval`；缺省且 `category=ingestion` 时推导为空集合；显式 `aiExposure=[]` 表示不自动暴露。显式值完全覆盖推导，不与默认集合合并。
+- X-TOOLUSE7 grilling 已确认：`category` 只表达工具性质，`aiExposure` 才表达自动化入口暴露/权限策略。`aiExposure` 采用多值能力集合而非单值枚举，一个工具可同时允许 `manual_confirmed`、`mcp`、`command`、`subagent`、`workflow`、`eval` 等入口，也可显式为空集合表示完全不自动暴露。迁移期缺省 `aiExposure` 且 `category=analysis` 时推导为 v1 等价集合 `manual_confirmed/mcp/command/subagent/workflow/eval`；缺省且 `category=ingestion` 时推导为空集合；显式 `aiExposure` 完全覆盖推导，不与默认集合合并。未来新增更强自动执行入口时，不得自动纳入旧 `category=analysis` 推导。最终权限裁决应迁到 `aiExposure`，不再让 `category=analysis` 直接代表所有自动化入口可用。
+- X-TOOLUSE7 grilling 已确认：`outputContract` 是 `/api/extraction-tools/:id/run` 的运行强契约，不只是治理 UI 说明字段。迁移期由 `/run` adapter 兼容旧 `summary.json` / stdout 输出，统一转换成标准工具输出结构；adapter 之后由网关校验 summary/artifacts/MetricSnapshot/row-level 风险声明与 row guard 结果。工具脚本可逐步迁移到原生标准输出，但不得绕过网关 adapter 与契约校验。
+- X-TOOLUSE7 grilling 已确认：标准输出对外只暴露 artifact id / 受控相对路径 / basename，不暴露绝对路径。artifact 必须落在本次 run 的 output/report 目录内，由网关校验防穿越。LLM/MCP tool result 默认只拿 summary、metrics、artifact title/basename，不直接拿 artifact 正文。
+- X-TOOLUSE7 grilling 已确认：标准输出默认禁止明细表 / 样本行进入 LLM。`summary` 必须是 LLM-safe 短摘要，`metrics` 必须是聚合/确定性指标，artifact 正文默认不进入 LLM。`outputContract.tableShape` 建议区分 `aggregate` / `row_level` / `unknown`；`row_level` 只表示可落盘明细 artifact，不代表可进入 MCP/Chat tool result 或推荐器解释链路；缺省/无法判断按 `unknown` 保守处理。
+- X-TOOLUSE7 grilling 已确认：工具推荐器只能在当前入口 `aiExposure` 允许的候选集合里排序和解释，不能扩大权限。无合规候选时返回“无合规工具”，不得推荐禁用工具或建议绕到其他入口运行；也不得用历史成功率绕过 `deprecated`、`riskLevel`、`outputContract.tableShape` 或数据安全限制。
+- X-TOOLUSE7 grilling 已确认：`deprecated=true` 对自动化入口生效，MCP / command / subagent / workflow / recommender 不进入候选，历史绑定执行时后端拒绝并返回 `replacementToolId`。控制台人工运行可保留迁移期兼容但必须强提示退役和替代工具；Chat `@工具` 默认不展示退役工具，旧链接/历史触发时最多允许带 warning 的人工确认路径。`replacementToolId` 指向不存在或也 deprecated 时，registry / 治理 UI 应给 warning。
+- X-TOOLUSE7 grilling 已确认：标准化工具输出 canonical 命名为 `ToolRunOutput`、`ToolRunArtifact`、`ToolOutputContract`。旧 `summary.json` 兼容输入只叫 `LegacyToolSummary`，且只存在 adapter 内部，不作为产品领域概念继续扩散。
+- X-TOOLUSE7 grilling 已确认：`ToolAiExposure`、`ToolRunOutput`、`ToolRunArtifact`、`ToolOutputContract`、`ToolTableShape` 属跨域共享契约，应由总控进入双侧 `server/src/types.ts` / `web/src/types.ts`，域卡不得本地重声明；`LegacyToolSummary` 不进双侧类型，只留 `/run` adapter 内部。
+- X-TOOLUSE7 grilling 已确认：`outputContract.tableShape="unknown"` 是迁移期合法状态，但按保守策略使用。人工确认入口可运行并提示输出安全形态未知；MCP/autonomous 入口不允许，除非 `llmSafeSummary=true` 且不是 `row_level`；command/subagent/workflow 可绑定但只能自动传递 artifact metadata，不得把 artifact 正文注入后续 LLM；推荐器只能面向人工确认低优先级推荐；eval 允许用于补齐契约。
+- X-TOOLUSE7 grilling 已确认：第一轮迁移范围采用 adapter 优先。`/run` adapter 兼容旧 `summary.json` 并输出统一 `ToolRunOutput`，registry 为缺省 manifest 生成保守 `ToolOutputContract`，只挑 2-3 个核心 analysis 工具试点原生 `ToolRunOutput`；不一次性迁移全部 `server/tools/*`，不删除旧输出兼容，不把 artifact 正文注入 LLM，不新增独立 `tool_runs` 表，除非 trace_events 明显不够。
+- X-TOOLUSE7 grilling 已确认：工具推荐器首版采用确定性 scorer，不调用 LLM。输入只允许用户意图文本、当前入口、manifest 元数据、已登记路径类型/扩展名/目录类别、run ledger 统计和 ToolLab 状态；不得读取文件内容、数据探索字段/样本、draw_data 原始行或失败内容正文。输出 top N、score、模板化 reasons/warnings/blockers。
+- X-TOOLUSE7 grilling 已确认：工具推荐结果首版不持久化，不新增推荐事件表。推荐端点即时计算返回；用户采纳并运行后，由既有 `/run` ledger 记录 caller/source/status，供后续 scorer 使用。只有未来需要分析“推荐曝光→忽略/采纳→转化率”时，再评估 `tool_recommendation_events`。
+- X-TOOLUSE7 grilling 已确认：`owner` 首版计划为轻量治理对象 `{ name: string; contact?: string }`，只表示维护责任，不接用户/团队/RBAC，不参与执行授权。实际实现中，因 registry 尚未解析该字段，当前仅在前端类型声明为 `owner?: string` 并做 UI 展示与治理 warning；未来若要启用对象契约，需同时更新 `server/tools/registry.ts` 的 `ExtractionToolManifest` 与 `isManifest`。
+- X-TOOLUSE7 grilling 已确认：`riskLevel` 是 `aiExposure` 的硬安全上限。`L0/L1` 可按 exposure 暴露（L1 推荐降权）；`L2` 禁止 autonomous MCP，允许人工确认、workflow/eval 等带配置确认入口；`L3` 只能人工运行或 eval，不得进入 MCP / command / subagent / workflow / recommender 自动候选。manifest 写出冲突组合时，registry / policy 应保守过滤冲突 exposure 并给治理 warning。
+- X-TOOLUSE7 grilling 已确认：manifest / output governance 区分 blocking violation 与 governance warning。入口不在有效 `aiExposure`、风险上限过滤、自动化调用 deprecated、artifact 路径越界、`ToolRunOutput` 非法、row guard 与 `outputContract` 冲突等必须阻断相关入口；缺 owner、缺用途说明、`tableShape=unknown`、legacy adapter 兜底等只作为治理 warning，不阻断人工运行。
+- X-TOOLUSE7 grilling 已确认：实施顺序必须先总控契约卡再派域卡。`X-TOOLUSE7A` 定双侧 types、policy、registry normalize/validation 与 adapter 口径；`E/D-TOOLUSE7B` 做 `/run` adapter、校验和核心工具试点迁移；`V-TOOLUSE7C` 做治理 UI；`E-TOOLUSE7D` 做确定性推荐器；`X-TOOLUSE7E` 做全链验收、wiki/notes 收口和必要 ADR。
+- X-TOOLUSE7 grilling 已确认：验收门禁必须覆盖“旧行为不回退 + 新契约阻断”。旧 `category=analysis` manifest 在缺省 `aiExposure/outputContract` 时仍保持 v1 入口可见和可运行，旧 `ingestion` 仍不自动暴露；显式 `aiExposure=[]` 不自动暴露；风险上限冲突、deprecated 自动化调用、artifact 越界、非法 `ToolRunOutput`、row-level 进入 LLM、推荐禁用工具等必须被测试阻断。
 
 **工具分类与能力矩阵**：
 
@@ -501,12 +521,15 @@
 | workflow | 只保存 `toolId + params` | 不复制工具描述或参数 schema |
 | eval / ToolLab | 复用 `tests/cases.json` | 可用于准入、回归、失败样本候选 |
 
-**当前实现基线（2026-06-30 X-TOOLUSE6 终审核实）**：
-- `registry.ts` 已支持 `tags`、`category`、`metricHints` 归一化，且 `listExtractionTools()` / `getExtractionTool()` 每次实时 `loadTools()`，新增/删除工具后刷新即可生效。
-- `server/src/tool-policy.ts` 统一 server 侧 analysis 暴露策略；MCP tools/list 与 tools/call、command coerce、subagent server coerce 均复用或对齐该口径。
-- `ToolUsePane` 已具备 tags/search/filter、risk/category 筛选、跨模块能力矩阵、test cases 读取和运行台账视图；`ToolLab` 已接 category/risk/tags/query 过滤、cases/eval 状态与 policy 缺失提示。
+**当前实现基线（2026-07-08 X-TOOLUSE7E 验收后）**：
+- `registry.ts` 已支持 `tags`、`category`、`metricHints`、`aiExposure`、`outputContract`、`deprecated`、`replacementToolId` 的归一化/校验；`listExtractionTools()` / `getExtractionTool()` 每次实时 `loadTools()`，新增/删除工具后刷新即可生效。`owner` 尚未接入 registry，当前为 UI 层类型占位。
+- `server/src/tool-policy.ts` 统一 server 侧入口暴露策略与风险上限/退役过滤；`canExposeTo` / `getEffectiveAiExposure` / `checkToolPolicy` 被 MCP、command coerce、subagent server、推荐器、ToolUsePane 复用或对齐。
+- `server/src/tool-run-output.ts` 提供 `/run` adapter：旧 `summary.json` 转标准 `ToolRunOutput`，原生 `ToolRunOutput` 透传，校验 artifact 路径、越界拒绝、`MetricSnapshot[]`、row guard 与 `outputContract` 冲突。
+- `server/src/tool-recommendation.ts` 提供首版确定性推荐器：基于入口 `aiExposure`、manifest 元数据、已登记路径扩展名/目录类别、run ledger 统计、ToolLab 状态排序；不调用 LLM、不读取文件内容、不持久化结果。
+- `ToolUsePane` 已具备 tags/search/filter、risk/category/deprecated/replacement/shape/aiExposure 筛选、跨模块能力矩阵、治理 warnings/blockers、test cases 读取和运行台账视图；`ToolLab` 已接 category/risk/tags/query 过滤、cases/eval 状态与 policy 缺失提示。
 - 运行看板当前基于 `trace_events(target_kind='extraction_tool', type='tool_run')` 的脱敏字段生成 `ToolRunRecord`，不是独立 `tool_runs` 表；payload 记录 basename、路径分类、artifact basename、计数、耗时、caller/source/status、rowGuard、metricSnapshotsCount、errorCode 等 metadata，不保存绝对输入路径、文件正文、样本行或 SQL 明细。
-- `/run` 已接 row guard 与 `MetricSnapshot` 数字锁；Chat/MCP 路径经 `source:"ai"` 触发 AI 行级输出守卫与 MetricVerification 后续链路。
+- `/run` 已接 row guard 与 `MetricSnapshot` 数字锁；Chat/MCP 路径经 `source:"ai"` 触发 AI 行级输出守卫与 `MetricVerification` 后续链路。
+- `docs/adr/0001-tool-use-v2-exposure-and-output-contracts.md` 已记录 v2 设计决策。
 
 **安全红线**：
 - 数据探索模块（`DataExplorationPane.tsx` 及其子树）永久禁止接 LLM/tool-use 自动调用；相关改动必须跑 AGENTS.md 中的数据探索隔离 grep。

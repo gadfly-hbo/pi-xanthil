@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _tool_utils import find_col, main_tool
+from _tool_utils import find_col, main_tool_native, make_metric_snapshot
 
 warnings.filterwarnings("ignore")
 
@@ -166,14 +166,44 @@ def format_md(result):
     return "\n".join(lines)
 
 
+def process_file_native(file_path, opts):
+    file_result = process_file(file_path, opts)
+    if file_result.get("error"):
+        return file_result
+    r = file_result["results"]
+    overall = r.get("overall", {})
+    source_file = os.path.basename(file_path)
+    period = ""
+    metrics = []
+    if overall:
+        metrics = [
+            make_metric_snapshot("cohort数", overall.get("cohorts", 0), "cohort-retention", "overall.cohorts", source_file, period),
+            make_metric_snapshot("客户数", overall.get("customers", 0), "cohort-retention", "overall.customers", source_file, period),
+            make_metric_snapshot("事件行数", overall.get("events", 0), "cohort-retention", "overall.events", source_file, period),
+        ]
+        avg_p1 = overall.get("avgRetentionPeriod1")
+        if avg_p1 is not None:
+            metrics.append(make_metric_snapshot("P1平均留存率", avg_p1, "cohort-retention", "overall.avgRetentionPeriod1", source_file, period))
+    summary = f"同期群留存分析完成：{overall.get('cohorts', 0)} 个 cohort，{overall.get('customers', 0)} 客户，粒度 {overall.get('granularity', '-')}" if overall else "同期群留存分析完成"
+    file_result["toolRunOutput"] = {
+        "status": "success",
+        "summary": summary,
+        "metrics": metrics,
+        "artifacts": [],
+        "rowGuard": {"blocked": False},
+    }
+    return file_result
+
+
 if __name__ == "__main__":
-    main_tool(
+    main_tool_native(
         description="同期群留存/复购分析",
         param_defs=[
             {"name": "granularity", "type": str, "default": "monthly"},
             {"name": "max_periods", "type": int, "default": 12},
         ],
-        process_fn=process_file,
+        process_fn=process_file_native,
         format_fn=format_md,
         report_suffix="cohort_retention",
+        tool_id="cohort-retention",
     )

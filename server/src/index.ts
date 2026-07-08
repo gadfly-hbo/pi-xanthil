@@ -225,11 +225,15 @@ import type { EvaluationFlowConfig } from "./types.ts";
 import type { WorkflowAgentEntry, WorkflowRunView } from "./types.ts";
 import { getExtractionTool, listExtractionTools, validateExtractionInput } from "../tools/registry.ts";
 import { buildMetricSnapshotsFromHints } from "./extraction-tool-metric.ts";
+import {
+  adaptToolRunOutput,
+  buildLegacyCompatibleResponse,
+} from "./tool-run-output.ts";
 import { appendMetricVerificationBlock, collectMetricSnapshotsFromEvent } from "./metric-verification-events.ts";
 import { buildExtractionToolsMcpServer, ensureWorkspaceMcpConfig, registerAllWorkspaceMcp } from "./mcp/register.ts";
 import { registerChildProcess } from "./child-processes.ts";
 import { buildSanitizedEnv } from "./process-env.ts";
-import { aiToolRowGuardMessage, guardToolRunSummaryForSource, parseAiToolMaxRows } from "./ai-tool-row-guard.ts";
+import { guardToolRunSummaryForSource, parseAiToolMaxRows } from "./ai-tool-row-guard.ts";
 
 const ZHUANTI_ANAX_SOURCE_NAME = "AnaX 专题";
 
@@ -5279,10 +5283,6 @@ function classifyToolInputPath(workspaceId: string | undefined, inputPath: strin
   return { inputPathKind: match?.folder ?? null, inputPathBasename };
 }
 
-function outputArtifactsFromSummary(summary: { results?: Array<{ outputs?: string[] }> }): string[] {
-  return [...new Set((summary.results ?? []).flatMap((result) => result.outputs ?? []).map((path) => basename(path)).filter(Boolean))];
-}
-
 function recordToolRunValidationFailure(input: {
   workspaceId: string | undefined;
   toolId: string;
@@ -5414,27 +5414,17 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
     },
     (err, stdout, stderr) => {
       try {
-        const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as {
-          success?: number;
-          failed?: number;
-          error?: string;
-          results?: Array<{ outputs?: string[]; [key: string]: unknown }>;
-        };
-        const normalizedOutputRoot = outputPath.endsWith(sep) ? outputPath : outputPath + sep;
-        for (const result of summary.results ?? []) {
-          result.outputs = (result.outputs ?? []).filter((path) => {
-            const absolute = resolve(path);
-            return absolute === outputPath || absolute.startsWith(normalizedOutputRoot);
-          });
-        }
-        const rowGuard = guardToolRunSummaryForSource(source, summary, AI_TOOL_MAX_RESULT_ROWS);
-        const guardedSummary = rowGuard.summary as typeof summary;
-        const rowGuardError = rowGuard.blocked ? aiToolRowGuardMessage(AI_TOOL_MAX_RESULT_ROWS) : undefined;
+        const summary = JSON.parse(readFileSync(summaryPath, "utf8")) as unknown;
+        const rowGuardResult = guardToolRunSummaryForSource(source, summary, AI_TOOL_MAX_RESULT_ROWS);
+        const rowGuard = rowGuardResult.blocked
+          ? { blocked: true, rowLimit: AI_TOOL_MAX_RESULT_ROWS, maxRowsSeen: rowGuardResult.maxRowsSeen }
+          : { blocked: false };
+        const durationMs = Date.now() - startMs;
         // D-METRIC1: 在 row guard 通过且工具声明了 metricHints 时附加 MetricSnapshot[]，
         // 供 MCP 层贴数字锁前缀注入 LLM。row guard 触发或无 hints → 不附加，行为零变化。
-        const metricSnapshots = !rowGuardError && tool.metricHints
+        const metricSnapshots = !rowGuard.blocked && tool.metricHints
           ? buildMetricSnapshotsFromHints({
-              summary: guardedSummary,
+              summary: rowGuardResult.summary,
               hints: tool.metricHints,
               inputPath,
               params: paramsObj,
@@ -5442,8 +5432,33 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
               toolName: tool.name,
             })
           : [];
-        const durationMs = Date.now() - startMs;
-        const outputArtifacts = outputArtifactsFromSummary(guardedSummary);
+
+        const adapterResult = adaptToolRunOutput({
+          runId,
+          toolId: tool.id,
+          toolName: tool.name,
+          outputDir: outputPath,
+          summary: rowGuardResult.summary,
+          stdout,
+          stderr,
+          durationMs,
+          error: err,
+          rowGuard,
+          outputContract: tool.outputContract,
+          metricSnapshots,
+          caller,
+          source,
+          category: tool.category,
+          aiExposure: tool.aiExposure,
+          riskLevel: tool.riskLevel,
+          deprecated: tool.deprecated,
+          replacementToolId: tool.replacementToolId,
+        });
+
+        const { output, warnings, blockers, legacySummary } = adapterResult;
+        const outputArtifacts = output.artifacts.map((a) => a.basename);
+        const failed = blockers.length > 0 || output.status === "failed";
+
         if (workspaceId) {
           addTraceEvent({
             workspaceId,
@@ -5451,8 +5466,8 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
             targetId: tool.id,
             type: "tool_run",
             target: tool.name,
-            status: err || rowGuardError ? "failed" : "success",
-            detail: rowGuardError ?? `成功 ${guardedSummary.success ?? 0} · 失败 ${guardedSummary.failed ?? 0} · ${durationMs}ms`,
+            status: failed ? "failed" : "success",
+            detail: blockers.join("；") || output.summary,
             payload: {
               runId,
               toolId: tool.id,
@@ -5461,25 +5476,33 @@ app.post("/api/extraction-tools/:id/run", (req, res) => {
               ...target,
               ...inputMeta,
               outputArtifacts,
-              status: err || rowGuardError ? "failed" : "success",
-              success: guardedSummary.success,
-              failed: guardedSummary.failed,
+              status: failed ? "failed" : "success",
+              success: legacySummary?.success ?? (output.status === "success" ? 1 : 0),
+              failed: legacySummary?.failed ?? (output.status === "failed" ? 1 : 0),
               durationMs,
-              rowGuard: rowGuardError ? { blocked: true, rowLimit: AI_TOOL_MAX_RESULT_ROWS, maxRowsSeen: rowGuard.maxRowsSeen } : { blocked: false },
-              metricSnapshotsCount: metricSnapshots.length,
-              ...(rowGuardError ? { errorCode: "row_guard" } : err ? { errorCode: "tool_error" } : {}),
+              rowGuard,
+              metricSnapshotsCount: output.metrics.length,
+              errorCode: output.errorCode,
+              governanceWarnings: warnings,
+              ...(blockers.length > 0 ? { blockers } : {}),
             },
           });
         }
-        res.status(err || rowGuardError ? 400 : 200).json({
-          runId,
-          toolId: tool.id,
-          stdout,
-          stderr,
-          ...guardedSummary,
-          ...(metricSnapshots.length > 0 ? { metricSnapshots } : {}),
-          ...(rowGuardError ? { error: rowGuardError, rowLimit: AI_TOOL_MAX_RESULT_ROWS, maxRowsSeen: rowGuard.maxRowsSeen } : {}),
-        });
+
+        if (blockers.length > 0) {
+          return res.status(403).json({
+            runId,
+            toolId: tool.id,
+            error: `tool run blocked: ${blockers.join("; ")}`,
+            blockers,
+            warnings,
+            stdout,
+            stderr,
+          });
+        }
+
+        const response = buildLegacyCompatibleResponse(output, legacySummary, stdout, stderr);
+        res.status(failed ? 400 : 200).json(response);
       } catch (summaryError) {
         if (workspaceId) {
           addTraceEvent({

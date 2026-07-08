@@ -39,6 +39,7 @@
 |---|---|
 | [工作流-onblock契约.md](工作流-onblock契约.md) | 工作流闭环 onBlock 契约（gate 失败→带证据回跳） |
 | [workflow-schema-compat.md](workflow-schema-compat.md) | workflow.json schema 兼容口径 |
+| [adr/](adr/) | 架构决策记录；当前含 tool-use v2 暴露策略与标准输出契约 ADR |
 
 ## 四、任务派发书（历史档案）
 

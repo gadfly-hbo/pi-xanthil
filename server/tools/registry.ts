@@ -2,6 +2,7 @@ import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { dirname, extname, join, resolve, sep } from "node:path";
 import { fileURLToPath } from "node:url";
 import { coerceMetricHints, type MetricHint } from "../src/extraction-tool-metric.ts";
+import type { RiskLevel, ToolAiExposure, ToolOutputContract, ToolTableShape } from "../src/types.ts";
 
 export interface ToolParameter {
   name: string;
@@ -23,6 +24,10 @@ export interface ExtractionToolManifest {
   entry: string;
   runtime: "python3";
   category?: ExtractionToolCategory;
+  aiExposure?: ToolAiExposure[];
+  outputContract?: ToolOutputContract;
+  deprecated?: boolean;
+  replacementToolId?: string;
   input: {
     accept: string[];
     modes: Array<"file" | "directory">;
@@ -37,7 +42,7 @@ export interface ExtractionToolManifest {
     columns: Array<{ name: string; required?: boolean; description?: string; example?: string }>;
     note?: string;
   };
-  riskLevel?: "L0" | "L1" | "L2" | "L3";
+  riskLevel?: RiskLevel;
   allowedUse?: string;
   forbiddenUse?: string;
   failureHandling?: string;
@@ -56,6 +61,11 @@ const TOOLS_ROOT = dirname(fileURLToPath(import.meta.url));
 
 function isStringArray(value: unknown): value is string[] {
   return Array.isArray(value) && value.every((item) => typeof item === "string");
+}
+
+function isValidAiExposure(value: unknown): value is ToolAiExposure {
+  const exposures: ToolAiExposure[] = ["manual_confirmed", "mcp", "command", "subagent", "workflow", "eval"];
+  return typeof value === "string" && exposures.includes(value as ToolAiExposure);
 }
 
 function isManifest(value: unknown): value is ExtractionToolManifest {
@@ -77,7 +87,11 @@ function isManifest(value: unknown): value is ExtractionToolManifest {
     && (item.tags === undefined || isStringArray(item.tags))
     && (item.timeoutMs === undefined || (typeof item.timeoutMs === "number" && Number.isInteger(item.timeoutMs) && item.timeoutMs > 0))
     && (!item.parameters || Array.isArray(item.parameters))
-    && (!item.resultColumns || Array.isArray(item.resultColumns));
+    && (!item.resultColumns || Array.isArray(item.resultColumns))
+    && (item.aiExposure === undefined || (Array.isArray(item.aiExposure) && item.aiExposure.every(isValidAiExposure)))
+    && (item.outputContract === undefined || (typeof item.outputContract === "object" && item.outputContract !== null))
+    && (item.deprecated === undefined || typeof item.deprecated === "boolean")
+    && (item.replacementToolId === undefined || typeof item.replacementToolId === "string");
 }
 
 function normalizeCategory(value: unknown): ExtractionToolCategory {
@@ -89,12 +103,46 @@ function normalizeTags(value: unknown): string[] {
   return [...new Set(value.map((tag) => tag.trim()).filter(Boolean))].slice(0, 24);
 }
 
+function normalizeAiExposure(value: unknown): ToolAiExposure[] | undefined {
+  if (!Array.isArray(value)) return undefined;
+  const exposures: ToolAiExposure[] = ["manual_confirmed", "mcp", "command", "subagent", "workflow", "eval"];
+  const filtered = value.filter((item): item is ToolAiExposure => typeof item === "string" && exposures.includes(item as ToolAiExposure));
+  return filtered;
+}
+
+function normalizeOutputContract(value: unknown): ToolOutputContract | undefined {
+  if (!value || typeof value !== "object") return { tableShape: "unknown" };
+  const obj = value as Record<string, unknown>;
+  const shapes: ToolTableShape[] = ["aggregate", "row_level", "unknown"];
+  const tableShape = typeof obj.tableShape === "string" && shapes.includes(obj.tableShape as ToolTableShape)
+    ? (obj.tableShape as ToolTableShape)
+    : "unknown";
+  const contract: ToolOutputContract = { tableShape };
+  if (typeof obj.llmSafeSummary === "boolean") contract.llmSafeSummary = obj.llmSafeSummary;
+  if (typeof obj.rowLimit === "number" && Number.isInteger(obj.rowLimit) && obj.rowLimit > 0) contract.rowLimit = obj.rowLimit;
+  return contract;
+}
+
+function normalizeDeprecated(value: unknown): boolean | undefined {
+  return typeof value === "boolean" ? value : undefined;
+}
+
+function normalizeReplacementToolId(value: unknown): string | undefined {
+  if (typeof value !== "string") return undefined;
+  const trimmed = value.trim();
+  return trimmed ? trimmed : undefined;
+}
+
 function normalizeManifest(manifest: ExtractionToolManifest): ExtractionToolManifest {
   return {
     ...manifest,
     category: normalizeCategory(manifest.category),
     tags: normalizeTags(manifest.tags),
     metricHints: coerceMetricHints(manifest.metricHints),
+    aiExposure: normalizeAiExposure(manifest.aiExposure),
+    outputContract: normalizeOutputContract(manifest.outputContract),
+    deprecated: normalizeDeprecated(manifest.deprecated),
+    replacementToolId: normalizeReplacementToolId(manifest.replacementToolId),
   };
 }
 

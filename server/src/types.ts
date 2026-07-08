@@ -4,6 +4,8 @@
 import type { GateVerdict } from "./anax-gate.ts";
 import type { ValidationIssue } from "./onto-validator.ts";
 
+export type RiskLevel = "L0" | "L1" | "L2" | "L3";
+
 export interface Workspace {
   id: string;
   name: string;
@@ -3319,6 +3321,55 @@ export interface ToolRunRecord {
   metricSnapshotsCount: number;
   errorCode: string | null;
   durationMs: number | null;
+}
+
+// ════ Tool-use v2 跨域契约（X-TOOLUSE7A）════════════════════════════════════
+// 双侧真源：ToolAiExposure / ToolRunOutput / ToolRunArtifact / ToolOutputContract / ToolTableShape
+// 必须保持 server/src/types.ts 与 web/src/types.ts 同义，禁止域内重声明。
+
+export type ToolAiExposure =
+  | "manual_confirmed"
+  | "mcp"
+  | "command"
+  | "subagent"
+  | "workflow"
+  | "eval";
+
+export type ToolTableShape = "aggregate" | "row_level" | "unknown";
+
+export interface ToolOutputContract {
+  tableShape: ToolTableShape;
+  // 显式声明 summary 不含原始行、可被 LLM 安全引用；unknown/row_level 形态下需人工复核。
+  llmSafeSummary?: boolean;
+  // 输出契约建议的行数上限；row_level 工具应设置，网关与 row guard 共同兜底。
+  rowLimit?: number;
+}
+
+export interface ToolRunArtifact {
+  id: string;
+  title: string;
+  basename: string;
+  relPath: string;
+  kind: "report" | "data" | "summary" | "other";
+}
+
+export interface ToolRunOutput {
+  runId: string;
+  toolId: string;
+  toolName: string;
+  status: "success" | "failed";
+  summary: string;          // LLM-safe 短摘要，默认禁止含原始行/明细
+  metrics: MetricSnapshot[]; // 确定性指标，给 MCP 数字锁注入
+  artifacts: ToolRunArtifact[];
+  rowGuard: { blocked: boolean; rowLimit?: number; maxRowsSeen?: number } | null;
+  errorCode?: string | null;
+  durationMs?: number;
+}
+
+export interface ToolPolicyCheck {
+  allowed: boolean;
+  blockers: string[];
+  warnings: string[];
 }
 
 // 计算工具·command 管理 —— pi-xanthil 自有的「斜杠命令注册表」契约（详见 docs/wiki.html「command 管理」卡）。

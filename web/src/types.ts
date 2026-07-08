@@ -220,6 +220,64 @@ export interface ToolParameter {
 
 export type ExtractionToolCategory = "ingestion" | "analysis";
 
+export type ToolAiExposure =
+  | "manual_confirmed"
+  | "mcp"
+  | "command"
+  | "subagent"
+  | "workflow"
+  | "eval";
+
+export type ToolTableShape = "aggregate" | "row_level" | "unknown";
+
+export interface ToolOutputContract {
+  tableShape: ToolTableShape;
+  llmSafeSummary?: boolean;
+  rowLimit?: number;
+}
+
+export interface ToolRunArtifact {
+  id: string;
+  title: string;
+  basename: string;
+  relPath: string;
+  kind: "report" | "data" | "summary" | "other";
+}
+
+export interface ToolRunOutput {
+  runId: string;
+  toolId: string;
+  toolName: string;
+  status: "success" | "failed";
+  summary: string;
+  metrics: MetricSnapshot[];
+  artifacts: ToolRunArtifact[];
+  rowGuard: { blocked: boolean; rowLimit?: number; maxRowsSeen?: number } | null;
+  errorCode?: string | null;
+  durationMs?: number;
+}
+
+export interface ToolPolicyCheck {
+  allowed: boolean;
+  blockers: string[];
+  warnings: string[];
+}
+
+export interface ToolRecommendation {
+  toolId: string;
+  score: number;
+  allowed: boolean;
+  reasons: string[];
+  warnings: string[];
+  blockers: string[];
+}
+
+export interface ToolRecommendationResult {
+  entry: ToolAiExposure;
+  candidates: ToolRecommendation[];
+  blockers: string[];
+}
+
 export interface ExtractionTool {
   id: string;
   name: string;
@@ -228,6 +286,11 @@ export interface ExtractionTool {
   entry: string;
   runtime: "python3";
   category?: ExtractionToolCategory;
+  aiExposure?: ToolAiExposure[];
+  outputContract?: ToolOutputContract;
+  deprecated?: boolean;
+  replacementToolId?: string;
+  owner?: string;
   tags?: string[];
   timeoutMs?: number;
   parameters?: ToolParameter[];

@@ -5,7 +5,17 @@ import { extname, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 import { homedir } from "node:os";
 import { DatabaseSync } from "node:sqlite";
-import { listWorkspacePaths, getWorkspacePath, getWorkspace, listMemoryInjectionRecords, addTraceEvent, addWorkspacePath } from "../db.ts";
+import { listWorkspacePaths, getWorkspacePath, getWorkspace, listMemoryInjectionRecords, addTraceEvent, addWorkspacePath, listToolRuns } from "../db.ts";
+import { listToolEvaluations } from "../db/engine.ts";
+import { listExtractionTools } from "../../tools/registry.ts";
+import {
+  recommendTools,
+  buildPathContext,
+  aggregateToolRunLedgerStats,
+  aggregateToolLabStats,
+  type ToolRecommendationManifest,
+  type PathContext,
+} from "../tool-recommendation.ts";
 import {
   getConnection as getSqlConnection,
   getSchema as getSqlSchema,
@@ -149,6 +159,7 @@ import type {
   CrowdSegmentRuleGroup,
   OkhMetricOntologyLink,
   OkhTemplateScenario,
+  ToolAiExposure,
 } from "../types.ts";
 
 /**
@@ -633,6 +644,103 @@ dataRouter.get("/api/mcp-servers", (_req, res) => {
     res.json(items);
   } catch (err) {
     res.status(500).json({ error: String(err) });
+  }
+});
+
+// 确定性工具推荐器（X-TOOLUSE7D）。
+// 只读 manifest 元数据、登记路径扩展名/目录类别、运行看板统计、ToolLab 评测结果；
+// 不调用 LLM、不读取文件内容、不读取 draw_data 原始行。
+
+const VALID_RECOMMEND_ENTRIES: ReadonlySet<ToolAiExposure> = new Set([
+  "manual_confirmed",
+  "mcp",
+  "command",
+  "subagent",
+  "workflow",
+  "eval",
+]);
+
+function parseRecommendEntry(value: unknown): ToolAiExposure | null {
+  return VALID_RECOMMEND_ENTRIES.has(value as ToolAiExposure)
+    ? (value as ToolAiExposure)
+    : null;
+}
+
+function manifestToRecommendationManifest(
+  manifest: ReturnType<typeof listExtractionTools>[number]
+): ToolRecommendationManifest {
+  return {
+    id: manifest.id,
+    category: manifest.category,
+    tags: manifest.tags,
+    aiExposure: manifest.aiExposure,
+    riskLevel: manifest.riskLevel,
+    deprecated: manifest.deprecated,
+    outputContract: manifest.outputContract,
+    replacementToolId: manifest.replacementToolId,
+    inputAccept: manifest.input.accept,
+    allowedUse: manifest.allowedUse,
+    forbiddenUse: manifest.forbiddenUse,
+  };
+}
+
+function buildRecommendPathContext(
+  workspaceId: string,
+  inputPath?: string
+): PathContext {
+  const paths = listWorkspacePaths(workspaceId).map((p) => ({
+    path: p.path,
+    folder: p.folder,
+    kind: p.kind,
+  }));
+  if (inputPath) {
+    paths.push({ path: inputPath, folder: "clean_data", kind: "file" as const });
+  }
+  return buildPathContext(paths);
+}
+
+dataRouter.post("/api/workspaces/:id/tool-recommendations", (req, res) => {
+  try {
+    const workspace = getWorkspace(String(req.params.id ?? ""));
+    if (!workspace) return res.status(404).json({ error: "workspace not found" });
+
+    const entry = parseRecommendEntry(req.body?.entry);
+    if (!entry) return res.status(400).json({ error: "invalid entry" });
+
+    const intent =
+      typeof req.body?.intent === "string" ? req.body.intent.trim() : undefined;
+    const inputPath =
+      typeof req.body?.inputPath === "string" ? req.body.inputPath.trim() : undefined;
+
+    const tools = listExtractionTools().map(manifestToRecommendationManifest);
+    const pathContext = buildRecommendPathContext(workspace.id, inputPath);
+
+    const runRecords = listToolRuns(workspace.id, { limit: 1000 }).map((r) => ({
+      toolId: r.toolId,
+      status: r.status,
+      time: r.time,
+    }));
+    const ledgerStats = aggregateToolRunLedgerStats(runRecords);
+
+    const evaluations = listToolEvaluations(workspace.id).map((e) => ({
+      toolId: e.toolId,
+      status: e.status,
+      startedAt: e.startedAt,
+    }));
+    const toolLabStats = aggregateToolLabStats(evaluations);
+
+    const result = recommendTools({
+      entry,
+      intent,
+      tools,
+      pathContext,
+      ledgerStats,
+      toolLabStats,
+    });
+
+    res.json(result);
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }
 });
 

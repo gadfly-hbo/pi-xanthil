@@ -6,6 +6,11 @@
   "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
+  "aiExposure": ["manual_confirmed", "mcp", "command", "subagent", "workflow", "eval"],
+  "outputContract": {
+    "tableShape": "aggregate",
+    "llmSafeSummary": true
+  },
   "tags": [
     "rfm",
     "segmentation",
@@ -50,6 +55,13 @@
       "key": "topSegment",
       "label": "最大群"
     }
+  ],
+  "metricHints": [
+    { "summaryKey": "overall.customers", "name": "客户数" },
+    { "summaryKey": "overall.segments", "name": "分群数" },
+    { "summaryKey": "overall.avg_recency_days", "name": "平均最近购买天数", "unit": "天" },
+    { "summaryKey": "overall.avg_frequency", "name": "平均购买频次" },
+    { "summaryKey": "overall.avg_monetary", "name": "平均累计金额" }
   ],
   "parameters": [
     {

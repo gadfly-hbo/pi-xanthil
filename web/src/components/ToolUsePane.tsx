@@ -1,9 +1,10 @@
 import { useCallback, useEffect, useMemo, useState } from "react";
-import { Wrench, ShieldCheck, Bot, FlaskConical, RefreshCw, Activity, Search, Tags, Copy, Check } from "lucide-react";
+import { Wrench, ShieldCheck, Bot, FlaskConical, RefreshCw, Activity, Search, Tags, Copy, Check, AlertTriangle, AlertOctagon, Ban, ArrowRight, User } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
-import type { ExtractionTool, ToolEvalCase, ToolRunRecord } from "@/types";
+import type { ExtractionTool, ToolEvalCase, ToolRunRecord, RiskLevel } from "@/types";
 import type { FolderScope } from "@/tabs/types";
+import type { ToolAiExposure, ToolTableShape } from "@/types";
 
 interface Props {
   scope: FolderScope;
@@ -12,6 +13,10 @@ interface Props {
 
 type Category = "ingestion" | "analysis";
 type RiskFilter = "all" | "L0" | "L1" | "L2" | "L3";
+type DeprecatedFilter = "all" | "yes" | "no";
+type ReplacementFilter = "all" | "has" | "missing";
+type ShapeFilter = "all" | ToolTableShape;
+type AiExposureFilter = "all" | "any" | "none" | ToolAiExposure;
 
 type EvalState =
   | { status: "idle" }
@@ -24,12 +29,45 @@ const CATEGORY_LABEL: Record<Category, string> = {
   analysis: "分析",
 };
 
+const AI_EXPOSURE_LABEL: Record<ToolAiExposure, string> = {
+  manual_confirmed: "人工确认",
+  mcp: "MCP",
+  command: "Command",
+  subagent: "Subagent",
+  workflow: "Workflow",
+  eval: "评测",
+};
+
+const TABLE_SHAPE_LABEL: Record<ToolTableShape, string> = {
+  aggregate: "聚合",
+  row_level: "行级",
+  unknown: "未知",
+};
+
+const AUTOMATION_EXPOSURES: ToolAiExposure[] = ["mcp", "command", "subagent", "workflow"];
+const DEFAULT_ANALYSIS_AI_EXPOSURE: ToolAiExposure[] = ["manual_confirmed", "mcp", "command", "subagent", "workflow", "eval"];
+
 function categoryOf(tool: ExtractionTool): Category {
   return tool.category === "analysis" ? "analysis" : "ingestion";
 }
 
-function isAiExposed(tool: ExtractionTool): boolean {
-  return categoryOf(tool) === "analysis";
+function isMcpExposed(tool: ExtractionTool): boolean {
+  return canExposeTo(tool, "mcp");
+}
+
+function hasNonMcpAutomationExposure(tool: ExtractionTool): boolean {
+  return ["command", "subagent", "workflow"].some((e) => canExposeTo(tool, e as ToolAiExposure));
+}
+
+function isManualOrEvalExposed(tool: ExtractionTool): boolean {
+  return canExposeTo(tool, "manual_confirmed") || canExposeTo(tool, "eval");
+}
+
+function exposureSummaryLabel(tool: ExtractionTool): string {
+  if (isMcpExposed(tool)) return "经 MCP 暴露给 AI";
+  if (hasNonMcpAutomationExposure(tool)) return "可经自动化入口";
+  if (isManualOrEvalExposed(tool)) return "仅人工确认 / 评测";
+  return "不向 AI 暴露";
 }
 
 function normalizeTag(tag: string): string {
@@ -41,6 +79,103 @@ function toolTags(tool: ExtractionTool): string[] {
   return [...new Set(explicit.map(normalizeTag).filter(Boolean))];
 }
 
+function deriveAiExposure(tool: ExtractionTool): ToolAiExposure[] {
+  if (tool.aiExposure !== undefined) return [...tool.aiExposure];
+  return categoryOf(tool) === "analysis" ? [...DEFAULT_ANALYSIS_AI_EXPOSURE] : [];
+}
+
+function applyRiskLevelCap(exposure: ToolAiExposure[], riskLevel: RiskLevel | undefined): ToolAiExposure[] {
+  if (!riskLevel || riskLevel === "L0" || riskLevel === "L1") return exposure;
+  if (riskLevel === "L2") return exposure.filter((e) => e !== "mcp");
+  return exposure.filter((e) => e === "manual_confirmed" || e === "eval");
+}
+
+function applyDeprecatedFilter(exposure: ToolAiExposure[], deprecated: boolean | undefined): ToolAiExposure[] {
+  if (!deprecated) return exposure;
+  return exposure.filter((e) => e === "manual_confirmed" || e === "eval");
+}
+
+function getEffectiveAiExposure(tool: ExtractionTool): ToolAiExposure[] {
+  const raw = deriveAiExposure(tool);
+  const capped = applyRiskLevelCap(raw, tool.riskLevel);
+  return applyDeprecatedFilter(capped, tool.deprecated);
+}
+
+function hasAutomationCandidateExposure(exposure: ToolAiExposure[]): boolean {
+  return exposure.some((e) => AUTOMATION_EXPOSURES.includes(e));
+}
+
+function canExposeTo(tool: ExtractionTool, exposure: ToolAiExposure): boolean {
+  return getEffectiveAiExposure(tool).includes(exposure);
+}
+
+function deriveOutputContract(tool: ExtractionTool): NonNullable<ExtractionTool["outputContract"]> {
+  return tool.outputContract ?? { tableShape: "unknown" };
+}
+
+function getReplacementTool(allTools: ExtractionTool[], replacementToolId: string | undefined): ExtractionTool | null {
+  if (!replacementToolId) return null;
+  return allTools.find((t) => t.id === replacementToolId) ?? null;
+}
+
+function getToolGovernanceWarnings(tool: ExtractionTool, allTools: ExtractionTool[]): string[] {
+  const warnings: string[] = [];
+  const raw = deriveAiExposure(tool);
+  const capped = applyRiskLevelCap(raw, tool.riskLevel);
+  const removedByRiskLevel = raw.filter((e) => !capped.includes(e));
+  if (removedByRiskLevel.length > 0) {
+    warnings.push(`riskLevel=${tool.riskLevel} 移除了自动化入口：${removedByRiskLevel.map((e) => AI_EXPOSURE_LABEL[e]).join(", ")}`);
+  }
+  const effective = applyDeprecatedFilter(capped, tool.deprecated);
+  const removedByDeprecated = capped.filter((e) => !effective.includes(e));
+  if (removedByDeprecated.length > 0) {
+    warnings.push(`已退役工具移除了自动化入口：${removedByDeprecated.map((e) => AI_EXPOSURE_LABEL[e]).join(", ")}`);
+  }
+  if (tool.replacementToolId) {
+    const replacement = getReplacementTool(allTools, tool.replacementToolId);
+    if (!replacement) {
+      warnings.push(`替代工具 ${tool.replacementToolId} 不存在`);
+    } else if (replacement.deprecated) {
+      warnings.push(`替代工具 ${tool.replacementToolId} 也已退役`);
+    }
+  }
+  const contract = deriveOutputContract(tool);
+  if (contract.tableShape === "unknown") {
+    warnings.push("输出形态未知，建议人工复核后再接入自动化入口");
+  }
+  if (contract.tableShape === "row_level") {
+    warnings.push("输出为行级数据，禁止把产物正文注入 LLM");
+  }
+  if (!tool.owner) {
+    warnings.push("缺少 owner 字段");
+  }
+  if (!tool.allowedUse && !tool.description) {
+    warnings.push("缺少用途说明（allowedUse / description）");
+  }
+  if (tool.entry && !tool.entry.endsWith(".py") && tool.runtime !== "python3") {
+    warnings.push("legacy adapter：非 python3 入口");
+  }
+  return warnings;
+}
+
+function getToolPolicyBlockers(tool: ExtractionTool): string[] {
+  const blockers: string[] = [];
+  const contract = deriveOutputContract(tool);
+  for (const exposure of AUTOMATION_EXPOSURES) {
+    if (!canExposeTo(tool, exposure)) {
+      blockers.push(`${AI_EXPOSURE_LABEL[exposure]}：未暴露`);
+      continue;
+    }
+    if (contract.tableShape === "unknown" && (exposure === "mcp" || exposure === "subagent") && !contract.llmSafeSummary) {
+      blockers.push(`${AI_EXPOSURE_LABEL[exposure]}：输出形态未知且无 LLM-safe summary`);
+    }
+    if (contract.tableShape === "row_level" && (exposure === "mcp" || exposure === "subagent")) {
+      blockers.push(`${AI_EXPOSURE_LABEL[exposure]}：输出为行级数据`);
+    }
+  }
+  return blockers;
+}
+
 function toolSearchText(tool: ExtractionTool): string {
   return [
     tool.id,
@@ -48,6 +183,8 @@ function toolSearchText(tool: ExtractionTool): string {
     tool.description,
     tool.category ?? "",
     tool.riskLevel ?? "",
+    tool.owner ?? "",
+    tool.replacementToolId ?? "",
     tool.input.accept.join(" "),
     tool.output.join(" "),
     tool.allowedUse ?? "",
@@ -66,6 +203,11 @@ export function ToolUsePane({ workspaceId }: Props) {
   const [query, setQuery] = useState("");
   const [tagFilter, setTagFilter] = useState("all");
   const [riskFilter, setRiskFilter] = useState<RiskFilter>("all");
+  const [deprecatedFilter, setDeprecatedFilter] = useState<DeprecatedFilter>("all");
+  const [replacementFilter, setReplacementFilter] = useState<ReplacementFilter>("all");
+  const [shapeFilter, setShapeFilter] = useState<ShapeFilter>("all");
+  const [aiExposureFilter, setAiExposureFilter] = useState<AiExposureFilter>("all");
+  const [ownerFilter, setOwnerFilter] = useState("all");
   const [evalState, setEvalState] = useState<EvalState>({ status: "idle" });
   const [view, setView] = useState<"console" | "board">("console");
   const [copiedToolId, setCopiedToolId] = useState("");
@@ -95,23 +237,58 @@ export function ToolUsePane({ workspaceId }: Props) {
       if (filter !== "all" && categoryOf(t) !== filter) return false;
       if (riskFilter !== "all" && t.riskLevel !== riskFilter) return false;
       if (tagFilter !== "all" && !toolTags(t).includes(tagFilter)) return false;
+      if (deprecatedFilter !== "all") {
+        const isDeprecated = !!t.deprecated;
+        if (deprecatedFilter === "yes" && !isDeprecated) return false;
+        if (deprecatedFilter === "no" && isDeprecated) return false;
+      }
+      if (replacementFilter !== "all") {
+        const hasReplacement = !!t.replacementToolId;
+        if (replacementFilter === "has" && !hasReplacement) return false;
+        if (replacementFilter === "missing" && hasReplacement) return false;
+      }
+      if (shapeFilter !== "all") {
+        const contract = deriveOutputContract(t);
+        if (contract.tableShape !== shapeFilter) return false;
+      }
+      if (aiExposureFilter !== "all") {
+        const effective = getEffectiveAiExposure(t);
+        if (aiExposureFilter === "any" && !hasAutomationCandidateExposure(effective)) return false;
+        if (aiExposureFilter === "none" && hasAutomationCandidateExposure(effective)) return false;
+        if (aiExposureFilter !== "any" && aiExposureFilter !== "none" && !effective.includes(aiExposureFilter)) return false;
+      }
+      if (ownerFilter !== "all") {
+        if ((t.owner ?? "未知") !== ownerFilter) return false;
+      }
       if (q && !toolSearchText(t).includes(q)) return false;
       return true;
     });
-  }, [tools, filter, query, riskFilter, tagFilter]);
+  }, [tools, filter, query, riskFilter, tagFilter, deprecatedFilter, replacementFilter, shapeFilter, aiExposureFilter, ownerFilter]);
 
   const allTags = useMemo(() => {
     return [...new Set(tools.flatMap(toolTags))].sort((a, b) => a.localeCompare(b));
   }, [tools]);
 
+  const allOwners = useMemo(() => {
+    const set = new Set<string>();
+    for (const t of tools) {
+      set.add(t.owner ?? "未知");
+    }
+    return [...set].sort((a, b) => a.localeCompare(b));
+  }, [tools]);
+
   const counts = useMemo(() => {
     let ingestion = 0;
     let analysis = 0;
+    let deprecated = 0;
+    let aiExposed = 0;
     for (const t of tools) {
       if (categoryOf(t) === "analysis") analysis += 1;
       else ingestion += 1;
+      if (t.deprecated) deprecated += 1;
+      if (hasAutomationCandidateExposure(getEffectiveAiExposure(t))) aiExposed += 1;
     }
-    return { ingestion, analysis, total: tools.length };
+    return { ingestion, analysis, total: tools.length, deprecated, aiExposed };
   }, [tools]);
 
   useEffect(() => {
@@ -145,7 +322,7 @@ export function ToolUsePane({ workspaceId }: Props) {
             <Wrench className="h-4 w-4" /> 计算工具 · tool-use（管理控制台）
           </h1>
           <p className="mt-1 text-[12.5px] text-neutral-500">
-            统一查看本仓库注册的本地工具：用途分类（摄取 / 分析）、AI 暴露（仅 analysis 类经 MCP 暴露给 pi-agent）、标签 / 参数 / 风险 / 适用场景。
+            统一查看本仓库注册的本地工具：用途分类（摄取 / 分析）、AI 暴露（由 aiExposure / riskLevel / deprecated 共同决定生效入口）、标签 / 参数 / 风险 / 适用场景。
           </p>
           <p className="mt-1 text-[11.5px] text-neutral-400">
             本面板只做<b>管理</b>：工具新增 / 修改的代码仍由开发者放在
@@ -182,7 +359,13 @@ export function ToolUsePane({ workspaceId }: Props) {
           </div>
           <ul className="mt-1 list-disc space-y-0.5 pl-5 text-[11.5px]">
             <li>
-              <b>分析类（analysis）</b>工具经 MCP 暴露给 pi-agent，由模型按需调用；输入路径可为已登记的
+              <b>分析类（analysis）</b>工具默认可经 MCP 等入口暴露给 pi-agent，但<b>实际生效入口</b>由 manifest 的
+              <code className="mx-1 font-mono text-[11px]">aiExposure</code>
+              、
+              <code className="mx-1 font-mono text-[11px]">riskLevel</code>
+              、
+              <code className="mx-1 font-mono text-[11px]">deprecated</code>
+              共同决定；输入路径可为已登记的
               <code className="mx-1 font-mono text-[11px]">draw_data</code>
               /
               <code className="mx-1 font-mono text-[11px]">clean_data</code>
@@ -217,7 +400,7 @@ export function ToolUsePane({ workspaceId }: Props) {
               <h2 className="flex flex-wrap items-center gap-1.5 text-[12px] font-semibold">
                 <Wrench className="h-3.5 w-3.5" /> 已注册工具
                 <span className="text-[10.5px] font-normal text-neutral-400">
-                  共 {counts.total} · 摄取 {counts.ingestion} · 分析 {counts.analysis}
+                  共 {counts.total} · 摄取 {counts.ingestion} · 分析 {counts.analysis} · 退役 {counts.deprecated} · 自动化 {counts.aiExposed}
                 </span>
               </h2>
               <button
@@ -279,12 +462,69 @@ export function ToolUsePane({ workspaceId }: Props) {
               </div>
             </div>
 
+            <div className="mt-2 grid grid-cols-2 gap-2 sm:grid-cols-3 lg:grid-cols-5">
+              <select
+                value={deprecatedFilter}
+                onChange={(e) => setDeprecatedFilter(e.target.value as DeprecatedFilter)}
+                className="rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[11px] dark:border-neutral-700"
+                title="按退役状态筛选"
+              >
+                <option value="all">全部退役状态</option>
+                <option value="yes">已退役</option>
+                <option value="no">未退役</option>
+              </select>
+              <select
+                value={replacementFilter}
+                onChange={(e) => setReplacementFilter(e.target.value as ReplacementFilter)}
+                className="rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[11px] dark:border-neutral-700"
+                title="按替代工具筛选"
+              >
+                <option value="all">全部替代状态</option>
+                <option value="has">有替代工具</option>
+                <option value="missing">无替代工具</option>
+              </select>
+              <select
+                value={shapeFilter}
+                onChange={(e) => setShapeFilter(e.target.value as ShapeFilter)}
+                className="rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[11px] dark:border-neutral-700"
+                title="按输出形态筛选"
+              >
+                <option value="all">全部输出形态</option>
+                {(["aggregate", "row_level", "unknown"] as const).map((shape) => <option key={shape} value={shape}>{TABLE_SHAPE_LABEL[shape]}</option>)}
+              </select>
+              <select
+                value={aiExposureFilter}
+                onChange={(e) => setAiExposureFilter(e.target.value as AiExposureFilter)}
+                className="rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[11px] dark:border-neutral-700"
+                title="按 AI 暴露筛选"
+              >
+                <option value="all">全部 AI 暴露</option>
+                <option value="any">任意自动化入口</option>
+                <option value="none">无自动化入口</option>
+                {(["manual_confirmed", "mcp", "command", "subagent", "workflow", "eval"] as const).map((e) => <option key={e} value={e}>{AI_EXPOSURE_LABEL[e]}</option>)}
+              </select>
+              <select
+                value={ownerFilter}
+                onChange={(e) => setOwnerFilter(e.target.value)}
+                className="rounded-md border border-neutral-200 bg-transparent px-2 py-1.5 text-[11px] dark:border-neutral-700"
+                title="按 owner 筛选"
+              >
+                <option value="all">全部 owner</option>
+                {allOwners.map((owner) => <option key={owner} value={owner}>{owner}</option>)}
+              </select>
+            </div>
+
             <div className="mt-2 space-y-1.5">
               {filteredTools.map((item) => {
                 const active = item.id === toolId;
                 const cat = categoryOf(item);
-                const aiExposed = isAiExposed(item);
+                const mcpExposed = isMcpExposed(item);
+                const nonMcpAutomation = hasNonMcpAutomationExposure(item);
+                const manualOrEval = isManualOrEvalExposed(item);
                 const tags = toolTags(item);
+                const contract = deriveOutputContract(item);
+                const warnings = getToolGovernanceWarnings(item, tools);
+                const blockers = getToolPolicyBlockers(item);
                 return (
                   <button
                     key={item.id}
@@ -293,11 +533,20 @@ export function ToolUsePane({ workspaceId }: Props) {
                       "w-full rounded-md border px-3 py-2 text-left text-[12px] " +
                       (active
                         ? "border-neutral-900 bg-neutral-900 text-white dark:border-neutral-100 dark:bg-neutral-100 dark:text-neutral-900"
-                        : "border-neutral-200 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800")
+                        : item.deprecated
+                          ? "border-red-200 bg-red-50/40 hover:bg-red-50 dark:border-red-900/40 dark:bg-red-950/20 dark:hover:bg-red-950/30"
+                          : blockers.length > 0
+                            ? "border-amber-200 bg-amber-50/40 hover:bg-amber-50 dark:border-amber-900/40 dark:bg-amber-950/20 dark:hover:bg-amber-950/30"
+                            : "border-neutral-200 hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800")
                     }
                   >
                     <div className="flex items-center gap-1.5">
                       <span className="block flex-1 font-medium">{item.name}</span>
+                      {item.deprecated && (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-red-500/15 px-1 py-[1px] text-[9.5px] text-red-700 dark:text-red-300">
+                          <Ban className="h-2.5 w-2.5" /> 已退役
+                        </span>
+                      )}
                       <span className={cn("font-mono text-[9.5px]", active ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-400")}>
                         {item.id}
                       </span>
@@ -347,13 +596,38 @@ export function ToolUsePane({ workspaceId }: Props) {
                     >
                       <span className="font-mono">{item.id}</span>
                       <span>· v{item.version}</span>
-                      <span>· {item.input.accept.join(", ")}</span>
-                      {aiExposed && (
+                      <span>· {TABLE_SHAPE_LABEL[contract.tableShape]}</span>
+                      {mcpExposed && (
                         <span className="inline-flex items-center gap-0.5 rounded bg-blue-500/15 px-1 py-[1px] text-[9.5px] text-blue-700 dark:text-blue-300">
-                          <Bot className="h-2.5 w-2.5" /> AI
+                          <Bot className="h-2.5 w-2.5" /> MCP
+                        </span>
+                      )}
+                      {!mcpExposed && nonMcpAutomation && (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-purple-500/15 px-1 py-[1px] text-[9.5px] text-purple-700 dark:text-purple-300">
+                          <Bot className="h-2.5 w-2.5" /> 自动化
+                        </span>
+                      )}
+                      {!mcpExposed && !nonMcpAutomation && manualOrEval && (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-neutral-500/15 px-1 py-[1px] text-[9.5px] text-neutral-600 dark:text-neutral-300">
+                          人工/评测
+                        </span>
+                      )}
+                      {(warnings.length > 0 || blockers.length > 0) && (
+                        <span className="inline-flex items-center gap-0.5 rounded bg-amber-500/15 px-1 py-[1px] text-[9.5px] text-amber-700 dark:text-amber-300">
+                          <AlertTriangle className="h-2.5 w-2.5" /> {warnings.length + blockers.length}
                         </span>
                       )}
                     </span>
+                    {item.owner && (
+                      <span className={cn("mt-1 flex flex-wrap items-center gap-1 text-[9.5px]", active ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-400")}>
+                        <User className="h-2.5 w-2.5" /> {item.owner}
+                      </span>
+                    )}
+                    {item.replacementToolId && (
+                      <span className={cn("mt-1 flex flex-wrap items-center gap-1 text-[9.5px]", active ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-400")}>
+                        <ArrowRight className="h-2.5 w-2.5" /> 替代：{item.replacementToolId}
+                      </span>
+                    )}
                     {tags.length > 0 && (
                       <span className={cn("mt-1 flex flex-wrap gap-1 text-[9.5px]", active ? "text-neutral-200 dark:text-neutral-600" : "text-neutral-400")}>
                         {tags.slice(0, 4).map((tag) => (
@@ -380,7 +654,7 @@ export function ToolUsePane({ workspaceId }: Props) {
             )}
 
             {tool && (
-              <ToolDetail tool={tool} evalState={evalState} copiedToolId={copiedToolId} onCopyToolId={copyToolId} onLoadCases={loadCases} />
+              <ToolDetail tool={tool} tools={tools} evalState={evalState} copiedToolId={copiedToolId} onCopyToolId={copyToolId} onLoadCases={loadCases} />
             )}
           </main>
         </div>
@@ -393,26 +667,80 @@ export function ToolUsePane({ workspaceId }: Props) {
 
 interface ToolDetailProps {
   tool: ExtractionTool;
+  tools: ExtractionTool[];
   evalState: EvalState;
   copiedToolId: string;
   onCopyToolId: (id: string) => void;
   onLoadCases: () => void;
 }
 
-function ToolDetail({ tool, evalState, copiedToolId, onCopyToolId, onLoadCases }: ToolDetailProps) {
+function ToolDetail({ tool, tools, evalState, copiedToolId, onCopyToolId, onLoadCases }: ToolDetailProps) {
   const cat = categoryOf(tool);
-  const aiExposed = isAiExposed(tool);
+  const mcpExposed = isMcpExposed(tool);
+  const exposureLabel = exposureSummaryLabel(tool);
   const tags = toolTags(tool);
+  const contract = deriveOutputContract(tool);
+  const effective = getEffectiveAiExposure(tool);
+  const raw = deriveAiExposure(tool);
+  const warnings = getToolGovernanceWarnings(tool, tools);
+  const blockers = getToolPolicyBlockers(tool);
+  const replacement = getReplacementTool(tools, tool.replacementToolId);
   const matrix = [
-    { name: "人工运行", enabled: true, note: "数据提取面板手动触发" },
-    { name: "AI / MCP", enabled: aiExposed, note: aiExposed ? "可经 source=ai 网关调用" : "ingestion 不暴露给模型" },
-    { name: "command", enabled: aiExposed, note: aiExposed ? "可作为场景工具预填 @工具卡" : "不进入 command 工具绑定候选" },
-    { name: "subagent", enabled: aiExposed, note: aiExposed ? "可进入 template toolIds 白名单" : "不挂载给子 agent" },
-    { name: "workflow", enabled: aiExposed, note: aiExposed ? "可作为受控计算节点候选" : "只保留人工摄取路径" },
-    { name: "eval", enabled: true, note: "复用 tests/cases.json 与实验室 tool 评测" },
+    { name: "人工运行", exposure: "manual_confirmed" as const, enabled: true, note: "数据提取面板手动触发" },
+    { name: "AI / MCP", exposure: "mcp" as const, enabled: canExposeTo(tool, "mcp"), note: canExposeTo(tool, "mcp") ? "可经 source=ai 网关调用" : "ingestion 或策略已阻断" },
+    { name: "command", exposure: "command" as const, enabled: canExposeTo(tool, "command"), note: canExposeTo(tool, "command") ? "可作为场景工具预填 @工具卡" : "不进入 command 工具绑定候选" },
+    { name: "subagent", exposure: "subagent" as const, enabled: canExposeTo(tool, "subagent"), note: canExposeTo(tool, "subagent") ? "可进入 template toolIds 白名单" : "不挂载给子 agent" },
+    { name: "workflow", exposure: "workflow" as const, enabled: canExposeTo(tool, "workflow"), note: canExposeTo(tool, "workflow") ? "可作为受控计算节点候选" : "只保留人工摄取路径" },
+    { name: "eval", exposure: "eval" as const, enabled: canExposeTo(tool, "eval"), note: "复用 tests/cases.json 与实验室 tool 评测" },
   ];
   return (
     <>
+      {(tool.deprecated || warnings.length > 0 || blockers.length > 0) && (
+        <section className={cn(
+          "rounded-lg border p-4",
+          tool.deprecated
+            ? "border-red-200 bg-red-50 dark:border-red-900/50 dark:bg-red-950/20"
+            : blockers.length > 0
+              ? "border-amber-200 bg-amber-50 dark:border-amber-900/50 dark:bg-amber-950/20"
+              : "border-yellow-200 bg-yellow-50 dark:border-yellow-900/50 dark:bg-yellow-950/20"
+        )}>
+          <h3 className="flex items-center gap-1.5 text-[12.5px] font-semibold">
+            {tool.deprecated ? <Ban className="h-3.5 w-3.5 text-red-600" /> : blockers.length > 0 ? <AlertOctagon className="h-3.5 w-3.5 text-amber-600" /> : <AlertTriangle className="h-3.5 w-3.5 text-yellow-600" />}
+            {tool.deprecated ? "已退役工具" : blockers.length > 0 ? "治理阻断" : "治理提示"}
+          </h3>
+          {tool.deprecated && (
+            <p className="mt-1 text-[11.5px] text-red-700 dark:text-red-300">
+              该工具已标记 deprecated，自动化入口（MCP / command / subagent / workflow）已被移除；仅在人工确认或评测场景可用。
+            </p>
+          )}
+          {tool.replacementToolId && (
+            <div className="mt-2 flex flex-wrap items-center gap-2 text-[11.5px]">
+              <span className="text-neutral-600 dark:text-neutral-300">替代工具：</span>
+              {replacement ? (
+                <span className="inline-flex items-center gap-1 rounded border border-emerald-200 bg-emerald-50 px-2 py-0.5 text-emerald-700 dark:border-emerald-900/50 dark:bg-emerald-950/20 dark:text-emerald-300">
+                  {replacement.name} <code className="font-mono text-[10px]">{replacement.id}</code>
+                  {replacement.deprecated && <span className="text-red-600 dark:text-red-300">（也已退役）</span>}
+                </span>
+              ) : (
+                <span className="inline-flex items-center gap-1 rounded border border-red-200 bg-red-50 px-2 py-0.5 text-red-700 dark:border-red-900/50 dark:bg-red-950/20 dark:text-red-300">
+                  <code className="font-mono text-[10px]">{tool.replacementToolId}</code> 不存在
+                </span>
+              )}
+            </div>
+          )}
+          {blockers.length > 0 && (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[11.5px] text-amber-800 dark:text-amber-300">
+              {blockers.map((b, i) => <li key={i}>{b}</li>)}
+            </ul>
+          )}
+          {warnings.length > 0 && (
+            <ul className="mt-2 list-disc space-y-0.5 pl-5 text-[11.5px] text-yellow-800 dark:text-yellow-300">
+              {warnings.map((w, i) => <li key={i}>{w}</li>)}
+            </ul>
+          )}
+        </section>
+      )}
+
       <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
@@ -455,12 +783,20 @@ function ToolDetail({ tool, evalState, copiedToolId, onCopyToolId, onLoadCases }
             >
               {CATEGORY_LABEL[cat]}
             </span>
-            {aiExposed ? (
+            {mcpExposed ? (
               <span className="inline-flex items-center gap-0.5 rounded bg-blue-500/15 px-1.5 py-[1px] text-[10px] text-blue-700 dark:text-blue-300">
-                <Bot className="h-2.5 w-2.5" /> 经 MCP 暴露给 AI
+                <Bot className="h-2.5 w-2.5" /> {exposureLabel}
+              </span>
+            ) : hasNonMcpAutomationExposure(tool) ? (
+              <span className="inline-flex items-center gap-0.5 rounded bg-purple-500/15 px-1.5 py-[1px] text-[10px] text-purple-700 dark:text-purple-300">
+                <Bot className="h-2.5 w-2.5" /> {exposureLabel}
+              </span>
+            ) : isManualOrEvalExposed(tool) ? (
+              <span className="inline-flex items-center gap-0.5 rounded bg-neutral-500/15 px-1.5 py-[1px] text-[10px] text-neutral-600 dark:text-neutral-300">
+                {exposureLabel}
               </span>
             ) : (
-              <span className="text-[10px] text-neutral-400">不向 AI 暴露</span>
+              <span className="text-[10px] text-neutral-400">{exposureLabel}</span>
             )}
           </div>
         </div>
@@ -490,6 +826,18 @@ function ToolDetail({ tool, evalState, copiedToolId, onCopyToolId, onLoadCases }
               <dd className="text-neutral-700 dark:text-neutral-300">{tool.failureHandling}</dd>
             </div>
           )}
+          <div>
+            <dt className="text-neutral-400">Owner</dt>
+            <dd className="text-neutral-700 dark:text-neutral-300">{tool.owner ?? <span className="text-amber-600 dark:text-amber-400">未填写</span>}</dd>
+          </div>
+          <div>
+            <dt className="text-neutral-400">输出形态</dt>
+            <dd className="text-neutral-700 dark:text-neutral-300">
+              {TABLE_SHAPE_LABEL[contract.tableShape]}
+              {contract.llmSafeSummary && <span className="ml-1.5 text-emerald-600 dark:text-emerald-400">· LLM-safe summary</span>}
+              {contract.rowLimit ? <span className="ml-1.5 text-neutral-400">· 行限制 {contract.rowLimit}</span> : null}
+            </dd>
+          </div>
         </dl>
 
         {tool.allowedUse && (
@@ -507,10 +855,17 @@ function ToolDetail({ tool, evalState, copiedToolId, onCopyToolId, onLoadCases }
       </section>
 
       <section className="rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
-        <h3 className="text-[12.5px] font-semibold">跨模块能力矩阵</h3>
+        <h3 className="text-[12.5px] font-semibold">AI 暴露与跨模块能力矩阵</h3>
         <p className="mt-0.5 text-[10.5px] text-neutral-400">
-          矩阵按 manifest 策略派生；实际执行仍统一走 <code className="font-mono text-[10.5px]">/api/extraction-tools/:id/run</code>。
+          生效入口 = 显式 aiExposure → riskLevel 上限 → deprecated 过滤。实际执行仍统一走 <code className="font-mono text-[10.5px]">/api/extraction-tools/:id/run</code>。
         </p>
+        <div className="mt-2 flex flex-wrap gap-1.5 text-[10.5px]">
+          <span className="text-neutral-400">声明：</span>
+          {raw.length > 0 ? raw.map((e) => AI_EXPOSURE_LABEL[e]).join(", ") : <span className="text-neutral-400">无</span>}
+          <span className="mx-1 text-neutral-300">|</span>
+          <span className="text-neutral-400">生效：</span>
+          {effective.length > 0 ? effective.map((e) => AI_EXPOSURE_LABEL[e]).join(", ") : <span className="text-neutral-400">无</span>}
+        </div>
         <div className="mt-3 grid gap-2 sm:grid-cols-2 lg:grid-cols-3">
           {matrix.map((item) => (
             <div key={item.name} className={cn("rounded-md border px-3 py-2", item.enabled ? "border-emerald-200 bg-emerald-50/60 dark:border-emerald-900 dark:bg-emerald-950/20" : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-950/40")}>

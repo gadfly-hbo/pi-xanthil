@@ -15,7 +15,7 @@ import { mkdirSync } from "node:fs";
 import { join } from "node:path";
 import { renderSourceLabel } from "../metric-source-label.ts";
 import { isAiExposedTool, renderToolManifestSummary } from "../tool-policy.ts";
-import type { MetricSnapshot } from "../types.ts";
+import type { MetricSnapshot, ToolRunOutput } from "../types.ts";
 
 function argOf(flag: string): string | undefined {
   const i = process.argv.indexOf(flag);
@@ -108,23 +108,46 @@ async function callTool(name: string, args: Record<string, unknown>): Promise<{ 
   if (!res.ok) {
     return { content: [{ type: "text", text: `工具执行被拒绝或失败（${res.status}）：${JSON.stringify(body)}` }], isError: true };
   }
+
+  // 消费标准 ToolRunOutput 字段；artifact 正文永不进入 MCP tool result。
+  const output = body as Partial<ToolRunOutput>;
+  const failed = output.status === "failed" || output.rowGuard?.blocked === true;
+  const summaryText = typeof output.summary === "string" ? output.summary : JSON.stringify(body);
+
   // D-METRIC1: 若工具产出 MetricSnapshot[]，优先以数字锁前缀 + snapshots JSON 注入 LLM；
   // 数字锁口径与 E-METRIC2 的 system prompt 前缀一致：value/status/comparisons 均为代码确定性计算值，
   // 模型只可解读、推因、建议，禁止重新推导或自行算术。
-  const metricSnapshots = body.metricSnapshots;
-  if (Array.isArray(metricSnapshots) && metricSnapshots.length > 0) {
+  const metricSnapshots: MetricSnapshot[] = Array.isArray(body.metricSnapshots)
+    ? (body.metricSnapshots as MetricSnapshot[])
+    : Array.isArray(output.metrics)
+      ? output.metrics
+      : [];
+  if (metricSnapshots.length > 0) {
     const lines = [
       "[指标快照·代码确定性计算值·禁止重新推导]",
       "以下 MetricSnapshot 由工具确定性产物计算得出，模型只可解读业务现象、推断根因、提供策略建议；不得修改或自行算术。",
       "每条指标均带确定性 [来源:...·证据等级] 标签，引用时请保留来源标签，禁止自创来源。",
+      "",
+      `[摘要] ${summaryText}`,
     ];
-    for (const s of metricSnapshots as MetricSnapshot[]) {
+    for (const s of metricSnapshots) {
       lines.push(renderSourceLabel(s));
       lines.push(JSON.stringify(s));
     }
-    return { content: [{ type: "text", text: lines.join("\n") }] };
+    return { content: [{ type: "text", text: lines.join("\n") }], isError: failed };
   }
-  return { content: [{ type: "text", text: JSON.stringify(body) }] };
+
+  // 无指标时只返回 summary + artifact 元数据（title/basename/kind），绝不暴露绝对路径或读取文件内容。
+  const artifacts = Array.isArray(output.artifacts)
+    ? output.artifacts.map((a) => ({ title: a.title, basename: a.basename, kind: a.kind }))
+    : [];
+  const safeBody = {
+    summary: summaryText,
+    artifacts,
+    rowGuard: output.rowGuard,
+    errorCode: output.errorCode,
+  };
+  return { content: [{ type: "text", text: JSON.stringify(safeBody) }], isError: failed };
 }
 
 async function handle(req: JsonRpcRequest): Promise<void> {

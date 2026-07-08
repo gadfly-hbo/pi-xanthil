@@ -6,6 +6,11 @@
   "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
+  "aiExposure": ["manual_confirmed", "mcp", "command", "subagent", "workflow", "eval"],
+  "outputContract": {
+    "tableShape": "aggregate",
+    "llmSafeSummary": true
+  },
   "tags": [
     "sql",
     "aggregation",
@@ -54,6 +59,11 @@
       "key": "sourceFiles",
       "label": "输入文件数"
     }
+  ],
+  "metricHints": [
+    { "summaryKey": "rowCount", "name": "结果行数", "unit": "行" },
+    { "summaryKey": "columnCount", "name": "结果列数" },
+    { "summaryKey": "sourceFiles", "name": "输入文件数", "unit": "个" }
   ],
   "parameters": [
     {

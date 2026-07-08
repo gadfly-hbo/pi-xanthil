@@ -7,7 +7,7 @@ import numpy as np
 import pandas as pd
 
 sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
-from _tool_utils import find_col, main_tool
+from _tool_utils import find_col, main_tool_native, make_metric_snapshot
 
 warnings.filterwarnings("ignore")
 
@@ -162,11 +162,40 @@ def format_md(result):
     return "\n".join(lines)
 
 
+def process_file_native(file_path, opts):
+    file_result = process_file(file_path, opts)
+    if file_result.get("error"):
+        return file_result
+    r = file_result["results"]
+    overall = r.get("overall", {})
+    source_file = os.path.basename(file_path)
+    period = ""
+    metrics = []
+    if overall:
+        metrics = [
+            make_metric_snapshot("客户数", overall.get("customers", 0), "rfm-segmentation", "overall.customers", source_file, period),
+            make_metric_snapshot("分群数", overall.get("segments", 0), "rfm-segmentation", "overall.segments", source_file, period),
+            make_metric_snapshot("平均最近购买天数", overall.get("avg_recency_days", 0), "rfm-segmentation", "overall.avg_recency_days", source_file, period, "天"),
+            make_metric_snapshot("平均购买频次", overall.get("avg_frequency", 0), "rfm-segmentation", "overall.avg_frequency", source_file, period),
+            make_metric_snapshot("平均累计金额", overall.get("avg_monetary", 0), "rfm-segmentation", "overall.avg_monetary", source_file, period),
+        ]
+    summary = f"RFM 会员分群完成：{overall.get('customers', 0)} 客户，{overall.get('segments', 0)} 分群，最大群 {overall.get('topSegment', '-')}"
+    file_result["toolRunOutput"] = {
+        "status": "success",
+        "summary": summary,
+        "metrics": metrics,
+        "artifacts": [],
+        "rowGuard": {"blocked": False},
+    }
+    return file_result
+
+
 if __name__ == "__main__":
-    main_tool(
+    main_tool_native(
         description="RFM 会员分群",
         param_defs=[{"name": "reference_date", "type": str, "default": ""}],
-        process_fn=process_file,
+        process_fn=process_file_native,
         format_fn=format_md,
         report_suffix="rfm",
+        tool_id="rfm-segmentation",
     )

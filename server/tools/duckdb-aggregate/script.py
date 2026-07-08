@@ -15,6 +15,9 @@ import sys
 from datetime import date, datetime
 from decimal import Decimal
 
+sys.path.insert(0, os.path.dirname(os.path.dirname(os.path.abspath(__file__))))
+from _tool_utils import make_metric_snapshot, make_artifact_metadata
+
 
 SUPPORTED_EXTS = {".csv", ".tsv", ".parquet", ".json", ".jsonl"}
 FORBIDDEN_SQL_RE = re.compile(
@@ -188,11 +191,58 @@ def run(input_path, output_path, sql):
         "columnCount": len(columns),
         "sourceFiles": len(files),
     }
-    outputs = write_outputs(output_path, result)
+    return result
+
+
+def format_md(result):
+    lines = [
+        "# DuckDB SQL 聚合查询结果",
+        "",
+        f"- 结果行数: {result.get('rowCount', 0)}",
+        f"- 结果列数: {result.get('columnCount', 0)}",
+        f"- 输入文件数: {result.get('sourceFiles', 0)}",
+        "",
+        "## SQL",
+        "",
+        "```sql",
+        result.get("sql", ""),
+        "```",
+        "",
+    ]
+    rows = result.get("rows", [])
+    if rows:
+        columns = result.get("columns", [])
+        lines.append("## 结果预览")
+        lines.append("")
+        lines.append("| " + " | ".join(columns) + " |")
+        lines.append("| " + " | ".join(["---"] * len(columns)) + " |")
+        for row in rows[:50]:
+            lines.append("| " + " | ".join(str(row.get(col, "")) for col in columns) + " |")
+    else:
+        lines.append("（查询返回 0 行）")
+    lines.append("")
+    return "\n".join(lines)
+
+
+def build_native_output(input_path, output_path, result):
+    """为 duckdb-aggregate 构造标准 ToolRunOutput；保留对多文件/多扩展名的完整支持。"""
+    source_file = os.path.basename(input_path) if os.path.isfile(input_path) else os.path.basename(os.path.normpath(input_path))
+    period = ""
+    md_path, json_path = write_outputs(output_path, result)
+    artifacts = [
+        make_artifact_metadata(md_path, output_path, "report"),
+        make_artifact_metadata(json_path, output_path, "data"),
+    ]
     return {
-        "success": 1,
-        "failed": 0,
-        "results": [{**result, "outputs": outputs}],
+        "status": "success",
+        "summary": f"DuckDB 聚合查询完成：{result['rowCount']} 行 × {result['columnCount']} 列，输入 {result['sourceFiles']} 个文件。",
+        "metrics": [
+            make_metric_snapshot("结果行数", result["rowCount"], "duckdb-aggregate", "rowCount", source_file, period, "行"),
+            make_metric_snapshot("结果列数", result["columnCount"], "duckdb-aggregate", "columnCount", source_file, period),
+            make_metric_snapshot("输入文件数", result["sourceFiles"], "duckdb-aggregate", "sourceFiles", source_file, period),
+        ],
+        "artifacts": artifacts,
+        "rowGuard": {"blocked": False},
     }
 
 
@@ -204,13 +254,24 @@ def main():
     parser.add_argument("--param-sql", required=True)
     args = parser.parse_args()
 
+    input_path = os.path.abspath(args.input)
+    output_path = os.path.abspath(args.output)
+
     try:
-        summary = run(os.path.abspath(args.input), os.path.abspath(args.output), args.param_sql)
+        result = run(input_path, output_path, args.param_sql)
+        summary = build_native_output(input_path, output_path, result)
         with open(args.json_summary, "w", encoding="utf-8") as f:
             json.dump(summary, f, ensure_ascii=False, indent=2)
-        print(f"[OK] DuckDB SQL 聚合查询: 成功 {summary['success']} 个, 失败 {summary['failed']} 个")
+        print(f"[OK] DuckDB SQL 聚合查询: status={summary['status']}, rowCount={result['rowCount']}")
     except Exception as exc:
-        summary = {"success": 0, "failed": 1, "error": str(exc), "results": []}
+        summary = {
+            "status": "failed",
+            "summary": str(exc),
+            "metrics": [],
+            "artifacts": [],
+            "rowGuard": {"blocked": False},
+            "errorCode": "tool_error",
+        }
         with open(args.json_summary, "w", encoding="utf-8") as f:
             json.dump(summary, f, ensure_ascii=False, indent=2)
         print(f"[ERROR] {exc}")

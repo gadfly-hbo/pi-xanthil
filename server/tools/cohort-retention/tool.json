@@ -6,6 +6,11 @@
   "entry": "main.py",
   "runtime": "python3",
   "category": "analysis",
+  "aiExposure": ["manual_confirmed", "mcp", "command", "subagent", "workflow", "eval"],
+  "outputContract": {
+    "tableShape": "aggregate",
+    "llmSafeSummary": true
+  },
   "tags": [
     "cohort",
     "retention",
@@ -50,6 +55,12 @@
       "key": "granularity",
       "label": "粒度"
     }
+  ],
+  "metricHints": [
+    { "summaryKey": "overall.cohorts", "name": "cohort数" },
+    { "summaryKey": "overall.customers", "name": "客户数" },
+    { "summaryKey": "overall.events", "name": "事件行数" },
+    { "summaryKey": "overall.avgRetentionPeriod1", "name": "P1平均留存率" }
   ],
   "parameters": [
     {

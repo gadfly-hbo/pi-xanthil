@@ -3,7 +3,7 @@ import { ArrowLeftRight, CheckCircle2, FileText, FolderOpen, Loader2, Play, Refr
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { formatDisplayPath } from "@/lib/pathDisplay";
-import type { ExtractionRun, ExtractionTool, ToolParameter, WorkspacePath } from "@/types";
+import type { ExtractionRun, ExtractionTool, ToolParameter, ToolRecommendation, WorkspacePath } from "@/types";
 
 type ParamValue = string | number | boolean;
 type ParamState = Record<string, ParamValue>;
@@ -222,6 +222,10 @@ export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, emb
   const [registration, setRegistration] = useState<RegistrationResult | null>(null);
   const [query, setQuery] = useState("");
 
+  const [recommendations, setRecommendations] = useState<ToolRecommendation[]>([]);
+  const [recommendLoading, setRecommendLoading] = useState(false);
+  const [recommendError, setRecommendError] = useState("");
+
   const selectedTool = useMemo(() => tools.find((tool) => tool.id === toolId) ?? null, [tools, toolId]);
   const filteredTools = useMemo(() => {
     const needle = query.trim().toLowerCase();
@@ -292,6 +296,26 @@ export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, emb
     setBackflowText("");
     setRegistration(null);
   }, [preset?.nonce, selectedTool?.id]);
+
+  async function fetchRecommendations() {
+    if (!workspaceId) return;
+    setRecommendLoading(true);
+    setRecommendError("");
+    setRecommendations([]);
+    try {
+      const entry = mode === "aggregate" ? "command" : "manual_confirmed";
+      const result = await api.recommendTools(workspaceId, {
+        entry,
+        intent: query.trim(),
+        inputPath: inputPath || undefined,
+      });
+      setRecommendations(result.candidates.slice(0, 5));
+    } catch (err) {
+      setRecommendError(String(err));
+    } finally {
+      setRecommendLoading(false);
+    }
+  }
 
   async function runTool() {
     if (!workspaceId || !selectedTool || running) return;
@@ -423,7 +447,50 @@ export function ManualAnalysisToolCard({ sessionId, workspaceId, onBackflow, emb
               </button>
             )}
           </div>
-          <p className="mt-1.5 px-1 text-[10.5px] text-neutral-400">仅显示 category=analysis 的本地工具，共 {tools.length} 个。</p>
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <p className="px-1 text-[10.5px] text-neutral-400">仅显示 category=analysis 的本地工具，共 {tools.length} 个。</p>
+            <button
+              onClick={() => void fetchRecommendations()}
+              disabled={recommendLoading || !workspaceId}
+              title="基于搜索词和当前入口推荐合规工具"
+              className="inline-flex items-center gap-1 rounded border border-neutral-200 px-2 py-1 text-[10.5px] text-neutral-600 hover:bg-neutral-50 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+            >
+              {recommendLoading ? <Loader2 className="h-3 w-3 animate-spin" /> : <Wrench className="h-3 w-3" />}
+              推荐
+            </button>
+          </div>
+
+          {recommendError && (
+            <div className="mt-2 rounded-md border border-red-200 bg-red-50 px-2 py-1.5 text-[11px] text-red-600 dark:border-red-900 dark:bg-red-950/30 dark:text-red-300">
+              {recommendError}
+            </div>
+          )}
+
+          {recommendations.length > 0 && (
+            <div className="mt-2 space-y-1.5 rounded-md border border-emerald-100 bg-emerald-50 p-2 dark:border-emerald-900/60 dark:bg-emerald-950/30">
+              <p className="text-[10.5px] font-medium text-emerald-700 dark:text-emerald-200">推荐工具</p>
+              {recommendations.map((rec) => {
+                const tool = tools.find((t) => t.id === rec.toolId);
+                return (
+                  <button
+                    key={rec.toolId}
+                    onClick={() => setToolId(rec.toolId)}
+                    className="w-full rounded bg-white p-1.5 text-left text-[11px] shadow-sm dark:bg-neutral-900"
+                  >
+                    <span className="font-medium">{tool?.name ?? rec.toolId}</span>
+                    <span className="ml-2 text-[10px] text-neutral-400">score {rec.score}</span>
+                    {rec.reasons.length > 0 && (
+                      <span className="mt-0.5 block truncate text-[10px] text-neutral-500">{rec.reasons.slice(0, 3).join(" · ")}</span>
+                    )}
+                    {rec.warnings.length > 0 && (
+                      <span className="mt-0.5 block truncate text-[10px] text-amber-600 dark:text-amber-200">{rec.warnings[0]}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
+          )}
+
           <div className="mt-2 space-y-1.5">
             {filteredTools.map((tool) => (
               <button

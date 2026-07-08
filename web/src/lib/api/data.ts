@@ -18,6 +18,7 @@ import type {
   ExtractionTool,
   ExtractionRun,
   ToolEvalCaseTemplateList,
+  ToolRecommendationResult,
   Hook,
   HookTriggerRecord,
   XanCommand,
@@ -194,6 +195,18 @@ export const dataApi = {
       headers: { "content-type": "application/json" },
       body: JSON.stringify({ ...payload, source: "ai", caller: payload.caller ?? "chat" }),
     }).then(json<ExtractionRun>),
+
+  // X-TOOLUSE7D：确定性工具推荐器（无 LLM，仅 manifest/路径/ledger/lab 元数据）
+  recommendTools: (workspaceId: string, payload: {
+    entry: "manual_confirmed" | "mcp" | "command" | "subagent" | "workflow" | "eval";
+    intent?: string;
+    inputPath?: string;
+  }) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/tool-recommendations`, {
+      method: "POST",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<ToolRecommendationResult>),
 
   getBiAggregationData: (pathId: string, limit?: number) => {
     const params = new URLSearchParams();
