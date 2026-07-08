@@ -27,6 +27,7 @@
   .light .cl-item li, .light .note-item .nt { color: #334155; }
   .light .note-item .ndel:hover { color: #dc2626; }
   * { box-sizing: border-box; }
+  [hidden] { display: none !important; }
   body { margin: 0; background: var(--bg); color: var(--fg);
     font-family: "PingFang SC","Noto Sans CJK SC","Helvetica Neue",Arial,sans-serif;
     line-height: 1.6; -webkit-font-smoothing: antialiased; }
@@ -169,9 +170,9 @@
 
   <div class="tabs">
     <button class="tab active" data-view="dispatch">📋 任务派发</button>
-    <button class="tab" data-view="hotfix">🔧 快修任务</button>
+    <button class="tab" data-view="hotfix" hidden>🔧 快修任务</button>
     <button class="tab" data-view="notes">📝 随手记</button>
-    <button class="tab" data-view="prompts">🧩 常用 prompts</button>
+    <button class="tab" data-view="prompts" hidden>🧩 常用 prompts</button>
     <button class="tab" data-view="agentAssets">🧠 Agent 技能</button>
     <button class="tab" data-view="changelog">📖 版本历史</button>
   </div>
@@ -185,7 +186,7 @@
     </details>
   </section>
 
-  <section id="hotfix" class="view">
+  <section id="hotfix" class="view" hidden>
     <p class="legend">快修任务由<b>总控判定安全后</b>发布，任意 agent 可复制领取、<b>顺序</b>执行（<b>不指定域</b>）；执行规范见「常用 prompts」→ <code>/px-hotfix</code>。<span style="color:var(--x)">⚠️</span> 触及数据安全红线（数据探索子树 / <code>draw_data</code> / <code>clean_data</code>）的快修<b>不在此发布</b>，由总控转交指定域 agent 迭代（进「任务派发」）。</p>
     <div class="grid" id="hotfixGrid"></div>
   </section>
@@ -209,7 +210,7 @@
     <div id="noteList"></div>
   </section>
 
-  <section id="prompts" class="view">
+  <section id="prompts" class="view" hidden>
     <p class="legend">本项目 Session 开场/收尾通用 prompt（无 git，任意 agent 复制即用）。开场 prompt 已按 data / engine / viz / infra 拆分，避免 agent 追问目标域。Claude Code 里也可直接用 <code>/px-resume</code>、<code>/px-wrapup</code>、<code>/px-hotfix</code> 命令。</p>
     <div class="grid" id="promptList"></div>
     <script type="text/plain" id="src-resume-data"># pi-xanthil · Session 开场 SOP（data 域）
@@ -6274,10 +6275,13 @@ document.getElementById("importFile").addEventListener("change", (e) => {
 
 document.querySelectorAll(".tab").forEach((tab) => {
   tab.addEventListener("click", () => {
+    if (tab.hidden) return;
+    const target = document.getElementById(tab.dataset.view) || document.getElementById("dispatch");
+    if (target.hidden) return;
     document.querySelectorAll(".tab").forEach((t) => t.classList.remove("active"));
     document.querySelectorAll(".view").forEach((v) => v.classList.remove("active"));
     tab.classList.add("active");
-    document.getElementById(tab.dataset.view).classList.add("active");
+    target.classList.add("active");
   });
 });
 

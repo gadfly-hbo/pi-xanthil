@@ -227,6 +227,9 @@ dataRouter.get("/api/bi/aggregations/:pathId/data", (req, res) => {
     if (entry.kind !== "file") {
       return res.status(400).json({ error: "path is not a file" });
     }
+    if (!existsSync(entry.path)) {
+      return res.status(404).json({ error: "aggregation file not found" });
+    }
 
     const limit = Math.min(Number(req.query.limit) || DEFAULT_LIMIT, 100000);
     const buf = readFileSync(entry.path);

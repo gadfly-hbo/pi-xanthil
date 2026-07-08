@@ -540,11 +540,12 @@ export function BiDashboardPane({ workspaceId }: { workspaceId?: string }) {
   const [aggDatasets, setAggDatasets] = useState<BiAggregationDataset[]>([]);
   const [aggDataCache, setAggDataCache] = useState<Record<string, BiAggregationData>>({});
   const [aggDataLoading, setAggDataLoading] = useState<Record<string, boolean>>({});
+  const [aggDataErrors, setAggDataErrors] = useState<Record<string, string>>({});
 
   useEffect(() => {
     if (workspaceId) {
       api.getBiAggregations(workspaceId).then(setAggDatasets).catch(err => {
-        alert("加载聚合数据源失败：" + err.message);
+        console.error("Failed to load BI aggregation sources", err);
       });
     }
   }, [workspaceId]);
@@ -552,18 +553,23 @@ export function BiDashboardPane({ workspaceId }: { workspaceId?: string }) {
   useEffect(() => {
     const pathIds = [...new Set(charts.map(c => c.datasetPathId).filter(Boolean) as string[])];
     pathIds.forEach(pathId => {
-      if (!aggDataCache[pathId] && !aggDataLoading[pathId]) {
+      if (!aggDataCache[pathId] && !aggDataLoading[pathId] && !aggDataErrors[pathId]) {
         setAggDataLoading(prev => ({ ...prev, [pathId]: true }));
         api.getBiAggregationData(pathId).then(data => {
           setAggDataCache(prev => ({ ...prev, [pathId]: data }));
+          setAggDataErrors(prev => {
+            const next = { ...prev };
+            delete next[pathId];
+            return next;
+          });
         }).catch(err => {
-          alert(`加载图表数据失败: ${err.message}`);
+          setAggDataErrors(prev => ({ ...prev, [pathId]: err instanceof Error ? err.message : String(err) }));
         }).finally(() => {
           setAggDataLoading(prev => ({ ...prev, [pathId]: false }));
         });
       }
     });
-  }, [charts, aggDataCache, aggDataLoading]);
+  }, [charts, aggDataCache, aggDataLoading, aggDataErrors]);
 
 
   // Fields mapping
@@ -978,7 +984,7 @@ export function BiDashboardPane({ workspaceId }: { workspaceId?: string }) {
                         const data = aggDataCache[chart.datasetPathId];
                         rows = data?.rows || [];
                         isLoading = aggDataLoading[chart.datasetPathId] || false;
-                        isMissing = !data && !isLoading;
+                        isMissing = Boolean(aggDataErrors[chart.datasetPathId]) || (!data && !isLoading);
                       } else if (chart.datasetSlot) {
                         const datasetInfo = chart.datasetSlot === "member_retention" ? retentionDataset : recallDataset;
                         rows = datasetInfo.dataset?.rows || [];
@@ -1090,6 +1096,11 @@ export function BiDashboardPane({ workspaceId }: { workspaceId?: string }) {
           fetchAggData={async (pathId) => {
             const data = await api.getBiAggregationData(pathId);
             setAggDataCache(prev => ({ ...prev, [pathId]: data }));
+            setAggDataErrors(prev => {
+              const next = { ...prev };
+              delete next[pathId];
+              return next;
+            });
             return data;
           }}
           onClose={() => setIsEditingChart(null)}
@@ -1160,9 +1171,11 @@ function ChartConfigDrawer({
 
   const [cleanDataFields, setCleanDataFields] = useState<FieldInfo[]>([]);
   const [loadingCleanData, setLoadingCleanData] = useState(false);
+  const [cleanDataError, setCleanDataError] = useState<string | null>(null);
 
   useEffect(() => {
     if (datasetMode === "clean_data" && datasetPathId) {
+      setCleanDataError(null);
       const cached = aggDataCache[datasetPathId];
       if (cached) {
         setCleanDataFields(inferDatasetFields(cached.columns, cached.rows));
@@ -1173,10 +1186,13 @@ function ChartConfigDrawer({
             setCleanDataFields(inferDatasetFields(data.columns, data.rows));
           })
           .catch(err => {
-             alert("拉取字段失败: " + err.message);
+            setCleanDataFields([]);
+            setCleanDataError(err instanceof Error ? err.message : String(err));
           })
           .finally(() => setLoadingCleanData(false));
       }
+    } else {
+      setCleanDataError(null);
     }
   }, [datasetMode, datasetPathId, aggDataCache, fetchAggData]);
 
@@ -1295,6 +1311,7 @@ function ChartConfigDrawer({
             </optgroup>
           </select>
           {loadingCleanData && <span className="text-[10px] text-neutral-400 mt-1 block">拉取字段中...</span>}
+          {cleanDataError && <span className="mt-1 block text-[10px] text-amber-500">该数据源暂不可用，请重新选择聚合数据。</span>}
         </div>
 
         {/* Dimension */}

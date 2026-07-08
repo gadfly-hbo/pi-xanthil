@@ -7,3 +7,4 @@ server/.pi-sessions/
 .env
 .env.local
 docs/
+.agentops/tasks/

@@ -77,7 +77,7 @@ import { readFlowFile } from "../flow-fs.ts";
 import { runPiPrompt } from "../pi-adapter.ts";
 import { runHealthSuite, classifyAggregation, listHealthRules } from "../health-check-engine.ts";
 import { renderMarkdownReportToHtml } from "../html-report.ts";
-import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind, HealthSuite, HealthFinding, OntologyGap, MonitorDatasetBinding, MonitorSourceRole, TargetCalculationInput, TargetCalculationResult, TargetPlan } from "../types.ts";
+import type { GraphNode, GraphEdge, OntologyGraph, PropertyDataType, ObjectKind, LinkKind, HealthSuite, HealthFinding, OntologyGap, MonitorDatasetBinding, MonitorSourceRole, TargetCalculationInput, TargetCalculationResult, TargetPlan, ActionItemDraft } from "../types.ts";
 
 function validateArtifactPath(path: string, source: string): void {
   const segments = path.split(/[\\/]/).filter(Boolean);
@@ -86,6 +86,77 @@ function validateArtifactPath(path: string, source: string): void {
 }
 
 const EXPORT_FORMATS: ExportFormat[] = ["json", "yaml", "csv", "html", "ttl"];
+
+const ACTION_SCENES = new Set(["开业", "日常", "假日", "大促"]);
+const ACTION_LIFECYCLES = new Set(["A获取", "A激活", "R培育", "R复购", "R裂变"]);
+const ACTION_LEVELS = new Set(["high", "medium", "low"]);
+
+function repairLooseJson(text: string): string {
+  return text.replace(/,\s*([\]}])/g, "$1");
+}
+
+function extractJsonArrayText(text: string): string {
+  const fenced = /```(?:json)?\s*([\s\S]*?)```/i.exec(text);
+  const raw = fenced?.[1] ?? text;
+  const start = raw.indexOf("[");
+  if (start < 0) throw new Error(`LLM response does not contain JSON array: ${text.slice(0, 300)}`);
+  let inString = false;
+  let escaped = false;
+  let depth = 0;
+  for (let index = start; index < raw.length; index++) {
+    const char = raw[index];
+    if (escaped) {
+      escaped = false;
+      continue;
+    }
+    if (char === "\\") {
+      escaped = inString;
+      continue;
+    }
+    if (char === "\"") {
+      inString = !inString;
+      continue;
+    }
+    if (inString) continue;
+    if (char === "[") depth++;
+    if (char === "]") {
+      depth--;
+      if (depth === 0) return raw.slice(start, index + 1);
+    }
+  }
+  throw new Error(`LLM response JSON array is incomplete: ${raw.slice(start, start + 300)}`);
+}
+
+export function parseActionDraftsFromLlm(text: string): ActionItemDraft[] {
+  const raw = extractJsonArrayText(text);
+  let parsed: unknown;
+  for (const candidate of [raw, repairLooseJson(raw)]) {
+    try {
+      parsed = JSON.parse(candidate) as unknown;
+      break;
+    } catch {
+      // try repaired candidate
+    }
+  }
+  if (!Array.isArray(parsed)) throw new Error(`LLM response JSON could not be parsed as an array: ${raw.slice(0, 300)}`);
+  return parsed
+    .filter((item): item is Record<string, unknown> => typeof item === "object" && item !== null && !Array.isArray(item))
+    .map((item) => {
+      const confidence = Number(item.confidence);
+      return {
+        title: String(item.title ?? "").trim() || "未命名行动项",
+        rationale: String(item.rationale ?? "").trim() || "报告中提出的行动建议",
+        scene: ACTION_SCENES.has(String(item.scene)) ? String(item.scene) as ActionItemDraft["scene"] : undefined,
+        lifecycle: ACTION_LIFECYCLES.has(String(item.lifecycle)) ? String(item.lifecycle) as ActionItemDraft["lifecycle"] : undefined,
+        expectedImpact: String(item.expectedImpact ?? "").trim() || "待评估",
+        metricRef: String(item.metricRef ?? "").trim() || undefined,
+        priority: ACTION_LEVELS.has(String(item.priority)) ? String(item.priority) as ActionItemDraft["priority"] : "medium",
+        effort: ACTION_LEVELS.has(String(item.effort)) ? String(item.effort) as ActionItemDraft["effort"] : "medium",
+        confidence: Number.isFinite(confidence) ? Math.max(0, Math.min(1, confidence)) : 0.5,
+      };
+    })
+    .filter((item) => item.title.trim().length > 0);
+}
 
 /**
  * 【Agent-V · 可视交付域】HTTP 路由 slot —— owner: antigravity(Gemini)
@@ -637,32 +708,14 @@ vizRouter.post("/api/actions/extract", async (req, res) => {
       model: model || "minimax-cn/MiniMax-M3",
     });
 
-    let drafts = [];
+    let drafts: ActionItemDraft[];
     try {
-      // Handle possible markdown code blocks around the JSON
-      const jsonStr = outText.replace(/^```json\s*/i, "").replace(/\s*```$/i, "").trim();
-      drafts = JSON.parse(jsonStr);
-      if (!Array.isArray(drafts)) throw new Error("Result is not an array");
+      drafts = parseActionDraftsFromLlm(outText);
     } catch (parseErr) {
-      // 容错兜底：当 JSON 解析失败时尝试用正则或返回占位
-      console.error("Failed to parse JSON from LLM", parseErr);
-      drafts = [{
-        title: "解析失败的行动项",
-        rationale: "模型输出了非法的 JSON 格式内容",
-        expectedImpact: "待补充",
-        priority: "medium",
-        effort: "medium",
-        confidence: 0.5
-      }];
+      console.error("Failed to parse action drafts from LLM", parseErr);
+      res.status(502).json({ error: `行动项 JSON 解析失败：${parseErr instanceof Error ? parseErr.message : String(parseErr)}` });
+      return;
     }
-    // 归一化 scene/lifecycle 到契约 enum（ActionScene/ActionLifecycle）；非法/缺失 → 省略
-    const SCENES = ["开业", "日常", "假日", "大促"];
-    const LIFECYCLES = ["A获取", "A激活", "R培育", "R复购", "R裂变"];
-    drafts = (Array.isArray(drafts) ? drafts : []).map((d: Record<string, unknown>) => ({
-      ...d,
-      scene: SCENES.includes(d?.scene as string) ? d.scene : undefined,
-      lifecycle: LIFECYCLES.includes(d?.lifecycle as string) ? d.lifecycle : undefined,
-    }));
     res.json(drafts);
   } catch (err) {
     res.status(500).json({ error: String(err) });

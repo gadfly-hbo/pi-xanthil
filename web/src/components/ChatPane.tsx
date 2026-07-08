@@ -21,8 +21,8 @@ type FolderScope =
 
 const DRAWER_MIN = 360;
 const DRAWER_DEFAULT_FALLBACK = 560;
-const DRAWER_DEFAULT_RATIO = 0.5;
-const DRAWER_WIDTH_KEY = "chatpane.assistDrawerWidth.v2";
+const DRAWER_DEFAULT_RATIO = 1 / 3;
+const DRAWER_WIDTH_KEY = "chatpane.assistDrawerWidth.v3";
 const COMMAND_QUERY_RE = /^\/([^\s/]*)$/;
 
 interface Props {
@@ -1374,8 +1374,8 @@ export function ChatPane(p: Props) {
               placeholder={p.disabled ? "先选择或新建一个会话" : "输入消息，Shift+Enter 发送，Enter 换行"}
               className="block max-h-[40vh] min-h-[48px] w-full resize-none bg-transparent px-4 pt-3 text-[14px] leading-6 text-neutral-900 placeholder-neutral-400 outline-none disabled:opacity-50 dark:text-neutral-100 dark:placeholder-neutral-500"
             />
-            <div className="flex items-center justify-between px-3 pb-2.5 pt-1">
-              <div className="flex items-center gap-1">
+            <div className="flex items-end justify-between gap-2 px-3 pb-2.5 pt-1">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1 gap-y-1.5">
                 {p.enableFileUpload && (
                   <>
                     <input
@@ -1437,12 +1437,12 @@ export function ChatPane(p: Props) {
                   </label>
                 )}
                 {!p.hideBizReq && contractSummary && (
-                  <span className="inline-flex items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400" title={contractSummary.objective || contractSummary.projectName}>
-                    <FileText className="h-3 w-3" />
-                    {contractSummary.projectName}
-                    <span className="text-emerald-500">·</span>
-                    {contractSummary.sections.length} 章
-                    {contractSummary.fallback && <span className="text-amber-500">·默认</span>}
+                  <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 sm:max-w-[360px]" title={contractSummary.objective || contractSummary.projectName}>
+                    <FileText className="h-3 w-3 shrink-0" />
+                    <span className="min-w-0 truncate">{contractSummary.projectName}</span>
+                    <span className="shrink-0 text-emerald-500">·</span>
+                    <span className="shrink-0">{contractSummary.sections.length} 章</span>
+                    {contractSummary.fallback && <span className="shrink-0 text-amber-500">·默认</span>}
                   </span>
                 )}
                 {!p.hideBizReq && contractSummaryLoading && selectedBusinessRequirement && (

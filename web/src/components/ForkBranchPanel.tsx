@@ -1,6 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
-import { ArrowLeftRight, ArrowUp, Check, Loader2, Pencil, Plus, RefreshCw, Square } from "lucide-react";
-import { MessageRow, type UiMessage } from "@/components/MessageRow";
+import { ArrowLeftRight, ArrowUp, Check, CheckCircle2, ChevronDown, ChevronRight, FileText, Loader2, Pencil, Plus, RefreshCw, Square } from "lucide-react";
+import { MessageRow, hasToolBlocks, hasTraceBlocks, type UiMessage } from "@/components/MessageRow";
 import { api } from "@/lib/api";
 import { cn } from "@/lib/cn";
 import { gateway } from "@/lib/ws";
@@ -28,6 +28,57 @@ function collectReportPaths(node: FlowTreeNode): string[] {
   return (node.children ?? []).flatMap(collectReportPaths);
 }
 
+const EXECUTION_STAGES = ["准备任务", "读取上下文", "分析数据", "生成报告", "整理产物", "完成"] as const;
+
+type ExecutionStageStatus = "done" | "active" | "pending";
+
+interface ExecutionStage {
+  label: (typeof EXECUTION_STAGES)[number];
+  status: ExecutionStageStatus;
+}
+
+function summarizeExecutionText(text: string): string {
+  const withoutThinking = text.replace(/<think>[\s\S]*?<\/think>/gi, " ");
+  const compact = withoutThinking
+    .replace(/```[\s\S]*?```/g, " ")
+    .replace(/[#*_>`~\-|[\]()]/g, " ")
+    .replace(/\s+/g, " ")
+    .trim();
+  if (!compact) return "";
+  return compact.length > 260 ? `${compact.slice(0, 260)}…` : compact;
+}
+
+function countArtifactFiles(node: FlowTreeNode | null): number {
+  if (!node) return 0;
+  if (node.kind === "file") return 1;
+  return (node.children ?? []).reduce((sum, child) => sum + countArtifactFiles(child), 0);
+}
+
+function getExecutionStageIndex(options: {
+  running: boolean;
+  hasUserMessage: boolean;
+  hasAssistantText: boolean;
+  hasToolActivity: boolean;
+  artifactCount: number;
+}): number {
+  if (!options.hasUserMessage && !options.running) return 0;
+  if (!options.running && options.hasUserMessage) return EXECUTION_STAGES.length - 1;
+  if (options.artifactCount > 0) return 4;
+  if (options.hasAssistantText) return 3;
+  if (options.hasToolActivity) return 2;
+  if (options.hasUserMessage) return 1;
+  return 0;
+}
+
+function getExecutionStages(activeIndex: number, running: boolean): ExecutionStage[] {
+  return EXECUTION_STAGES.map((label, index) => {
+    if (!running && activeIndex === EXECUTION_STAGES.length - 1) return { label, status: "done" };
+    if (index < activeIndex) return { label, status: "done" };
+    if (index === activeIndex) return { label, status: "active" };
+    return { label, status: "pending" };
+  });
+}
+
 interface Props {
   parentSessionId: string;
   model: string;
@@ -49,12 +100,50 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
   const [renameValue, setRenameValue] = useState("");
   const [reportPaths, setReportPaths] = useState<string[]>([]);
   const [selectedReportPath, setSelectedReportPath] = useState("");
+  const [artifactTree, setArtifactTree] = useState<FlowTreeNode | null>(null);
+  const [detailsExpanded, setDetailsExpanded] = useState(true);
   const bottomRef = useRef<HTMLDivElement>(null);
 
   const activeBranch = useMemo(
     () => branches.find((branch) => branch.branchSessionId === activeBranchId) ?? null,
     [activeBranchId, branches],
   );
+
+  const latestAssistantMessage = useMemo(
+    () =>
+      [...messages]
+        .reverse()
+        .find((m) => m.role === "assistant" && !m.error && textOf(m.content).trim().length > 0 && !hasTraceBlocks(m)),
+    [messages],
+  );
+  const latestAssistantSummary = useMemo(
+    () => summarizeExecutionText(latestAssistantMessage ? textOf(latestAssistantMessage.content) : ""),
+    [latestAssistantMessage],
+  );
+  const hasUserMessage = useMemo(() => messages.some((m) => m.role === "user"), [messages]);
+  const hasAssistantText = useMemo(
+    () => messages.some((m) => m.role === "assistant" && textOf(m.content).trim().length > 0 && !hasTraceBlocks(m)),
+    [messages],
+  );
+  const hasToolActivity = useMemo(
+    () => messages.some((m) => m.role === "tool" || hasToolBlocks(m)),
+    [messages],
+  );
+  const artifactCount = useMemo(() => countArtifactFiles(artifactTree), [artifactTree]);
+  const activeStageIndex = useMemo(
+    () =>
+      getExecutionStageIndex({
+        running,
+        hasUserMessage,
+        hasAssistantText,
+        hasToolActivity,
+        artifactCount,
+      }),
+    [running, hasUserMessage, hasAssistantText, hasToolActivity, artifactCount],
+  );
+  const executionStages = useMemo(() => getExecutionStages(activeStageIndex, running), [activeStageIndex, running]);
+  const activeStageLabel = executionStages[activeStageIndex]?.label ?? EXECUTION_STAGES[0];
+  const showExecutionOverview = messages.length > 0 || running || artifactCount > 0;
 
   async function refreshBranches(selectLatest = false) {
     setError("");
@@ -81,6 +170,7 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
       setRunning(false);
       setReportPaths([]);
       setSelectedReportPath("");
+      setArtifactTree(null);
       return;
     }
     setLoading(true);
@@ -104,12 +194,14 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
     api.sessionArtifactTree(activeBranchId)
       .then((result) => {
         if (cancelled) return;
+        setArtifactTree(result.tree);
         const paths = collectReportPaths(result.tree);
         setReportPaths(paths);
         setSelectedReportPath((current) => current && paths.includes(current) ? current : "");
       })
       .catch(() => {
         if (!cancelled) {
+          setArtifactTree(null);
           setReportPaths([]);
           setSelectedReportPath("");
         }
@@ -131,7 +223,10 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
         setRunning(false);
         void refreshBranches().catch(() => undefined);
         api.sessionArtifactTree(activeBranchId)
-          .then((result) => setReportPaths(collectReportPaths(result.tree)))
+          .then((result) => {
+            setArtifactTree(result.tree);
+            setReportPaths(collectReportPaths(result.tree));
+          })
           .catch(() => undefined);
       } else if (msg.type === "error") {
         setRunning(false);
@@ -304,16 +399,89 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
                 </>
               )}
             </div>
-            <button
-              onClick={openBackflow}
-              disabled={messages.length === 0}
-              className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2 text-[12px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
-            >
-              <ArrowLeftRight className="h-3.5 w-3.5" />
-              回流结果
-            </button>
+            <div className="flex items-center gap-2">
+              <button
+                onClick={() => setDetailsExpanded((current) => !current)}
+                title={detailsExpanded ? "收起对话详情" : "展开对话详情"}
+                className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-200 px-2 text-[12px] text-neutral-600 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              >
+                {detailsExpanded ? <ChevronDown className="h-3.5 w-3.5" /> : <ChevronRight className="h-3.5 w-3.5" />}
+                {detailsExpanded ? "收起" : "展开"}
+              </button>
+              <button
+                onClick={openBackflow}
+                disabled={messages.length === 0}
+                className="inline-flex h-7 items-center gap-1.5 rounded-md border border-neutral-200 px-2 text-[12px] text-neutral-600 hover:bg-neutral-100 disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+              >
+                <ArrowLeftRight className="h-3.5 w-3.5" />
+                回流结果
+              </button>
+            </div>
           </div>
-          <div className="min-h-0 flex-1 overflow-y-auto px-4 py-4">
+
+          {showExecutionOverview && (
+            <div className="sticky top-0 z-10 border-b border-neutral-200 bg-white/95 px-3 py-2 backdrop-blur dark:border-neutral-800 dark:bg-neutral-950/95">
+              <div className="rounded-lg border border-neutral-200 bg-white p-3 shadow-sm dark:border-neutral-800 dark:bg-neutral-950">
+                <div className="flex flex-wrap items-center justify-between gap-3">
+                  <div className="min-w-0 flex-1">
+                    <div className="flex min-w-0 items-center gap-2">
+                      {running ? (
+                        <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-neutral-500 dark:text-neutral-400" strokeWidth={1.75} />
+                      ) : (
+                        <CheckCircle2 className="h-3.5 w-3.5 shrink-0 text-emerald-600 dark:text-emerald-400" strokeWidth={1.75} />
+                      )}
+                      <span className="truncate text-[13px] font-medium text-neutral-900 dark:text-neutral-100">
+                        {running ? "任务执行中" : "任务已完成"} · {activeStageLabel}阶段
+                      </span>
+                    </div>
+                    {latestAssistantSummary && (
+                      <p className="mt-1 line-clamp-2 text-[12px] leading-5 text-neutral-600 dark:text-neutral-400">
+                        <span className="font-medium text-neutral-800 dark:text-neutral-200">最新摘要：</span>
+                        {latestAssistantSummary}
+                      </p>
+                    )}
+                  </div>
+                  <div className="flex shrink-0 items-center gap-1.5 rounded-md bg-neutral-100 px-2 py-1 text-[11.5px] text-neutral-600 dark:bg-neutral-800 dark:text-neutral-300">
+                    <FileText className="h-3 w-3" strokeWidth={1.75} />
+                    产物：{artifactCount} 个文件
+                  </div>
+                </div>
+
+                <div className="mt-2 flex gap-1">
+                  {executionStages.map((stage) => (
+                    <div
+                      key={stage.label}
+                      className={cn(
+                        "h-1.5 flex-1 rounded-full",
+                        stage.status === "done" && "bg-emerald-500/80",
+                        stage.status === "active" && "bg-neutral-900 dark:bg-neutral-100",
+                        stage.status === "pending" && "bg-neutral-200 dark:bg-neutral-800",
+                      )}
+                      title={stage.label}
+                    />
+                  ))}
+                </div>
+                <div className="mt-1.5 grid grid-cols-6 gap-1 text-center text-[10.5px] leading-4">
+                  {executionStages.map((stage) => (
+                    <span
+                      key={stage.label}
+                      className={cn(
+                        "truncate",
+                        stage.status === "done" && "text-emerald-600 dark:text-emerald-400",
+                        stage.status === "active" && "font-medium text-neutral-900 dark:text-neutral-100",
+                        stage.status === "pending" && "text-neutral-400 dark:text-neutral-500",
+                      )}
+                      title={stage.label}
+                    >
+                      {stage.label}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
+          <div className={cn("min-h-0 flex-1 overflow-y-auto px-4 py-4", !detailsExpanded && "hidden")}>
             <div className="space-y-4">
               {loading && <div className="text-[12px] text-neutral-400">正在加载分支消息…</div>}
               {!loading && messages.length === 0 && <div className="text-[12px] text-neutral-400">在分支里发起第一轮深挖。</div>}
@@ -339,9 +507,9 @@ export function ForkBranchPanel({ parentSessionId, model, onBackflow }: Props) {
                     sendBranchMessage();
                   }
                 }}
-                rows={2}
+                rows={6}
                 placeholder="输入分支追问，Shift+Enter 发送"
-                className="min-h-[48px] flex-1 resize-none rounded-md border border-neutral-200 bg-transparent px-3 py-2 text-[13px] outline-none disabled:opacity-50 dark:border-neutral-700"
+                className="max-h-[32vh] min-h-[144px] flex-1 resize-y rounded-md border border-neutral-200 bg-transparent px-3 py-2 text-[13px] leading-5 outline-none disabled:opacity-50 dark:border-neutral-700"
               />
               <button
                 onClick={running ? stopBranchRun : sendBranchMessage}

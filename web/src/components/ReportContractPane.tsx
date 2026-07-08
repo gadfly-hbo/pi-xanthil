@@ -5,6 +5,7 @@ import {
   CheckCircle2,
   ChevronDown,
   ChevronRight,
+  ChevronUp,
   ClipboardCheck,
   FileText,
   Loader2,
@@ -83,6 +84,7 @@ export function ReportContractPane({ scope, workspaceId, selectedReportPath, onN
   const [revisionResult, setRevisionResult] = useState<ContractAutoFixResult | null>(null);
   const [revisionLoading, setRevisionLoading] = useState(false);
   const [revisionError, setRevisionError] = useState("");
+  const [collapsed, setCollapsed] = useState(false);
 
   const selectedVersion = useMemo(
     () => contractVersions.find((item) => item.id === selectedId) ?? null,
@@ -167,7 +169,7 @@ export function ReportContractPane({ scope, workspaceId, selectedReportPath, onN
 
   if (!workspaceId || !scope) {
     return (
-      <ContractShell>
+      <ContractShell collapsed={collapsed} onToggleCollapsed={() => setCollapsed((value) => !value)}>
         <p className="px-1 py-3 text-[12.5px] text-neutral-400 dark:text-neutral-500">
           请先选择工作区后查看报告契约。
         </p>
@@ -177,7 +179,7 @@ export function ReportContractPane({ scope, workspaceId, selectedReportPath, onN
 
   if (versionsLoading) {
     return (
-      <ContractShell>
+      <ContractShell collapsed={collapsed} onToggleCollapsed={() => setCollapsed((value) => !value)}>
         <p className="flex items-center gap-1.5 px-1 py-3 text-[12.5px] text-neutral-400">
           <Loader2 className="h-3.5 w-3.5 animate-spin" />
           正在读取业务需求版本...
@@ -188,7 +190,7 @@ export function ReportContractPane({ scope, workspaceId, selectedReportPath, onN
 
   if (contractVersions.length === 0) {
     return (
-      <ContractShell>
+      <ContractShell collapsed={collapsed} onToggleCollapsed={() => setCollapsed((value) => !value)}>
         <div className="px-1 py-3">
           <p className="text-[12.5px] text-neutral-500 dark:text-neutral-400">
             当前报告输出路径下暂无业务需求或分析框架版本。
@@ -209,7 +211,11 @@ export function ReportContractPane({ scope, workspaceId, selectedReportPath, onN
   }
 
   return (
-    <ContractShell>
+    <ContractShell
+      collapsed={collapsed}
+      onToggleCollapsed={() => setCollapsed((value) => !value)}
+      summary={selectedVersion ? selectedVersion.label : undefined}
+    >
       <div className="flex flex-wrap items-center gap-2 px-1 pb-2">
         <label className="text-[12px] font-medium text-neutral-600 dark:text-neutral-300">契约版本</label>
         <select
@@ -266,13 +272,59 @@ export function ReportContractPane({ scope, workspaceId, selectedReportPath, onN
   );
 }
 
-function ContractShell({ children }: { children: ReactNode }) {
+function ContractShell({
+  children,
+  collapsed,
+  onToggleCollapsed,
+  summary,
+}: {
+  children: ReactNode;
+  collapsed: boolean;
+  onToggleCollapsed: () => void;
+  summary?: string;
+}) {
+  if (collapsed) {
+    return (
+      <div className="sticky bottom-3 z-20 mt-4 rounded-lg border border-neutral-200 bg-white/95 px-3 py-2 shadow-lg backdrop-blur dark:border-neutral-800 dark:bg-neutral-900/95">
+        <div className="flex min-w-0 items-center gap-2">
+          <ScrollText className="h-4 w-4 shrink-0 text-neutral-500" strokeWidth={1.75} />
+          <div className="min-w-0 flex-1">
+            <div className="flex min-w-0 items-center gap-2">
+              <h3 className="shrink-0 text-[13px] font-semibold text-neutral-800 dark:text-neutral-200">报告契约</h3>
+              {summary && (
+                <span className="truncate text-[11.5px] text-neutral-400 dark:text-neutral-500" title={summary}>
+                  {summary}
+                </span>
+              )}
+            </div>
+          </div>
+          <button
+            type="button"
+            onClick={onToggleCollapsed}
+            className="inline-flex h-7 shrink-0 items-center gap-1.5 rounded-md border border-neutral-200 bg-white px-2.5 text-[12px] font-medium text-neutral-700 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-200 dark:hover:bg-neutral-800"
+          >
+            <ChevronUp className="h-3.5 w-3.5" />
+            展开
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   return (
     <div className="mt-4 rounded-lg border border-neutral-200 bg-white p-4 dark:border-neutral-800 dark:bg-neutral-900">
       <div className="mb-3 flex items-center gap-2 border-b border-neutral-100 pb-2 dark:border-neutral-800">
         <ScrollText className="h-4 w-4 text-neutral-500" strokeWidth={1.75} />
         <h3 className="text-[13px] font-semibold text-neutral-800 dark:text-neutral-200">报告契约</h3>
-        <span className="text-[11px] text-neutral-400 dark:text-neutral-500">— 展示当前报告受约束的业务需求/报告框架</span>
+        <span className="min-w-0 flex-1 truncate text-[11px] text-neutral-400 dark:text-neutral-500">— 展示当前报告受约束的业务需求/报告框架</span>
+        <button
+          type="button"
+          onClick={onToggleCollapsed}
+          className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[12px] font-medium text-neutral-500 hover:bg-neutral-100 dark:text-neutral-400 dark:hover:bg-neutral-800"
+        >
+          <ChevronDown className="h-3.5 w-3.5" />
+          收起到底部
+        </button>
       </div>
       {children}
     </div>
