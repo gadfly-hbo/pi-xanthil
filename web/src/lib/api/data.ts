@@ -56,6 +56,12 @@ import type {
   OkhMetricImportPreview,
   OkhMetricImportCommitResult,
   OkhMetricOntologyLink,
+  OkhCustomTemplatePackInput,
+  OkhCustomTemplatePackPatch,
+  OkhMetricConflictAction,
+  OkhMetricConflictActionKind,
+  OkhMetricImportFormat,
+  OkhMetricScore,
 } from "@/types";
 
 type CrowdTagDictionaryEntryInput = Pick<
@@ -395,9 +401,42 @@ export const dataApi = {
       body: JSON.stringify(payload),
     }).then(json<OkhTemplateApplyResult>),
 
+  createOkhCustomTemplatePack: (workspaceId: string, payload: OkhCustomTemplatePackInput) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/custom-template-packs`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<{ pack: OkhMetricTemplatePack; templates: OkhMetricTemplate[] }>),
+
+  updateOkhCustomTemplatePack: (workspaceId: string, packId: string, patch: OkhCustomTemplatePackPatch) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/custom-template-packs/${encodeURIComponent(packId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(patch),
+    }).then(json<OkhMetricTemplatePack>),
+
   getMetricConflicts: (workspaceId: string, includeDisabled = false) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/conflicts${includeDisabled ? "?includeDisabled=true" : ""}`)
       .then(json<OkhMetricConflict[]>),
+
+  recordOkhConflictAction: (
+    workspaceId: string,
+    payload: { action: OkhMetricConflictActionKind; metricIds?: string[]; payload?: Record<string, unknown> },
+  ) =>
+    fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/conflicts/actions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
+    }).then(json<OkhMetricConflictAction>),
+
+  listOkhConflictActions: (workspaceId: string, options: { metricId?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (options.metricId) q.set("metricId", options.metricId);
+    if (options.limit !== undefined) q.set("limit", String(options.limit));
+    const qs = q.toString();
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/conflicts/actions${qs ? `?${qs}` : ""}`)
+      .then(json<OkhMetricConflictAction[]>);
+  },
 
   getStandardFileHealth: (workspaceId: string) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/standard-health`)
@@ -410,7 +449,7 @@ export const dataApi = {
       body: JSON.stringify({ standardIds }),
     }).then(json<OkhStandardHealth[]>),
 
-  previewOkhMetricImport: (workspaceId: string, payload: { content: string; format: "csv" | "json"; filename?: string }) =>
+  previewOkhMetricImport: (workspaceId: string, payload: { content: string; format: OkhMetricImportFormat; filename?: string }) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/import/preview`, {
       method: "POST",
       headers: { "Content-Type": "application/json" },
@@ -432,6 +471,15 @@ export const dataApi = {
     q.set("format", options.format ?? "csv");
     if (options.enabledOnly === false) q.set("enabledOnly", "false");
     return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/export?${q.toString()}`);
+  },
+
+  getOkhMetricScores: (workspaceId: string, options: { metricId?: string; limit?: number } = {}) => {
+    const q = new URLSearchParams();
+    if (options.metricId) q.set("metricId", options.metricId);
+    if (options.limit !== undefined) q.set("limit", String(options.limit));
+    const qs = q.toString();
+    return fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/onto-knowhow/metrics/scores${qs ? `?${qs}` : ""}`)
+      .then(json<OkhMetricScore[]>);
   },
 
   listOkhMetricOntologyLinks: (workspaceId: string, metricId: string) =>

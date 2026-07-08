@@ -10,43 +10,29 @@
 
 > **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：v2.2 归档、2.3 阶段进行中。
 
-- 最近更新：2026-07-03 · **D/V-REPORTCONTRACT3 + D/V-REPORTCONTRACT6 已完成；报告契约化操作流前端落地**
+- 最近更新：2026-07-08 · **X-OKH9 / okh9-governance-v2 已完成 Task Bus 终审；onto-knowhow 后续治理增强落地**
 - 进度：
-  - **D/V-REPORTCONTRACT3（报告输出页展示契约来源与覆盖入口）**：新建 `web/src/components/ReportContractPane.tsx`，复用 `useBusinessRequirementContexts` hook 列出确认需求/分析框架版本，选中版本后调 `api.getReportContractContext` 展示契约来源（项目名/场景/确认时间/章节要求摘要/统计卡片/fallback 提示）。三个操作入口：「按当前报告框架审查」跳 report_review、「查看契约覆盖」折叠检查清单、「回业务需求模块修订」跳 business_requirement。`VizTabs.tsx` 在 report subtab 追加渲染。FolderPathsPane 未触碰，Markdown/HTML 预览不回退。
-  - **D/V-REPORTCONTRACT6（业务需求到报告输出的契约化操作流）**：4 子任务全交付——
-    - T1: `BusinessRequirementPane` 新增 `onBringToChat` prop + 「带入工作视图」按钮，点击存确认需求上下文到模块级 store → 跳 view subtab。`EngineTabs.tsx` wiring `onBringToChat={() => ctx.setActiveSubTab("view")}`。
-    - T2: `ChatPane` 新增契约摘要徽章（项目名·章节数·fallback 标记），选中业务需求版本后调 `getReportContractContext` 获取契约并展示。模块级 store `getActiveContractContext()` 预选版本。
-    - T3: `ReportContractPane` 新增 `selectedReportPath` prop + 自动化覆盖检查——调 `api.contractReview`（server 端 `reviewReportAgainstContract` 确定性算法），展示覆盖率评分 + 章节覆盖状态（✓已覆盖/△部分/✗缺失）+ 缺证据 + 无依据断言 + 误用待确认问题 + 建议修订。E-REPORTCONTRACT5「一键修订」按钮预留条件渲染（当前隐藏）。
-    - T4: `FolderPathsPane` 新增 `onSelectFile?: (entryId, relPath) => void` prop，文件点击时触发回调传递给 ReportContractPane。
-  - **模块级 store 新建**：`web/src/lib/activeContractContext.ts`（19行），跨子 tab 持久化"当前活跃契约上下文"（BusinessRequirementPane 写 / ChatPane 读），不碰 App.tsx。
-  - **api.ts 新增**：`contractReview` + `contractAutoFix` 方法 + `ContractReviewResult` / `ContractAutoFixResult` 类型定义（对齐 server `report-review.ts`）。
-  - 既有的 D-MONITOR-PROD1~7、D/V-BREQ-LINK1/3/3B/5、D-KG3/KG4 状态不变（见前一版 §0 记录）。
+  - **T0007-okh9-backend-contracts（approved）**：新增 OKH9 后端契约，包括 custom template packs、custom metric templates、metric conflicts、conflict actions audit、score API、CSV/JSON/Excel/Markdown 导入解析与对应路由；`server/src/*okh*.test.ts` 覆盖 18 个合同测试。
+  - **T0008-okh9-indicators-workbench-ui（approved）**：`IndicatorsPane` 接入内置/自定义模板包、导入预览/提交、冲突动作、评分与治理提示；`web/src/lib/api/data.ts` 和双侧 `types.ts` 对齐新增契约。
+  - **Task Bus**：T0007 首轮因 enablement 口径和 conflict history LIMIT/filter 问题打回，修订后通过；T0008 已通过。未执行 git commit/push。
+  - 既有的 D/V-REPORTCONTRACT、D-MONITOR、D/V-BREQ、D-KG 状态不变（历史见 git log 与本文件后续长期记录）。
 - 校验：
-  - `npm run typecheck`：✅ server + web 0 错（2026-07-03 D/V-REPORTCONTRACT3 + D/V-REPORTCONTRACT6）
-  - `npm run build`：✅ web 正常构建通过（仅既有 Echarts/dynamic import/chunk warning，2026-07-03 D/V-REPORTCONTRACT3 + D/V-REPORTCONTRACT6）
-  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配（2026-07-03 D/V-REPORTCONTRACT3 + D/V-REPORTCONTRACT6）
+  - `node --experimental-strip-types --test server/src/*okh*.test.ts`：✅ 18/18 pass
+  - `npm run typecheck`：✅ server + web 0 错
+  - `npm run build`：✅ web 正常构建通过（仅既有 Vite/ECharts dynamic import 与 chunk warning）
+  - 数据探索红线 grep（`DataExplorationPane.tsx` + `data-exploration/`）：✅ 0 匹配
 - 下一步（接续优先级）：
-  - ① 报告契约化浏览器 smoke：业务需求确认 → 「带入工作视图」→ ChatPane 自动选中 + 契约摘要 → 发送消息 → 报告输出选文件 → 「按框架审查」→ 覆盖结果展示。
-  - ② 监测浏览器手测回填（同前版 ①）。
-  - ③ Watchlist P1 轻量验收（同前版 ②）。
-  - ④ BREQ 浏览器 smoke（同前版 ③）。
-  - ⑤ 回流总控终审 BREQ 跨域最小接入 + X-KG5。
-  - ⑥ E-REPORTCONTRACT5 就绪后接「一键按审查结果修订」按钮。
+  - ① OKH9 浏览器点击级 smoke：模板包列表/创建/启用、导入预览/提交、冲突动作、score panel、刷新后状态保持。
+  - ② 修复或明确 custom pack copy 语义：当前前端复制自定义包时传 custom template ids，后端 `createOkhCustomTemplatePack` 的 `source.templateIds` 只从内置 `METRIC_TEMPLATES` 拷贝，存在复制出空包的风险。
+  - ③ 若 score/conflict history 要求强精确查询，把 `metric_ids` JSON 的 `LIKE` 过滤替换为 JSON 解析或规范化关联表；当前为终审接受的极低概率 UUID 子串误匹配风险。
+  - ④ 通过 smoke 后再由总控决定是否 commit；本轮未执行 git 操作。
 - 阻塞 / 待确认：
-  - 无硬阻塞。
+  - 无硬阻塞；OKH9 浏览器 smoke 未跑。
 - 开放问题：
-  - **⓪ 监测浏览器手测待回填**：同前版。
-  - **⓪-0 Watchlist 浏览器手测待回填**：同前版。
-  - **⓪-1 监测接缝变更需总控确认**：同前版。
-  - **⓪-2 Watchlist 前端类型接缝口径**：同前版。
-  - **① BREQ 浏览器实跑未完成**：同前版。
-  - **② BREQ 跨域 client 归属**：同前版。
-  - **③ BREQ 后续拆文件节奏**：同前版。
-  - **④ 接缝层加重终审**：同前版。
-  - **⑤ history schema / preview reason 口径**：同前版。
-  - **⑥ ReportContractPane 的 `onNavigateToReportReview` prop 已移除**：原计划"按框架审查"跳转到 report_review tab，实施中改为直接在 ReportContractPane 内调 `contractReview` 展示覆盖结果。VizTabs 不再传该 prop。若后续需跳转 report_review（如 E-REPORTCONTRACT4 提供更详细审查视图），可恢复。
-  - **⑦ `activeContractContext.ts` 模块级 store 范围**：仅在 explore tab 内有效（BusinessRequirementPane 和 ChatPane 同 tab）；multi/zhuanti tab 的 ChatPane 不消费该 store（各自有独立的 `useBusinessRequirementContexts` 实例）。若后续需跨 tab 持久化，需升级为 TabContext 级 state（需总控扩接缝）。
-  - **⑧ `api.ts` 新增 `ContractReviewResult` / `ContractAutoFixResult` 类型**：对齐 server `report-review.ts`，但未上提双侧 `types.ts`（仅 D 域消费 + 跨域走 HTTP）。若 E 域或其他模块需消费，再上提。
+  - **① custom pack copy 风险**：如上，建议独立小修或下一张 Task Bus 卡处理。
+  - **② Browser smoke 未覆盖**：T0008 review 接受此风险；涉及 UI 交互与刷新状态，仍需实跑。
+  - **③ conflict action history 精确过滤**：当前 JSON `LIKE` 风险已终审接受，但不适合高审计精度场景。
+  - **④ `docs/wiki.html` 未更新**：用户已明确后续不用 wiki，本轮按要求跳过。
 
 > 本区只反映"现在"；历史在 `git log`。每次 session 收尾**覆盖**此区，不堆叠。
 
@@ -148,10 +134,14 @@ db 新表建在 `db/data.ts:initDataTables`；HTTP 走 `routes/data.ts`；前端
 **onto-knowhow（D-OKH1/2/4/6, 2026-06-29）**
 - **canonical API 只能走 `/api/workspaces/:id/onto-knowhow/...`**：早期实现曾漂移到 `/api/metric-templates`、`/metric-conflicts`、`/standard-file-health`，总控打回。后续 OKH 相关 API 必须按 `docs/wiki.html` X-OKH0 冻结路径命名；不要另起局部路径。
 - **共享契约必须上提双侧 `types.ts`**：`OkhMetricTemplate*`、`OkhMetricConflict`、`OkhStandardHealth`、`OkhMetricImport*`、`OkhMetricOntologyLink` 均为接缝契约，禁止在 `web/src/lib/api/data.ts` 或组件里本地重声明同形类型。
-- **指标模板不建表**：P1 模板池是 server 侧静态源，避免为内置模板引入迁移；用户自定义模板后续另开卡。模板启用写 `metric_definitions`，并在启用时写 `workspace_memory_enablements(kind='metric')`。
+- **指标模板双轨制（OKH9 后）**：内置模板池仍是 server 侧静态源，不为内置模板建表；用户自定义模板包持久化到 `okh_custom_template_packs` / `okh_custom_metric_templates`，按 workspace 隔离并支持 archived/enabled 生命周期。
 - **preview 不写库，commit 才写库**：`import/preview` 只解析 CSV/JSON 指标口径并逐行返回校验错误；`import/commit` 才写 `metric_definitions`。首版 `conflictPolicy` 只允许 `skip | create_version`，禁止 overwrite。
 - **标准文件体检只做元数据**：只允许 `stat/access`、扩展名、大小、目录/二进制/疑似 raw 路径判断；不得读取文件正文，不做语义摘要，不把标准文件内容送 LLM。
 - **本体关联是人工结构化连接**：`okh_metric_ontology_links` 只存 metric → ontology object/link/logic 的连接；校验 metric/ontology 必须在当前 workspace 可见，target 必须属于该 ontology。删除关联不删除 metric、本体对象、关系或逻辑规则；首版不做 LLM 自动抽取/自动匹配。
+- **OKH9 导入格式扩展**：指标导入支持 CSV/JSON/Excel/Markdown，但只能来自用户显式上传或粘贴；parser 必须确定性运行。Excel 走 base64 + 既有 `xlsx`，Markdown 只抽取表格/结构化行；禁止目录扫描、禁止读取 standard file 正文、禁止任何 LLM 参与。
+- **冲突动作只审计、不破坏**：`okh_metric_conflict_actions` 记录 `rename` / `disable` / `create_version` / `derive_from_primary` 等治理动作。禁止删除原 metric、禁止不可逆 merge；`disable` 只修改当前 workspace enablement，不应改全局 `metric_definitions.enabled`。
+- **score API 是读时确定性计算**：不建 snapshot 表；分数由 `metric_injection_traces`、当前 workspace enablement、冲突状态、标准文件 health 读时计算。`disable_candidate` 只是建议，不得自动禁用。
+- **OKH9 review 踩坑**：score 必须用 `listEnabledItemIds(workspaceId, "metric")` 判断当前工作区启用状态，不能读 `metric_definitions.enabled`；conflict actions 的 metricId 过滤要在 LIMIT 前完成。当前 `metric_ids` JSON 查询仍用 `LIKE`，已接受极低概率 UUID 子串误匹配风险，后续高精度审计需改 JSON 解析或规范化表。
 
 **hooks 管理（D-v4, 2026-06-14）**
 - **server 端白名单校验是唯一安全门**：`coerceHook` 用 `SUPPORTED_HOOK_EVENTS`（11 种 event）和 `SUPPORTED_HOOK_ACTIONS`（仅 command|log）做 Set 白名单，外发动作（http/webhook 等）类型层不暴露 + server 拒收双重防护。前端 UI 的灰显/红线提示是 UX 层防御，不能替代 server 校验。

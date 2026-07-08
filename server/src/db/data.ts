@@ -1,5 +1,6 @@
 import { randomUUID } from "node:crypto";
 import { accessSync, constants, statSync } from "node:fs";
+import * as XLSX from "xlsx";
 import { db } from "../db.ts";
 import {
   listBusinessContexts,
@@ -45,16 +46,23 @@ import type {
   CrowdTagValueSummary,
   MetricDefinition,
   OkhMetricConflict,
+  OkhMetricConflictAction,
+  OkhMetricConflictActionKind,
   OkhMetricImportCommitResult,
+  OkhMetricImportFormat,
   OkhMetricImportPreview,
   OkhMetricOntologyLink,
   OkhMetricConflictReason,
+  OkhMetricScore,
   OkhMetricTemplate,
   OkhMetricTemplatePack,
+  OkhMetricTemplateSourceKind,
   OkhStandardHealth,
   OkhStandardHealthRiskFlag,
   OkhTemplateApplyResult,
   OkhTemplateScenario,
+  OkhCustomTemplatePackInput,
+  OkhCustomTemplatePackPatch,
   MetricDefinitionInput,
   KgHistoryEvent,
   KgHistoryEventType,
@@ -261,6 +269,57 @@ export function initDataTables(): void {
     );
     CREATE INDEX IF NOT EXISTS idx_okh_metric_links_metric ON okh_metric_ontology_links(workspace_id, metric_id);
     CREATE INDEX IF NOT EXISTS idx_okh_metric_links_target ON okh_metric_ontology_links(ontology_id, target_kind, target_id);
+  `);
+
+  // X-OKH9：自定义模板包、冲突治理审计、使用评分信号源。
+  // 自定义模板包是用户资产，与内置静态模板隔离；冲突动作只记录可追溯的治理操作。
+  db.exec(`
+    CREATE TABLE IF NOT EXISTS okh_custom_template_packs (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      title        TEXT NOT NULL,
+      description  TEXT NOT NULL DEFAULT '',
+      scenario     TEXT NOT NULL DEFAULT 'custom',
+      tags         TEXT NOT NULL DEFAULT '[]',
+      enabled      INTEGER NOT NULL DEFAULT 1,
+      archived     INTEGER NOT NULL DEFAULT 0,
+      created_at   INTEGER NOT NULL,
+      updated_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_okh_custom_packs_ws ON okh_custom_template_packs(workspace_id, archived, updated_at DESC);
+
+    CREATE TABLE IF NOT EXISTS okh_custom_metric_templates (
+      id             TEXT PRIMARY KEY,
+      pack_id        TEXT NOT NULL REFERENCES okh_custom_template_packs(id) ON DELETE CASCADE,
+      name           TEXT NOT NULL,
+      category       TEXT NOT NULL DEFAULT '',
+      description    TEXT NOT NULL DEFAULT '',
+      formula        TEXT NOT NULL DEFAULT '',
+      caliber        TEXT NOT NULL DEFAULT '',
+      unit           TEXT NOT NULL DEFAULT '',
+      display_name   TEXT,
+      aggregation    TEXT,
+      period_grain   TEXT,
+      filters        TEXT,
+      denominator    TEXT,
+      version        INTEGER,
+      tags           TEXT NOT NULL DEFAULT '[]',
+      created_at     INTEGER NOT NULL,
+      updated_at     INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_okh_custom_templates_pack ON okh_custom_metric_templates(pack_id);
+
+    CREATE TABLE IF NOT EXISTS okh_metric_conflict_actions (
+      id           TEXT PRIMARY KEY,
+      workspace_id TEXT NOT NULL REFERENCES workspaces(id),
+      action       TEXT NOT NULL,
+      metric_ids   TEXT NOT NULL DEFAULT '[]',
+      before_state TEXT NOT NULL DEFAULT '{}',
+      after_state  TEXT NOT NULL DEFAULT '{}',
+      payload      TEXT NOT NULL DEFAULT '{}',
+      created_at   INTEGER NOT NULL
+    );
+    CREATE INDEX IF NOT EXISTS idx_okh_conflict_actions_ws ON okh_metric_conflict_actions(workspace_id, created_at DESC);
   `);
 
   // ── the-crowd 人群画像资产库（D-CROWD1 · X-CROWD0 契约审定 schema）──────────────
@@ -518,6 +577,103 @@ const METRIC_TEMPLATES: OkhMetricTemplate[] = [
   },
 ];
 
+const BUILT_IN_PACK_IDS = new Set(METRIC_TEMPLATE_PACKS.map((p) => p.id));
+
+interface OkhCustomTemplatePackRow {
+  id: string;
+  workspace_id: string;
+  title: string;
+  description: string;
+  scenario: string;
+  tags: string;
+  enabled: number;
+  archived: number;
+  created_at: number;
+  updated_at: number;
+}
+
+interface OkhCustomMetricTemplateRow {
+  id: string;
+  pack_id: string;
+  name: string;
+  category: string;
+  description: string;
+  formula: string;
+  caliber: string;
+  unit: string;
+  display_name: string | null;
+  aggregation: string | null;
+  period_grain: string | null;
+  filters: string | null;
+  denominator: string | null;
+  version: number | null;
+  tags: string;
+  created_at: number;
+  updated_at: number;
+}
+
+interface OkhMetricConflictActionRow {
+  id: string;
+  workspace_id: string;
+  action: string;
+  metric_ids: string;
+  before_state: string;
+  after_state: string;
+  payload: string;
+  created_at: number;
+}
+
+function parseJsonArray<T>(raw: string | null | undefined, fallback: T[] = []): T[] {
+  if (!raw) return fallback;
+  try { return JSON.parse(raw) as T[]; } catch { return fallback; }
+}
+
+function parseJsonObject<T extends Record<string, unknown>>(raw: string | null | undefined, fallback: T = {} as T): T {
+  if (!raw) return fallback;
+  try {
+    const parsed = JSON.parse(raw) as unknown;
+    return parsed && typeof parsed === "object" && !Array.isArray(parsed) ? (parsed as T) : fallback;
+  } catch { return fallback; }
+}
+
+function rowToCustomTemplatePack(r: OkhCustomTemplatePackRow): OkhMetricTemplatePack {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    scenario: r.scenario as OkhTemplateScenario,
+    title: r.title,
+    description: r.description,
+    metricCount: 0,
+    tags: parseJsonArray<string>(r.tags),
+    updatedAt: r.updated_at,
+    sourceKind: "custom",
+    enabled: r.enabled === 1,
+    archived: r.archived === 1,
+  };
+}
+
+function rowToCustomTemplate(r: OkhCustomMetricTemplateRow): OkhMetricTemplate {
+  return {
+    id: r.id,
+    packId: r.pack_id,
+    scenario: "custom" as OkhTemplateScenario,
+    name: r.name,
+    category: r.category,
+    description: r.description,
+    formula: r.formula,
+    caliber: r.caliber,
+    unit: r.unit,
+    tags: parseJsonArray<string>(r.tags),
+    displayName: r.display_name ?? undefined,
+    aggregation: r.aggregation ?? undefined,
+    periodGrain: r.period_grain ?? undefined,
+    filters: r.filters ?? undefined,
+    denominator: r.denominator ?? undefined,
+    version: r.version ?? undefined,
+    sourceKind: "custom",
+  };
+}
+
 interface MetricRowForOkh {
   id: string;
   workspace_id: string;
@@ -680,6 +836,262 @@ export function applyMetricTemplates(input: { workspaceId: string; packId?: stri
   return { created, skipped };
 }
 
+export function listOkhMetricTemplates(workspaceId: string, scenario?: OkhTemplateScenario): { packs: OkhMetricTemplatePack[]; templates: OkhMetricTemplate[] } {
+  const builtIn = listMetricTemplates(scenario);
+  const builtInPacks = builtIn.packs.map((p) => ({ ...p, sourceKind: "built_in" as OkhMetricTemplateSourceKind }));
+  const builtInTemplates = builtIn.templates.map((t) => ({ ...t, sourceKind: "built_in" as OkhMetricTemplateSourceKind, packTitle: builtInPacks.find((p) => p.id === t.packId)?.title }));
+
+  const packRows = db.prepare(`
+    SELECT * FROM okh_custom_template_packs
+    WHERE workspace_id = ? AND archived = 0
+    ORDER BY updated_at DESC
+  `).all(workspaceId) as unknown as OkhCustomTemplatePackRow[];
+  const customPacks = packRows.map(rowToCustomTemplatePack);
+  const templateRows = db.prepare(`
+    SELECT t.* FROM okh_custom_metric_templates t
+    INNER JOIN okh_custom_template_packs p ON p.id = t.pack_id
+    WHERE p.workspace_id = ? AND p.archived = 0
+    ORDER BY t.category, t.name
+  `).all(workspaceId) as unknown as OkhCustomMetricTemplateRow[];
+  const customTemplates = templateRows.map(rowToCustomTemplate);
+  for (const pack of customPacks) {
+    pack.metricCount = customTemplates.filter((t) => t.packId === pack.id).length;
+    for (const t of customTemplates) {
+      if (t.packId === pack.id) t.packTitle = pack.title;
+    }
+  }
+
+  const scenarioFilteredPacks = scenario
+    ? customPacks.filter((p) => p.scenario === scenario)
+    : customPacks;
+  const scenarioFilteredTemplates = scenario
+    ? customTemplates.filter((t) => scenarioFilteredPacks.some((p) => p.id === t.packId))
+    : customTemplates;
+
+  return {
+    packs: [...builtInPacks, ...scenarioFilteredPacks],
+    templates: [...builtInTemplates, ...scenarioFilteredTemplates],
+  };
+}
+
+export function getOkhCustomTemplatePack(workspaceId: string, packId: string): { pack: OkhMetricTemplatePack; templates: OkhMetricTemplate[] } | undefined {
+  const row = db.prepare("SELECT * FROM okh_custom_template_packs WHERE id = ? AND workspace_id = ?").get(packId, workspaceId) as unknown as OkhCustomTemplatePackRow | undefined;
+  if (!row) return undefined;
+  const pack = rowToCustomTemplatePack(row);
+  const templateRows = db.prepare("SELECT * FROM okh_custom_metric_templates WHERE pack_id = ? ORDER BY category, name").all(packId) as unknown as OkhCustomMetricTemplateRow[];
+  const templates = templateRows.map(rowToCustomTemplate);
+  pack.metricCount = templates.length;
+  return { pack, templates };
+}
+
+export function createOkhCustomTemplatePack(
+  workspaceId: string,
+  input: OkhCustomTemplatePackInput,
+): { pack: OkhMetricTemplatePack; templates: OkhMetricTemplate[] } {
+  const title = input.title.trim();
+  if (!title) throw new Error("title required");
+  const scenario = input.scenario && ["retail", "member", "ecommerce", "supply_chain", "finance", "custom"].includes(input.scenario) ? input.scenario : "custom";
+  const now = Date.now();
+  const packId = randomUUID();
+  const tags = Array.isArray(input.tags) ? input.tags.filter((t): t is string => typeof t === "string") : [];
+  db.prepare(`
+    INSERT INTO okh_custom_template_packs (id, workspace_id, title, description, scenario, tags, enabled, archived, created_at, updated_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(packId, workspaceId, title, input.description ?? "", scenario, JSON.stringify(tags), 1, 0, now, now);
+
+  const sourceTemplates: Array<Pick<OkhMetricTemplate, "name" | "category" | "description" | "formula" | "caliber" | "unit" | "displayName" | "aggregation" | "periodGrain" | "filters" | "denominator" | "version" | "tags">> = [];
+  const metricIds = input.source?.metricIds?.filter((id): id is string => typeof id === "string") ?? [];
+  const templateIds = input.source?.templateIds?.filter((id): id is string => typeof id === "string") ?? [];
+
+  if (metricIds.length > 0) {
+    const placeholders = metricIds.map(() => "?").join(", ");
+    const metricRows = db.prepare(`SELECT * FROM metric_definitions WHERE workspace_id = ? AND id IN (${placeholders})`).all(workspaceId, ...metricIds) as unknown as MetricRowForOkh[];
+    for (const m of metricRows) {
+      sourceTemplates.push({
+        name: m.name,
+        category: m.category,
+        description: m.description,
+        formula: m.formula,
+        caliber: m.caliber,
+        unit: m.unit,
+        displayName: m.display_name ?? undefined,
+        aggregation: m.aggregation ?? undefined,
+        periodGrain: m.period_grain ?? undefined,
+        filters: m.filters ?? undefined,
+        denominator: m.denominator ?? undefined,
+        version: m.version ?? undefined,
+        tags: [],
+      });
+    }
+  }
+
+  if (templateIds.length > 0) {
+    for (const t of METRIC_TEMPLATES) {
+      if (templateIds.includes(t.id)) {
+        sourceTemplates.push({
+          name: t.name,
+          category: t.category,
+          description: t.description,
+          formula: t.formula,
+          caliber: t.caliber,
+          unit: t.unit,
+          displayName: t.displayName,
+          aggregation: t.aggregation,
+          periodGrain: t.periodGrain,
+          filters: t.filters,
+          denominator: t.denominator,
+          version: t.version,
+          tags: t.tags,
+        });
+      }
+    }
+  }
+
+  const insertTemplate = db.prepare(`
+    INSERT INTO okh_custom_metric_templates (
+      id, pack_id, name, category, description, formula, caliber, unit,
+      display_name, aggregation, period_grain, filters, denominator, version, tags, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const templates: OkhMetricTemplate[] = [];
+  for (const source of sourceTemplates) {
+    const templateId = randomUUID();
+    insertTemplate.run(
+      templateId, packId, source.name, source.category, source.description, source.formula, source.caliber, source.unit,
+      source.displayName ?? null, source.aggregation ?? null, source.periodGrain ?? null, source.filters ?? null,
+      source.denominator ?? null, source.version ?? null, JSON.stringify(source.tags), now, now,
+    );
+    templates.push(rowToCustomTemplate(db.prepare("SELECT * FROM okh_custom_metric_templates WHERE id = ?").get(templateId) as unknown as OkhCustomMetricTemplateRow));
+  }
+
+  const pack = rowToCustomTemplatePack(db.prepare("SELECT * FROM okh_custom_template_packs WHERE id = ?").get(packId) as unknown as OkhCustomTemplatePackRow);
+  pack.metricCount = templates.length;
+  for (const t of templates) t.packTitle = pack.title;
+  return { pack, templates };
+}
+
+export function updateOkhCustomTemplatePack(
+  workspaceId: string,
+  packId: string,
+  patch: OkhCustomTemplatePackPatch,
+): OkhMetricTemplatePack | undefined {
+  const existing = db.prepare("SELECT * FROM okh_custom_template_packs WHERE id = ? AND workspace_id = ?").get(packId, workspaceId) as unknown as OkhCustomTemplatePackRow | undefined;
+  if (!existing) return undefined;
+  const fields: string[] = [];
+  const params: (string | number)[] = [];
+  if (typeof patch.title === "string") { fields.push("title = ?"); params.push(patch.title); }
+  if (typeof patch.description === "string") { fields.push("description = ?"); params.push(patch.description); }
+  if (patch.scenario && ["retail", "member", "ecommerce", "supply_chain", "finance", "custom"].includes(patch.scenario)) { fields.push("scenario = ?"); params.push(patch.scenario); }
+  if (Array.isArray(patch.tags)) { fields.push("tags = ?"); params.push(JSON.stringify(patch.tags.filter((t): t is string => typeof t === "string"))); }
+  if (typeof patch.enabled === "boolean") { fields.push("enabled = ?"); params.push(patch.enabled ? 1 : 0); }
+  if (typeof patch.archived === "boolean") { fields.push("archived = ?"); params.push(patch.archived ? 1 : 0); }
+  if (fields.length === 0) return rowToCustomTemplatePack(existing);
+  fields.push("updated_at = ?");
+  params.push(Date.now());
+  params.push(packId);
+  params.push(workspaceId);
+  db.prepare(`UPDATE okh_custom_template_packs SET ${fields.join(", ")} WHERE id = ? AND workspace_id = ?`).run(...params);
+  return getOkhCustomTemplatePack(workspaceId, packId)?.pack;
+}
+
+function applySingleTemplate(
+  input: { workspaceId: string; enable?: boolean },
+  template: OkhMetricTemplate,
+  existing: MetricDefinition[],
+  byName: Map<string, MetricDefinition[]>,
+  insert: ReturnType<typeof db.prepare>,
+): { created?: MetricDefinition; skipped?: OkhTemplateApplyResult["skipped"][number] } {
+  const key = normalizeMetricName(template.name);
+  const sameName = byName.get(key) ?? [];
+  if (sameName.length > 0) {
+    return { skipped: { templateId: template.id, name: template.name, existingMetricId: sameName[0]?.id, reason: "当前工作区已有同名指标，已跳过，避免静默覆盖口径" } };
+  }
+  const nearName = existing.find((m) => m.category === template.category && jaccard(tokenSet(m.name), tokenSet(template.name)) >= 0.5);
+  if (nearName) {
+    return { skipped: { templateId: template.id, name: template.name, existingMetricId: nearName.id, reason: "当前工作区已有近似名称指标，已跳过，避免隐式制造口径冲突" } };
+  }
+  const id = randomUUID();
+  const now = Date.now();
+  const enabled = input.enable === false ? 0 : 1;
+  insert.run(
+    id,
+    input.workspaceId,
+    template.name,
+    template.category,
+    template.description,
+    template.formula,
+    template.caliber,
+    template.unit,
+    template.displayName ?? null,
+    template.aggregation ?? null,
+    template.periodGrain ?? null,
+    template.filters ?? null,
+    template.denominator ?? null,
+    template.version ?? null,
+    enabled,
+    now,
+    now,
+  );
+  if (enabled) enableForOrigin(input.workspaceId, "metric", id);
+  const metric = rowToMetric(db.prepare("SELECT * FROM metric_definitions WHERE id = ?").get(id) as unknown as MetricRowForOkh);
+  byName.set(key, [metric]);
+  existing.push(metric);
+  return { created: metric };
+}
+
+export function applyOkhMetricTemplates(input: { workspaceId: string; packId?: string; templateIds?: string[]; enable?: boolean }): OkhTemplateApplyResult {
+  const selected = new Set(input.templateIds ?? []);
+  const templates: OkhMetricTemplate[] = [];
+
+  if (input.packId) {
+    if (BUILT_IN_PACK_IDS.has(input.packId)) {
+      templates.push(...METRIC_TEMPLATES.filter((t) => t.packId === input.packId));
+    } else {
+      const customPack = getOkhCustomTemplatePack(input.workspaceId, input.packId);
+      if (!customPack || customPack.pack.archived) throw new Error("custom template pack not found or archived");
+      templates.push(...customPack.templates);
+    }
+  }
+
+  if (selected.size > 0) {
+    for (const t of METRIC_TEMPLATES) {
+      if (selected.has(t.id)) templates.push(t);
+    }
+    const placeholders = Array.from(selected).map(() => "?").join(", ");
+    const customRows = db.prepare(`
+      SELECT t.* FROM okh_custom_metric_templates t
+      INNER JOIN okh_custom_template_packs p ON p.id = t.pack_id
+      WHERE p.workspace_id = ? AND p.archived = 0 AND t.id IN (${placeholders})
+    `).all(input.workspaceId, ...Array.from(selected)) as unknown as OkhCustomMetricTemplateRow[];
+    for (const r of customRows) templates.push(rowToCustomTemplate(r));
+  }
+
+  const existing = workspaceMetrics(input.workspaceId, true);
+  const byName = new Map<string, MetricDefinition[]>();
+  for (const metric of existing) {
+    const key = normalizeMetricName(metric.name);
+    byName.set(key, [...(byName.get(key) ?? []), metric]);
+  }
+  const created: MetricDefinition[] = [];
+  const skipped: OkhTemplateApplyResult["skipped"] = [];
+  const insert = db.prepare(`
+    INSERT INTO metric_definitions (
+      id, workspace_id, name, category, description, formula, caliber, unit,
+      object_type_id, bound_columns, display_name, aggregation, period_grain,
+      filters, denominator, version, enabled, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, NULL, NULL, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `);
+  const seen = new Set<string>();
+  for (const template of templates) {
+    if (seen.has(template.id)) continue;
+    seen.add(template.id);
+    const result = applySingleTemplate(input, template, existing, byName, insert);
+    if (result.created) created.push(result.created);
+    else if (result.skipped) skipped.push(result.skipped);
+  }
+  return { created, skipped };
+}
+
 function tokenSet(text: string): Set<string> {
   const out = new Set<string>();
   const lower = text.toLowerCase();
@@ -760,6 +1172,138 @@ export function detectMetricConflicts(workspaceId: string, includeDisabled = fal
     }
   }
   return conflicts;
+}
+
+function getMetricById(workspaceId: string, metricId: string): MetricDefinition | undefined {
+  const row = db.prepare("SELECT * FROM metric_definitions WHERE id = ? AND workspace_id = ?").get(metricId, workspaceId) as unknown as MetricRowForOkh | undefined;
+  return row ? rowToMetric(row) : undefined;
+}
+
+function recordConflictAction(
+  workspaceId: string,
+  action: OkhMetricConflictActionKind,
+  metricIds: string[],
+  beforeState: Record<string, unknown>,
+  afterState: Record<string, unknown>,
+  payload: Record<string, unknown>,
+): OkhMetricConflictAction {
+  const id = randomUUID();
+  const now = Date.now();
+  db.prepare(`
+    INSERT INTO okh_metric_conflict_actions (id, workspace_id, action, metric_ids, before_state, after_state, payload, created_at)
+    VALUES (?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(id, workspaceId, action, JSON.stringify(metricIds), JSON.stringify(beforeState), JSON.stringify(afterState), JSON.stringify(payload), now);
+  return { id, workspaceId, action, metricIds, beforeState, afterState, payload, createdAt: now };
+}
+
+export function recordOkhConflictAction(
+  workspaceId: string,
+  input: { action: OkhMetricConflictActionKind; metricIds?: string[]; payload?: Record<string, unknown> },
+): OkhMetricConflictAction {
+  const action = input.action;
+  const payload = input.payload ?? {};
+  const metricIds = input.metricIds ?? [];
+
+  if (action === "rename") {
+    const metricId = payload.metricId;
+    const newName = typeof payload.newName === "string" ? payload.newName.trim() : "";
+    if (typeof metricId !== "string" || !newName) throw new Error("rename requires metricId and newName");
+    const metric = getMetricById(workspaceId, metricId);
+    if (!metric) throw new Error("metric not found");
+    if (normalizeMetricName(newName) === normalizeMetricName(metric.name)) throw new Error("new name must differ from current name");
+    const beforeState = { name: metric.name };
+    db.prepare("UPDATE metric_definitions SET name = ?, updated_at = ? WHERE id = ? AND workspace_id = ?").run(newName, Date.now(), metricId, workspaceId);
+    return recordConflictAction(workspaceId, action, [metricId], beforeState, { name: newName }, payload);
+  }
+
+  if (action === "disable") {
+    const metricId = payload.metricId;
+    if (typeof metricId !== "string") throw new Error("disable requires metricId");
+    const metric = getMetricById(workspaceId, metricId);
+    if (!metric) throw new Error("metric not found");
+    const beforeState = { enabled: metric.enabled };
+    setMemoryEnablement(workspaceId, "metric", metricId, false);
+    return recordConflictAction(workspaceId, action, [metricId], beforeState, { enabled: false }, payload);
+  }
+
+  if (action === "create_version") {
+    const metricId = payload.metricId;
+    if (typeof metricId !== "string") throw new Error("create_version requires metricId");
+    const metric = getMetricById(workspaceId, metricId);
+    if (!metric) throw new Error("metric not found");
+    const newMetric = insertOkhMetric(workspaceId, {
+      name: typeof payload.newName === "string" && payload.newName.trim() ? payload.newName.trim() : metric.name,
+      category: metric.category,
+      description: typeof payload.description === "string" ? payload.description : metric.description,
+      formula: typeof payload.formula === "string" ? payload.formula : metric.formula,
+      caliber: typeof payload.caliber === "string" ? payload.caliber : metric.caliber,
+      unit: metric.unit,
+      displayName: metric.displayName,
+      aggregation: metric.aggregation,
+      periodGrain: metric.periodGrain,
+      filters: metric.filters,
+      denominator: metric.denominator,
+    }, true, (metric.version ?? 1) + 1);
+    return recordConflictAction(workspaceId, action, [metricId, newMetric.id], { metricId: metric.id, version: metric.version }, { metricId: newMetric.id, version: newMetric.version }, payload);
+  }
+
+  if (action === "derive_from_primary") {
+    const primaryId = payload.primaryMetricId;
+    const secondaryId = payload.secondaryMetricId;
+    if (typeof primaryId !== "string" || typeof secondaryId !== "string") throw new Error("derive_from_primary requires primaryMetricId and secondaryMetricId");
+    const primary = getMetricById(workspaceId, primaryId);
+    const secondary = getMetricById(workspaceId, secondaryId);
+    if (!primary || !secondary) throw new Error("primary or secondary metric not found");
+    const derivedName = typeof payload.newName === "string" && payload.newName.trim() ? payload.newName.trim() : `${primary.name}（吸收 ${secondary.name}）`;
+    const derivedDescription = `${primary.description}\n\n[来源吸收] ${secondary.name}：${secondary.description}`.trim();
+    const newMetric = insertOkhMetric(workspaceId, {
+      name: derivedName,
+      category: primary.category,
+      description: derivedDescription,
+      formula: primary.formula,
+      caliber: primary.caliber,
+      unit: primary.unit,
+      displayName: primary.displayName,
+      aggregation: primary.aggregation,
+      periodGrain: primary.periodGrain,
+      filters: primary.filters,
+      denominator: primary.denominator,
+    }, true, Math.max(primary.version ?? 1, secondary.version ?? 1) + 1);
+    return recordConflictAction(workspaceId, action, [primaryId, secondaryId, newMetric.id], { primary, secondary }, { derivedMetricId: newMetric.id }, payload);
+  }
+
+  throw new Error(`unsupported conflict action: ${action}`);
+}
+
+export function listOkhConflictActions(
+  workspaceId: string,
+  opts?: { metricId?: string; limit?: number },
+): OkhMetricConflictAction[] {
+  const rawLimit = opts?.limit ?? 100;
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 500) : 100;
+  let sql = "SELECT * FROM okh_metric_conflict_actions WHERE workspace_id = ?";
+  const params: (string | number)[] = [workspaceId];
+  if (opts?.metricId) {
+    sql += " AND metric_ids LIKE '%' || ? || '%'";
+    params.push(opts.metricId);
+  }
+  sql += " ORDER BY created_at DESC LIMIT ?";
+  params.push(limit);
+  const rows = db.prepare(sql).all(...params) as unknown as OkhMetricConflictActionRow[];
+  return rows.map(rowToConflictAction);
+}
+
+function rowToConflictAction(r: OkhMetricConflictActionRow): OkhMetricConflictAction {
+  return {
+    id: r.id,
+    workspaceId: r.workspace_id,
+    action: r.action as OkhMetricConflictActionKind,
+    metricIds: parseJsonArray<string>(r.metric_ids),
+    beforeState: parseJsonObject<Record<string, unknown>>(r.before_state),
+    afterState: parseJsonObject<Record<string, unknown>>(r.after_state),
+    payload: parseJsonObject<Record<string, unknown>>(r.payload),
+    createdAt: r.created_at,
+  };
 }
 
 export function inspectStandardFiles(workspaceId: string, standardIds?: string[]): OkhStandardHealth[] {
@@ -909,7 +1453,57 @@ function normalizeImportRow(input: Record<string, string>): { normalized: Metric
   };
 }
 
-function parseMetricImportContent(content: string, format: "csv" | "json"): Record<string, string>[] {
+function parseMarkdownMetricSections(content: string): Record<string, string>[] {
+  const rows: Record<string, string>[] = [];
+  const lines = content.split("\n");
+  let current: Record<string, string> | null = null;
+  const headerKey = (raw: string): string => {
+    const normalized = raw.trim().replace(/^[-*]\s*/, "").replace(/\*\*/g, "").replace(/[:：]\s*$/, "").trim();
+    return OKH_HEADER_MAP[normalized] ?? normalized;
+  };
+  const pushCell = (key: string, value: string) => {
+    if (!current) return;
+    const mapped = headerKey(key);
+    if (!mapped) return;
+    current[mapped] = value.trim();
+  };
+  for (const rawLine of lines) {
+    const line = rawLine.trimEnd();
+    const headerMatch = /^##\s+(.+)$/.exec(line);
+    if (headerMatch) {
+      if (current && current.name) rows.push(current);
+      current = { name: headerMatch[1]!.trim() };
+      continue;
+    }
+    if (!current) continue;
+    if (line.includes("|")) {
+      const cells = line.split("|").map((c) => c.trim()).filter((c) => c !== "" && !/^-+$/.test(c));
+      if (cells.length >= 2) {
+        pushCell(cells[0]!, cells.slice(1).join(" "));
+      }
+      continue;
+    }
+    const kvMatch = /^[-*]?\s*(.+?)[:：]\s*(.+)$/.exec(line);
+    if (kvMatch) {
+      pushCell(kvMatch[1]!, kvMatch[2]!);
+    }
+  }
+  if (current && current.name) rows.push(current);
+  return rows;
+}
+
+function parseExcelMetricRows(content: string): Record<string, string>[] {
+  const workbook = XLSX.read(content, { type: "base64" });
+  const sheetName = workbook.SheetNames[0];
+  if (!sheetName) return [];
+  const sheet = workbook.Sheets[sheetName]!;
+  const rows = XLSX.utils.sheet_to_json<string[]>(sheet, { header: 1, defval: "" }) as string[][];
+  if (rows.length === 0) return [];
+  const headers = rows[0]!.map((h) => String(h).trim());
+  return rows.slice(1).map((values) => Object.fromEntries(headers.map((h, i) => [h, String(values[i] ?? "")])));
+}
+
+function parseMetricImportContent(content: string, format: OkhMetricImportFormat): Record<string, string>[] {
   if (format === "json") {
     const parsed = JSON.parse(content) as unknown;
     const rows = Array.isArray(parsed) ? parsed : (parsed && typeof parsed === "object" && Array.isArray((parsed as { rows?: unknown }).rows) ? (parsed as { rows: unknown[] }).rows : []);
@@ -918,13 +1512,15 @@ function parseMetricImportContent(content: string, format: "csv" | "json"): Reco
       return Object.fromEntries(Object.entries(obj).map(([k, v]) => [k, v == null ? "" : String(v)]));
     });
   }
+  if (format === "markdown") return parseMarkdownMetricSections(content);
+  if (format === "excel") return parseExcelMetricRows(content);
   const rows = parseCsvRows(content);
   if (rows.length === 0) return [];
   const headers = rows[0]!.map((h) => h.trim());
   return rows.slice(1).map((values) => Object.fromEntries(headers.map((h, i) => [h, values[i] ?? ""])));
 }
 
-export function previewOkhMetricImport(workspaceId: string, content: string, format: "csv" | "json"): OkhMetricImportPreview {
+export function previewOkhMetricImport(workspaceId: string, content: string, format: OkhMetricImportFormat): OkhMetricImportPreview {
   const rawRows = parseMetricImportContent(content, format);
   const existing = new Map(workspaceMetrics(workspaceId, true).map((m) => [normalizeMetricName(m.name), m.id]));
   const seen = new Map<string, number>();
@@ -1031,6 +1627,99 @@ export function exportOkhMetrics(workspaceId: string, enabledOnly: boolean, form
   if (format === "json") return JSON.stringify(rows, null, 2);
   const headers = ["name", "category", "description", "formula", "caliber", "unit", "displayName", "aggregation", "periodGrain", "filters", "denominator", "version"];
   return [headers.join(","), ...rows.map((row) => headers.map((h) => csvEscape(row[h as keyof typeof row])).join(","))].join("\n");
+}
+
+export function computeOkhMetricScores(workspaceId: string, opts?: { metricId?: string; limit?: number }): OkhMetricScore[] {
+  const enabledIds = new Set(listEnabledItemIds(workspaceId, "metric"));
+  const metrics = workspaceMetrics(workspaceId, true).filter((m) => !opts?.metricId || m.id === opts.metricId);
+  const conflicts = detectMetricConflicts(workspaceId, true);
+  const conflictIndex = new Map<string, OkhMetricConflict[]>();
+  for (const conflict of conflicts) {
+    for (const metricId of conflict.metricIds) {
+      const list = conflictIndex.get(metricId) ?? [];
+      list.push(conflict);
+      conflictIndex.set(metricId, list);
+    }
+  }
+  const tracesRows = db.prepare("SELECT * FROM metric_injection_traces WHERE workspace_id = ? ORDER BY created_at DESC").all(workspaceId) as unknown as Array<{
+    metric_id: string;
+    injected: number;
+    omitted_reason: string | null;
+    created_at: number;
+  }>;
+  const traceIndex = new Map<string, typeof tracesRows>();
+  for (const row of tracesRows) {
+    const list = traceIndex.get(row.metric_id) ?? [];
+    list.push(row);
+    traceIndex.set(row.metric_id, list);
+  }
+
+  const standardHealth = inspectStandardFiles(workspaceId);
+  const standardErrorCount = standardHealth.filter((h) => h.status === "error").length;
+  const standardWarnCount = standardHealth.filter((h) => h.status === "warn").length;
+
+  const rawLimit = opts?.limit ?? metrics.length;
+  const limit = Number.isFinite(rawLimit) ? Math.min(Math.max(Math.trunc(rawLimit), 1), 500) : metrics.length;
+  const now = Date.now();
+  const DAY = 24 * 60 * 60 * 1000;
+
+  return metrics.slice(0, limit).map((metric) => {
+    const metricEnabled = enabledIds.has(metric.id);
+    const metricConflicts = conflictIndex.get(metric.id) ?? [];
+    const metricTraces = traceIndex.get(metric.id) ?? [];
+    const injectedTraces = metricTraces.filter((t) => t.injected === 1);
+    const omittedTraces = metricTraces.filter((t) => t.injected === 0);
+    const lastInjectedAt = injectedTraces.length > 0 ? injectedTraces[0]!.created_at : null;
+    const daysSinceLastInjection = lastInjectedAt ? (now - lastInjectedAt) / DAY : null;
+
+    const signals: Array<{ kind: string; [key: string]: unknown }> = [];
+    if (metricTraces.length > 0) {
+      signals.push({ kind: "injection_traces", injectedCount: injectedTraces.length, omittedCount: omittedTraces.length, lastInjectedAt });
+    }
+    if (!metricEnabled) signals.push({ kind: "disabled", enabled: false });
+    for (const c of metricConflicts) {
+      signals.push({ kind: "conflict", severity: c.severity, reason: c.reason, conflictId: c.id });
+    }
+    if (standardErrorCount > 0 || standardWarnCount > 0) {
+      signals.push({ kind: "standard_health", errorCount: standardErrorCount, warnCount: standardWarnCount });
+    }
+
+    let score = 100;
+    if (injectedTraces.length === 0) score -= 25;
+    else if (daysSinceLastInjection !== null && daysSinceLastInjection > 90) score -= 15;
+    else if (daysSinceLastInjection !== null && daysSinceLastInjection > 30) score -= 5;
+    if (!metricEnabled) score -= 10;
+    let conflictPenalty = 0;
+    for (const c of metricConflicts) {
+      const penalty = c.severity === "critical" ? 15 : c.severity === "warn" ? 8 : 3;
+      conflictPenalty += penalty;
+    }
+    score -= Math.min(conflictPenalty, 30);
+    if (standardErrorCount > 0) score -= 5;
+    if (standardWarnCount > 0) score -= 2;
+    score = Math.max(0, Math.min(100, Math.round(score)));
+
+    const grade = score >= 85 ? "A" : score >= 70 ? "B" : score >= 55 ? "C" : "D";
+    const hasCritical = metricConflicts.some((c) => c.severity === "critical");
+    const hasWarn = metricConflicts.some((c) => c.severity === "warn");
+    const recommendation: OkhMetricScore["recommendation"] = !metricEnabled || score < 45
+      ? "disable_candidate"
+      : hasCritical
+        ? "downgrade"
+        : hasWarn || score < 80
+          ? "review"
+          : "keep";
+
+    return {
+      metricId: metric.id,
+      metricName: metric.name,
+      score,
+      grade,
+      signals,
+      recommendation,
+      generatedAt: now,
+    };
+  });
 }
 
 interface OkhMetricOntologyLinkRow {

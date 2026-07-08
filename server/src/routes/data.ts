@@ -41,12 +41,19 @@ import {
   recordMemoryItemFeedback,
   listProjectedFacts,
   listMetricTemplates,
+  listOkhMetricTemplates,
   applyMetricTemplates,
+  applyOkhMetricTemplates,
   detectMetricConflicts,
   inspectStandardFiles,
   previewOkhMetricImport,
   commitOkhMetricImport,
   exportOkhMetrics,
+  createOkhCustomTemplatePack,
+  updateOkhCustomTemplatePack,
+  recordOkhConflictAction,
+  listOkhConflictActions,
+  computeOkhMetricScores,
   listOkhMetricOntologyLinks,
   listOkhMetricOntologyLinksByTarget,
   listOkhMetricOntologyLinksByOntology,
@@ -159,6 +166,9 @@ import type {
   CrowdSegmentRuleGroup,
   OkhMetricOntologyLink,
   OkhTemplateScenario,
+  OkhCustomTemplatePackInput,
+  OkhCustomTemplatePackPatch,
+  OkhMetricConflictActionKind,
   ToolAiExposure,
 } from "../types.ts";
 
@@ -1142,7 +1152,30 @@ dataRouter.get("/api/workspaces/:id/onto-knowhow/templates", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   const rawScenario = typeof req.query.scenario === "string" ? req.query.scenario : undefined;
   const scenario = rawScenario && OKH_SCENARIOS.has(rawScenario) ? rawScenario as OkhTemplateScenario : undefined;
-  res.json(listMetricTemplates(scenario));
+  res.json(listOkhMetricTemplates(req.params.id, scenario));
+});
+
+dataRouter.post("/api/workspaces/:id/onto-knowhow/custom-template-packs", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const body = req.body as OkhCustomTemplatePackInput;
+  if (typeof body?.title !== "string" || !body.title.trim()) return res.status(400).json({ error: "title required" });
+  try {
+    res.json(createOkhCustomTemplatePack(req.params.id, body));
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.patch("/api/workspaces/:id/onto-knowhow/custom-template-packs/:packId", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const patch = req.body as OkhCustomTemplatePackPatch;
+  try {
+    const result = updateOkhCustomTemplatePack(req.params.id, req.params.packId, patch);
+    if (!result) return res.status(404).json({ error: "custom template pack not found" });
+    res.json(result);
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
 });
 
 dataRouter.post("/api/workspaces/:id/onto-knowhow/templates/apply", (req, res) => {
@@ -1153,7 +1186,7 @@ dataRouter.post("/api/workspaces/:id/onto-knowhow/templates/apply", (req, res) =
     : undefined;
   if (!packId && (!templateIds || templateIds.length === 0)) return res.status(400).json({ error: "packId or templateIds required" });
   try {
-    res.json(applyMetricTemplates({ workspaceId: req.params.id, packId, templateIds, enable: req.body?.enable !== false }));
+    res.json(applyOkhMetricTemplates({ workspaceId: req.params.id, packId, templateIds, enable: req.body?.enable !== false }));
   } catch (err) {
     res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }
@@ -1164,6 +1197,31 @@ dataRouter.get("/api/workspaces/:id/onto-knowhow/conflicts", (req, res) => {
   try {
     const includeDisabled = req.query.includeDisabled === "true" || req.query.includeDisabled === "1";
     res.json(detectMetricConflicts(req.params.id, includeDisabled));
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.post("/api/workspaces/:id/onto-knowhow/conflicts/actions", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  const action = req.body?.action;
+  if (!action || !["rename", "disable", "create_version", "derive_from_primary"].includes(action)) {
+    return res.status(400).json({ error: "action must be rename, disable, create_version or derive_from_primary" });
+  }
+  try {
+    res.json(recordOkhConflictAction(req.params.id, { action: action as OkhMetricConflictActionKind, metricIds: req.body?.metricIds, payload: req.body?.payload }));
+  } catch (err) {
+    res.status(400).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/conflicts/actions", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const metricId = typeof req.query.metricId === "string" ? req.query.metricId : undefined;
+    const rawLimit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+    const limit = Number.isFinite(rawLimit) ? Math.trunc(rawLimit!) : undefined;
+    res.json(listOkhConflictActions(req.params.id, { metricId, limit }));
   } catch (err) {
     res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }
@@ -1216,8 +1274,16 @@ dataRouter.post("/api/workspaces/:id/onto-knowhow/standard-health/check", (req, 
 dataRouter.post("/api/workspaces/:id/onto-knowhow/import/preview", (req, res) => {
   if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
   const content = typeof req.body?.content === "string" ? req.body.content : "";
-  const format = req.body?.format === "json" ? "json" : req.body?.format === "csv" ? "csv" : null;
-  if (!format) return res.status(400).json({ error: "format must be csv or json" });
+  const format = req.body?.format === "json"
+    ? "json"
+    : req.body?.format === "csv"
+      ? "csv"
+      : req.body?.format === "excel"
+        ? "excel"
+        : req.body?.format === "markdown"
+          ? "markdown"
+          : null;
+  if (!format) return res.status(400).json({ error: "format must be csv, json, excel or markdown" });
   if (!content.trim()) return res.status(400).json({ error: "content required" });
   try {
     res.json(previewOkhMetricImport(req.params.id, content, format));
@@ -1246,6 +1312,18 @@ dataRouter.get("/api/workspaces/:id/onto-knowhow/export", (req, res) => {
     res.setHeader("Content-Type", format === "json" ? "application/json; charset=utf-8" : "text/csv; charset=utf-8");
     res.setHeader("Content-Disposition", `attachment; filename="onto-knowhow-metrics.${format}"`);
     res.send(content);
+  } catch (err) {
+    res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
+  }
+});
+
+dataRouter.get("/api/workspaces/:id/onto-knowhow/metrics/scores", (req, res) => {
+  if (!getWorkspace(req.params.id)) return res.status(404).json({ error: "workspace not found" });
+  try {
+    const metricId = typeof req.query.metricId === "string" ? req.query.metricId : undefined;
+    const rawLimit = typeof req.query.limit === "string" ? Number(req.query.limit) : undefined;
+    const limit = Number.isFinite(rawLimit) ? Math.trunc(rawLimit!) : undefined;
+    res.json(computeOkhMetricScores(req.params.id, { metricId, limit }));
   } catch (err) {
     res.status(500).json({ error: String(err instanceof Error ? err.message : err) });
   }

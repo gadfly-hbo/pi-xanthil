@@ -3496,6 +3496,8 @@ export interface MetricDefinitionInput {
 
 // onto-knowhow · X-OKH0 冻结契约。模板/治理只存聚合指标定义和元数据，不含样本明细。
 export type OkhTemplateScenario = "retail" | "member" | "ecommerce" | "supply_chain" | "finance" | "custom";
+export type OkhMetricTemplateSourceKind = "built_in" | "custom";
+export type OkhMetricConflictActionKind = "rename" | "disable" | "create_version" | "derive_from_primary";
 
 export interface OkhMetricTemplatePack {
   id: string;
@@ -3505,6 +3507,10 @@ export interface OkhMetricTemplatePack {
   metricCount: number;
   tags: string[];
   updatedAt: number;
+  sourceKind?: OkhMetricTemplateSourceKind;
+  workspaceId?: string;
+  enabled?: boolean;
+  archived?: boolean;
 }
 
 export interface OkhMetricTemplate {
@@ -3524,6 +3530,26 @@ export interface OkhMetricTemplate {
   filters?: string;
   denominator?: string;
   version?: number;
+  sourceKind?: OkhMetricTemplateSourceKind;
+  workspaceId?: string;
+  packTitle?: string;
+}
+
+export interface OkhCustomTemplatePackInput {
+  title: string;
+  description?: string;
+  scenario?: OkhTemplateScenario;
+  tags?: string[];
+  source?: { metricIds?: string[]; templateIds?: string[] };
+}
+
+export interface OkhCustomTemplatePackPatch {
+  title?: string;
+  description?: string;
+  scenario?: OkhTemplateScenario;
+  tags?: string[];
+  enabled?: boolean;
+  archived?: boolean;
 }
 
 export interface OkhTemplateApplyResult {
@@ -3547,6 +3573,17 @@ export interface OkhMetricConflict {
   fields: string[];
   message: string;
   generatedAt: number;
+}
+
+export interface OkhMetricConflictAction {
+  id: string;
+  workspaceId: string;
+  action: OkhMetricConflictActionKind;
+  metricIds: string[];
+  beforeState: Record<string, unknown>;
+  afterState: Record<string, unknown>;
+  payload: Record<string, unknown>;
+  createdAt: number;
 }
 
 export type OkhStandardHealthRiskFlag =
@@ -3589,6 +3626,18 @@ export interface OkhMetricImportCommitResult {
   created: MetricDefinition[];
   skipped: Array<{ rowNumber: number; name: string; reason: string; existingMetricId?: string }>;
   errors: Array<{ rowNumber: number; name?: string; errors: string[] }>;
+}
+
+export type OkhMetricImportFormat = "csv" | "json" | "excel" | "markdown";
+
+export interface OkhMetricScore {
+  metricId: string;
+  metricName: string;
+  score: number;
+  grade: string;
+  signals: Array<{ kind: string; [key: string]: unknown }>;
+  recommendation: "keep" | "review" | "downgrade" | "disable_candidate";
+  generatedAt: number;
 }
 
 export interface OkhMetricOntologyLink {

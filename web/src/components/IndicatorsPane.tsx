@@ -5,7 +5,7 @@ import { sharedApi } from "@/lib/api/shared";
 import { dataApi } from "@/lib/api/data";
 import { vizApi } from "@/lib/api/viz";
 import { cn } from "@/lib/cn";
-import type { AnalysisStandard, AnalysisStandardInput, AnalysisStandardKind, MetricDefinition, OkhMetricTemplatePack, OkhMetricTemplate, OkhMetricConflict, OkhStandardHealth, OkhMetricImportPreview, MetricInjectionTrace, OkhMetricOntologyLink, Ontology, ObjectType, LinkType, LogicRule } from "@/types";
+import type { AnalysisStandard, AnalysisStandardInput, AnalysisStandardKind, MetricDefinition, OkhMetricTemplatePack, OkhMetricTemplate, OkhMetricConflict, OkhMetricConflictAction, OkhMetricConflictActionKind, OkhStandardHealth, OkhMetricImportFormat, OkhMetricImportPreview, OkhMetricScore, MetricInjectionTrace, OkhMetricOntologyLink, Ontology, ObjectType, LinkType, LogicRule } from "@/types";
 
 type FormState = AnalysisStandardInput & { id: string | null };
 type OkhMetricLinkTargetKind = OkhMetricOntologyLink["targetKind"];
@@ -51,10 +51,10 @@ function toInput(form: FormState): AnalysisStandardInput {
 const IMPLEMENTED_FEATURES: { title: string; body: string }[] = [
   { title: "指标口径维护", body: "支持维护名称、分类、含义、公式、口径和单位，指标真源落在 metric_definitions。" },
   { title: "标准文件登记", body: "支持登记参照标准文件的名称、绝对路径和用途说明，注入时主要带路径与用途。" },
-  { title: "指标模板库", body: "内置零售、会员、电商、供应链模板包，可以一键启用到当前工作区。" },
-  { title: "口径治理", body: "自动检查同名、近似名、公式、分母和时间窗口冲突，并展示标准文件体检状态。" },
-  { title: "导入导出", body: "支持 CSV / JSON 指标口径 preview、commit 和当前工作区清单导出。" },
-  { title: "使用痕迹", body: "展示指标最近被注入到 chat 或 workflow 的记录、状态和 token 估算。" },
+  { title: "指标模板库", body: "内置模板包只读可应用；自定义模板包可从当前工作区指标创建、重命名、启停、归档、复制和应用。" },
+  { title: "口径治理", body: "自动检查同名、近似名、公式、分母和时间窗口冲突，并提供重命名、停用建议执行、生成新版和以 A 为主派生新版。" },
+  { title: "导入导出", body: "支持 CSV / JSON / Excel / Markdown 指标口径 preview、commit 和当前工作区清单导出。" },
+  { title: "使用痕迹", body: "展示指标最近被注入到 chat 或 workflow 的记录、状态、token 估算和确定性使用评分。" },
   { title: "本体联动", body: "指标可以人工关联到 onto-xanthil 的对象、关系或逻辑规则，并支持从本体侧回跳维护。" },
   { title: "工作区启用", body: "同一条指标或标准可以在不同工作区分别启用或停用，避免所有项目混用。" },
   { title: "prompt 预览", body: "能直接看到启用后的指标体系会怎样进入分析 prompt，并支持复制。" },
@@ -63,10 +63,10 @@ const IMPLEMENTED_FEATURES: { title: string; body: string }[] = [
 ];
 
 const ITERATION_IDEAS: { title: string; body: string }[] = [
-  { title: "模板自定义", body: "允许团队把自己常用的一组指标保存成模板包，而不只用内置模板。" },
-  { title: "冲突处理流程", body: "在发现口径冲突后支持合并、重命名、停用或生成新版指标。" },
-  { title: "导入格式扩展", body: "在 CSV / JSON 之外补 Excel 或 Markdown 导入，并保留 preview 先行的安全口径。" },
-  { title: "使用效果评估", body: "结合使用痕迹、正负反馈和老化信号，判断哪些指标值得保留或降权。" },
+  { title: "模板治理增强", body: "后续可增加模板包审批、版本 diff 和跨工作区分发策略。" },
+  { title: "冲突处理策略", body: "后续可增加更细的字段级建议，但仍必须由用户显式确认执行。" },
+  { title: "导入格式校验", body: "后续可增加下载示例模板、列名映射保存和导入批次回滚。" },
+  { title: "使用效果评估", body: "后续可结合更多确定性业务反馈信号，但 disable_candidate 仍只能作为建议展示。" },
 ];
 
 function OntoKnowhowReadme() {
@@ -152,7 +152,7 @@ function OntoKnowhowReadme() {
       <section className="rounded-xl border border-amber-200 bg-amber-50 p-5 text-amber-900 shadow-sm dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">
         <h2 className="text-[14px] font-semibold">安全边界</h2>
         <p className="mt-2 text-[12px] leading-5">
-          onto-knowhow 可以记录聚合口径、公式、单位、标准文件路径和用途说明；不要把 draw_data 原始行、用户级明细、订单样本或敏感字段复制进来。标准文件路径本身也要确认是项目允许引用的衍生产物或受控资料。
+          onto-knowhow 可以记录聚合口径、公式、单位、标准文件路径和用途说明；导入只处理用户显式上传或粘贴的指标口径文件，不读取数据探索、draw_data 原始行、用户级明细、订单样本或敏感字段。模板、冲突治理和评分均为确定性元数据处理，不新增 LLM API 调用。标准文件路径本身也要确认是项目允许引用的衍生产物或受控资料。
         </p>
       </section>
     </div>
@@ -343,7 +343,7 @@ export function IndicatorsPane({ workspaceId, onStandardsChanged }: { workspaceI
         ) : view === "templates" ? (
           <MetricTemplatesSection workspaceId={workspaceId} onApply={refresh} />
         ) : view === "governance" ? (
-          <GovernanceSection workspaceId={workspaceId} />
+          <GovernanceSection workspaceId={workspaceId} onChange={refresh} />
         ) : view === "import_export" ? (
           <ImportExportSection workspaceId={workspaceId} onCommit={refresh} />
         ) : view === "traces" ? (
@@ -457,21 +457,27 @@ function StandardSection({
 function MetricTemplatesSection({ workspaceId, onApply }: { workspaceId: string | null; onApply: () => void | Promise<void> }) {
   const [packs, setPacks] = useState<OkhMetricTemplatePack[]>([]);
   const [templates, setTemplates] = useState<OkhMetricTemplate[]>([]);
+  const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
+  const [selectedMetricIds, setSelectedMetricIds] = useState<Set<string>>(new Set());
+  const [newPackTitle, setNewPackTitle] = useState("");
   const [loading, setLoading] = useState(false);
   const [applyingId, setApplyingId] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  useEffect(() => {
+  const load = useCallback(() => {
     if (!workspaceId) return;
     setLoading(true);
     setError("");
-    dataApi.listMetricTemplates(workspaceId).then((res) => {
+    Promise.all([dataApi.listMetricTemplates(workspaceId), api.listMetrics(workspaceId)]).then(([res, metricList]) => {
       setPacks(res.packs);
       setTemplates(res.templates);
+      setMetrics(metricList);
     }).catch((err) => {
       setError(String(err));
     }).finally(() => setLoading(false));
   }, [workspaceId]);
+
+  useEffect(() => { load(); }, [load]);
 
   const handleApply = async (packId: string) => {
     if (!workspaceId) return;
@@ -488,28 +494,127 @@ function MetricTemplatesSection({ workspaceId, onApply }: { workspaceId: string 
     }
   };
 
+  const handleCreateCustomPack = async () => {
+    if (!workspaceId) return;
+    const title = newPackTitle.trim();
+    if (!title) {
+      setError("自定义模板包名称必填");
+      return;
+    }
+    const sourceMetricIds = selectedMetricIds.size > 0 ? Array.from(selectedMetricIds) : metrics.map((m) => m.id);
+    if (sourceMetricIds.length === 0) {
+      setError("当前工作区没有可保存为模板的指标");
+      return;
+    }
+    setLoading(true);
+    setError("");
+    try {
+      await dataApi.createOkhCustomTemplatePack(workspaceId, {
+        title,
+        description: selectedMetricIds.size > 0 ? "由选中指标创建" : "由当前工作区指标创建",
+        scenario: "custom",
+        source: { metricIds: sourceMetricIds },
+      });
+      setNewPackTitle("");
+      setSelectedMetricIds(new Set());
+      load();
+    } catch (err) {
+      setError("创建自定义模板包失败: " + String(err));
+      setLoading(false);
+    }
+  };
+
+  const handlePatchCustomPack = async (pack: OkhMetricTemplatePack, patch: { title?: string; enabled?: boolean; archived?: boolean }) => {
+    if (!workspaceId || pack.sourceKind !== "custom") return;
+    try {
+      await dataApi.updateOkhCustomTemplatePack(workspaceId, pack.id, patch);
+      load();
+    } catch (err) {
+      setError("更新自定义模板包失败: " + String(err));
+    }
+  };
+
+  const handleRenameCustomPack = async (pack: OkhMetricTemplatePack) => {
+    const title = window.prompt("请输入新的模板包名称。内置模板不可覆盖；这里只会重命名自定义模板包。", pack.title)?.trim();
+    if (!title || title === pack.title) return;
+    await handlePatchCustomPack(pack, { title });
+  };
+
+  const handleCopyCustomPack = async (pack: OkhMetricTemplatePack, packTemplates: OkhMetricTemplate[]) => {
+    if (!workspaceId || packTemplates.length === 0) return;
+    const title = window.prompt("复制为新的自定义模板包名称。不会覆盖内置模板或原模板包。", `${pack.title} 副本`)?.trim();
+    if (!title) return;
+    try {
+      await dataApi.createOkhCustomTemplatePack(workspaceId, {
+        title,
+        description: `复制自 ${pack.title}`,
+        scenario: pack.scenario,
+        tags: pack.tags,
+        source: { templateIds: packTemplates.map((t) => t.id) },
+      });
+      load();
+    } catch (err) {
+      setError("复制自定义模板包失败: " + String(err));
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-neutral-500 text-xs">加载中...</div>;
   if (error) return <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30">{error}</div>;
-  if (!packs.length) return <div className="p-8 text-center text-neutral-500 text-xs">暂无模板包</div>;
+  const builtInPacks = packs.filter((p) => (p.sourceKind ?? "built_in") === "built_in");
+  const customPacks = packs.filter((p) => p.sourceKind === "custom");
 
   return (
     <div className="space-y-4">
-      {packs.map(pack => {
+      {error && <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30">{error}</div>}
+      <div className="rounded-xl border border-blue-200 bg-blue-50 p-4 text-xs text-blue-900 dark:border-blue-900/60 dark:bg-blue-950/20 dark:text-blue-200">
+        模板包只保存指标口径定义和元数据。built-in 为系统内置，只读可应用；custom 属于当前工作区，可重命名、启停、归档、复制和应用，但不会覆盖内置模板。
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">创建自定义模板包</h3>
+        <p className="mt-1 text-xs text-neutral-500">可从勾选指标创建；未勾选时默认使用当前工作区全部指标。</p>
+        <div className="mt-3 flex flex-col gap-2 sm:flex-row">
+          <input value={newPackTitle} onChange={(e) => setNewPackTitle(e.target.value)} placeholder="如：门店经营核心指标包" className="min-w-0 flex-1 rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs outline-none focus:border-neutral-400 dark:border-neutral-700 dark:bg-neutral-950" />
+          <button onClick={() => void handleCreateCustomPack()} disabled={!workspaceId || !newPackTitle.trim()} className="rounded-md bg-neutral-900 px-3 py-2 text-xs text-white disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900">保存为 custom pack</button>
+        </div>
+        <div className="mt-3 max-h-32 overflow-auto rounded-lg border border-neutral-100 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-950/40">
+          {metrics.length === 0 ? <div className="p-2 text-xs text-neutral-400">暂无工作区指标可保存</div> : metrics.map((m) => (
+            <label key={m.id} className="flex items-center gap-2 rounded px-2 py-1 text-xs text-neutral-600 hover:bg-white dark:text-neutral-300 dark:hover:bg-neutral-900">
+              <input type="checkbox" checked={selectedMetricIds.has(m.id)} onChange={(e) => setSelectedMetricIds((prev) => { const next = new Set(prev); if (e.target.checked) next.add(m.id); else next.delete(m.id); return next; })} />
+              <span className="truncate">{m.name}</span>
+              {m.category && <span className="shrink-0 text-[10px] text-neutral-400">{m.category}</span>}
+            </label>
+          ))}
+        </div>
+      </div>
+
+      {[{ title: "内置模板包", items: builtInPacks }, { title: "自定义模板包", items: customPacks }].map((group) => (
+        <section key={group.title} className="space-y-3">
+          <h3 className="px-1 text-xs font-semibold text-neutral-500">{group.title} ({group.items.length})</h3>
+          {group.items.length === 0 && <div className="rounded-xl border border-dashed border-neutral-300 bg-white p-6 text-center text-xs text-neutral-400 dark:border-neutral-800 dark:bg-neutral-900/40">暂无{group.title}</div>}
+          {group.items.map(pack => {
         const packTemplates = templates.filter(t => t.packId === pack.id);
+        const isCustom = pack.sourceKind === "custom";
         return (
           <div key={pack.id} className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
-            <div className="flex items-start justify-between">
-              <div>
-                <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{pack.title}</h3>
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
+              <div className="min-w-0">
+                <div className="flex flex-wrap items-center gap-2">
+                  <h4 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">{pack.title}</h4>
+                  <span className={cn("rounded px-1.5 py-0.5 text-[10px]", isCustom ? "bg-violet-100 text-violet-700 dark:bg-violet-900/40 dark:text-violet-300" : "bg-neutral-100 text-neutral-500 dark:bg-neutral-800")}>{isCustom ? "custom" : "built-in 只读"}</span>
+                  {isCustom && pack.enabled === false && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">已停用</span>}
+                  {isCustom && pack.archived && <span className="rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-800">已归档</span>}
+                </div>
                 <p className="mt-1 text-xs text-neutral-500">{pack.description}</p>
+                <p className="mt-1 text-[11px] text-neutral-400">{pack.metricCount} 条指标 · {pack.scenario}</p>
               </div>
-              <button
-                onClick={() => void handleApply(pack.id)}
-                disabled={applyingId === pack.id}
-                className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors"
-              >
-                {applyingId === pack.id ? "启用中..." : "启用此场景包"}
-              </button>
+              <div className="flex flex-wrap gap-2 sm:justify-end">
+                <button onClick={() => void handleApply(pack.id)} disabled={applyingId === pack.id || (isCustom && (pack.enabled === false || pack.archived))} className="rounded-md bg-neutral-900 px-3 py-1.5 text-xs text-white transition-colors hover:bg-neutral-800 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200">{applyingId === pack.id ? "应用中..." : "应用"}</button>
+                {isCustom && <button onClick={() => void handleRenameCustomPack(pack)} className="rounded-md border border-neutral-200 px-3 py-1.5 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">重命名</button>}
+                {isCustom && <button onClick={() => void handlePatchCustomPack(pack, { enabled: pack.enabled === false })} className="rounded-md border border-neutral-200 px-3 py-1.5 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">{pack.enabled === false ? "启用" : "停用"}</button>}
+                {isCustom && <button onClick={() => void handleCopyCustomPack(pack, packTemplates)} className="rounded-md border border-neutral-200 px-3 py-1.5 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800">复制</button>}
+                {isCustom && !pack.archived && <button onClick={() => { if (window.confirm(`归档「${pack.title}」？不会删除已应用的指标，也不会影响内置模板。`)) void handlePatchCustomPack(pack, { archived: true }); }} className="rounded-md border border-neutral-200 px-3 py-1.5 text-xs text-amber-700 hover:bg-amber-50 dark:border-neutral-700 dark:text-amber-300 dark:hover:bg-amber-950/30">归档</button>}
+              </div>
             </div>
             <div className="mt-4 grid gap-3 sm:grid-cols-2">
               {packTemplates.map(t => (
@@ -522,31 +627,50 @@ function MetricTemplatesSection({ workspaceId, onApply }: { workspaceId: string 
             </div>
           </div>
         );
-      })}
+          })}
+        </section>
+      ))}
     </div>
   );
 }
 
-function GovernanceSection({ workspaceId }: { workspaceId: string | null }) {
+const CONFLICT_ACTION_LABELS: Record<OkhMetricConflictActionKind, string> = {
+  rename: "重命名",
+  disable: "停用",
+  create_version: "生成新版",
+  derive_from_primary: "以 A 为主生成新版",
+};
+
+function GovernanceSection({ workspaceId, onChange }: { workspaceId: string | null; onChange: () => void | Promise<void> }) {
   const [conflicts, setConflicts] = useState<OkhMetricConflict[]>([]);
   const [healths, setHealths] = useState<OkhStandardHealth[]>([]);
+  const [metrics, setMetrics] = useState<MetricDefinition[]>([]);
+  const [actions, setActions] = useState<OkhMetricConflictAction[]>([]);
   const [loading, setLoading] = useState(false);
   const [checking, setChecking] = useState(false);
+  const [acting, setActing] = useState<string | null>(null);
   const [error, setError] = useState("");
 
-  const load = useCallback(() => {
+  const load = useCallback(async () => {
     if (!workspaceId) return;
     setLoading(true);
     setError("");
-    Promise.all([
-      dataApi.getMetricConflicts(workspaceId, false),
-      dataApi.getStandardFileHealth(workspaceId)
-    ]).then(([cRes, hRes]) => {
+    try {
+      const [cRes, hRes, metricList, actionList] = await Promise.all([
+        dataApi.getMetricConflicts(workspaceId, false),
+        dataApi.getStandardFileHealth(workspaceId),
+        api.listMetrics(workspaceId),
+        dataApi.listOkhConflictActions(workspaceId, { limit: 8 }),
+      ]);
       setConflicts(cRes);
       setHealths(hRes);
-    }).catch((err) => {
+      setMetrics(metricList);
+      setActions(actionList);
+    } catch (err) {
       setError(String(err));
-    }).finally(() => setLoading(false));
+    } finally {
+      setLoading(false);
+    }
   }, [workspaceId]);
 
   useEffect(() => { load(); }, [load]);
@@ -565,6 +689,50 @@ function GovernanceSection({ workspaceId }: { workspaceId: string | null }) {
     }
   };
 
+  const metricName = (metricId: string) => metrics.find((m) => m.id === metricId)?.name ?? metricId.slice(0, 8);
+
+  const refreshAfterAction = async () => {
+    await load();
+    await onChange();
+  };
+
+  const runConflictAction = async (conflict: OkhMetricConflict, action: OkhMetricConflictActionKind) => {
+    if (!workspaceId) return;
+    const [firstId, secondId] = conflict.metricIds;
+    if (!firstId) return;
+    let payload: Record<string, unknown>;
+    if (action === "rename") {
+      const newName = window.prompt(`为「${metricName(firstId)}」输入新名称。该动作不会删除原指标，只会更新名称。`);
+      if (!newName?.trim()) return;
+      payload = { metricId: firstId, newName: newName.trim() };
+    } else if (action === "disable") {
+      if (!window.confirm(`确认停用「${metricName(firstId)}」在当前工作区的启用关系？不会删除原指标，可稍后重新启用。`)) return;
+      payload = { metricId: firstId };
+    } else if (action === "create_version") {
+      const newName = window.prompt(`为「${metricName(firstId)}」生成新版。可输入新版名称，留空则沿用原名称。不会删除原指标。`, `${metricName(firstId)} v2`);
+      if (newName === null) return;
+      payload = { metricId: firstId, newName: newName.trim() || undefined };
+    } else {
+      if (!secondId) {
+        setError("以 A 为主生成新版至少需要两个冲突指标");
+        return;
+      }
+      const newName = window.prompt(`以 A「${metricName(firstId)}」为主，吸收 B「${metricName(secondId)}」说明并生成新版。不会删除 A 或 B。`, `${metricName(firstId)}（治理版）`);
+      if (newName === null) return;
+      payload = { primaryMetricId: firstId, secondaryMetricId: secondId, newName: newName.trim() || undefined };
+    }
+    setActing(`${conflict.id}:${action}`);
+    setError("");
+    try {
+      await dataApi.recordOkhConflictAction(workspaceId, { action, metricIds: conflict.metricIds, payload });
+      await refreshAfterAction();
+    } catch (err) {
+      setError("冲突动作失败: " + String(err));
+    } finally {
+      setActing(null);
+    }
+  };
+
   if (loading) return <div className="p-8 text-center text-neutral-500 text-xs">加载中...</div>;
   if (error) return <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30">{error}</div>;
 
@@ -574,7 +742,7 @@ function GovernanceSection({ workspaceId }: { workspaceId: string | null }) {
         <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100">
           <AlertTriangle className="h-4 w-4 text-amber-500" /> 指标口径冲突
         </h3>
-        <p className="mt-1 text-xs text-neutral-500">自动检查相似或同名的活跃指标是否存在口径分歧。</p>
+        <p className="mt-1 text-xs text-neutral-500">自动检查相似或同名的活跃指标是否存在口径分歧。治理动作都需要显式确认，且不会删除原指标。</p>
         {conflicts.length === 0 ? (
           <div className="mt-4 rounded-lg bg-emerald-50 p-3 text-xs text-emerald-600 dark:bg-emerald-950/30 dark:text-emerald-400">未发现明显的口径冲突，指标体系健康。</div>
         ) : (
@@ -584,10 +752,36 @@ function GovernanceSection({ workspaceId }: { workspaceId: string | null }) {
                 <div className="font-semibold text-amber-900 dark:text-amber-200">发现冲突 ({c.reason})</div>
                 <div className="mt-1 text-amber-700 dark:text-amber-300">{c.message}</div>
                 <div className="mt-1 text-amber-600/70 dark:text-amber-400/70">涉及字段: {c.fields.join(", ")}</div>
+                <div className="mt-2 flex flex-wrap gap-1.5 text-[11px] text-amber-700 dark:text-amber-300">
+                  {c.metricIds.map((id, idx) => <span key={id} className="rounded border border-amber-200 bg-white/60 px-1.5 py-0.5 dark:border-amber-900/60 dark:bg-amber-950/40">{idx === 0 ? "A" : idx === 1 ? "B" : idx + 1}. {metricName(id)}</span>)}
+                </div>
+                <div className="mt-3 flex flex-wrap gap-2">
+                  {(["rename", "disable", "create_version", "derive_from_primary"] as OkhMetricConflictActionKind[]).map((action) => (
+                    <button key={action} onClick={() => void runConflictAction(c, action)} disabled={acting === `${c.id}:${action}`} className="rounded-md border border-amber-300 bg-white px-2.5 py-1.5 text-[11px] text-amber-800 hover:bg-amber-100 disabled:opacity-50 dark:border-amber-800 dark:bg-amber-950/40 dark:text-amber-200 dark:hover:bg-amber-900/40">
+                      {acting === `${c.id}:${action}` ? "处理中..." : CONFLICT_ACTION_LABELS[action]}
+                    </button>
+                  ))}
+                </div>
               </div>
             ))}
           </div>
         )}
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h3 className="flex items-center gap-2 text-sm font-semibold text-neutral-900 dark:text-neutral-100"><History className="h-4 w-4 text-violet-500" /> 最近处理记录</h3>
+        <p className="mt-1 text-xs text-neutral-500">记录冲突治理动作，便于回看；disable_candidate 等建议不会自动停用指标。</p>
+        <div className="mt-4 space-y-2">
+          {actions.length === 0 ? <div className="rounded-lg bg-neutral-50 p-3 text-xs text-neutral-400 dark:bg-neutral-950/40">暂无处理记录</div> : actions.map((action) => (
+            <div key={action.id} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 text-xs dark:border-neutral-800 dark:bg-neutral-950/40">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <span className="font-medium text-neutral-800 dark:text-neutral-200">{CONFLICT_ACTION_LABELS[action.action]}</span>
+                <span className="text-[10.5px] text-neutral-400">{new Date(action.createdAt).toLocaleString()}</span>
+              </div>
+              <div className="mt-1 text-neutral-500">涉及：{action.metricIds.map(metricName).join("、") || "未记录指标"}</div>
+            </div>
+          ))}
+        </div>
       </div>
 
       <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
@@ -624,9 +818,29 @@ function GovernanceSection({ workspaceId }: { workspaceId: string | null }) {
 }
 
 const MAX_OKH_IMPORT_BYTES = 5 * 1024 * 1024;
+const OKH_IMPORT_ACCEPT = ".csv,.json,.xlsx,.xls,.md,.markdown";
+
+function guessOkhImportFormat(filename: string): OkhMetricImportFormat {
+  const lower = filename.toLowerCase();
+  if (lower.endsWith(".json")) return "json";
+  if (lower.endsWith(".xlsx") || lower.endsWith(".xls")) return "excel";
+  if (lower.endsWith(".md") || lower.endsWith(".markdown")) return "markdown";
+  return "csv";
+}
+
+function arrayBufferToBase64(buffer: ArrayBuffer): string {
+  const bytes = new Uint8Array(buffer);
+  let binary = "";
+  const chunkSize = 0x8000;
+  for (let i = 0; i < bytes.length; i += chunkSize) {
+    binary += String.fromCharCode(...bytes.subarray(i, i + chunkSize));
+  }
+  return window.btoa(binary);
+}
 
 function ImportExportSection({ workspaceId, onCommit }: { workspaceId: string | null; onCommit: () => void | Promise<void> }) {
   const [preview, setPreview] = useState<OkhMetricImportPreview | null>(null);
+  const [format, setFormat] = useState<OkhMetricImportFormat>("csv");
   const [loading, setLoading] = useState(false);
   const [committing, setCommitting] = useState(false);
   const [error, setError] = useState("");
@@ -662,9 +876,11 @@ function ImportExportSection({ workspaceId, onCommit }: { workspaceId: string | 
     setLoading(true);
     setError("");
     try {
-      const text = await file.text();
-      const format = file.name.toLowerCase().endsWith(".json") ? "json" : "csv";
-      const res = await dataApi.previewOkhMetricImport(workspaceId, { content: text, format, filename: file.name });
+      const detectedFormat = guessOkhImportFormat(file.name);
+      const selectedFormat = format === detectedFormat ? format : detectedFormat;
+      setFormat(selectedFormat);
+      const content = selectedFormat === "excel" ? arrayBufferToBase64(await file.arrayBuffer()) : await file.text();
+      const res = await dataApi.previewOkhMetricImport(workspaceId, { content, format: selectedFormat, filename: file.name });
       setPreview(res);
     } catch (err) {
       setError("解析失败: " + String(err));
@@ -702,11 +918,18 @@ function ImportExportSection({ workspaceId, onCommit }: { workspaceId: string | 
       <div className="flex flex-col sm:flex-row gap-4">
         <div className="flex-1 rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
           <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">批量导入</h3>
-          <p className="mt-1 text-xs text-neutral-500 leading-relaxed">支持上传 CSV 文件导入指标口径，需包含名称、公式等列。</p>
-          <div className="mt-4 flex items-center gap-3">
+          <p className="mt-1 text-xs text-neutral-500 leading-relaxed">支持 CSV / JSON / Excel / Markdown，需先 preview 再 commit。只处理用户显式上传或粘贴的指标口径文件，不读取数据探索或原始数据。</p>
+          <div className="mt-3 rounded-lg border border-amber-200 bg-amber-50 p-3 text-[11px] leading-5 text-amber-800 dark:border-amber-900 dark:bg-amber-950/30 dark:text-amber-200">红线：导入内容仅作为 onto-knowhow 指标口径解析，不发送给 LLM，不读取 draw_data，也不会从数据探索模块取数。</div>
+          <div className="mt-4 flex flex-wrap items-center gap-3">
+            <select value={format} onChange={(e) => setFormat(e.target.value as OkhMetricImportFormat)} className="rounded-md border border-neutral-200 bg-white px-3 py-2 text-xs outline-none dark:border-neutral-700 dark:bg-neutral-950">
+              <option value="csv">CSV</option>
+              <option value="json">JSON</option>
+              <option value="excel">Excel</option>
+              <option value="markdown">Markdown</option>
+            </select>
             <label className="inline-flex cursor-pointer items-center gap-2 rounded-md bg-neutral-900 px-4 py-2 text-xs text-white hover:bg-neutral-800 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-neutral-200 transition-colors">
-              <Upload className="h-4 w-4" /> 选择文件 (CSV)
-              <input type="file" accept=".csv,.json" className="hidden" onChange={(e) => void handleFileChange(e)} disabled={loading} />
+              <Upload className="h-4 w-4" /> 选择文件
+              <input type="file" accept={OKH_IMPORT_ACCEPT} className="hidden" onChange={(e) => void handleFileChange(e)} disabled={loading} />
             </label>
             {loading && <span className="text-xs text-neutral-500">解析中...</span>}
           </div>
@@ -727,7 +950,7 @@ function ImportExportSection({ workspaceId, onCommit }: { workspaceId: string | 
           <div className="flex items-center justify-between mb-4">
             <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">导入预览</h3>
             <div className="flex items-center gap-3">
-              <span className="text-xs text-neutral-500 hidden sm:inline">共 {preview.totalRows} 行，合法 {preview.validRows}，无效 {preview.invalidRows}</span>
+              <span className="text-xs text-neutral-500 hidden sm:inline">共 {preview.totalRows} 行，合法 {preview.validRows}，无效 {preview.invalidRows}；commit 只提交合法行</span>
               <button onClick={() => setPreview(null)} className="rounded-md border border-neutral-200 px-3 py-1.5 text-xs hover:bg-neutral-50 dark:border-neutral-700 dark:hover:bg-neutral-800 transition-colors">取消</button>
               <button onClick={() => void handleCommit()} disabled={committing || preview.validRows === 0} className="rounded-md bg-emerald-600 px-3 py-1.5 text-xs text-white hover:bg-emerald-700 disabled:opacity-50 transition-colors">
                 {committing ? "提交中..." : "确认导入有效项"}
@@ -741,6 +964,12 @@ function ImportExportSection({ workspaceId, onCommit }: { workspaceId: string | 
                   <span className={`font-mono text-[10px] px-1.5 py-0.5 rounded ${r.valid ? 'bg-neutral-200 text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300' : 'bg-red-200 text-red-700 dark:bg-red-900 dark:text-red-300'}`}>Row {r.rowNumber}</span>
                   <span className="font-semibold text-neutral-900 dark:text-neutral-100">{r.normalized?.name || "未知名称"}</span>
                 </div>
+                <div className="mt-1.5 flex flex-wrap gap-1.5">
+                  <span className={cn("rounded px-1.5 py-0.5 text-[10px]", r.valid ? "bg-emerald-100 text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300" : "bg-red-100 text-red-700 dark:bg-red-900/40 dark:text-red-300")}>{r.valid ? "合法" : "非法"}</span>
+                  {r.existingMetricId && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">冲突：已有同名指标</span>}
+                  {r.errors.some((msg) => msg.includes("required") || msg.includes("empty")) && <span className="rounded bg-red-100 px-1.5 py-0.5 text-[10px] text-red-700 dark:bg-red-900/40 dark:text-red-300">缺字段</span>}
+                  {r.errors.some((msg) => msg.includes("duplicate")) && <span className="rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700 dark:bg-amber-900/40 dark:text-amber-300">重复</span>}
+                </div>
                 {r.errors.length > 0 && <div className="mt-1.5 text-red-600 dark:text-red-400 font-medium">{r.errors.join("；")}</div>}
               </div>
             ))}
@@ -753,6 +982,7 @@ function ImportExportSection({ workspaceId, onCommit }: { workspaceId: string | 
 
 function UsageTracesSection({ workspaceId }: { workspaceId: string | null }) {
   const [traces, setTraces] = useState<MetricInjectionTrace[]>([]);
+  const [scores, setScores] = useState<OkhMetricScore[]>([]);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState("");
 
@@ -760,8 +990,14 @@ function UsageTracesSection({ workspaceId }: { workspaceId: string | null }) {
     if (!workspaceId) return;
     setLoading(true);
     setError("");
-    vizApi.listMetricInjectionTraces(workspaceId, { limit: 50 })
-      .then(setTraces)
+    Promise.all([
+      vizApi.listMetricInjectionTraces(workspaceId, { limit: 50 }),
+      dataApi.getOkhMetricScores(workspaceId, { limit: 50 }),
+    ])
+      .then(([traceList, scoreList]) => {
+        setTraces(traceList);
+        setScores(scoreList);
+      })
       .catch((err) => setError(String(err)))
       .finally(() => setLoading(false));
   }, [workspaceId]);
@@ -770,7 +1006,35 @@ function UsageTracesSection({ workspaceId }: { workspaceId: string | null }) {
   if (error) return <div className="rounded-md border border-red-200 bg-red-50 px-3 py-2 text-[12px] text-red-600 dark:border-red-900 dark:bg-red-950/30">{error}</div>;
 
   return (
-    <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+    <div className="space-y-4">
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
+        <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100">指标使用评分</h3>
+        <p className="mt-1 text-xs text-neutral-500">评分由注入次数、最近注入、冲突、标准文件体检等确定性信号计算。disable_candidate 只作为建议展示，不会自动停用指标。</p>
+        <div className="mt-4 grid gap-3 sm:grid-cols-2">
+          {scores.length === 0 ? <div className="rounded-lg bg-neutral-50 p-6 text-center text-xs text-neutral-500 dark:bg-neutral-950/40">暂无评分信号</div> : scores.map((score) => (
+            <div key={score.metricId} className="rounded-lg border border-neutral-100 bg-neutral-50 p-3 text-xs dark:border-neutral-800 dark:bg-neutral-950/40">
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0">
+                  <div className="truncate font-semibold text-neutral-900 dark:text-neutral-100">{score.metricName}</div>
+                  <div className="mt-1 text-[11px] text-neutral-500">recommendation: {score.recommendation === "disable_candidate" ? "建议复核是否停用" : score.recommendation}</div>
+                </div>
+                <div className="text-right">
+                  <div className="text-base font-semibold text-neutral-900 dark:text-neutral-100">{score.score}</div>
+                  <div className="text-[10px] text-neutral-400">Grade {score.grade}</div>
+                </div>
+              </div>
+              <div className="mt-2 flex flex-wrap gap-1.5">
+                {score.signals.length === 0 ? <span className="rounded bg-emerald-100 px-1.5 py-0.5 text-[10px] text-emerald-700 dark:bg-emerald-900/40 dark:text-emerald-300">无负面信号</span> : score.signals.map((signal, index) => (
+                  <span key={`${score.metricId}-${index}`} className="rounded bg-white px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-900 dark:text-neutral-300">{String(signal.kind)}</span>
+                ))}
+              </div>
+              <div className="mt-2 text-[10.5px] text-neutral-400">生成于 {new Date(score.generatedAt).toLocaleString()}</div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      <div className="rounded-xl border border-neutral-200 bg-white p-5 shadow-sm dark:border-neutral-800 dark:bg-neutral-900">
       <h3 className="text-sm font-semibold text-neutral-900 dark:text-neutral-100 mb-4">近期使用痕迹</h3>
       {traces.length === 0 ? (
         <div className="rounded-lg bg-neutral-50 p-6 text-center text-xs text-neutral-500 dark:bg-neutral-950/40">近期没有指标被注入到分析中。</div>
@@ -808,6 +1072,7 @@ function UsageTracesSection({ workspaceId }: { workspaceId: string | null }) {
           </table>
         </div>
       )}
+      </div>
     </div>
   );
 }
