@@ -168,6 +168,8 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
           scope={ctx.folderScope}
           communicationWorkspaceId={ctx.activeWorkspaceId}
           model={ctx.model}
+          models={ctx.models}
+          onModelChange={ctx.setModel}
           onGenerated={() => ctx.setArtifactRefreshKey((current) => current + 1)}
           onBusinessContextChanged={() => void ctx.refreshRulesPromptInfo()}
           onExploreFields={(fieldHints, source) => { ctx.setExploreSeed({ fieldHints, source }); ctx.setActiveSubTab("data_exploration"); }}

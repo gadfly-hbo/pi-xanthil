@@ -36,6 +36,7 @@ export interface RunPiPromptOptions {
   systemPrompt?: string;
   injectExtractionToolSystem?: boolean;
   injectCausalLayering?: boolean;
+  skillPaths?: string[];
   timeoutMs?: number;
   onEvent?: (event: PiEvent) => void;
   onChildProcess?: ChildProcessListener;
@@ -176,6 +177,7 @@ export function runPiPrompt(opts: RunPiPromptOptions): Promise<string> {
   // NOTE: keep extensions enabled — `--no-extensions` would also disable the model provider extension.
   const args = ["-p", "--mode", "json", "--no-skills", "--no-tools", "--no-context-files", "--session-id", `toc-${Date.now()}-${Math.random().toString(36).slice(2)}`, "--session-dir", piSessionDir];
   if (opts.model) args.push("--model", opts.model);
+  for (const path of opts.skillPaths ?? []) args.push("--skill", path);
   args.push("--system-prompt", assembleSystemPrompt(opts.systemPrompt, { injectExtractionToolSystem: opts.injectExtractionToolSystem, injectCausalLayering: opts.injectCausalLayering }));
   args.push(opts.text);
 

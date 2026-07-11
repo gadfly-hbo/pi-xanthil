@@ -8,31 +8,31 @@
 
 ## 0. 当前状态（总控维护，覆盖式）
 
-- 最近更新：2026-07-03 · X-REPORTCONTRACT7 全链验收收尾。
+- 最近更新：2026-07-08 · X-TOOLUSE7 tool-use v2 全链验收收口。
 - 进度：
-  - **REPORTCONTRACT 专题已全链收口**：X-REPORTCONTRACT0/1/2/3/4/5/6/7 均已终审，`docs/wiki.html` 本组卡已置 done；长期记录落 `docs/notes-infra.md §十九` 与 `docs/notes-data.md` 业务需求沟通小节。
-  - 产品边界冻结：业务需求模块确认需求 JSON / 分析框架 JSON 中的 `reportFramework` 是正式分析报告的上游唯一契约源；报告输出不另建模板系统、不编辑契约真源，修订契约必须回业务需求模块生成修订版。
-  - 生成前链路已接通：数据分析选择业务需求上下文后，`ReportContractContext` prompt block 随既有 `businessRequirementContext` 注入，要求先输出“本次报告实例大纲”再写正文，并标注证据满足情况。
-  - 生成后链路已接通：报告输出页可预览全文、展示契约来源、选择报告文件、运行契约审查、展示覆盖率/证据缺口/rewrite plan，并可按审查结果生成 `reviewed_versions/*-contract-revised-*.md`，原报告保留。
-  - 总控已修正两处边界：前端审查/修订默认传 `contractSource` 路径，由服务端重建 `ReportContractContext`；`contractAutoFix` client 补齐契约参数，避免调用时缺契约输入。
-  - 当前仓库门禁通过：`node --experimental-strip-types --test server/src/report-contract-review.test.ts server/src/business-requirement-communication.test.ts` 29/29 通过；`npm run typecheck` 通过；`npm run build` 通过，仅保留既有 Vite/ECharts dynamic import 与 chunk-size warning；数据探索 LLM 隔离 grep 0 匹配；`npm run check:wiki` 通过。
-  - API 全链 smoke 通过：临时工作区验证 `report-contracts/context`、`contract-review`、`contract-auto-fix`，新版本写入 `reviewed_versions/01_report-contract-revised-20260703T054759Z.md`，原报告仍存在，`review_history` 不含 `reportContent` / `content` / `revisedMarkdown` 正文字段。
-  - 数据安全红线继续有效：`draw_data` 原始行与 `data_exploration` 字段值/样本/剖析结果不得进入 LLM；`clean_data` 只按 AGENTS.md 知情受控口径进入允许链路；review/trace/history 只记录 metadata、计数、短 quote、修订摘要和未解决缺口。
+  - **TOOLUSE v2 批次已全链收口并提交推送**：T0002-T0006 全部 Task Bus `approved`，commit `bf001a7 v2.0-20260708-02 全部提交` 已推送到 `origin/master`。
+  - manifest / policy 已扩展：`aiExposure` 显式入口策略、`riskLevel` 硬上限、`deprecated` 自动化过滤、`replacementToolId` 提示、`outputContract` 强契约已进入 server/web 类型与后端 policy；旧 `category=analysis` 缺省仍按 v1 等价集合推导，`ingestion` 缺省不暴露。
+  - `/api/extraction-tools/:id/run` 已接 `ToolRunOutput` adapter：兼容旧 `summary.json`，支持试点原生输出，校验 artifact 越界、MetricSnapshot、row guard 与 outputContract 冲突；MCP 消费侧只返回 summary/metrics/artifact metadata，不读 artifact 正文。
+  - 三个核心 analysis 工具已试点原生标准输出：`duckdb-aggregate`、`cohort-retention`、`rfm-segmentation`；`duckdb-aggregate` 已补 TSV 与多 CSV 目录回归测试，避免迁移时丢失原有多扩展名/目录能力。
+  - `ToolUsePane` 已展示 owner/deprecated/replacement/aiExposure/outputContract/warnings/blockers，并修正旧的 `category=analysis => AI/MCP 暴露` 展示误导；安全裁决仍以后端 policy 和 `/run` 网关为准。
+  - 确定性推荐器已接入 `POST /api/workspaces/:id/tool-recommendations` 与 `ManualAnalysisToolCard` 推荐入口：只读 manifest 元数据、登记路径扩展名/目录类别、run ledger 聚合和 ToolLab 聚合；只推荐不执行，不调用 LLM，不读取文件正文/列名/样本/draw_data 原始行。
+  - 文档收口：新增 ADR `docs/adr/0001-tool-use-v2-exposure-and-output-contracts.md`，更新 `docs/backlog/tool-use-治理中枢.md`、`docs/notes-infra.md §十五`、`CONTEXT.md` 和 `docs/README.md`。注意 `docs/adr` 与 `docs/backlog/tool-use-治理中枢.md` 受 `.gitignore` 的 `docs/` 规则影响，提交时需 `git add -f`。
+  - `owner` 当前口径已定为未完全落库：`web/src/types.ts` 有 `owner?: string` 仅供 UI 占位；`server/tools/registry.ts` 尚未解析/校验/透传 owner。未来若启用 `{ name, contact }` 对象契约，需要另行更新 registry、API 响应和文档。
+  - 全链门禁通过：专项 `node --experimental-strip-types --test ...` 70/70 通过；`npm run typecheck` 通过；`npm run build` 通过（仅既有 Vite/ECharts dynamic import 与 chunk-size warning）；数据探索 LLM 隔离 grep 0 匹配。
 - 下一步：
-  - 优先做浏览器点击级 smoke：在现有服务上走“业务需求确认 → 分析框架 → 带入工作视图 → 生成/选择报告 → 报告输出契约审查 → 按审查结果修订”的真实 UI 链路，重点看窄屏布局、按钮启用状态、报告预览滚动和错误提示。
-  - 若 UI smoke 通过，可按用户节奏提交 REPORTCONTRACT 批次；如发现交互缺口，先小修 `ReportContractPane` / `ChatPane` / `BusinessRequirementPane`，不扩大到接缝骨架。
-  - 继续做知识库新模块运行时终审：全局 / 专属 scope、enablement、检索注入、system prompt 聚合与旧库迁移需要逐卡实跑。
-  - command 场景调用框仍需总控复核：跑 command 相关单测、typecheck/build，并确认 `ChatPane` / `ManualAnalysisToolCard` 仍只经 `@工具` 与 `/api/extraction-tools/:id/run` 的 `source=ai` 闸门。
-  - 数字锁真实 tool-use smoke 待补：用 analysis 工具返回 `metricSnapshots`，验证模型改写数值时 `metric_verification` block 可见，正常引用时无告警；同时覆盖 flow chat。
-  - LLM 管理补测：逐行复核 `llm-config.ts` 脱敏链路，并补 key 保留、OAuth 不写 key、settings 局部写的 node:test。
+  - 补浏览器/DOM smoke：打开 ToolUsePane 与 ManualAnalysisToolCard 推荐面板，检查筛选、详情、deprecated/replacement 提示、推荐列表、窄屏换行是否正常。
+  - 补真实 MCP tool call 活体验证：确认 pi-mcp-adapter 能发现 analysis 工具，MCP 调用经 `/run source=ai`，返回只含 summary/metrics/artifact metadata。
+  - 是否把 `owner` 接入 `server/tools/registry.ts` 需单独决策；当前不要把工具 JSON owner 当成已生效字段。
+  - 若后端 policy 继续演进，需考虑把 ToolUsePane 前端 policy 复现逻辑收敛为后端 policy endpoint，避免双端漂移。
+  - 继续按用户节奏处理剩余 infra backlog：知识库运行时终审、数字锁真实 tool-use smoke、LLM 管理脱敏补测。
 - 阻塞：
-  - 无代码阻塞。REPORTCONTRACT 浏览器点击级 smoke 未自动化，需用户或后续总控在现有本地服务上手动确认。
+  - 无代码阻塞。浏览器/DOM smoke 与真实 MCP tool call 活体验证未跑，属于后续验证风险。
 - 开放问题（待总控 / 后续拍板）：
-  - 是否把 `ReportContractContext` 前端临时选择 store 升级为正式 `useReportContract` hook / report-contracts API 消费层；当前 module-level store 足够支撑跨子 tab 预选，但若后续多面板复用，建议另开小卡抽象。
-  - 是否将契约覆盖审查结果与修订记录在报告输出页做历史列表；当前 server 已写 `review_history`，UI 只展示本次运行结果。
-  - `metric_verification` block 当前随消息 content 持久化；是否需要在 DB / trace 中单独索引为可筛选质量信号。
-  - 数字锁是否从 best-effort 告警升级为自动纠偏 / 重试，需要结合预算上限与误报风险另行设计。
-  - 工作区跨批次改动是否按专题分批提交，仍由用户手动决定；本 SOP 不做 git 操作。
+  - `owner` 最终形态使用字符串还是 `{ name, contact }` 对象；若选对象，需要 registry 与双侧类型同步迁移。
+  - 是否建立独立 `tool_runs` 表替代 trace_events 过渡台账。
+  - 推荐器 scorer 权重是否需要基于真实使用数据校准，是否后续持久化推荐曝光/采纳事件。
+  - 是否把 `outputContract.tableShape=unknown` 的迁移策略扩展到更多核心工具，减少 MCP/autonomous 入口阻断。
+  - 工作区跨批次改动是否继续按专题分批提交，仍由用户手动决定；本 SOP 不做 git 操作。
 
 ---
 

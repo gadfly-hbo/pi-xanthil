@@ -1762,54 +1762,6 @@ UI 流程：
 
 ✅ 总控终审通过（2026-06-30）：X-TOOLUSE6 完成，tool-use 治理中枢 v1 可归档。Registry 清单复核：25 个工具、18 个 analysis、7 个 ingestion；analysis 18/18 均含 python-analysis；ingestion 均未进入 AI 暴露集合；所有工具经 registry 返回稳定 tags/category/riskLevel，其中总控补齐 3 个旧 ingestion 工具 riskLevel，不补 tags。UI 静态复核覆盖 ToolUsePane 搜索/tag/category/risk 筛选、能力矩阵与运行台账过滤，ToolLab 覆盖 category/risk/tags/query 与 cases/eval 状态。跨模块复核：MCP、command、subagent、workflow 均只暴露或绑定 analysis，真实执行仍回到 /api/extraction-tools/:id/run，MCP 带 source=ai/caller=mcp，Chat @工具带 caller=chat。验证：tool-policy/command-tool-policy/tool-run-ledger 6/6；tool-evaluation-api/tool-evaluation-runner 16/16；row guard/metricSnapshots/MetricVerification 39/39；npm run typecheck 通过；npm run build 通过，仅既有 ECharts dynamic import/chunk warning；数据探索隔离 grep 无匹配。残留非阻塞：失败 run 转 candidate case 仍停留在安全路径说明，真正草稿生成确认流进入 X-TOOLUSE7 后续增强；浏览器点击级 smoke 未自动化，保留用户手动点检。` },
 
-  { dom: "X", status: "todo", created: "2026-06-30 07:42", title: "【控制·tool-use·后续增强·待解冻·P3】X-TOOLUSE7：manifest v2 完整治理 + 标准输出契约 + 工具推荐专题", brief:
-`状态：待解冻后再拆实施卡；不进入 TOOLUSE v1 第一批验收。放在 wiki 中防遗忘，等 D-TOOLUSE1~E-TOOLUSE5 稳定后再由总控解冻。
-
-背景：
-- 第一批先完成 tags/search、运行台账、跨模块消费一致性和评测准入。
-- 以下能力价值明确，但影响面更大，需在 v1 形成稳定使用数据后再做。
-
-增强方向 A：manifest v2 完整治理字段
-1. owner：工具维护负责人 / owner team。
-2. deprecated：工具是否退役。
-3. replacementToolId：退役工具的替代工具。
-4. aiExposure：none | mcp | manual_confirmed 等显式暴露策略，替代“category 推断全部策略”。
-5. outputContract：声明工具输出是否含表格、最大行数、artifact 类型、是否可产 MetricSnapshot、是否可能含明细风险。
-
-增强方向 B：标准化工具输出契约
-目标输出结构：
-{
-  summary: string;
-  artifacts: Array<{ path: string; kind: "md" | "json" | "csv" | "html" }>;
-  metrics?: MetricSnapshot[];
-  warnings?: string[];
-  rowCount?: number;
-  omittedReason?: string;
-}
-
-注意：
-- 这会牵涉多个 server/tools/* Python 脚本和 /run summary 适配，不能混入第一批治理 UI。
-- 迁移需向后兼容旧 summary.json，建议先在 registry 或 run endpoint 做 adapter，再逐工具改脚本。
-- 标准输出不能包含 draw_data 原始行级明细。
-
-增强方向 C：工具推荐（只推荐，不自动执行）
-1. 基于 tags、allowedUse、input/output、历史 run ledger、ToolLab 通过率，推荐“这个场景适合哪些 analysis tools”。
-2. 推荐入口可出现在 Chat @工具、command 管理、subagent template、workflow tool node。
-3. 必须保留用户确认；不得让推荐直接执行工具。
-4. 不读取数据探索样本、列名剖析或 draw_data 原始行内容；首版推荐只看用户输入意图 + manifest 元数据 + 已登记路径类型。
-
-解冻条件：
-- TOOLUSE v1 已完成并通过 X-TOOLUSE6。
-- 至少有一批真实数据分析 Python 工具已带 tags 并产生运行台账。
-- 总控确认标准输出迁移策略：一次性改核心工具，或 adapter 兼容逐步迁移。
-
-解冻后建议拆卡：
-- X-TOOLUSE7A：manifest v2 完整字段契约。
-- D/E-TOOLUSE7B：标准输出 adapter + 核心工具迁移。
-- V-TOOLUSE7C：治理字段 UI 与退役/替代提示。
-- E-TOOLUSE7D：工具推荐器（只推荐，不执行）+ 单测。
-- X-TOOLUSE7E：增强专题验收。` },
-
   // ════ 【记忆库·知识图谱优化专题】（Infra 总控拆卡 2026-06-29；来源=KnowledgeGraphPane 说明页“后续值得优化的方向”：关系筛选、节点质量评分、提取预览、变更历史）。定位：把知识图谱从基础可视化升级为可筛选、可评估、可预览、可追溯的知识治理工作台。红线：不读 draw_data 原始行；提取预览只读且不触发 LLM；变更历史只记元数据摘要，不记录报告正文、prompt 正文、客户明细、订单样本或数据探索结果。本组 KG wiki 任务卡即专题派发真源。════
   { dom: "X", status: "done", created: "2026-06-29 18:00", title: "【记忆库·知识图谱·契约·P0】X-KG0：关系筛选/质量提示/提取预览/变更历史专题契约 + 派发", brief:
 `完成状态（2026-06-29 · 总控）：专题契约与红线已冻结，KG wiki 任务卡已创建；本专题后续卡已全部完成并通过 X-KG5 终审。
@@ -2353,7 +2305,7 @@ UI 约束：
 - 必要时补充 docs/notes-infra.md 的长期约束和踩坑。
 - 输出残留风险和下一波建议。` },
 
-  { dom: "X", status: "todo", created: "2026-06-29 08:09", title: "【记忆库·onto-knowhow·后续增强·P2】X-OKH9：自定义模板 / 冲突处理 / 导入扩展 / 使用评分专题契约", brief:
+  { dom: "X", status: "done", created: "2026-06-29 08:09", title: "【记忆库·onto-knowhow·后续增强·P2】X-OKH9：自定义模板 / 冲突处理 / 导入扩展 / 使用评分专题契约", brief:
 `总控自持。前置：X-OKH8 已验收通过。
 
 目标：把 X-OKH8 留下的下一波产品增强整理成可派发专题，先由总控冻结契约、红线、验收口径，再拆给 D/E/V 执行。
@@ -2378,7 +2330,9 @@ UI 约束：
 
 边界：
 - 本卡只做后续专题契约与拆卡，不直接实现功能。
-- 若任一增强触及数据探索子树，必须执行 AGENTS.md 数据探索隔离 grep。` },
+- 若任一增强触及数据探索子树，必须执行 AGENTS.md 数据探索隔离 grep。
+
+完成状态（2026-07-08 · 总控）：X-OKH9 已经通过 Task Bus 拆分与终审收口。T0007-okh9-backend-contracts 完成 custom template packs、custom metric templates、conflict actions audit、CSV/JSON/Excel/Markdown 导入解析、score API 与后端路由/类型/合同测试；T0008-okh9-indicators-workbench-ui 完成 IndicatorsPane 工作台接入、自定义模板包、导入预览/提交、冲突动作、评分与治理提示。验证：node --experimental-strip-types --test server/src/*okh*.test.ts 18/18 通过；npm run typecheck 通过；npm run build 通过（仅既有 Vite/ECharts dynamic import 与 chunk warning）；数据探索隔离 grep 无匹配。残留风险：OKH9 浏览器点击级 smoke 未跑；custom pack 复制自定义包时可能因后端 source.templateIds 只复制内置 METRIC_TEMPLATES 而生成空包，建议后续小修；conflict action history 的 metric_ids JSON LIKE 过滤为已接受的低概率误匹配风险，高精度审计场景需改 JSON 解析或规范化表。` },
 
   // ════ 【记忆库·业务环境迭代专题】（Infra 总控拆卡 2026-06-29；来源=BusinessContextPane 说明页中“后续值得优化的方向”：冲突与重复检测、时效与负责人、批量导入导出、使用痕迹）。定位：把业务环境从“手工维护背景条目”升级为“可治理、可追踪、可批量维护的业务事实池”。红线：业务环境会进 LLM prompt，只能保存可共享业务背景；禁止 draw_data 原始行、个人敏感信息、订单样本、客户明细或未脱敏日志。════
   { dom: "X", status: "done", created: "2026-06-29 11:00", title: "【记忆库·业务环境·契约·P0】X-BC0：元数据/治理/导入导出/痕迹专题契约 + 派发", brief:

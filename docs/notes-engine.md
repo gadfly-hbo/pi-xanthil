@@ -9,33 +9,34 @@
 
 > 📌 **v2.3 已发布（2026-06-26，总控）·「零幻觉·数据可信地基」**：交付已归档进 `docs/wiki.html` CHANGELOG v2.3（current），v2.2 归档、2.3 阶段进行中。本 §0 工作记录由域 owner 续维护。
 
-- 最近更新:2026-07-03 · **E-REPORTCONTRACT1/2/4/5 完成：业务需求 reportFramework → ReportContractContext → 报告生成/审查/修订闭环**
+- 最近更新:2026-07-10 · **BRC 对话式澄清模式完成：业务需求沟通支持 Chat-like 逐轮澄清、模型选择、Skill 子集和 Prompt 库插入**
 - 进度:
-  - **E-REPORTCONTRACT1：ReportContractContext 标准化读取与摘要**
-    - `server/src/business-requirement-communication.ts` 新增 E 域内部 `ReportContractContext`、标准化纯函数、fallback 默认报告框架、trace metadata builder、prompt block builder。
-    - `server/src/routes/engine.ts` 新增 `GET/POST /api/workspaces/:id/report-contracts/context`，只接受 `business_requirements/*-确认需求-*.json` 与 `business_requirements/*-分析框架-*.json`；拒绝 `business_requirements/communications/*.json` 与路径逃逸。
-    - `web/src/lib/api/engine.ts` 新增域内 `ReportContractContext` 类型与 `getReportContractContext()`，未扩双侧 `types.ts`。
-  - **E-REPORTCONTRACT2：报告生成消费报告契约**
-    - 复用既有 `businessRequirementContext` 选择，当请求带 `jsonPath` 时追加 `[ReportContractContext]` prompt block，要求先输出“本次报告实例大纲”，再逐章回应 keyQuestions，并标注 requiredEvidence 是否满足。
-    - `server/src/index.ts` 的 presentation/report 生成 prompt 增加契约两阶段要求；openQuestions/deferredQuestions 不得写成已确认事实，证据不足写“未覆盖/待确认”。
-  - **E-REPORTCONTRACT4：按报告框架做贴合度审查**
-    - `server/src/report-review.ts` 新增 `reviewReportAgainstContract()` 确定性审查：requiredQuestionsCoverage、sectionCoverage、evidenceCoverage、unsupportedClaims、openQuestionMisuse、actionability、rewritePlan。
-    - 新增 `POST /api/report-review/contract-review`，旧 `/api/report-review/review` 不改；history 只存契约 source basename/kind、coverage counts、score 等 metadata，不存报告正文或大段 quote。
-  - **E-REPORTCONTRACT5：契约驱动自动修订并保留版本**
-    - 新增 `buildContractAutoFixPrompt()` / `validateContractRevisionResult()` 与 `POST /api/report-review/contract-auto-fix`。
-    - 修订结果写入 `reviewed_versions/*-contract-revised-*.md`，不覆盖原报告；history 记录原路径、新路径、契约来源 metadata、coverage delta、修订摘要、未解决缺口。
-  - **前序状态仍有效**：E-MONITOR-PROD4/6、E-BREQ-LINK2/4、E-BRC1/3、E-TOOLUSE2/4/5 已完成；X-TRACE8 / E-OKH3 / E-CROWD11 / E-CROWD8 / E-CROWD5 均已完成；DLF 模拟实验专题 done；MONITOR-TARGET1 done。
+  - **AgentOps T0009：业务需求对话式澄清模式**
+    - `BusinessRequirementPane` 在既有“需求沟通”子 tab 内新增 `conversation / structured` 模式切换；日常场景默认对话式，专题/重复默认结构化，未新增全局导航或 `SubTab` 接缝。
+    - 对话式模式展示 chat-like 对话流、最新澄清摘要、澄清问题、建议假设和“确认成正式需求”入口；结构化/复杂模式仍保留材料导入、清单回答、假设管理、应用草案、确认正式需求和生成分析框架。
+    - 需求澄清输入区接入模型选择、`SkillSelector`、`PromptSelector`；Prompt 库只插入输入框，不自动发送。
+    - `EngineTabs` 向业务需求模块透传 `models` / `setModel`；`web/src/lib/api/engine.ts` 的专用 BRC client 增加 `skillPaths?: string[]`。
+  - **BRC 专用 API skill 白名单接线**
+    - `POST /api/workspaces/:id/business-requirement-communication/clarify` 继续作为唯一澄清入口，不改走通用 chat/generate/extract/clarify。
+    - `routes/engine.ts` 复用 `parseRequestedSkillPaths(workspaceRoot, skillPaths, { mode:"strict" })` 校验显式 skill 白名单，并传给 `runPiPrompt`。
+    - `runPiPrompt` 新增可选 `skillPaths`，默认仍 `--no-skills --no-tools --no-context-files`；传入非空白名单时追加 `--skill <path>`，不改变默认轻量 prompt 行为，也不使用 `--no-extensions`。
+  - **输入体验修订**
+    - 需求澄清 textarea 从短输入框调整为 `min-h-[180px] max-h-[42vh] resize-y`，适合长诉求/多轮回答阅读。
+  - **前序状态仍有效**：E-REPORTCONTRACT1/2/4/5、E-MONITOR-PROD4/6、E-BREQ-LINK2/4、E-BRC1/3、E-TOOLUSE2/4/5 已完成；X-TRACE8 / E-OKH3 / E-CROWD11 / E-CROWD8 / E-CROWD5 均已完成；DLF 模拟实验专题 done；MONITOR-TARGET1 done。
 - 校验:
-  - `node --experimental-strip-types --test server/src/report-contract-review.test.ts server/src/business-requirement-communication.test.ts` ✅(29/29)
   - `npm run typecheck` ✅(server + web)
+  - `node --experimental-strip-types --test server/src/business-requirement-communication.test.ts server/src/pi-adapter-skillpaths.test.ts` ✅(32/32)
   - `npm run build` ✅(仅既有 Vite chunk warning)
 - 下一步:
-  - 建议补浏览器/API smoke：选择确认需求/分析框架 → `report-contracts/context` 返回章节/必答问题 → 生成汇报版本 prompt 含 ReportContractContext → `contract-review` 识别缺章节/证据 → `contract-auto-fix` 写出 `contract-revised` 新文件且原报告保留。
+  - 建议补真实浏览器 smoke：进入业务需求 → 需求沟通，选择模型、勾选 skill、从 Prompt 库插入模板，发送一轮澄清，确认 `clarify` 请求体包含 `model/skillPaths` 且后端未读取 draw_data/raw rows。
+  - 建议补 Playwright 截图验证对话式输入框在桌面/窄屏下不重叠；本次本机缺 Playwright Chromium，未做截图。
+  - 建议补 API smoke：选择确认需求/分析框架 → `report-contracts/context` 返回章节/必答问题 → 生成汇报版本 prompt 含 ReportContractContext → `contract-review` 识别缺章节/证据 → `contract-auto-fix` 写出 `contract-revised` 新文件且原报告保留。
   - 建议 D/V 前端接入：报告审核 UI 增加“按业务需求契约审查”和“契约驱动修订”入口，并展示 section/question/evidence/rewritePlan。
   - 建议总控评估是否把 legacy `/api/report-review/*` 迁入 `routes/viz.ts` 或按快修/代笔机制收口；本次为完成链路做了最小 legacy 接线。
-  - 仍待 D-MONITOR-PROD7 前端接 watchlist/summary；仍待 BRC 人工浏览器 smoke；仍待 E-SKILLINJECT1 真实 workflow smoke、E-SKILLOPT1 浏览器 smoke；KICKOFF-P0 的 E2E 验证补课（AnaX 8 阶段真跑 / skill 蒸馏全链路 smoke / SQL 连接真实库）仍未执行。
+  - 仍待 D-MONITOR-PROD7 前端接 watchlist/summary；仍待 E-SKILLINJECT1 真实 workflow smoke、E-SKILLOPT1 浏览器 smoke；KICKOFF-P0 的 E2E 验证补课（AnaX 8 阶段真跑 / skill 蒸馏全链路 smoke / SQL 连接真实库）仍未执行。
 - 阻塞: 无硬阻塞。
 - 开放问题(需总控):
+  - 是否允许将 BRC 澄清阶段的 `skillPaths` 选择纳入正式 trace metadata；当前仅运行时传给 pi，不在 BRC trace 中记录具体路径。
   - 本次 E-REPORTCONTRACT2/4/5 为完成报告生成/审核链路，最小修改了 legacy `server/src/index.ts` 中既有 `/api/report-review/*` 与 `businessRequirementContext` 注入点；需总控确认是否追认为允许的 legacy 小接线，或后续迁移到域 router。
   - `ReportContractContext` 是否需要上提双侧 `types.ts` 供 D/V 前端稳定消费；当前按 SkillPackage 先例保留在 E 域内部类型。
   - 契约审查当前首版为确定性规则审查，LLM prompt builder 已预留但 API 未调用 LLM；是否需要后续增加 LLM judge 版本，还是保持确定性以降低成本和敏感内容留存风险。
@@ -262,6 +263,7 @@ db 新表建 `db/engine.ts:initEngineTables`；HTTP 走 `routes/engine.ts`；前
 - **BRC 确认写入口径**：`POST /api/workspaces/:id/business-requirement-communication/confirm` 只写用户确认后的草案、问题状态与假设状态；正式需求落 `business_requirements/*-确认需求-*.md/json`，沟通记录落 `business_requirements/communications/*.json`，避免被现有版本列表误认为正式需求。正式 JSON 必须显式区分 `confirmedFacts` / `confirmedAssumptions` / `deferredQuestions` / `rejectedAssumptions`；`deferred/skipped/pending` 问题不得写成 confirmed facts。
 - **BRC trace/review 边界**：trace 事件只存脱敏 metadata（scene、数量、状态分布、路径 basename、风险/输出数量），不得存用户长文本、文件正文、样本值。`GET /api/workspaces/:id/business-requirement-communication/review-context` 只返回确认后的目标、成功标准、确认假设、未确认问题，供报告审核展示或拼接；首版不自动 judge。
 - **BRC 材料导入与确认需求生成分析框架边界（E-BREQ-LINK2/E-BREQ-LINK4，2026-06-30）**：沟通材料导入使用专用 `POST /api/workspaces/:id/business-requirement-communication/import-documents`，不得让前端复用通用 extract/chat/generate/clarify。导入可读 `report` / `business_requirements` 衍生产物正文；`clean_data` 首版只允许路径元信息/聚合说明，禁止读正文；`draw_data` / `data_exploration` 禁入；`localText` 仅限用户显式上传/粘贴并截断。分析框架生成使用专用 `POST /api/workspaces/:id/business-requirements/analysis-framework-from-confirmed`，采用方案 B 而非扩 legacy `index.ts` 旧表单端点，避免触碰接缝层；只接受 `business_requirements/*-确认需求-*.json` 与同名 Markdown，拒绝 `*-分析框架-*.json` 和 `business_requirements/communications/*.json`。生成结果仍写 `business_requirements/*-分析框架-*`，保持版本列表兼容；`deferred/skipped/assumed/pending` 只能进入 openQuestions/risks/zeroHallucinationCheck，不得进入 businessFacts。两类 trace 均只存 basename / 数量 / 长度 metadata，不存正文。
+- **BRC 对话式澄清与模型/Skill/Prompt 控件（2026-07-10）**：需求沟通阶段可在 `BusinessRequirementPane` 内切换 `conversation / structured`，但不得新增全局导航接缝或第二套正式需求 schema。模型选择透传现有 `ctx.model`，Prompt 库只插入澄清输入框、不自动发送；Skill 选择必须走专用 BRC API 的 `skillPaths`，由后端 `parseRequestedSkillPaths(..., { mode:"strict" })` 校验后传给 `runPiPrompt`。`runPiPrompt` 默认仍 `--no-skills --no-tools --no-context-files`，只有显式白名单时追加 `--skill`；不得为 BRC 改走通用 chat/generate/extract/clarify，也不得启用默认 pi skills。
 - **ReportContractContext 报告契约闭环（E-REPORTCONTRACT1/2/4/5，2026-07-03）**：业务需求产物中的 `reportFramework` 被标准化为 E 域内部 `ReportContractContext`，供报告生成、契约审查、契约修订消费。读取真源只接受 `business_requirements/*-确认需求-*.json` 与 `business_requirements/*-分析框架-*.json`；`business_requirements/communications/*.json` 只是沟通记录，不能作为事实源；路径必须仍走 report 登记目录 + `readFlowFile` 围栏，拒绝 parent/hidden 逃逸。缺 `reportFramework` 的旧 JSON 可用 BusinessRequirementPane 同口径默认框架 fallback，但 response/prompt 必须标记 `fallback=true`，避免误认为用户确认过的报告框架。`deferred/skipped/assumed/pending` 与 openQuestions 只能进入 openQuestions/risks/zeroHallucinationCheck，不得进入 confirmed facts。
 - **ReportContractContext 注入策略（2026-07-03）**：不新建模板表、不复制 `reportFramework` 为新真源，只在用户选择业务需求上下文且请求带 `jsonPath` 时，把标准化后的 `[ReportContractContext]` 追加到既有业务需求上下文。正式报告/汇报生成必须两阶段：先输出“本次报告实例大纲”（每章对应契约 section、必答问题、证据类型），再写正文（逐章回应 keyQuestions，标注 requiredEvidence 是否满足）。证据不足必须写“未覆盖/待确认”，不得编造数据或把 openQuestions/deferredQuestions 写成事实。
 - **契约审查与修订边界（2026-07-03）**：契约贴合度首版选择确定性规则审查，而非默认 LLM judge：按章节、必答问题、证据关键词、无证据结论、open question 事实化、行动建议回应决策场景生成 `ContractReviewResult`，成本低且 trace/history 只存 metadata 与短 quote。自动修订复用既有 report-review auto-fix 的 LLM 能力，但新增契约 prompt 强约束：不得新增无来源数字、不得读取 draw_data、不得覆盖原报告；输出写 `reviewed_versions/*-contract-revised-*` 新文件。旧 `/api/report-review/review` 与 `/api/report-review/auto-fix` 行为保持不变，契约能力走新增 `/contract-review` 与 `/contract-auto-fix`。

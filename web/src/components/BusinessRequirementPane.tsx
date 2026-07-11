@@ -1,12 +1,14 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type ReactNode } from "react";
-import { AlertTriangle, BookOpen, ClipboardList, Compass, FileText, Loader2, Pencil, RefreshCw, Save, Sparkles, X } from "lucide-react";
+import { AlertTriangle, BookOpen, ClipboardList, Compass, Cpu, FileText, Loader2, Pencil, RefreshCw, Save, Sparkles, X } from "lucide-react";
 import { Markdown } from "@/components/Markdown";
+import { PromptSelector } from "@/components/PromptSelector";
+import { SkillSelector } from "@/components/SkillSelector";
 import { api } from "@/lib/api";
 import { setActiveContractContext } from "@/lib/activeContractContext";
 import { formatDisplayPath } from "@/lib/pathDisplay";
 import type { RequirementCommunicationAssumption, RequirementCommunicationQuestion, RequirementCommunicationResult, RequirementCommunicationScene, RequirementImportDocumentInput, RequirementImportDocumentsResult } from "@/lib/api/engine";
 import { useResumableTask } from "@/lib/resumableTask";
-import type { BusinessContextCategory, FlowTreeNode, WorkspacePath } from "@/types";
+import type { BusinessContextCategory, FlowTreeNode, PiModel, WorkspacePath } from "@/types";
 
 type Scope =
   | { type: "workspace"; workspaceId: string }
@@ -18,6 +20,8 @@ interface Props {
   communicationWorkspaceId?: string | null;
   scene?: RequirementCommunicationScene;
   model?: string;
+  models?: PiModel[];
+  onModelChange?: (model: string) => void;
   onGenerated?: () => void;
   onBusinessContextChanged?: () => void;
   // One-way: 业务需求 → 数据探索. Passes field-name hints only (never data).
@@ -154,6 +158,7 @@ interface ActiveConfirmedRequirement {
 }
 
 type RequirementSubTab = "communication" | "framework";
+type RequirementCommunicationMode = "conversation" | "structured";
 
 const REQUIREMENT_SUB_TABS: Array<{ id: RequirementSubTab; label: string; hint: string }> = [
   { id: "communication", label: "需求沟通", hint: "确认前工作台" },
@@ -167,6 +172,32 @@ const SCENE_META: Record<RequirementCommunicationScene, { label: string; mode: s
 };
 
 const COMMUNICATION_CATEGORIES = ["目标", "对象", "时间", "指标口径", "维度", "输出物", "成功标准", "风险"];
+
+const COMMUNICATION_MODE_META: Record<RequirementCommunicationMode, { label: string; hint: string }> = {
+  conversation: { label: "对话式澄清", hint: "逐轮补充，让 pi-agent 更新问题、假设和草案" },
+  structured: { label: "结构化/复杂模式", hint: "材料导入、清单回答、假设管理和完整确认流程" },
+};
+
+function RequirementModelSelect({ models, value, onChange }: { models: PiModel[]; value: string; onChange: (value: string) => void }) {
+  const groups = models.reduce<Record<string, PiModel[]>>((acc, model) => {
+    (acc[model.provider] ??= []).push(model);
+    return acc;
+  }, {});
+  return (
+    <select
+      value={value}
+      onChange={(event) => onChange(event.target.value)}
+      className="max-w-[220px] rounded-md bg-transparent px-1 py-0.5 text-[12px] outline-none focus:bg-neutral-100 dark:focus:bg-neutral-800"
+      title="选择本次需求澄清使用的模型"
+    >
+      {Object.entries(groups).map(([provider, items]) => (
+        <optgroup key={provider} label={provider}>
+          {items.map((item) => <option key={item.id} value={item.id}>{item.model}</option>)}
+        </optgroup>
+      ))}
+    </select>
+  );
+}
 
 function isConfirmedRequirementJsonPath(path: string) {
   return /(^|\/)business_requirements\/[^/]*-确认需求-[^/]*\.json$/.test(path);
@@ -824,6 +855,15 @@ function communicationHistory(turns: CommunicationTurn[], questions: Requirement
   ].join("\n").slice(0, 8000);
 }
 
+function communicationResultSummary(result: RequirementCommunicationResult): string {
+  const draft = result.requirementDraft;
+  return [
+    draft.objective ? `目标：${draft.objective}` : "目标：待补充",
+    draft.questions.length > 0 ? `待澄清：${draft.questions.slice(0, 3).join("；")}` : "待澄清：暂无新增问题",
+    draft.outputs.length > 0 ? `输出：${draft.outputs.join("、")}` : "输出：待补充",
+  ].join("\n");
+}
+
 function draftFromCommunication(result: RequirementCommunicationResult, current: RequirementDraft): RequirementDraft {
   const rd = result.requirementDraft;
   return {
@@ -838,7 +878,7 @@ function draftFromCommunication(result: RequirementCommunicationResult, current:
   };
 }
 
-export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene = "daily", model, onGenerated, onBusinessContextChanged, onExploreFields, onBringToChat }: Props) {
+export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene = "daily", model, models = [], onModelChange, onGenerated, onBusinessContextChanged, onExploreFields, onBringToChat }: Props) {
   const [paths, setPaths] = useState<WorkspacePath[]>([]);
   const [selectedPathId, setSelectedPathId] = useState("");
   const [documentOptions, setDocumentOptions] = useState<RequirementDocumentOption[]>([]);
@@ -871,6 +911,8 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
   const [communicationQuestions, setCommunicationQuestions] = useState<RequirementCommunicationQuestion[]>([]);
   const [communicationAssumptions, setCommunicationAssumptions] = useState<RequirementCommunicationAssumption[]>([]);
   const [communicationResult, setCommunicationResult] = useState<RequirementCommunicationResult | null>(null);
+  const [communicationMode, setCommunicationMode] = useState<RequirementCommunicationMode>(scene === "daily" ? "conversation" : "structured");
+  const [selectedCommunicationSkillPaths, setSelectedCommunicationSkillPaths] = useState<string[]>([]);
   const [communicationError, setCommunicationError] = useState("");
   const [communicationMaterials, setCommunicationMaterials] = useState<CommunicationMaterial[]>([]);
   const [pastedMaterial, setPastedMaterial] = useState("");
@@ -892,6 +934,7 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
   const generating = generateTask.status === "running";
   const clarifying = false;
   const requirementCommunicationWorkspaceId = communicationWorkspaceId ?? scopeWorkspaceId(scope);
+  const skillScope = scope?.type === "flow" ? { type: "flow" as const, flowId: scope.flowId } : requirementCommunicationWorkspaceId ? { type: "workspace" as const, workspaceId: requirementCommunicationWorkspaceId } : null;
   const sceneMeta = SCENE_META[scene];
   const lastAppliedGenerateRef = useRef<unknown>(null);
   const autoRestoredPathRef = useRef<number | null>(null);
@@ -924,12 +967,24 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
       && draft.businessQuestions.trim()
       && !generating,
   );
-  const canCommunicate = Boolean(requirementCommunicationWorkspaceId && (communicationInput.trim() || draft.businessGoal.trim() || draft.businessQuestions.trim()) && !communicating && !generating);
+  const canCommunicate = Boolean(
+    requirementCommunicationWorkspaceId
+      && (communicationInput.trim() || (communicationMode === "structured" && (draft.businessGoal.trim() || draft.businessQuestions.trim())))
+      && !communicating
+      && !generating,
+  );
   const displayedCommunicationQuestions = scene === "daily"
     ? communicationQuestions.filter((item) => item.priority === "must_confirm").slice(0, 5)
     : communicationQuestions;
   const pendingMustCount = communicationQuestions.filter((item) => item.priority === "must_confirm" && item.status === "pending").length;
   const canConfirmCommunication = Boolean(requirementCommunicationWorkspaceId && selectedPath && communicationResult && pendingMustCount === 0 && !confirmingCommunication && !communicating && !generating);
+
+  const insertCommunicationPrompt = (body: string) => {
+    setCommunicationInput((current) => {
+      const prefix = current.trimEnd();
+      return prefix ? `${prefix}\n\n${body}` : body;
+    });
+  };
 
   const loadVersions = useCallback(async (pathId: number) => {
     try {
@@ -1393,11 +1448,12 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
         message,
         history: history || undefined,
         model: model || undefined,
+        skillPaths: selectedCommunicationSkillPaths,
       });
       setCommunicationTurns((current) => [
         ...current,
         { id: `u-${Date.now()}`, role: "user", content: communicationInput.trim() || draft.businessGoal.trim() || draft.businessQuestions.trim() },
-        { id: `s-${Date.now()}`, role: "system", content: `生成 ${result.clarifyingQuestions.length} 个澄清项、${result.assumptions.length} 个假设和 1 份需求草案。` },
+        { id: `s-${Date.now()}`, role: "system", content: `生成 ${result.clarifyingQuestions.length} 个澄清项、${result.assumptions.length} 个假设和 1 份需求草案。\n${communicationResultSummary(result)}` },
       ]);
       setCommunicationQuestions(result.clarifyingQuestions);
       setCommunicationAssumptions(result.assumptions);
@@ -1619,15 +1675,48 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
                 确认前不写入正式需求
               </span>
             </div>
+            <div className="mb-3 grid gap-2 sm:grid-cols-2">
+              {Object.entries(COMMUNICATION_MODE_META).map(([mode, meta]) => {
+                const active = communicationMode === mode;
+                return (
+                  <button
+                    key={mode}
+                    type="button"
+                    onClick={() => setCommunicationMode(mode as RequirementCommunicationMode)}
+                    className={active
+                      ? "min-w-0 rounded-lg border border-blue-300 bg-white px-3 py-2 text-left shadow-sm dark:border-blue-700 dark:bg-neutral-950"
+                      : "min-w-0 rounded-lg border border-blue-100 bg-blue-50/60 px-3 py-2 text-left hover:bg-white dark:border-blue-900 dark:bg-blue-950/20 dark:hover:bg-neutral-950"}
+                  >
+                    <div className={active ? "text-[12px] font-semibold text-blue-800 dark:text-blue-100" : "text-[12px] font-medium text-blue-700 dark:text-blue-200"}>{meta.label}</div>
+                    <div className="mt-1 whitespace-normal break-words text-[11px] leading-4 text-blue-700/75 dark:text-blue-200/70">{meta.hint}</div>
+                  </button>
+                );
+              })}
+            </div>
             <textarea
               value={communicationInput}
               onChange={(event) => setCommunicationInput(event.target.value)}
               disabled={communicating || generating}
-              placeholder="先用自然语言写诉求，例如：想分析本月会员复购下降原因，并形成下周运营动作。"
-              className="h-20 w-full resize-none rounded-md border border-blue-100 bg-white p-2.5 text-[12.5px] leading-5 text-neutral-800 outline-none focus:border-blue-300 disabled:opacity-50 dark:border-blue-900 dark:bg-neutral-950 dark:text-neutral-200"
+              placeholder={communicationMode === "conversation" ? "像聊天一样描述诉求或继续回答，例如：我主要想看本月会员复购下降，先判断是人群还是渠道问题。" : "先用自然语言写诉求，例如：想分析本月会员复购下降原因，并形成下周运营动作。"}
+              className="min-h-[180px] max-h-[42vh] w-full resize-y rounded-md border border-blue-100 bg-white p-3 text-[13px] leading-6 text-neutral-800 outline-none focus:border-blue-300 disabled:opacity-50 dark:border-blue-900 dark:bg-neutral-950 dark:text-neutral-200"
             />
             <div className="mt-2 flex flex-wrap items-center justify-between gap-2">
-              <div className="flex flex-wrap gap-1.5">
+              <div className="flex min-w-0 flex-1 flex-wrap items-center gap-x-1.5 gap-y-1.5">
+                <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
+                  <Cpu className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
+                  {models.length > 0 && model && onModelChange ? (
+                    <RequirementModelSelect models={models} value={model} onChange={onModelChange} />
+                  ) : (
+                    <span className="max-w-[180px] truncate">{model || "默认模型"}</span>
+                  )}
+                </label>
+                <SkillSelector
+                  scope={skillScope}
+                  selectedPaths={selectedCommunicationSkillPaths}
+                  onChange={setSelectedCommunicationSkillPaths}
+                  direction="down"
+                />
+                <PromptSelector workspaceId={requirementCommunicationWorkspaceId ?? null} onInsert={insertCommunicationPrompt} />
                 {COMMUNICATION_CATEGORIES.map((category) => (
                   <span key={category} className="rounded-full bg-white px-2 py-1 text-[11px] text-blue-700 dark:bg-blue-950 dark:text-blue-200">{category}</span>
                 ))}
@@ -1638,7 +1727,7 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
                 className="inline-flex h-8 items-center gap-1.5 rounded-md bg-blue-700 px-3 text-[12px] font-medium text-white hover:bg-blue-600 disabled:opacity-50 dark:bg-blue-500 dark:hover:bg-blue-400"
               >
                 {communicating ? <Loader2 className="h-3.5 w-3.5 animate-spin" /> : <Sparkles className="h-3.5 w-3.5" strokeWidth={1.75} />}
-                {communicating ? "沟通中..." : "生成澄清清单与草案"}
+                {communicating ? "沟通中..." : communicationMode === "conversation" ? "发送给 pi-agent" : "生成澄清清单与草案"}
               </button>
             </div>
             {!requirementCommunicationWorkspaceId && (
@@ -1652,6 +1741,83 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
               <p className="mt-1 text-blue-700/75 dark:text-blue-200/70">当前确认写入路径：{selectedPath ? basenamePath(selectedPath.path) : "未选择"}</p>
             </div>
 
+            {communicationMode === "conversation" && (
+              <div className="mt-3 grid gap-3 lg:grid-cols-[minmax(0,1fr)_minmax(280px,360px)]">
+                <div className="min-w-0 rounded-lg border border-blue-100 bg-white p-3 dark:border-blue-900 dark:bg-neutral-950">
+                  <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                    <div className="text-[12px] font-medium text-neutral-700 dark:text-neutral-200">对话流</div>
+                    <span className="text-[11px] text-neutral-500 dark:text-neutral-400">历史会继续传给专用 BRC API</span>
+                  </div>
+                  <div className="max-h-[420px] space-y-2 overflow-auto pr-1">
+                    {communicationTurns.length === 0 ? (
+                      <div className="rounded-lg border border-dashed border-blue-200 bg-blue-50/60 px-3 py-6 text-center text-[12px] leading-5 text-blue-700 dark:border-blue-900 dark:bg-blue-950/20 dark:text-blue-200">
+                        先输入一句日常诉求，pi-agent 会返回下一轮澄清问题、建议假设和草案摘要。
+                      </div>
+                    ) : communicationTurns.map((turn) => (
+                      <div key={turn.id} className={turn.role === "user" ? "flex justify-end" : "flex justify-start"}>
+                        <div className={turn.role === "user"
+                          ? "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl bg-blue-700 px-3 py-2 text-[12px] leading-5 text-white"
+                          : "max-w-[85%] whitespace-pre-wrap break-words rounded-2xl border border-neutral-200 bg-neutral-50 px-3 py-2 text-[12px] leading-5 text-neutral-700 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-200"}
+                        >
+                          <div className={turn.role === "user" ? "mb-1 text-[10.5px] font-medium text-blue-100" : "mb-1 text-[10.5px] font-medium text-neutral-500 dark:text-neutral-400"}>{turn.role === "user" ? "用户" : "pi-agent"}</div>
+                          {turn.content}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
+                <div className="min-w-0 space-y-3">
+                  <div className="rounded-lg border border-blue-100 bg-white p-3 dark:border-blue-900 dark:bg-neutral-950">
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <div className="text-[12px] font-medium text-neutral-700 dark:text-neutral-200">最新澄清结果</div>
+                      <span className="text-[11px] text-neutral-500 dark:text-neutral-400">必须待答 {pendingMustCount}</span>
+                    </div>
+                    {communicationResult ? (
+                      <div className="space-y-2 text-[11.5px] leading-4 text-neutral-600 dark:text-neutral-300">
+                        <div className="rounded-md bg-neutral-50 p-2 dark:bg-neutral-900">
+                          <div className="font-medium text-neutral-800 dark:text-neutral-100">草案摘要</div>
+                          <p className="mt-1 whitespace-pre-wrap break-words">{communicationResultSummary(communicationResult)}</p>
+                        </div>
+                        <div>
+                          <div className="font-medium text-neutral-800 dark:text-neutral-100">澄清问题</div>
+                          {displayedCommunicationQuestions.length > 0 ? (
+                            <ul className="mt-1 space-y-1">
+                              {displayedCommunicationQuestions.slice(0, 5).map((item) => <li key={`${item.id}-chat`}>- {item.question}</li>)}
+                            </ul>
+                          ) : <p className="mt-1 text-neutral-400">暂无必须澄清项。</p>}
+                        </div>
+                        <div>
+                          <div className="font-medium text-neutral-800 dark:text-neutral-100">建议假设</div>
+                          {communicationAssumptions.filter((item) => item.status !== "rejected").length > 0 ? (
+                            <ul className="mt-1 space-y-1">
+                              {communicationAssumptions.filter((item) => item.status !== "rejected").slice(0, 5).map((item) => <li key={`${item.id}-chat`}>- {item.text}</li>)}
+                            </ul>
+                          ) : <p className="mt-1 text-neutral-400">暂无建议假设。</p>}
+                        </div>
+                      </div>
+                    ) : (
+                      <p className="text-[12px] leading-5 text-neutral-500 dark:text-neutral-400">发送第一轮后，这里会展示 pi-agent 的问题、假设和草案摘要。</p>
+                    )}
+                  </div>
+                  <div className="rounded-lg border border-blue-100 bg-white p-3 dark:border-blue-900 dark:bg-neutral-950">
+                    <div className="mb-2 text-[12px] font-medium text-neutral-700 dark:text-neutral-200">下一步</div>
+                    <div className="flex flex-wrap gap-1.5">
+                      <button onClick={() => setCommunicationMode("structured")} className="rounded-md border border-neutral-200 px-2.5 py-1.5 text-[11.5px] font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-700 dark:text-neutral-200 dark:hover:bg-neutral-800">打开结构化清单</button>
+                      <button onClick={applyCommunicationDraft} disabled={!communicationResult} className="rounded-md bg-neutral-900 px-2.5 py-1.5 text-[11.5px] font-medium text-white hover:bg-neutral-700 disabled:opacity-50 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white">应用到表单</button>
+                      <button onClick={() => void confirmCommunicationAsRequirement()} disabled={!canConfirmCommunication} className="inline-flex items-center gap-1 rounded-md bg-emerald-700 px-2.5 py-1.5 text-[11.5px] font-medium text-white hover:bg-emerald-600 disabled:opacity-50 dark:bg-emerald-500 dark:hover:bg-emerald-400">
+                        {confirmingCommunication && <Loader2 className="h-3 w-3 animate-spin" />}
+                        确认成正式需求
+                      </button>
+                    </div>
+                    {!canConfirmCommunication && communicationResult && (
+                      <p className="mt-2 text-[11.5px] leading-4 text-neutral-500 dark:text-neutral-400">如仍有必须待答项，可继续输入补充，或打开结构化清单标记跳过 / 后续确认 / 按假设推进。</p>
+                    )}
+                  </div>
+                </div>
+              </div>
+            )}
+
+            {communicationMode === "structured" && (<>
             <div className="mt-3 rounded-lg border border-blue-100 bg-white p-3 dark:border-blue-900 dark:bg-neutral-950">
               <div className="mb-2 flex items-center justify-between gap-3">
                 <div className="flex items-center gap-1.5 text-[12px] font-medium text-neutral-700 dark:text-neutral-200">
@@ -1869,6 +2035,7 @@ export function BusinessRequirementPane({ scope, communicationWorkspaceId, scene
                 </div>
               </div>
             )}
+            </>)}
           </div>
         </RequirementCommunicationPane>
       ) : (

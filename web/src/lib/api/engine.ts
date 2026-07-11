@@ -915,7 +915,7 @@ export const engineApi = {
   // E-BRC1 专用 API：需求沟通澄清，不走通用 chat/generate/extract/clarify client。
   runRequirementCommunication: (
     workspaceId: string,
-    body: { scene: RequirementCommunicationScene; message: string; history?: string; contextRefs?: string[]; model?: string },
+    body: { scene: RequirementCommunicationScene; message: string; history?: string; contextRefs?: string[]; model?: string; skillPaths?: string[] },
   ) =>
     fetch(`/api/workspaces/${encodeURIComponent(workspaceId)}/business-requirement-communication/clarify`, {
       method: "POST",

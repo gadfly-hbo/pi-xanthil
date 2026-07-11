@@ -120,7 +120,7 @@ import { runMemoryMaintenance } from "../memory-maintenance.ts";
 import { runMemoryAgingInspection, type CounterfactualProbeRun } from "../memory-aging-inspector.ts";
 import { DEFAULT_MEMORY_SKILL_THRESHOLDS, fetchMemoryExperiences, runMemoryToSkillPromotion, type MemorySkillThresholds } from "../memory-to-skill.ts";
 import { runPromptDistillation, type PromptDistillationScope } from "../prompt-distillation.ts";
-import { validateSkillPaths } from "../skills.ts";
+import { parseRequestedSkillPaths, validateSkillPaths } from "../skills.ts";
 import { flowMessageText } from "../message-text.ts";
 import type { AgentTrajectory, ClientMessage, EvalAnnotationStatus, Flow, MetricSnapshot, PiEvent, RetrievalContext, Session } from "../types.ts";
 import { appendMetricVerificationBlock, collectMetricSnapshotsFromEvent } from "../metric-verification-events.ts";
@@ -4538,6 +4538,8 @@ engineRouter.post("/api/workspaces/:id/business-requirement-communication/clarif
   if (!workspace) return res.status(404).json({ error: "workspace not found" });
   try {
     const input = parseRequirementCommunicationRequest(req.body);
+    const workspaceRoot = (workspace as { rootPath?: string }).rootPath ?? process.cwd();
+    const skillPaths = parseRequestedSkillPaths(workspaceRoot, (req.body as { skillPaths?: unknown }).skillPaths, { mode: "strict" }) ?? [];
     const result = await runRequirementCommunicationClarification(
       input,
       {
@@ -4546,10 +4548,11 @@ engineRouter.post("/api/workspaces/:id/business-requirement-communication/clarif
         pathMetas: listPathMetadataForRequirementCommunication(req.params.id),
       },
       ({ systemPrompt, prompt }) => runPiPrompt({
-        workspaceRoot: (workspace as { rootPath?: string }).rootPath ?? process.cwd(),
+        workspaceRoot,
         text: prompt,
         systemPrompt,
         model: input.model ?? "minimax-cn/MiniMax-M3",
+        skillPaths,
         timeoutMs: 120_000,
       }),
     );

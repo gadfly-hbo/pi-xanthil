@@ -96,6 +96,12 @@ grep -rE "(generate|chat|extract|clarify|sink|distill).*api\." web/src/component
 - 业务需求字段级来源引用采用 `sourceRefs` 字段路径 + quote 最小闭环，**不要擅自升级**为字符 offset 定位
 - **pi CLI 调用陷阱**：`runPiPrompt()` 不要用 `--no-extensions`（会禁用模型 provider 扩展导致 LLM 调用失败），用 `--no-skills`。`server/src/pi-adapter.ts:165` 已修复。
 
+## 五、AgentOps Task Bus 规则
+
+- `docs/wiki.html` 已被 AgentOps Task Bus 替代，后续不再作为任务真源、任务派发入口、任务状态看板或 session 收尾必更新文档。
+- AgentOps/CDI 工作流的任务创建、派发、review、状态流转与收口记录以 `.agentops/tasks/` Task Bus 为准。
+- 除非用户明确点名要求修改 `docs/wiki.html`，否则不要在 product iteration、task create/review、session end、commit/push 等流程中读取、更新或校验它。
+
 <!-- AGENTOPS:BEGIN -->
 ## AgentOps Product Entry
 
@@ -104,6 +110,7 @@ This product is registered in the multi-agent coding system.
 - System root: `/Users/huangbo/Dev/AgentOps/coding-system`
 - Product overlay: `/Users/huangbo/Dev/AgentOps/coding-system/products/pi-xanthil/AGENTS.overlay.md`
 - Routing guide: `/Users/huangbo/Dev/AgentOps/coding-system/docs/agent-routing.md`
+- Domain memory guide: `/Users/huangbo/Dev/AgentOps/coding-system/docs/agent-domain-memory.md`
 
 This section does not replace the rules above. Existing product rules remain authoritative.
 <!-- AGENTOPS:END -->
