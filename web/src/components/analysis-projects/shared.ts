@@ -286,11 +286,44 @@ export const STAGE_GROUPS: readonly StageGroup[] = [
 ];
 
 // ---------------------------------------------------------------------------
+// Business stages — 6 high-level stages folded from 15 technical states
+// ---------------------------------------------------------------------------
+
+export interface BusinessStage {
+  readonly id: string;
+  readonly label: string;
+  readonly stages: readonly ProjectStage[];
+}
+
+export const BUSINESS_STAGES: readonly BusinessStage[] = [
+  { id: "submit", label: "提交需求", stages: ["S1.1"] },
+  { id: "confirm", label: "确认需求", stages: ["S1.2", "S1.4"] },
+  { id: "prepare", label: "准备数据", stages: ["S2.1", "S2.2"] },
+  { id: "execute", label: "执行分析", stages: ["S2.3", "S2.4", "S2.5"] },
+  { id: "review", label: "审核报告", stages: ["S2.6"] },
+  { id: "close", label: "行动闭环", stages: ["S3.1", "S3.2", "S3.3", "S3.4", "S3.5", "S3.6"] },
+];
+
+export function businessStage(stage: ProjectStage): BusinessStage | undefined {
+  return BUSINESS_STAGES.find((b) => b.stages.includes(stage));
+}
+
+export function businessStageIndex(stage: ProjectStage): number {
+  return BUSINESS_STAGES.findIndex((b) => b.stages.includes(stage));
+}
+
+export function businessStageProgress(stage: ProjectStage): number {
+  const idx = businessStageIndex(stage);
+  if (idx < 0) return 0;
+  return Math.round(((idx + 1) / BUSINESS_STAGES.length) * 100);
+}
+
+// ---------------------------------------------------------------------------
 // Next-step hints — business-language guidance for each stage
 // ---------------------------------------------------------------------------
 
 export const STAGE_NEXT_HINTS: Record<ProjectStage, string> = {
-  "S1.1": "等待系统生成结构化需求",
+  "S1.1": "手动触发生成结构化需求",
   "S1.2": "请确认需求是否准确，或要求修改",
   "S1.4": "请确认分析计划，或要求修改",
   "S2.1": "计划已确认，准备执行分析",

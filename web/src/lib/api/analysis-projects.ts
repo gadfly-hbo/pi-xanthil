@@ -6,6 +6,7 @@ import type {
   ClosureListReadModel,
   ClosureDetailReadModel,
   ClosureCommandResult,
+  RequirementReviewReadModel,
 } from "@/types/analysis-projects";
 
 const BASE = "/api/analysis-projects/v1";
@@ -130,6 +131,170 @@ export const analysisProjectsApi = {
     projectId: string,
   ): Promise<ProjectDetailReadModel> {
     return fetch(`${wsBase(workspaceId)}/projects/${projectId}`).then(json<ProjectDetailReadModel>);
+  },
+
+  // --- Project lifecycle ---
+  updateProject(
+    workspaceId: string,
+    projectId: string,
+    body: { title: string; slug: string; expectedUpdatedAt: string },
+  ): Promise<ClosureCommandResult> {
+    const url = `${wsBase(workspaceId)}/projects/${projectId}`;
+    return fetch(url, {
+      method: "PATCH",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": generateIdempotencyKey(),
+      },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      const raw = await r.json() as unknown;
+      if (r.ok) {
+        const envelope = raw as SuccessEnvelope;
+        return { kind: "executed" as const, data: envelope.data };
+      }
+      const errEnvelope = raw as ErrorEnvelopeBody;
+      return { kind: "failed" as const, errorCode: errEnvelope.error?.code ?? "unknown", errorSummary: errEnvelope.error?.summary ?? "更新失败" };
+    });
+  },
+
+  deleteDraftProject(
+    workspaceId: string,
+    projectId: string,
+    body: { confirmPermanentDeletion: boolean },
+  ): Promise<ClosureCommandResult> {
+    const url = `${wsBase(workspaceId)}/projects/${projectId}`;
+    return fetch(url, {
+      method: "DELETE",
+      headers: {
+        "Content-Type": "application/json",
+        "Idempotency-Key": generateIdempotencyKey(),
+      },
+      body: JSON.stringify(body),
+    }).then(async (r) => {
+      const raw = await r.json() as unknown;
+      if (r.ok) {
+        const envelope = raw as SuccessEnvelope;
+        return { kind: "executed" as const, data: envelope.data };
+      }
+      const errEnvelope = raw as ErrorEnvelopeBody;
+      return { kind: "failed" as const, errorCode: errEnvelope.error?.code ?? "unknown", errorSummary: errEnvelope.error?.summary ?? "删除失败" };
+    });
+  },
+
+  cancelProject(
+    workspaceId: string,
+    projectId: string,
+    body: { expectedUpdatedAt: string },
+  ): Promise<ClosureCommandResult> {
+    return postCommand(`${wsBase(workspaceId)}/projects/${projectId}:cancel`, body);
+  },
+
+  archiveProject(
+    workspaceId: string,
+    projectId: string,
+    body: { expectedUpdatedAt: string },
+  ): Promise<ClosureCommandResult> {
+    return postCommand(`${wsBase(workspaceId)}/projects/${projectId}:archive`, body);
+  },
+
+  unarchiveProject(
+    workspaceId: string,
+    projectId: string,
+    body: { expectedUpdatedAt: string },
+  ): Promise<ClosureCommandResult> {
+    return postCommand(`${wsBase(workspaceId)}/projects/${projectId}:unarchive`, body);
+  },
+
+  reopenProject(
+    workspaceId: string,
+    projectId: string,
+    body: { title: string; slug: string; expectedUpdatedAt: string },
+  ): Promise<ClosureCommandResult> {
+    return postCommand(`${wsBase(workspaceId)}/projects/${projectId}:reopen`, body);
+  },
+
+  // --- Evidence ---
+  uploadEvidence(
+    workspaceId: string,
+    projectId: string,
+    metadata: {
+      displayName: string;
+      declaredDataScope: string;
+      usageConstraints: string[];
+      safetyHandlingPolicy: "local_transform_required" | "controlled_or_derived_allowed" | "derived_only_allowed";
+      safetyClass: "restricted_raw" | "controlled" | "derived";
+      declaredMediaType: string;
+      declaredByteSize: number;
+      description?: string;
+    },
+    contentFile: File | Blob,
+  ): Promise<ClosureCommandResult> {
+    const fd = new FormData();
+    fd.append("metadata", JSON.stringify(metadata));
+    const blob = contentFile instanceof File ? contentFile : new File([contentFile], "upload", { type: metadata.declaredMediaType });
+    fd.append("content", blob, blob.name);
+    return fetch(`${wsBase(workspaceId)}/projects/${projectId}/evidence:upload`, {
+      method: "POST",
+      headers: {
+        "Idempotency-Key": generateIdempotencyKey(),
+      },
+      body: fd,
+    }).then(async (r) => {
+      const raw = await r.json() as unknown;
+      if (r.ok) {
+        const envelope = raw as SuccessEnvelope;
+        return { kind: "executed" as const, data: envelope.data };
+      }
+      const errEnvelope = raw as ErrorEnvelopeBody;
+      return { kind: "failed" as const, errorCode: errEnvelope.error?.code ?? "unknown", errorSummary: errEnvelope.error?.summary ?? "上传失败" };
+    });
+  },
+
+  getEvidenceContent(
+    workspaceId: string,
+    projectId: string,
+    evidenceArtifactId: string,
+  ): Promise<Blob> {
+    return fetch(`${wsBase(workspaceId)}/projects/${projectId}/evidence/${evidenceArtifactId}/content`).then((r) => {
+      if (!r.ok) throw new Error(`${r.status} evidence content fetch failed`);
+      return r.blob();
+    });
+  },
+
+  // --- Analysis request ---
+  submitAnalysisRequest(
+    workspaceId: string,
+    projectId: string,
+    body: {
+      rawRequestText: string;
+      contextEvidenceArtifactIds: string[];
+      locale: string;
+      timezone: string;
+    },
+  ): Promise<ClosureCommandResult> {
+    return postCommand(`${wsBase(workspaceId)}/projects/${projectId}/analysis-request:submit`, body);
+  },
+
+  // --- Requirements ---
+  generateRequirement(
+    workspaceId: string,
+    projectId: string,
+    body?: {
+      expectedProjectUpdatedAt?: string;
+      previousRequirementVersionId?: string;
+      triggeringGateDecisionId?: string;
+    },
+  ): Promise<ClosureCommandResult> {
+    return postCommand(`${wsBase(workspaceId)}/projects/${projectId}/requirements:generate`, body ?? {});
+  },
+
+  getRequirementReview(
+    workspaceId: string,
+    projectId: string,
+    requirementVersionId: string,
+  ): Promise<RequirementReviewReadModel> {
+    return fetch(`${wsBase(workspaceId)}/projects/${projectId}/requirements/${requirementVersionId}`).then(json<RequirementReviewReadModel>);
   },
 
   // --- S3.x Business Closure ---

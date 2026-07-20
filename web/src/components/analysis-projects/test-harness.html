@@ -52,12 +52,87 @@
       { id: "S2", label: "分析执行与报告", description: "准备数据、执行分析、生成并锁定报告", stages: ["S2.1","S2.2","S2.3","S2.4","S2.5","S2.6"] },
       { id: "S3", label: "行动闭环", description: "将分析结论转化为业务行动，评估效果并决定下一步", stages: ["S3.1","S3.2","S3.3","S3.4","S3.5","S3.6"] },
     ];
-    const STAGE_NEXT_HINTS = { "S1.1": "等待系统生成结构化需求", "S1.2": "请确认需求是否准确，或要求修改", "S1.4": "请确认分析计划，或要求修改", "S2.1": "计划已确认，准备执行分析", "S2.2": "正在准备输入数据和证据", "S2.3": "分析运行中，请等待完成", "S2.4": "正在生成分析报告", "S2.5": "报告已生成，请审核并决定是否锁定", "S2.6": "报告已锁定，可进入业务闭合阶段", "S3.1": "将分析结论转化为可执行的业务行动", "S3.2": "将行动方案部署到下游系统", "S3.3": "业务团队执行行动方案", "S3.4": "收集执行效果反馈数据", "S3.5": "评估行动效果是否达到预期", "S3.6": "决定归档或迭代优化" };
+    const STAGE_NEXT_HINTS = { "S1.1": "手动触发生成结构化需求", "S1.2": "请确认需求是否准确，或要求修改", "S1.4": "请确认分析计划，或要求修改", "S2.1": "计划已确认，准备执行分析", "S2.2": "正在准备输入数据和证据", "S2.3": "分析运行中，请等待完成", "S2.4": "正在生成分析报告", "S2.5": "报告已生成，请审核并决定是否锁定", "S2.6": "报告已锁定，可进入业务闭合阶段", "S3.1": "将分析结论转化为可执行的业务行动", "S3.2": "将行动方案部署到下游系统", "S3.3": "业务团队执行行动方案", "S3.4": "收集执行效果反馈数据", "S3.5": "评估行动效果是否达到预期", "S3.6": "决定归档或迭代优化" };
+    const BUSINESS_STAGES = [
+      { id: "submit", label: "提交需求", stages: ["S1.1"] },
+      { id: "confirm", label: "确认需求", stages: ["S1.2", "S1.4"] },
+      { id: "prepare", label: "准备数据", stages: ["S2.1", "S2.2"] },
+      { id: "execute", label: "执行分析", stages: ["S2.3", "S2.4", "S2.5"] },
+      { id: "review", label: "审核报告", stages: ["S2.6"] },
+      { id: "close", label: "行动闭环", stages: ["S3.1", "S3.2", "S3.3", "S3.4", "S3.5", "S3.6"] },
+    ];
+    function businessStage(stage) { return BUSINESS_STAGES.find(b => b.stages.includes(stage)); }
+    function businessStageProgress(stage) { const idx = BUSINESS_STAGES.findIndex(b => b.stages.includes(stage)); return idx < 0 ? 0 : Math.round(((idx+1)/BUSINESS_STAGES.length)*100); }
     function stageProgress(stage) { const i = STAGE_ORDER.indexOf(stage); return i < 0 ? 0 : Math.round(((i+1)/STAGE_ORDER.length)*100); }
     function stageGroup(stage) { return STAGE_GROUPS.find(g => g.stages.includes(stage)); }
     function getStageStatus(stage, current) { const ci = STAGE_ORDER.indexOf(current); const si = STAGE_ORDER.indexOf(stage); if (si < ci) return "done"; if (si === ci) return "active"; return "pending"; }
     function formatRel(iso) { const d = Date.now() - new Date(iso).getTime(); if (d < 60000) return "刚刚"; if (d < 3600000) return Math.floor(d/60000)+"分钟前"; if (d < 86400000) return Math.floor(d/3600000)+"小时前"; return Math.floor(d/86400000)+"天前"; }
     function formatBytes(b) { if (b < 1024) return b+" B"; if (b < 1048576) return (b/1024).toFixed(1)+" KB"; return (b/1048576).toFixed(1)+" MB"; }
+
+    // --- FIXTURE: Project Detail with interactive elements (T0037) ---
+    const FIXTURE_DETAIL_INTERACTIVE = {
+      readModelVersion: "1.0", generatedAt: new Date().toISOString(),
+      data: {
+        project: {
+          projectId: "d4e5f6a7-b8c9-0123-defg-456789012345", kind: "daily_analysis",
+          title: "Q3 用户留存分析", slug: "q3-retention",
+          status: "active", stage: "S1.1",
+          createdAt: new Date(Date.now() - 7200000).toISOString(),
+          updatedAt: new Date(Date.now() - 3600000).toISOString(),
+          completedAt: null, rejectedAt: null, cancelledAt: null, archivedAt: null,
+          sourceProjectId: null, sourceRelationType: null,
+        },
+        analysisRequest: {
+          analysisRequestId: "ar-003",
+          rawRequestText: "分析Q3用户7日留存率环比下降5%的根因，重点关注渠道质量变化和落地页体验的影响。",
+          locale: "zh-CN", timezone: "Asia/Shanghai",
+          submittedAt: new Date(Date.now() - 3600000).toISOString(),
+        },
+        inputEvidence: [
+          { evidenceArtifactId: "ev-010", displayName: "业务需求文本 - Q3 用户留存分析", artifactKind: "input_material", safetyClass: "controlled", visibility: "user_visible", mediaType: "text/plain", byteSize: 256, contentSha256: "xyz789", createdAt: new Date(Date.now() - 3500000).toISOString(), contentHref: "/api/v1/projects/xxx/evidence/ev-010/content" },
+        ],
+        sources: [],
+        currentRequirement: null, currentPlan: null,
+        latestRun: null,
+        latestReport: null,
+        lockedReportId: null,
+        pendingGate: null,
+        availableCommands: [
+          { commandType: "project.update_metadata", available: true, unavailableReasons: [] },
+          { commandType: "project.delete_draft", available: true, unavailableReasons: [] },
+          { commandType: "project.cancel", available: true, unavailableReasons: [] },
+          { commandType: "project.archive", available: true, unavailableReasons: [] },
+        ],
+      },
+    };
+
+    // --- FIXTURE: Project Detail with upload panel open ---
+    const FIXTURE_DETAIL_UPLOAD_PANEL = {
+      readModelVersion: "1.0", generatedAt: new Date().toISOString(),
+      data: {
+        project: {
+          projectId: "e5f6a7b8-c9d0-1234-efgh-567890123456", kind: "topic_research",
+          title: "竞品定价策略研究", slug: "competitor-pricing",
+          status: "active", stage: "S1.1",
+          createdAt: new Date(Date.now() - 1800000).toISOString(),
+          updatedAt: new Date(Date.now() - 900000).toISOString(),
+          completedAt: null, rejectedAt: null, cancelledAt: null, archivedAt: null,
+          sourceProjectId: null, sourceRelationType: null,
+        },
+        analysisRequest: null,
+        inputEvidence: [],
+        sources: [],
+        currentRequirement: null, currentPlan: null,
+        latestRun: null,
+        latestReport: null,
+        lockedReportId: null,
+        pendingGate: null,
+        availableCommands: [
+          { commandType: "project.update_metadata", available: true, unavailableReasons: [] },
+          { commandType: "project.delete_draft", available: true, unavailableReasons: [] },
+        ],
+      },
+    };
 
     // --- FIXTURE: Project Detail with no materials (T0027) ---
     const FIXTURE_DETAIL_NO_MATERIALS = {
@@ -180,16 +255,28 @@
     // --- RENDERERS ---
     function renderList(container) {
       const items = [
-        { title: "2026-Q3 用户留存分析", kind: "daily_analysis", status: "active", stage: "S2.3", slug: "q3-retention", pendingGate: null, latestRunStatus: "running", lockedReportId: null, updatedAt: new Date(Date.now()-3600000).toISOString(), cmds: ["run.abort","project.cancel"] },
-        { title: "新客转化率提升目标分解", kind: "goal_decomposition", status: "active", stage: "S1.2", slug: "new-customer-conversion", pendingGate: "requirement_confirmation", latestRunStatus: null, lockedReportId: null, updatedAt: new Date(Date.now()-7200000).toISOString(), cmds: ["requirement.decide_confirmation"] },
-        { title: "竞品定价策略研究", kind: "topic_research", status: "completed", stage: "S2.6", slug: "competitor-pricing", pendingGate: null, latestRunStatus: "succeeded", lockedReportId: "lr-123", updatedAt: new Date(Date.now()-86400000*2).toISOString(), cmds: ["project.archive"] },
+        { title: "2026-Q3 用户留存分析", kind: "daily_analysis", status: "active", stage: "S2.3", slug: "q3-retention", pendingGate: null, latestRunStatus: "running", lockedReportId: null, updatedAt: new Date(Date.now()-3600000).toISOString() },
+        { title: "新客转化率提升目标分解", kind: "goal_decomposition", status: "active", stage: "S1.2", slug: "new-customer-conversion", pendingGate: "requirement_confirmation", latestRunStatus: null, lockedReportId: null, updatedAt: new Date(Date.now()-7200000).toISOString() },
+        { title: "竞品定价策略研究", kind: "topic_research", status: "completed", stage: "S2.6", slug: "competitor-pricing", pendingGate: null, latestRunStatus: "succeeded", lockedReportId: "lr-123", updatedAt: new Date(Date.now()-86400000*2).toISOString() },
       ];
-      let html = `<div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e5e5;padding:8px 16px;"><span style="font-size:11px;color:#737373;">${items.length} 个项目</span><div style="display:flex;gap:6px;"><button style="font-size:11px;font-weight:500;color:#fff;background:#2563eb;border:none;border-radius:4px;padding:3px 10px;cursor:pointer;">➕ 新建</button><button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">刷新</button></div></div>`;
+      let html = `<div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e5e5;padding:8px 16px;"><span style="font-size:11px;color:#737373;">${items.length} 张工单</span><button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">刷新</button></div>`;
       for (const item of items) {
-        const pct = stageProgress(item.stage);
+        const pct = businessStageProgress(item.stage);
         const sc = item.status === "active" ? "badge-green" : item.status === "completed" ? "badge-blue" : "badge-neutral";
-        const grp = stageGroup(item.stage);
+        const bs = businessStage(item.stage);
         const hint = STAGE_NEXT_HINTS[item.stage];
+        let blockerHtml = "";
+        if (item.pendingGate) {
+          blockerHtml = `<div style="margin-top:4px;font-size:11px;color:#d97706;">等待 ${GATE_TYPE_LABELS[item.pendingGate]} 审核</div>`;
+        } else if (item.latestRunStatus === "failed") {
+          blockerHtml = `<div style="margin-top:4px;font-size:11px;color:#dc2626;">最近执行失败</div>`;
+        } else if (item.latestRunStatus === "blocked") {
+          blockerHtml = `<div style="margin-top:4px;font-size:11px;color:#dc2626;">执行已阻塞</div>`;
+        }
+        let runHtml = "";
+        if (item.latestRunStatus === "running") {
+          runHtml = `<div style="margin-top:4px;font-size:11px;color:#2563eb;">执行中: ${RUN_STATUS_LABELS[item.latestRunStatus]}</div>`;
+        }
         html += `<div style="display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f5f5;">
           <div style="flex:1;min-width:0;">
             <div style="display:flex;align-items:center;gap:8px;">
@@ -199,13 +286,11 @@
             </div>
             <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:11px;color:#737373;">
               <span>${PROJECT_KIND_LABELS[item.kind]}</span><span>·</span>
-              <div style="display:flex;align-items:center;gap:6px;"><div class="stage-bar"><div class="stage-bar-fill" style="width:${pct}%"></div></div><span>${PROJECT_STAGE_LABELS[item.stage]}</span></div>
-              ${grp ? `<span style="font-size:10px;color:#a3a3a3;">${grp.label}</span>` : ''}
+              <div style="display:flex;align-items:center;gap:6px;"><div class="stage-bar"><div class="stage-bar-fill" style="width:${pct}%"></div></div>${bs ? `<span style="font-size:11px;font-weight:500;color:#404040;">${bs.label}</span>` : ''}<span style="font-size:10px;color:#a3a3a3;">${PROJECT_STAGE_LABELS[item.stage]}</span></div>
             </div>
-            ${hint ? `<div style="margin-top:2px;font-size:10px;color:#a3a3a3;">${hint}</div>` : ''}
-            ${item.pendingGate ? `<div style="margin-top:4px;font-size:11px;color:#d97706;">待审: ${GATE_TYPE_LABELS[item.pendingGate]}</div>` : ''}
-            ${item.latestRunStatus ? `<div style="margin-top:4px;font-size:11px;color:#a3a3a3;">最近执行: ${RUN_STATUS_LABELS[item.latestRunStatus]}</div>` : ''}
-            ${item.cmds.length > 0 ? `<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;">${item.cmds.map(c=>`<span class="badge badge-neutral">${c}</span>`).join('')}</div>` : ''}
+            ${hint ? `<div style="margin-top:2px;font-size:10px;color:#a3a3a3;">下一步: ${hint}</div>` : ''}
+            ${blockerHtml}
+            ${runHtml}
           </div>
           <div style="text-align:right;font-size:10px;color:#a3a3a3;white-space:nowrap;"><div>${formatRel(item.updatedAt)}</div><div style="margin-top:2px;">#${item.slug}</div></div>
         </div>`;
@@ -216,30 +301,62 @@
     function renderDetail(container, data) {
       const d = data.data;
       const p = d.project;
-      const pct = stageProgress(p.stage);
-      const cmds = d.availableCommands.filter(c => c.available);
-      const grp = stageGroup(p.stage);
+      const currentBS = businessStage(p.stage);
+      const bsPct = businessStageProgress(p.stage);
       const hint = STAGE_NEXT_HINTS[p.stage];
+      const cmds = d.availableCommands;
+      const managementCmds = cmds.filter(c => ["project.update_metadata", "project.delete_draft", "project.cancel", "project.archive"].includes(c.commandType));
 
       let html = `<div style="padding:16px;">`;
+
+      // Header with more actions dropdown
       html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
         <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
         <h2 style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
         <span style="font-size:10px;color:#a3a3a3;">#${p.slug}</span>
+        ${managementCmds.length > 0 ? `<div style="margin-left:auto;position:relative;">
+          <button style="font-size:11px;color:#737373;background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:4px 8px;cursor:pointer;">⋮ 更多操作</button>
+          <div style="position:absolute;right:0;top:100%;margin-top:4px;width:200px;border:1px solid #e5e5e5;background:#fff;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
+            ${managementCmds.map(cmd => `<button disabled style="width:100%;padding:8px 12px;text-align:left;font-size:12px;color:#a3a3a3;background:none;border:none;cursor:not-allowed;border-bottom:1px solid #f5f5f5;">
+              <div>${cmd.commandType.replace('project.', '').replace('_', ' ')}</div>
+              <div style="font-size:10px;color:#a3a3a3;">当前执行入口未开放</div>
+            </button>`).join('')}
+          </div>
+        </div>` : ''}
       </div>`;
 
-      // Current stage highlight
+      // Current business stage highlight
       html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:12px;margin-bottom:12px;">
         <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;font-weight:500;color:#1e40af;">🕐 当前阶段: ${PROJECT_STAGE_LABELS[p.stage]}</span>${grp ? `<span style="font-size:11px;color:#3b82f6;">(${grp.label})</span>` : ''}</div>
-          <div style="display:flex;align-items:center;gap:8px;"><div style="height:8px;width:80px;overflow:hidden;border-radius:4px;background:#bfdbfe;"><div style="height:100%;border-radius:4px;background:#2563eb;width:${pct}%;"></div></div><span style="font-size:11px;color:#3b82f6;">${pct}%</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;font-weight:500;color:#1e40af;">🕐 当前环节: ${currentBS ? currentBS.label : '未知'}</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="height:8px;width:80px;overflow:hidden;border-radius:4px;background:#bfdbfe;"><div style="height:100%;border-radius:4px;background:#2563eb;width:${bsPct}%;"></div></div><span style="font-size:11px;color:#3b82f6;">${bsPct}%</span></div>
         </div>
         ${hint ? `<div style="margin-top:6px;font-size:11px;color:#1d4ed8;">下一步: ${hint}</div>` : ''}
       </div>`;
 
-      // 15-state machine stage track
-      html += `<div style="border:1px solid #e5e5e5;border-radius:8px;background:#fff;padding:12px;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;color:#404040;margin-bottom:12px;">📊 数据分析生命周期</div>`;
+      // 6 Business stages progress
+      html += `<div class="section" style="margin-bottom:12px;"><div class="section-title">📊 业务环节进度</div><div style="display:flex;flex-direction:column;gap:8px;">`;
+      const currentBSIdx = currentBS ? BUSINESS_STAGES.findIndex(b => b.id === currentBS.id) : -1;
+      for (let i = 0; i < BUSINESS_STAGES.length; i++) {
+        const bs = BUSINESS_STAGES[i];
+        const isDone = i < currentBSIdx;
+        const isCurrent = i === currentBSIdx;
+        const borderC = isDone ? "#bbf7d0" : isCurrent ? "#bfdbfe" : "#e5e5e5";
+        const bgC = isDone ? "#f0fdf4" : isCurrent ? "#eff6ff" : "#fafafa";
+        const icon = isDone ? "✅" : isCurrent ? "🕐" : "○";
+        const textColor = isDone ? "#16a34a" : isCurrent ? "#1e40af" : "#737373";
+        html += `<div style="display:flex;align-items:center;gap:8px;border:1px solid ${borderC};background:${bgC};border-radius:6px;padding:8px;">
+          <span style="font-size:14px;">${icon}</span>
+          <div style="flex:1;"><div style="font-size:12px;color:${textColor};${isCurrent?'font-weight:500;':''}">${bs.label}</div>${isCurrent ? `<div style="font-size:10px;color:#3b82f6;">当前环节</div>` : ''}</div>
+          <div style="font-size:10px;color:#a3a3a3;">${bs.stages.join(", ")}</div>
+        </div>`;
+      }
+      html += `</div></div>`;
+
+      // Expandable technical stage track
+      html += `<details style="margin-bottom:12px;border:1px solid #e5e5e5;border-radius:8px;background:#fff;">
+        <summary style="padding:12px;cursor:pointer;font-size:12px;font-weight:500;color:#404040;">🔧 技术状态详情 (15 个技术状态)</summary>
+        <div style="padding:0 12px 12px;">`;
       for (const g of STAGE_GROUPS) {
         html += `<div style="margin-bottom:12px;"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><span style="font-size:11px;font-weight:500;color:#525252;">${g.id} ${g.label}</span><span style="font-size:10px;color:#a3a3a3;">${g.description}</span></div><div style="display:flex;flex-wrap:wrap;gap:8px;">`;
         for (const s of g.stages) {
@@ -256,10 +373,39 @@
         }
         html += `</div></div>`;
       }
+      html += `</div></details>`;
+
+      // 2-column grid for remaining sections
+      html += `<div class="detail-grid">`;
+
+      // 已提交需求
+      html += `<div class="section"><div class="section-title">📝 已提交需求</div>`;
+      if (d.analysisRequest) {
+        const ar = d.analysisRequest;
+        html += `<div style="max-height:128px;overflow:auto;background:#fafafa;border-radius:4px;padding:8px;font-size:11px;color:#404040;">${ar.rawRequestText.length > 500 ? ar.rawRequestText.slice(0,500)+'…' : ar.rawRequestText}</div>
+          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">提交时间: ${formatRel(ar.submittedAt)}${ar.locale ? ' · '+ar.locale : ''}</div>`;
+      } else {
+        html += `<div style="border:1px dashed #e5e5e5;border-radius:6px;padding:12px;text-align:center;">
+          <p style="font-size:11px;color:#737373;">当前 contract 未提供需求来源</p>
+          <p style="font-size:10px;color:#a3a3a3;margin-top:4px;">后端尚未持久化业务需求字段</p>
+        </div>`;
+      }
       html += `</div>`;
 
-      // 3-column grid for remaining sections
-      html += `<div class="detail-grid">`;
+      // 结构化需求
+      html += `<div class="section"><div class="section-title">📄 结构化需求</div>
+        <button disabled style="width:100%;border:1px solid #d4d4d4;background:#f5f5f5;border-radius:6px;padding:8px;text-align:left;cursor:not-allowed;">
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#737373;">⚙️ 生成结构化需求</div>
+          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">当前 contract 未开放</div>
+        </button>
+        <div style="margin-top:8px;font-size:10px;color:#a3a3a3;">生成状态: 未触发 (read model 未提供状态)</div>`;
+      if (d.currentRequirement) {
+        const v = d.currentRequirement;
+        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f5f5f5;font-size:11px;"><span style="font-weight:500;color:#404040">当前版本:</span><span style="margin-left:8px;color:#a3a3a3">v${v.versionOrdinal} · ${formatRel(v.createdAt)} · ${v.createdBy.displayName}</span></div>`;
+      } else {
+        html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f5f5f5;font-size:10px;color:#a3a3a3;">暂无版本</div>`;
+      }
+      html += `</div>`;
 
       // Pending gate
       if (d.pendingGate) {
@@ -268,91 +414,28 @@
         </div>`;
       }
 
-      // Data folder status (T0027)
-      html += `<div class="section"><div class="section-title">📂 数据文件夹</div>
-        <div style="display:flex;align-items:center;gap:8px;font-size:11px;margin-bottom:8px;">
-          <div style="width:8px;height:8px;border-radius:50%;background:#fbbf24;"></div>
-          <span style="color:#525252;">当前使用现有 session/flow 任务文件夹</span>
-        </div>
-        <div style="border:1px dashed #e5e5e5;border-radius:6px;padding:8px;margin-bottom:8px;">
-          <div style="font-size:10px;color:#a3a3a3;">Analysis Project 尚未拥有独立的任务文件夹。数据材料存放在关联的 session 或 flow 的标准目录中：</div>
-          <div style="margin-top:6px;display:flex;flex-direction:column;gap:3px;">
-            <div style="display:flex;align-items:center;gap:6px;font-size:10px;"><span style="background:#fef2f2;color:#dc2626;border-radius:2px;padding:1px 4px;">010_raw</span><span style="color:#737373;">原始数据</span></div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:10px;"><span style="background:#fffbeb;color:#d97706;border-radius:2px;padding:1px 4px;">020_clean</span><span style="color:#737373;">清洗聚合数据</span></div>
-            <div style="display:flex;align-items:center;gap:6px;font-size:10px;"><span style="background:#f0fdf4;color:#16a34a;border-radius:2px;padding:1px 4px;">060_reports</span><span style="color:#737373;">报告与衍生产物</span></div>
+      // 数据材料
+      html += `<div class="section"><div class="section-title">📂 数据材料</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#dc2626;">010_raw</div>
+            <div style="margin-top:4px;font-size:9px;color:#b91c1c;">未登记</div>
+          </div>
+          <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#d97706;">020_clean</div>
+            <div style="margin-top:4px;font-size:9px;color:#b45309;">未登记</div>
+          </div>
+          <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#16a34a;">060_reports</div>
+            <div style="margin-top:4px;font-size:9px;color:#15803d;">未产出</div>
           </div>
         </div>
-        <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;font-size:10px;color:#b45309;">ℹ️ 需要后续 contract：analysis project task folder ownership</div>
+        <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;font-size:10px;color:#b45309;">ℹ️ 当前 contract 未提供材料登记状态。需要后续 backend contract 扩展支持。</div>
       </div>`;
 
-      // Latest run
-      if (d.latestRun) {
-        const r = d.latestRun;
-        const rc = r.currentRunStatus === "succeeded" ? "#16a34a" : r.currentRunStatus === "running" ? "#2563eb" : r.currentRunStatus === "failed" ? "#dc2626" : "#737373";
-        html += `<div class="section"><div class="section-title">▶️ 最近执行</div>
-          <div style="display:flex;align-items:center;gap:12px;font-size:11px;">
-            <span style="font-weight:500;color:${rc}">${RUN_STATUS_LABELS[r.currentRunStatus] ?? r.currentRunStatus}</span>
-            <span style="color:#a3a3a3">Run #${r.runOrdinal}</span>
-            <span style="color:#a3a3a3">${PROJECT_STAGE_LABELS[r.currentAnalysisStage] ?? r.currentAnalysisStage}</span>
-            ${r.triggeredBy ? `<span style="color:#a3a3a3">${r.triggeredBy.displayName}</span>` : ''}
-          </div>
-        </div>`;
-      }
-
-      // Commands
-      if (cmds.length > 0) {
-        html += `<div class="section"><div class="section-title">⚡ 可用操作</div><div style="display:flex;gap:6px;flex-wrap:wrap;">`;
-        for (const c of cmds) html += `<span class="cmd-chip">${c.commandType}</span>`;
-        html += `</div></div>`;
-      }
-
-      // Analysis request
-      if (d.analysisRequest) {
-        const ar = d.analysisRequest;
-        html += `<div class="section"><div class="section-title">📝 分析需求</div>
-          <div style="max-height:128px;overflow:auto;background:#fafafa;border-radius:4px;padding:8px;font-size:11px;color:#404040;">${ar.rawRequestText.length > 500 ? ar.rawRequestText.slice(0,500)+'…' : ar.rawRequestText}</div>
-          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">${formatRel(ar.submittedAt)}${ar.locale ? ' · '+ar.locale : ''}</div>
-        </div>`;
-      }
-
-      // Requirement version
-      if (d.currentRequirement) {
-        const v = d.currentRequirement;
-        html += `<div class="section"><div class="section-title">📄 当前需求版本</div>
-          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">结构化需求</span><span style="margin-left:8px;color:#a3a3a3">v${v.versionOrdinal} · ${formatRel(v.createdAt)} · ${v.createdBy.displayName}</span></div>
-        </div>`;
-      }
-
-      // Plan version
-      if (d.currentPlan) {
-        const v = d.currentPlan;
-        html += `<div class="section"><div class="section-title">📄 当前计划版本</div>
-          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">分析计划</span><span style="margin-left:8px;color:#a3a3a3">v${v.versionOrdinal} · ${formatRel(v.createdAt)} · ${v.createdBy.displayName}</span></div>
-        </div>`;
-      }
-
-      // Latest report
-      if (d.latestReport) {
-        const r = d.latestReport;
-        html += `<div class="section"><div class="section-title">📊 最新报告</div>
-          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">v${r.versionOrdinal}</span><span style="margin-left:8px;color:#a3a3a3">${formatRel(r.createdAt)} · ${r.createdBy.displayName}</span></div>
-        </div>`;
-      }
-
-      // Input evidence — replaced by Materials & Documents (T0027)
+      // Existing evidence and sources
       if (d.inputEvidence && d.inputEvidence.length > 0 || d.sources && d.sources.length > 0) {
-        html += `<div class="section"><div class="section-title">📂 材料与文档</div>`;
-        // Stage mapping legend
-        html += `<div style="border:1px solid #f5f5f5;background:#fafafa;border-radius:6px;padding:8px;margin-bottom:12px;">
-          <div style="font-size:10px;color:#737373;">材料与状态机阶段的对应关系</div>
-          <div style="display:flex;flex-wrap:wrap;gap:6px;margin-top:6px;">
-            <span style="display:inline-flex;align-items:center;gap:3px;background:#eff6ff;border-radius:3px;padding:2px 6px;font-size:9px;color:#2563eb;">○ S1 输入材料</span>
-            <span style="display:inline-flex;align-items:center;gap:3px;background:#f5f3ff;border-radius:3px;padding:2px 6px;font-size:9px;color:#7c3aed;">○ S2 分析证据</span>
-            <span style="display:inline-flex;align-items:center;gap:3px;background:#f0fdf4;border-radius:3px;padding:2px 6px;font-size:9px;color:#16a34a;">○ S2.5/S2.6 报告产物</span>
-            <span style="display:inline-flex;align-items:center;gap:3px;background:#fffbeb;border-radius:3px;padding:2px 6px;font-size:9px;color:#d97706;">○ S3 行动闭合材料</span>
-          </div>
-        </div>`;
-        // Input evidence
+        html += `<div class="section"><div class="section-title">📂 已登记材料与来源</div>`;
         if (d.inputEvidence && d.inputEvidence.length > 0) {
           html += `<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:500;color:#525252;margin-bottom:4px;">输入证据 (${d.inputEvidence.length})</div><div style="border:1px solid #f5f5f5;border-radius:4px;">`;
           for (const ev of d.inputEvidence) {
@@ -366,7 +449,6 @@
           }
           html += `</div></div>`;
         }
-        // Sources
         if (d.sources && d.sources.length > 0) {
           html += `<div><div style="font-size:11px;font-weight:500;color:#525252;margin-bottom:4px;">数据来源 (${d.sources.length})</div>`;
           for (const s of d.sources) {
@@ -376,7 +458,6 @@
                 <span style="font-weight:500;color:#404040">${s.displayName}</span>
                 <span style="margin-left:8px;font-size:10px;color:#a3a3a3">${s.sourceKind === 'agentharness' ? 'AgentHarness' : '用户上传'}</span>
                 ${s.description ? `<div style="font-size:10px;color:#a3a3a3;">${s.description}</div>` : ''}
-                ${s.latestCheck ? `<div style="font-size:10px;color:#a3a3a3">检查: ${s.latestCheck.availabilityStatus} · ${formatRel(s.latestCheck.checkedAt)}</div>` : ''}
               </div>
             </div>`;
           }
@@ -385,18 +466,49 @@
         html += `</div>`;
       }
 
-      // No materials state (T0027)
-      if ((!d.inputEvidence || d.inputEvidence.length === 0) && (!d.sources || d.sources.length === 0)) {
-        html += `<div class="section"><div class="section-title">📂 材料与文档</div>
-          <div style="border:1px dashed #e5e5e5;border-radius:6px;padding:16px;text-align:center;">
-            <div style="font-size:20px;color:#d4d4d4;">📂</div>
-            <p style="font-size:11px;color:#737373;margin-top:6px;">暂无已登记的材料或数据来源</p>
-            <p style="font-size:10px;color:#a3a3a3;margin-top:4px;">提交分析需求后，可在 S2 阶段登记输入材料和数据来源</p>
+      // Right column: metadata
+      html += `<div style="display:flex;flex-direction:column;gap:12px;">`;
+
+      // Project info
+      html += `<div class="section"><div class="section-title">🏷️ 项目信息</div>
+        <div class="field-row"><span class="field-label">类型</span><span class="field-value">${PROJECT_KIND_LABELS[p.kind] ?? p.kind}</span></div>
+        <div class="field-row"><span class="field-label">状态</span><span class="field-value">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span></div>
+        <div class="field-row"><span class="field-label">技术状态</span><span class="field-value">${PROJECT_STAGE_LABELS[p.stage] ?? p.stage}</span></div>
+        <div class="field-row"><span class="field-label">创建</span><span class="field-value">${formatRel(p.createdAt)}</span></div>
+        <div class="field-row"><span class="field-label">更新</span><span class="field-value">${formatRel(p.updatedAt)}</span></div>
+        ${d.lockedReportId ? `<div style="margin-top:6px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:4px;padding:6px;font-size:11px;color:#1e40af;">已锁定报告: ${d.lockedReportId.slice(0,8)}…</div>` : ''}
+      </div>`;
+
+      // Current plan
+      if (d.currentPlan) {
+        const v = d.currentPlan;
+        html += `<div class="section"><div class="section-title">📄 当前计划版本</div>
+          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">分析计划</span><span style="margin-left:8px;color:#a3a3a3">v${v.versionOrdinal} · ${formatRel(v.createdAt)} · ${v.createdBy.displayName}</span></div>
+        </div>`;
+      }
+
+      // Latest run
+      if (d.latestRun) {
+        const r = d.latestRun;
+        const rc = r.currentRunStatus === "succeeded" ? "#16a34a" : r.currentRunStatus === "running" ? "#2563eb" : r.currentRunStatus === "failed" ? "#dc2626" : "#737373";
+        html += `<div class="section"><div class="section-title">▶️ 最近执行</div>
+          <div style="display:flex;align-items:center;gap:12px;font-size:11px;">
+            <span style="font-weight:500;color:${rc}">${RUN_STATUS_LABELS[r.currentRunStatus] ?? r.currentRunStatus}</span>
+            <span style="color:#a3a3a3">Run #${r.runOrdinal}</span>
+            <span style="color:#a3a3a3">${PROJECT_STAGE_LABELS[r.currentAnalysisStage] ?? r.currentAnalysisStage}</span>
           </div>
         </div>`;
       }
 
-      html += `</div></div>`;
+      // Latest report
+      if (d.latestReport) {
+        const r = d.latestReport;
+        html += `<div class="section"><div class="section-title">📊 最新报告</div>
+          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">v${r.versionOrdinal}</span><span style="margin-left:8px;color:#a3a3a3">${formatRel(r.createdAt)} · ${r.createdBy.displayName}</span></div>
+        </div>`;
+      }
+
+      html += `</div></div></div>`;
       container.innerHTML = html;
     }
 
@@ -453,36 +565,13 @@
     }
 
     function renderEmpty(container) {
-      let html = `<div style="padding:16px;overflow:auto;"><div style="max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">`;
-      // Header
-      html += `<div style="text-align:center;"><h2 style="font-size:15px;font-weight:500;color:#404040;">分析台</h2><p style="margin-top:4px;font-size:12px;color:#737373;">管理数据分析项目的完整生命周期，从需求到行动闭环</p></div>`;
-      // How it works (T0027)
-      html += renderHowItWorksCard();
-      // Business map
-      html += `<div style="border:1px solid #e5e5e5;border-radius:8px;background:#fff;"><div style="border-bottom:1px solid #f5f5f5;padding:10px 16px;"><div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#404040;">🔍 数据分析生命周期</div><p style="margin-top:4px;font-size:11px;color:#737373;">一个分析项目从需求到行动闭环，经历 3 个阶段组、15 个步骤</p></div>`;
-      const groupIcons = ["📋","▶️","🔄"];
-      for (let gi = 0; gi < STAGE_GROUPS.length; gi++) {
-        const g = STAGE_GROUPS[gi];
-        html += `<div style="padding:12px 16px;${gi < STAGE_GROUPS.length - 1 ? 'border-bottom:1px solid #f5f5f5;' : ''}"><div style="display:flex;gap:12px;"><div style="flex-shrink:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#f5f5f5;font-size:14px;">${groupIcons[gi]}</div><div style="min-width:0;flex:1;"><div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12px;font-weight:500;color:#404040;">${g.id} ${g.label}</span><span style="font-size:10px;color:#a3a3a3;">${g.stages.length} 步</span></div><p style="margin-top:2px;font-size:11px;color:#737373;">${g.description}</p><div style="margin-top:8px;display:flex;align-items:center;gap:4px;flex-wrap:wrap;">`;
-        for (let si = 0; si < g.stages.length; si++) {
-          const s = g.stages[si];
-          html += `<span style="display:flex;align-items:center;gap:3px;"><span style="color:#d4d4d4;">○</span><span style="font-size:10px;color:#a3a3a3;">${PROJECT_STAGE_LABELS[s]}</span></span>`;
-          if (si < g.stages.length - 1) html += `<div style="width:8px;height:1px;background:#e5e5e5;"></div>`;
-        }
-        html += `</div></div></div></div>`;
-      }
-      html += `</div>`;
-      // Data folder placement (T0027)
-      html += renderDataFolderCard();
-      // Create form
-      html += `<div style="border:1px solid #e5e5e5;border-radius:8px;background:#fff;padding:16px;"><div style="display:flex;align-items:center;gap:6px;font-size:13px;font-weight:500;color:#404040;margin-bottom:12px;">➕ 新建分析项目</div><div style="display:flex;flex-direction:column;gap:12px;"><div><label style="font-size:11px;color:#737373;">业务标题 <span style="color:#f87171;">*</span></label><input type="text" placeholder="例如：Q3 用户留存分析" style="margin-top:4px;width:100%;border:1px solid #e5e5e5;border-radius:6px;padding:6px 12px;font-size:12px;background:#fafafa;" /></div><div><label style="font-size:11px;color:#737373;">技术标识 <span style="color:#f87171;">*</span></label><input type="text" placeholder="q3-user-retention" style="margin-top:4px;width:100%;border:1px solid #e5e5e5;border-radius:6px;padding:6px 12px;font-size:12px;font-family:monospace;background:#fafafa;" /></div><button style="align-self:flex-start;font-size:12px;font-weight:500;color:#fff;background:#2563eb;border:none;border-radius:6px;padding:6px 16px;cursor:pointer;">创建项目</button></div></div>`;
-      // Project types
-      html += `<div style="border:1px solid #e5e5e5;border-radius:8px;background:#fff;padding:16px;"><div style="font-size:12px;font-weight:500;color:#404040;margin-bottom:8px;">支持的项目类型</div><div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">`;
-      const kinds = [["goal_decomposition","目标分解","将业务目标拆解为可量化的分析子任务"],["daily_analysis","日常分析","日常运营指标的例行分析与监控"],["topic_research","专题研究","针对特定业务问题的深度专题研究"]];
-      for (const [k,label,desc] of kinds) {
-        html += `<div style="border:1px solid #f5f5f5;border-radius:6px;background:#fafafa;padding:8px;"><div style="font-size:11px;font-weight:500;color:#404040;">${label}</div><div style="margin-top:2px;font-size:10px;color:#737373;">${desc}</div></div>`;
-      }
-      html += `</div></div></div></div>`;
+      let html = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;padding:32px;">
+        <div style="text-align:center;">
+          <svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="#d4d4d4" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg>
+          <p style="font-size:13px;color:#737373;margin-top:8px;">暂无分析工单</p>
+          <p style="font-size:11px;color:#a3a3a3;margin-top:4px;">点击「新建分析工单」创建第一张工单，或查看使用说明了解流程</p>
+        </div>
+      </div>`;
       container.innerHTML = html;
     }
 
@@ -601,6 +690,40 @@
       container.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#a3a3a3;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><p style="font-size:14px;margin-top:8px;">请先选择工作区</p></div>`;
     }
 
+    function renderInstructions(container) {
+      let html = `<div style="padding:16px;overflow:auto;"><div style="max-width:640px;margin:0 auto;display:flex;flex-direction:column;gap:16px;">`;
+      // Header
+      html += `<div><h2 style="font-size:15px;font-weight:500;color:#404040;">使用说明</h2><p style="margin-top:4px;font-size:12px;color:#737373;">分析工单工作台的流程规则、数据目录边界和安全约束</p></div>`;
+      // 6 business stages
+      html += `<div style="border:1px solid #e5e5e5;border-radius:8px;background:#fff;"><div style="border-bottom:1px solid #f5f5f5;padding:10px 16px;"><div style="font-size:13px;font-weight:500;color:#404040;">6 个业务环节</div><p style="margin-top:4px;font-size:11px;color:#737373;">每张分析工单从提交需求到行动闭环，经历 6 个业务环节。底层对应 15 个技术状态机步骤。</p></div>`;
+      for (let i = 0; i < BUSINESS_STAGES.length; i++) {
+        const bs = BUSINESS_STAGES[i];
+        html += `<div style="display:flex;align-items:flex-start;gap:12px;padding:10px 16px;${i < BUSINESS_STAGES.length - 1 ? 'border-bottom:1px solid #f5f5f5;' : ''}">
+          <div style="flex-shrink:0;width:24px;height:24px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#f5f5f5;font-size:10px;font-weight:500;color:#737373;">${i+1}</div>
+          <div style="min-width:0;flex:1;">
+            <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:12px;font-weight:500;color:#404040;">${bs.label}</span><span style="font-size:10px;color:#a3a3a3;">${bs.stages.join(", ")}</span></div>
+          </div>
+        </div>`;
+      }
+      html += `</div>`;
+      // 3 stage groups
+      html += `<div style="border:1px solid #e5e5e5;border-radius:8px;background:#fff;"><div style="border-bottom:1px solid #f5f5f5;padding:10px 16px;"><div style="font-size:13px;font-weight:500;color:#404040;">3 个阶段组</div><p style="margin-top:4px;font-size:11px;color:#737373;">15 个技术状态按阶段组组织：需求与计划、分析执行与报告、行动闭环</p></div>`;
+      const groupIcons = ["📋","▶️","🔄"];
+      for (let gi = 0; gi < STAGE_GROUPS.length; gi++) {
+        const g = STAGE_GROUPS[gi];
+        html += `<div style="padding:12px 16px;${gi < STAGE_GROUPS.length - 1 ? 'border-bottom:1px solid #f5f5f5;' : ''}"><div style="display:flex;gap:12px;"><div style="flex-shrink:0;width:28px;height:28px;display:flex;align-items:center;justify-content:center;border-radius:50%;background:#f5f5f5;font-size:14px;">${groupIcons[gi]}</div><div style="min-width:0;flex:1;"><div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12px;font-weight:500;color:#404040;">${g.id} ${g.label}</span><span style="font-size:10px;color:#a3a3a3;">${g.stages.length} 步</span></div><p style="margin-top:2px;font-size:11px;color:#737373;">${g.description}</p><div style="margin-top:8px;display:flex;flex-wrap:wrap;gap:6px;">`;
+        for (const s of g.stages) {
+          html += `<span style="display:inline-flex;border-radius:3px;background:#f5f5f5;padding:2px 6px;font-size:10px;color:#737373;">${s} ${PROJECT_STAGE_LABELS[s]}</span>`;
+        }
+        html += `</div></div></div></div>`;
+      }
+      html += `</div>`;
+      // Data folders
+      html += renderDataFolderCard();
+      html += `</div></div>`;
+      container.innerHTML = html;
+    }
+
     function renderHowItWorksCard() {
       const steps = [
         { num: "1", label: "创建项目", desc: "填写业务标题，建立状态机项目" },
@@ -635,6 +758,185 @@
       return html;
     }
 
+    function renderDetailInteractive(container, data) {
+      const d = data.data;
+      const p = d.project;
+      const currentBS = businessStage(p.stage);
+      const bsPct = businessStageProgress(p.stage);
+      const hint = STAGE_NEXT_HINTS[p.stage];
+      const cmds = d.availableCommands;
+
+      let html = `<div style="padding:16px;">`;
+
+      // Header with more actions dropdown (open state)
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
+        <h2 style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
+        <span style="font-size:10px;color:#a3a3a3;">#${p.slug}</span>
+        <div style="margin-left:auto;position:relative;">
+          <button style="font-size:11px;color:#737373;background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:4px 8px;cursor:pointer;">⋮ 更多操作</button>
+          <div style="position:absolute;right:0;top:100%;margin-top:4px;width:220px;border:1px solid #e5e5e5;background:#fff;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.1);z-index:10;">
+            ${cmds.filter(c => c.commandType.startsWith('project.')).map(cmd => `<button style="width:100%;padding:8px 12px;text-align:left;font-size:12px;color:#404040;background:none;border:none;cursor:pointer;border-bottom:1px solid #f5f5f5;">
+              <div>${commandLabel(cmd.commandType)}</div>
+            </button>`).join('')}
+          </div>
+        </div>
+      </div>`;
+
+      // Current business stage highlight
+      html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:12px;margin-bottom:12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;font-weight:500;color:#1e40af;">🕐 当前环节: ${currentBS ? currentBS.label : '未知'}</span></div>
+          <div style="display:flex;align-items:center;gap:8px;"><div style="height:8px;width:80px;overflow:hidden;border-radius:4px;background:#bfdbfe;"><div style="height:100%;border-radius:4px;background:#2563eb;width:${bsPct}%;"></div></div><span style="font-size:11px;color:#3b82f6;">${bsPct}%</span></div>
+        </div>
+        ${hint ? `<div style="margin-top:6px;font-size:11px;color:#1d4ed8;">下一步: ${hint}</div>` : ''}
+      </div>`;
+
+      // 2-column grid
+      html += `<div class="detail-grid">`;
+
+      // 已提交需求 (with real data)
+      html += `<div class="section"><div class="section-title">📝 已提交需求</div>`;
+      if (d.analysisRequest) {
+        const ar = d.analysisRequest;
+        html += `<div style="max-height:128px;overflow:auto;background:#fafafa;border-radius:4px;padding:8px;font-size:11px;color:#404040;">${ar.rawRequestText}</div>
+          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">提交时间: ${formatRel(ar.submittedAt)} · ${ar.locale}</div>`;
+      }
+      html += `</div>`;
+
+      // 结构化需求 (with enabled button)
+      html += `<div class="section"><div class="section-title">📄 结构化需求</div>
+        <button style="width:100%;border:1px solid #93c5fd;background:#eff6ff;border-radius:6px;padding:8px;text-align:left;cursor:pointer;color:#1d4ed8;">
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;">▶️ 生成结构化需求</div>
+        </button>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f5f5f5;font-size:10px;color:#a3a3a3;">暂无版本</div>
+      </div>`;
+
+      // 数据材料 (with clickable cards)
+      html += `<div class="section"><div class="section-title">📂 数据材料</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+          <button style="border:1px solid #fecaca;background:#fef2f2;border-radius:6px;padding:8px;text-align:center;cursor:pointer;">
+            <div style="font-size:10px;font-weight:500;color:#dc2626;">010_raw</div>
+            <div style="margin-top:4px;font-size:9px;color:#b91c1c;">点击上传</div>
+          </button>
+          <button style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;text-align:center;cursor:pointer;">
+            <div style="font-size:10px;font-weight:500;color:#d97706;">020_clean</div>
+            <div style="margin-top:4px;font-size:9px;color:#b45309;">点击上传</div>
+          </button>
+          <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#16a34a;">060_reports</div>
+            <div style="margin-top:4px;font-size:9px;color:#15803d;">暂无报告产物</div>
+          </div>
+        </div>
+        <div style="border:1px solid #e5e5e5;background:#fafafa;border-radius:6px;padding:8px;font-size:10px;color:#737373;">ℹ️ 报告产物由分析执行自动生成，当前尚无报告。</div>
+      </div>`;
+
+      // Evidence list
+      if (d.inputEvidence && d.inputEvidence.length > 0) {
+        html += `<div class="section"><div class="section-title">📂 已登记材料与来源</div>
+          <div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:500;color:#525252;margin-bottom:4px;">输入证据 (${d.inputEvidence.length})</div><div style="border:1px solid #f5f5f5;border-radius:4px;">`;
+        for (const ev of d.inputEvidence) {
+          html += `<div class="evidence-row" style="padding:4px 8px;">
+            <span style="color:#a3a3a3">📄</span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#404040">${ev.displayName}</span>
+            <span class="badge ${SAFETY_COLORS[ev.safetyClass] || 'badge-neutral'}">${SAFETY_LABELS[ev.safetyClass] || ev.safetyClass}</span>
+            <span style="color:#a3a3a3;font-size:10px">${formatBytes(ev.byteSize)}</span>
+          </div>`;
+        }
+        html += `</div></div></div>`;
+      }
+
+      // Right column: metadata
+      html += `<div style="display:flex;flex-direction:column;gap:12px;">`;
+      html += `<div class="section"><div class="section-title">🏷️ 项目信息</div>
+        <div class="field-row"><span class="field-label">类型</span><span class="field-value">${PROJECT_KIND_LABELS[p.kind] ?? p.kind}</span></div>
+        <div class="field-row"><span class="field-label">状态</span><span class="field-value">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span></div>
+        <div class="field-row"><span class="field-label">技术状态</span><span class="field-value">${PROJECT_STAGE_LABELS[p.stage] ?? p.stage}</span></div>
+        <div class="field-row"><span class="field-label">创建</span><span class="field-value">${formatRel(p.createdAt)}</span></div>
+        <div class="field-row"><span class="field-label">更新</span><span class="field-value">${formatRel(p.updatedAt)}</span></div>
+      </div>`;
+      html += `</div></div></div>`;
+      container.innerHTML = html;
+    }
+
+    function renderDetailUploadPanel(container, data) {
+      const d = data.data;
+      const p = d.project;
+
+      let html = `<div style="padding:16px;">`;
+
+      // Header
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
+        <h2 style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
+        <span style="font-size:10px;color:#a3a3a3;">#${p.slug}</span>
+      </div>`;
+
+      // 数据材料 section with upload panel open
+      html += `<div class="section"><div class="section-title">📂 数据材料</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+          <button style="border:2px solid #f87171;background:#fee2e2;border-radius:6px;padding:8px;text-align:center;cursor:pointer;">
+            <div style="font-size:10px;font-weight:500;color:#dc2626;">010_raw</div>
+            <div style="margin-top:4px;font-size:9px;color:#b91c1c;">点击上传</div>
+          </button>
+          <button style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;text-align:center;cursor:pointer;">
+            <div style="font-size:10px;font-weight:500;color:#d97706;">020_clean</div>
+            <div style="margin-top:4px;font-size:9px;color:#b45309;">点击上传</div>
+          </button>
+          <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#16a34a;">060_reports</div>
+            <div style="margin-top:4px;font-size:9px;color:#15803d;">暂无报告产物</div>
+          </div>
+        </div>`;
+
+      // Upload panel (open state for 010_raw)
+      html += `<div style="border:1px solid #e5e5e5;background:#fff;border-radius:8px;padding:12px;margin-top:8px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:8px;">
+          <span style="font-size:12px;font-weight:500;color:#404040;">上传材料 — 010_raw 原始数据</span>
+          <button style="background:none;border:none;cursor:pointer;color:#a3a3a3;">✕</button>
+        </div>
+        <div style="display:flex;flex-direction:column;gap:8px;">
+          <div>
+            <label style="font-size:10px;color:#737373;">文件</label>
+            <div style="font-size:11px;color:#737373;border:1px solid #e5e5e5;border-radius:4px;padding:4px 8px;background:#fafafa;">选择文件…</div>
+          </div>
+          <div>
+            <label style="font-size:10px;color:#737373;">显示名称 *</label>
+            <input type="text" value="渠道投放数据.csv" style="width:100%;border:1px solid #e5e5e5;border-radius:4px;padding:4px 8px;font-size:11px;" />
+          </div>
+          <div>
+            <label style="font-size:10px;color:#737373;">数据范围 *</label>
+            <input type="text" value="渠道投放明细" style="width:100%;border:1px solid #e5e5e5;border-radius:4px;padding:4px 8px;font-size:11px;" />
+          </div>
+          <div>
+            <label style="font-size:10px;color:#737373;">使用约束</label>
+            <input type="text" value="analysis_input" style="width:100%;border:1px solid #e5e5e5;border-radius:4px;padding:4px 8px;font-size:11px;" />
+          </div>
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:4px;padding:6px 8px;font-size:10px;color:#b91c1c;display:flex;align-items:flex-start;gap:4px;">
+            <span>⚠️</span>
+            <span>原始行级数据不会进入 LLM 处理，仅作为登记元数据保存。</span>
+          </div>
+          <button style="display:inline-flex;align-items:center;gap:4px;background:#2563eb;color:#fff;border:none;border-radius:4px;padding:6px 12px;font-size:11px;font-weight:500;cursor:pointer;width:fit-content;">上传</button>
+        </div>
+      </div>`;
+
+      html += `</div>`;
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    function commandLabel(cmdType) {
+      const labels = {
+        "project.update_metadata": "更新信息",
+        "project.delete_draft": "删除草稿",
+        "project.cancel": "取消项目",
+        "project.archive": "归档项目",
+        "project.unarchive": "恢复项目",
+        "project.reopen": "重新打开",
+      };
+      return labels[cmdType] ?? cmdType;
+    }
+
     // --- ROUTER ---
     const root = document.getElementById("root");
     const mode = new URLSearchParams(window.location.search).get("mode") || "list";
@@ -643,9 +945,12 @@
     toolbar.style.cssText = "display:flex;align-items:center;gap:8px;border-bottom:1px solid #e5e5e5;padding:8px 16px;flex-wrap:wrap;";
     const modes = [
       { id: "list", label: "项目列表" },
+      { id: "instructions", label: "使用说明" },
       { id: "detail-gate", label: "详情·需求审核" },
       { id: "detail-plan", label: "详情·计划+执行" },
       { id: "detail-no-materials", label: "详情·无材料" },
+      { id: "detail-interactive", label: "详情·交互" },
+      { id: "detail-upload", label: "详情·上传面板" },
       { id: "capabilities", label: "能力" },
       { id: "closure-list", label: "闭合列表" },
       { id: "closure-detail", label: "闭合详情" },
@@ -661,9 +966,12 @@
 
     if (mode === "empty") renderEmpty(content);
     else if (mode === "noworkspace") renderNoWorkspace(content);
+    else if (mode === "instructions") renderInstructions(content);
     else if (mode === "detail-gate") renderDetail(content, FIXTURE_DETAIL);
     else if (mode === "detail-plan") renderDetail(content, FIXTURE_DETAIL_PLAN_GATE);
     else if (mode === "detail-no-materials") renderDetail(content, FIXTURE_DETAIL_NO_MATERIALS);
+    else if (mode === "detail-interactive") renderDetailInteractive(content, FIXTURE_DETAIL_INTERACTIVE);
+    else if (mode === "detail-upload") renderDetailUploadPanel(content, FIXTURE_DETAIL_UPLOAD_PANEL);
     else if (mode === "capabilities") renderCapabilities(content);
     else if (mode === "closure-list") renderClosureList(content);
     else if (mode === "closure-detail") renderClosure(content);

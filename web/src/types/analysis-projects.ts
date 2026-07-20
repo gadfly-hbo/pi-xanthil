@@ -410,6 +410,35 @@ export interface ClosureListReadModel {
 }
 
 // ---------------------------------------------------------------------------
+// RequirementReview read model (fetched via GET .../requirements/{rvid})
+// ---------------------------------------------------------------------------
+
+export interface RequirementReviewData {
+  readonly requirementVersionId: string;
+  readonly versionOrdinal: number;
+  readonly schemaVersion: string;
+  readonly contentSha256: string;
+  readonly createdAt: string;
+  readonly createdBy: ActorRef;
+  readonly status: "pending_confirmation" | "approved" | "changes_requested" | "rejected";
+  readonly contentSummary: string | null;
+}
+
+export interface RequirementReviewReadModel {
+  readonly readModelVersion: string;
+  readonly generatedAt: string;
+  readonly data: RequirementReviewData;
+}
+
+// ---------------------------------------------------------------------------
+// Evidence upload result
+// ---------------------------------------------------------------------------
+
+export interface EvidenceUploadResultData {
+  readonly evidenceArtifactId: string;
+}
+
+// ---------------------------------------------------------------------------
 // Closure command result (normalized from backend success/error envelopes)
 // ---------------------------------------------------------------------------
 

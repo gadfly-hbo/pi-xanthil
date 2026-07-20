@@ -13,7 +13,9 @@ const browser = await chromium.launch({
 const shots = [
   { mode: "list",        vp: { width: 1280, height: 800 }, file: "screenshot-desktop-list.png" },
   { mode: "empty",       vp: { width: 1280, height: 800 }, file: "screenshot-desktop-empty.png" },
+  { mode: "instructions", vp: { width: 1280, height: 800 }, file: "screenshot-desktop-instructions.png" },
   { mode: "list",        vp: { width: 390,  height: 844 }, file: "screenshot-narrow-list.png" },
+  { mode: "instructions", vp: { width: 390,  height: 844 }, file: "screenshot-narrow-instructions.png" },
   { mode: "noworkspace", vp: { width: 390,  height: 844 }, file: "screenshot-narrow-noworkspace.png" },
   { mode: "detail-gate", vp: { width: 1280, height: 1200 }, file: "screenshot-desktop-detail-gate.png" },
   { mode: "detail-plan", vp: { width: 1280, height: 1200 }, file: "screenshot-desktop-detail-plan.png" },
@@ -24,6 +26,10 @@ const shots = [
   { mode: "capabilities",vp: { width: 1280, height: 800 }, file: "screenshot-desktop-capabilities.png" },
   { mode: "closure-list",vp: { width: 1280, height: 800 }, file: "screenshot-desktop-closure-list.png" },
   { mode: "closure-detail", vp: { width: 1280, height: 1200 }, file: "screenshot-desktop-closure-detail.png" },
+  { mode: "detail-interactive", vp: { width: 1280, height: 1200 }, file: "screenshot-desktop-detail-interactive.png" },
+  { mode: "detail-interactive", vp: { width: 390,  height: 1600 }, file: "screenshot-narrow-detail-interactive.png" },
+  { mode: "detail-upload", vp: { width: 1280, height: 1200 }, file: "screenshot-desktop-detail-upload.png" },
+  { mode: "detail-upload", vp: { width: 390,  height: 1600 }, file: "screenshot-narrow-detail-upload.png" },
 ];
 
 for (const shot of shots) {

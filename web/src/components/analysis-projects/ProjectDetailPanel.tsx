@@ -1,3 +1,4 @@
+import { useState, useCallback, useRef } from "react";
 import {
   ArrowLeft,
   FileText,
@@ -12,8 +13,15 @@ import {
   FolderOpen,
   Info,
   Link2,
+  ChevronDown,
+  ChevronRight,
+  MoreVertical,
+  Loader2,
+  X,
+  AlertTriangle,
 } from "lucide-react";
 import { cn } from "@/lib/cn";
+import { api } from "@/lib/api";
 import type {
   ProjectDetailReadModel,
   EvidenceRef,
@@ -22,6 +30,8 @@ import type {
   GateType,
   ProjectStage,
   CommandAffordance,
+  CapabilitiesResponse,
+  ClosureCommandResult,
 } from "@/types/analysis-projects";
 import {
   PROJECT_KIND_LABELS,
@@ -31,25 +41,24 @@ import {
   GATE_TYPE_LABELS,
   SAFETY_CLASS_LABELS,
   SAFETY_CLASS_COLORS,
-  stageProgress,
-  stageGroup,
+  businessStage,
+  businessStageProgress,
   formatRelativeTime,
   formatBytes,
-  availableCommands,
   commandLabel,
   STAGE_GROUPS,
+  BUSINESS_STAGES,
   STAGE_NEXT_HINTS,
 } from "./shared";
 
 interface Props {
   data: ProjectDetailReadModel;
+  workspaceId: string;
+  capabilities: CapabilitiesResponse | null;
+  onRefresh: () => void;
   onBack: () => void;
   onNavigateToClosure?: () => void;
 }
-
-// ---------------------------------------------------------------------------
-// Section primitive
-// ---------------------------------------------------------------------------
 
 function Section({
   title,
@@ -90,10 +99,6 @@ function FieldRow({
   );
 }
 
-// ---------------------------------------------------------------------------
-// Stage status for the 15-state machine track
-// ---------------------------------------------------------------------------
-
 type StageStatus = "done" | "active" | "pending";
 
 function getStageStatus(
@@ -121,72 +126,144 @@ function StageDot({ status }: { status: StageStatus }) {
   return <Circle className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-600" />;
 }
 
-// ---------------------------------------------------------------------------
-// 15-state machine stage track (grouped)
-// ---------------------------------------------------------------------------
+function BusinessStagesProgress({ currentStage }: { currentStage: ProjectStage }) {
+  const currentBusinessStage = businessStage(currentStage);
+  const currentIdx = currentBusinessStage
+    ? BUSINESS_STAGES.findIndex((b) => b.id === currentBusinessStage.id)
+    : -1;
 
-function StageTrack({ currentStage }: { currentStage: ProjectStage }) {
   return (
-    <div className="space-y-3">
-      {STAGE_GROUPS.map((group) => (
-        <div key={group.id}>
-          <div className="mb-1.5 flex items-center gap-2">
-            <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
-              {group.id} {group.label}
-            </span>
-            <span className="text-[10px] text-neutral-400">
-              {group.description}
-            </span>
-          </div>
-          <div className="flex flex-wrap gap-x-3 gap-y-1.5">
-            {group.stages.map((stage) => {
-              const status = getStageStatus(stage, currentStage);
-              const hint = STAGE_NEXT_HINTS[stage];
-              return (
-                <div
-                  key={stage}
-                  className={cn(
-                    "flex items-center gap-1.5 rounded-md border px-2 py-1",
-                    status === "done"
-                      ? "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
-                      : status === "active"
-                        ? "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20"
-                        : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/50",
-                  )}
-                >
-                  <StageDot status={status} />
-                  <div>
-                    <div
-                      className={cn(
-                        "text-[11px]",
-                        status === "done"
-                          ? "text-green-700 dark:text-green-400"
-                          : status === "active"
-                            ? "font-medium text-blue-700 dark:text-blue-400"
-                            : "text-neutral-500 dark:text-neutral-400",
-                      )}
-                    >
-                      {stage} {PROJECT_STAGE_LABELS[stage]}
-                    </div>
-                    {status === "active" && hint && (
-                      <div className="text-[10px] text-blue-600 dark:text-blue-400">
-                        {hint}
-                      </div>
-                    )}
-                  </div>
+    <div className="space-y-2">
+      {BUSINESS_STAGES.map((stage, idx) => {
+        const isDone = idx < currentIdx;
+        const isCurrent = idx === currentIdx;
+
+        return (
+          <div
+            key={stage.id}
+            className={cn(
+              "flex items-center gap-2 rounded-md border px-3 py-2",
+              isDone
+                ? "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
+                : isCurrent
+                  ? "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20"
+                  : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/50",
+            )}
+          >
+            {isDone ? (
+              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+            ) : isCurrent ? (
+              <Clock className="h-4 w-4 shrink-0 text-blue-500" />
+            ) : (
+              <Circle className="h-4 w-4 shrink-0 text-neutral-300 dark:text-neutral-600" />
+            )}
+            <div className="min-w-0 flex-1">
+              <div
+                className={cn(
+                  "text-[12px]",
+                  isDone
+                    ? "text-green-700 dark:text-green-400"
+                    : isCurrent
+                      ? "font-medium text-blue-700 dark:text-blue-400"
+                      : "text-neutral-500 dark:text-neutral-400",
+                )}
+              >
+                {stage.label}
+              </div>
+              {isCurrent && (
+                <div className="text-[10px] text-blue-600 dark:text-blue-400">
+                  当前环节
                 </div>
-              );
-            })}
+              )}
+            </div>
+            <div className="shrink-0 text-[10px] text-neutral-400">
+              {stage.stages.join(", ")}
+            </div>
           </div>
-        </div>
-      ))}
+        );
+      })}
     </div>
   );
 }
 
-// ---------------------------------------------------------------------------
-// Gate info
-// ---------------------------------------------------------------------------
+function TechnicalStageTrack({ currentStage }: { currentStage: ProjectStage }) {
+  const [expanded, setExpanded] = useState(false);
+
+  return (
+    <div>
+      <button
+        onClick={() => setExpanded(!expanded)}
+        className="flex w-full items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-left text-[12px] font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
+      >
+        <span className="flex items-center gap-1.5">
+          <GitBranch className="h-3.5 w-3.5" />
+          技术状态详情 (15 个技术状态)
+        </span>
+        {expanded ? (
+          <ChevronDown className="h-4 w-4" />
+        ) : (
+          <ChevronRight className="h-4 w-4" />
+        )}
+      </button>
+      {expanded && (
+        <div className="mt-2 space-y-3">
+          {STAGE_GROUPS.map((group) => (
+            <div key={group.id}>
+              <div className="mb-1.5 flex items-center gap-2">
+                <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
+                  {group.id} {group.label}
+                </span>
+                <span className="text-[10px] text-neutral-400">
+                  {group.description}
+                </span>
+              </div>
+              <div className="flex flex-wrap gap-x-3 gap-y-1.5">
+                {group.stages.map((stage) => {
+                  const status = getStageStatus(stage, currentStage);
+                  const hint = STAGE_NEXT_HINTS[stage];
+                  return (
+                    <div
+                      key={stage}
+                      className={cn(
+                        "flex items-center gap-1.5 rounded-md border px-2 py-1",
+                        status === "done"
+                          ? "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
+                          : status === "active"
+                            ? "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20"
+                            : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/50",
+                      )}
+                    >
+                      <StageDot status={status} />
+                      <div>
+                        <div
+                          className={cn(
+                            "text-[11px]",
+                            status === "done"
+                              ? "text-green-700 dark:text-green-400"
+                              : status === "active"
+                                ? "font-medium text-blue-700 dark:text-blue-400"
+                                : "text-neutral-500 dark:text-neutral-400",
+                          )}
+                        >
+                          {stage} {PROJECT_STAGE_LABELS[stage]}
+                        </div>
+                        {status === "active" && hint && (
+                          <div className="text-[10px] text-blue-600 dark:text-blue-400">
+                            {hint}
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function GateInfo({ gateType }: { gateType: GateType }) {
   return (
@@ -203,10 +280,6 @@ function GateInfo({ gateType }: { gateType: GateType }) {
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Run info
-// ---------------------------------------------------------------------------
 
 function RunInfo({ run }: { run: RunRef }) {
   const statusColor =
@@ -235,10 +308,6 @@ function RunInfo({ run }: { run: RunRef }) {
   );
 }
 
-// ---------------------------------------------------------------------------
-// Version info
-// ---------------------------------------------------------------------------
-
 function VersionInfo({
   version,
   label,
@@ -258,10 +327,6 @@ function VersionInfo({
     </div>
   );
 }
-
-// ---------------------------------------------------------------------------
-// Evidence row
-// ---------------------------------------------------------------------------
 
 function EvidenceRow({ ev }: { ev: EvidenceRef }) {
   return (
@@ -291,24 +356,499 @@ function EvidenceRow({ ev }: { ev: EvidenceRef }) {
 }
 
 // ---------------------------------------------------------------------------
-// Available commands display
+// Generate requirement button — real API integration
 // ---------------------------------------------------------------------------
 
-function CommandsList({ cmds }: { cmds: readonly CommandAffordance[] }) {
-  if (cmds.length === 0) return null;
+function GenerateRequirementButton({
+  workspaceId,
+  projectId,
+  analysisRequest,
+  currentRequirement,
+  expectedUpdatedAt,
+  capabilities,
+  onRefresh,
+}: {
+  workspaceId: string;
+  projectId: string;
+  analysisRequest: { analysisRequestId: string } | null;
+  currentRequirement: VersionRef | null;
+  expectedUpdatedAt: string;
+  capabilities: CapabilitiesResponse | null;
+  onRefresh: () => void;
+}) {
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+
+  const engineAvailable = capabilities?.data.engine.status === "available";
+  const hasAnalysisRequest = analysisRequest != null;
+  const canGenerate = hasAnalysisRequest && engineAvailable && !loading;
+
+  let disabledReason = "";
+  if (!hasAnalysisRequest) {
+    disabledReason = "需要先提交业务需求";
+  } else if (!engineAvailable) {
+    disabledReason = "分析引擎不可用";
+  }
+
+  const handleGenerate = useCallback(async () => {
+    if (!canGenerate) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const body: Record<string, string> = {
+        expectedProjectUpdatedAt: expectedUpdatedAt,
+      };
+      if (currentRequirement) {
+        body.previousRequirementVersionId = currentRequirement.versionId;
+      }
+      const res: ClosureCommandResult = await api.generateRequirement(workspaceId, projectId, body);
+      if (res.kind === "executed" || res.kind === "replayed_success") {
+        setResult({ kind: "success", message: "结构化需求已生成" });
+        onRefresh();
+      } else {
+        setResult({ kind: "error", message: res.errorSummary ?? "生成失败" });
+      }
+    } catch (err) {
+      setResult({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setLoading(false);
+    }
+  }, [canGenerate, workspaceId, projectId, expectedUpdatedAt, currentRequirement, onRefresh]);
+
   return (
-    <Section title="可用操作" icon={GitBranch}>
-      <div className="flex flex-wrap gap-1.5">
-        {cmds.map((c) => (
-          <span
-            key={c.commandType}
-            className="inline-flex rounded-md border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] text-neutral-700 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-300"
-          >
-            {commandLabel(c.commandType)}
+    <div className="space-y-2">
+      <button
+        onClick={handleGenerate}
+        disabled={!canGenerate}
+        className={cn(
+          "w-full rounded-md border px-3 py-2 text-left text-[12px] transition-colors",
+          canGenerate
+            ? "border-blue-300 bg-blue-50 text-blue-700 hover:bg-blue-100 dark:border-blue-700 dark:bg-blue-950/20 dark:text-blue-400 dark:hover:bg-blue-950/30"
+            : "border-neutral-300 bg-neutral-100 text-neutral-500 cursor-not-allowed dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400",
+        )}
+      >
+        <div className="flex items-center gap-2">
+          {loading ? (
+            <Loader2 className="h-4 w-4 animate-spin" />
+          ) : (
+            <Play className="h-4 w-4" />
+          )}
+          <span className="font-medium">
+            {loading ? "生成中…" : currentRequirement ? "重新生成结构化需求" : "生成结构化需求"}
           </span>
-        ))}
+        </div>
+        {!canGenerate && disabledReason && (
+          <div className="mt-1 text-[10px] text-neutral-400">
+            {disabledReason}
+          </div>
+        )}
+      </button>
+      {result && (
+        <div
+          className={cn(
+            "rounded-md px-2 py-1.5 text-[11px]",
+            result.kind === "success"
+              ? "border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/20 dark:text-green-400"
+              : "border border-red-200 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400",
+          )}
+        >
+          {result.message}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// More actions dropdown — real API integration
+// ---------------------------------------------------------------------------
+
+function MoreActionsMenu({
+  workspaceId,
+  projectId,
+  cmds,
+  project,
+  onRefresh,
+}: {
+  workspaceId: string;
+  projectId: string;
+  cmds: readonly CommandAffordance[];
+  project: ProjectDetailReadModel["data"]["project"];
+  onRefresh: () => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const [confirmAction, setConfirmAction] = useState<string | null>(null);
+  const [loading, setLoading] = useState<string | null>(null);
+  const [actionResult, setActionResult] = useState<{ kind: "success" | "error"; message: string; cmd: string } | null>(null);
+  const [editOpen, setEditOpen] = useState(false);
+  const [editTitle, setEditTitle] = useState("");
+  const [editSlug, setEditSlug] = useState("");
+  const menuRef = useRef<HTMLDivElement>(null);
+
+  const managementCmds = cmds.filter((c) =>
+    ["project.update_metadata", "project.delete_draft", "project.cancel", "project.archive", "project.unarchive", "project.reopen"].includes(c.commandType),
+  );
+
+  const isDangerous = (cmdType: string) =>
+    ["project.delete_draft", "project.cancel", "project.archive"].includes(cmdType);
+
+  const executeCommand = useCallback(async (cmdType: string) => {
+    setLoading(cmdType);
+    setActionResult(null);
+    try {
+      let res: ClosureCommandResult;
+      const expectedUpdatedAt = project.updatedAt;
+      switch (cmdType) {
+        case "project.delete_draft":
+          res = await api.deleteDraftProject(workspaceId, projectId, { confirmPermanentDeletion: true });
+          break;
+        case "project.cancel":
+          res = await api.cancelProject(workspaceId, projectId, { expectedUpdatedAt });
+          break;
+        case "project.archive":
+          res = await api.archiveProject(workspaceId, projectId, { expectedUpdatedAt });
+          break;
+        case "project.unarchive":
+          res = await api.unarchiveProject(workspaceId, projectId, { expectedUpdatedAt });
+          break;
+        default:
+          return;
+      }
+      if (res.kind === "executed" || res.kind === "replayed_success") {
+        setActionResult({ kind: "success", message: `${commandLabel(cmdType)} 成功`, cmd: cmdType });
+        setConfirmAction(null);
+        onRefresh();
+      } else {
+        setActionResult({ kind: "error", message: res.errorSummary ?? "操作失败", cmd: cmdType });
+      }
+    } catch (err) {
+      setActionResult({ kind: "error", message: err instanceof Error ? err.message : String(err), cmd: cmdType });
+    } finally {
+      setLoading(null);
+    }
+  }, [workspaceId, projectId, project.updatedAt, onRefresh]);
+
+  const executeUpdate = useCallback(async () => {
+    if (!editTitle.trim() || !editSlug.trim()) return;
+    setLoading("project.update_metadata");
+    setActionResult(null);
+    try {
+      const res = await api.updateProject(workspaceId, projectId, {
+        title: editTitle.trim(),
+        slug: editSlug.trim(),
+        expectedUpdatedAt: project.updatedAt,
+      });
+      if (res.kind === "executed" || res.kind === "replayed_success") {
+        setActionResult({ kind: "success", message: "更新信息成功", cmd: "project.update_metadata" });
+        setEditOpen(false);
+        onRefresh();
+      } else {
+        setActionResult({ kind: "error", message: res.errorSummary ?? "更新失败", cmd: "project.update_metadata" });
+      }
+    } catch (err) {
+      setActionResult({ kind: "error", message: err instanceof Error ? err.message : String(err), cmd: "project.update_metadata" });
+    } finally {
+      setLoading(null);
+    }
+  }, [workspaceId, projectId, editTitle, editSlug, project.updatedAt, onRefresh]);
+
+  if (managementCmds.length === 0) return null;
+
+  return (
+    <div className="relative" ref={menuRef}>
+      <button
+        onClick={() => { setOpen(!open); setActionResult(null); }}
+        className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-200 bg-white px-2 text-[11px] text-neutral-600 hover:bg-neutral-50 dark:border-neutral-700 dark:bg-neutral-900 dark:text-neutral-400 dark:hover:bg-neutral-800"
+      >
+        <MoreVertical className="h-3.5 w-3.5" />
+        更多操作
+      </button>
+      {open && (
+        <div className="absolute right-0 z-20 mt-1 w-56 rounded-md border border-neutral-200 bg-white shadow-lg dark:border-neutral-700 dark:bg-neutral-900">
+          {managementCmds.map((cmd) => {
+            const isLoading = loading === cmd.commandType;
+            const isConfirming = confirmAction === cmd.commandType;
+            const dangerous = isDangerous(cmd.commandType);
+            return (
+              <div key={cmd.commandType} className="border-b border-neutral-100 last:border-b-0 dark:border-neutral-800">
+                {cmd.commandType === "project.update_metadata" ? (
+                  <div>
+                    <button
+                      onClick={() => {
+                        if (!cmd.available) return;
+                        setEditOpen(!editOpen);
+                        setEditTitle(project.title);
+                        setEditSlug(project.slug);
+                      }}
+                      disabled={!cmd.available}
+                      className={cn(
+                        "w-full px-3 py-2 text-left text-[12px]",
+                        cmd.available
+                          ? "text-neutral-700 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                          : "cursor-not-allowed text-neutral-400 dark:text-neutral-500",
+                      )}
+                    >
+                      <div className="flex items-center gap-2">
+                        {isLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                        <span>{commandLabel(cmd.commandType)}</span>
+                      </div>
+                      {!cmd.available && (
+                        <div className="text-[10px] text-neutral-400">
+                          {cmd.unavailableReasons[0] ?? "不可用"}
+                        </div>
+                      )}
+                    </button>
+                    {editOpen && cmd.available && (
+                      <div className="border-t border-neutral-100 px-3 py-2 dark:border-neutral-800">
+                        <div className="space-y-1.5">
+                          <input
+                            type="text"
+                            value={editTitle}
+                            onChange={(e) => setEditTitle(e.target.value)}
+                            placeholder="标题"
+                            className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] dark:border-neutral-700 dark:bg-neutral-800"
+                          />
+                          <input
+                            type="text"
+                            value={editSlug}
+                            onChange={(e) => setEditSlug(e.target.value)}
+                            placeholder="slug"
+                            className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] font-mono dark:border-neutral-700 dark:bg-neutral-800"
+                          />
+                          <div className="flex gap-1">
+                            <button
+                              onClick={executeUpdate}
+                              disabled={isLoading}
+                              className="rounded bg-blue-600 px-2 py-0.5 text-[10px] text-white hover:bg-blue-700 disabled:opacity-50"
+                            >
+                              {isLoading ? "保存中…" : "保存"}
+                            </button>
+                            <button
+                              onClick={() => setEditOpen(false)}
+                              className="rounded px-2 py-0.5 text-[10px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                            >
+                              取消
+                            </button>
+                          </div>
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <button
+                    onClick={() => {
+                      if (!cmd.available) return;
+                      if (dangerous && !isConfirming) {
+                        setConfirmAction(cmd.commandType);
+                        return;
+                      }
+                      if (isConfirming) {
+                        void executeCommand(cmd.commandType);
+                      }
+                    }}
+                    disabled={!cmd.available || isLoading}
+                    className={cn(
+                      "w-full px-3 py-2 text-left text-[12px]",
+                      cmd.available
+                        ? dangerous
+                          ? "text-red-600 hover:bg-red-50 dark:text-red-400 dark:hover:bg-red-950/20"
+                          : "text-neutral-700 hover:bg-neutral-50 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                        : "cursor-not-allowed text-neutral-400 dark:text-neutral-500",
+                    )}
+                  >
+                    <div className="flex items-center gap-2">
+                      {isLoading && <Loader2 className="h-3 w-3 animate-spin" />}
+                      <span>{commandLabel(cmd.commandType)}</span>
+                      {dangerous && cmd.available && !isConfirming && (
+                        <span className="text-[10px] text-neutral-400">点击确认</span>
+                      )}
+                      {isConfirming && (
+                        <span className="text-[10px] text-red-500">再次点击确认</span>
+                      )}
+                    </div>
+                    {!cmd.available && (
+                      <div className="text-[10px] text-neutral-400">
+                        {cmd.unavailableReasons[0] ?? "不可用"}
+                      </div>
+                    )}
+                  </button>
+                )}
+              </div>
+            );
+          })}
+          {actionResult && (
+            <div
+              className={cn(
+                "mx-2 mb-2 rounded-md px-2 py-1.5 text-[11px]",
+                actionResult.kind === "success"
+                  ? "border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/20 dark:text-green-400"
+                  : "border border-red-200 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400",
+              )}
+            >
+              {actionResult.message}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+// ---------------------------------------------------------------------------
+// Evidence upload panel
+// ---------------------------------------------------------------------------
+
+function EvidenceUploadPanel({
+  workspaceId,
+  projectId,
+  safetyClass,
+  safetyHandlingPolicy,
+  label,
+  onClose,
+  onUploaded,
+}: {
+  workspaceId: string;
+  projectId: string;
+  safetyClass: "restricted_raw" | "controlled";
+  safetyHandlingPolicy: "local_transform_required" | "controlled_or_derived_allowed";
+  label: string;
+  onClose: () => void;
+  onUploaded: () => void;
+}) {
+  const [file, setFile] = useState<File | null>(null);
+  const [displayName, setDisplayName] = useState("");
+  const [declaredDataScope, setDeclaredDataScope] = useState("");
+  const [usageConstraints, setUsageConstraints] = useState("");
+  const [loading, setLoading] = useState(false);
+  const [result, setResult] = useState<{ kind: "success" | "error"; message: string } | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+
+  const handleFileChange = useCallback((e: React.ChangeEvent<HTMLInputElement>) => {
+    const f = e.target.files?.[0] ?? null;
+    setFile(f);
+    if (f && !displayName) {
+      setDisplayName(f.name);
+    }
+  }, [displayName]);
+
+  const canUpload = file != null && displayName.trim().length > 0 && declaredDataScope.trim().length > 0 && !loading;
+
+  const handleUpload = useCallback(async () => {
+    if (!canUpload || !file) return;
+    setLoading(true);
+    setResult(null);
+    try {
+      const metadata = {
+        displayName: displayName.trim(),
+        declaredDataScope: declaredDataScope.trim(),
+        usageConstraints: usageConstraints.trim() ? usageConstraints.trim().split(/\s*,\s*/).filter(Boolean) : ["analysis_input"],
+        safetyHandlingPolicy,
+        safetyClass,
+        declaredMediaType: file.type || "application/octet-stream",
+        declaredByteSize: file.size,
+      };
+      const res = await api.uploadEvidence(workspaceId, projectId, metadata, file);
+      if (res.kind === "executed" || res.kind === "replayed_success") {
+        setResult({ kind: "success", message: "上传成功" });
+        setFile(null);
+        setDisplayName("");
+        setDeclaredDataScope("");
+        setUsageConstraints("");
+        if (fileInputRef.current) fileInputRef.current.value = "";
+        onUploaded();
+      } else {
+        setResult({ kind: "error", message: res.errorSummary ?? "上传失败" });
+      }
+    } catch (err) {
+      setResult({ kind: "error", message: err instanceof Error ? err.message : String(err) });
+    } finally {
+      setLoading(false);
+    }
+  }, [canUpload, file, workspaceId, projectId, displayName, declaredDataScope, usageConstraints, safetyClass, safetyHandlingPolicy, onUploaded]);
+
+  return (
+    <div className="rounded-lg border border-neutral-200 bg-white p-3 dark:border-neutral-700 dark:bg-neutral-900">
+      <div className="mb-2 flex items-center justify-between">
+        <span className="text-[12px] font-medium text-neutral-700 dark:text-neutral-300">
+          上传材料 — {label}
+        </span>
+        <button onClick={onClose} className="rounded p-0.5 text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800">
+          <X className="h-3.5 w-3.5" />
+        </button>
       </div>
-    </Section>
+      <div className="space-y-2">
+        <div>
+          <label className="text-[10px] text-neutral-500">文件</label>
+          <input
+            ref={fileInputRef}
+            type="file"
+            onChange={handleFileChange}
+            className="w-full text-[11px] text-neutral-600 file:mr-2 file:rounded file:border-0 file:bg-neutral-100 file:px-2 file:py-0.5 file:text-[11px] file:text-neutral-600 dark:text-neutral-400 dark:file:bg-neutral-800 dark:file:text-neutral-400"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-500">显示名称 *</label>
+          <input
+            type="text"
+            value={displayName}
+            onChange={(e) => setDisplayName(e.target.value)}
+            placeholder="材料名称"
+            className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] dark:border-neutral-700 dark:bg-neutral-800"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-500">数据范围 *</label>
+          <input
+            type="text"
+            value={declaredDataScope}
+            onChange={(e) => setDeclaredDataScope(e.target.value)}
+            placeholder="例如：渠道投放明细"
+            className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] dark:border-neutral-700 dark:bg-neutral-800"
+          />
+        </div>
+        <div>
+          <label className="text-[10px] text-neutral-500">使用约束</label>
+          <input
+            type="text"
+            value={usageConstraints}
+            onChange={(e) => setUsageConstraints(e.target.value)}
+            placeholder="例如：analysis_input"
+            className="w-full rounded border border-neutral-200 bg-neutral-50 px-2 py-1 text-[11px] dark:border-neutral-700 dark:bg-neutral-800"
+          />
+        </div>
+        {safetyClass === "restricted_raw" && (
+          <div className="flex items-start gap-1.5 rounded border border-red-200 bg-red-50 px-2 py-1.5 text-[10px] text-red-600 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400">
+            <AlertTriangle className="mt-0.5 h-3 w-3 shrink-0" />
+            <span>原始行级数据不会进入 LLM 处理，仅作为登记元数据保存。</span>
+          </div>
+        )}
+        {result && (
+          <div
+            className={cn(
+              "rounded-md px-2 py-1.5 text-[11px]",
+              result.kind === "success"
+                ? "border border-green-200 bg-green-50 text-green-700 dark:border-green-800 dark:bg-green-950/20 dark:text-green-400"
+                : "border border-red-200 bg-red-50 text-red-600 dark:border-red-800 dark:bg-red-950/20 dark:text-red-400",
+            )}
+          >
+            {result.message}
+          </div>
+        )}
+        <button
+          onClick={handleUpload}
+          disabled={!canUpload}
+          className={cn(
+            "inline-flex items-center gap-1.5 rounded-md px-3 py-1.5 text-[11px] font-medium transition-colors",
+            canUpload
+              ? "bg-blue-600 text-white hover:bg-blue-700"
+              : "bg-neutral-100 text-neutral-400 cursor-not-allowed dark:bg-neutral-800 dark:text-neutral-600",
+          )}
+        >
+          {loading && <Loader2 className="h-3 w-3 animate-spin" />}
+          {loading ? "上传中…" : "上传"}
+        </button>
+      </div>
+    </div>
   );
 }
 
@@ -318,6 +858,9 @@ function CommandsList({ cmds }: { cmds: readonly CommandAffordance[] }) {
 
 export function ProjectDetailPanel({
   data,
+  workspaceId,
+  capabilities,
+  onRefresh,
   onBack,
   onNavigateToClosure,
 }: Props) {
@@ -334,17 +877,21 @@ export function ProjectDetailPanel({
     pendingGate,
     availableCommands: cmds,
   } = data.data;
-  const activeCmds = availableCommands(cmds);
   const isS3Stage = project.stage.startsWith("S3.");
   const showClosure = !!lockedReportId || isS3Stage;
   const currentStage = project.stage as ProjectStage;
-  const group = stageGroup(currentStage);
+  const currentBusinessStage = businessStage(currentStage);
   const hint = STAGE_NEXT_HINTS[currentStage];
-  const pct = stageProgress(currentStage);
+  const pct = businessStageProgress(currentStage);
+
+  const [uploadPanel, setUploadPanel] = useState<"raw" | "clean" | null>(null);
+
+  const rawEvidence = inputEvidence.filter((ev) => ev.safetyClass === "restricted_raw");
+  const cleanEvidence = inputEvidence.filter((ev) => ev.safetyClass === "controlled");
+  const hasReport = latestReport != null || lockedReportId != null;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-auto p-4">
-      {/* Back + header */}
       <div className="mb-3 flex items-center gap-2">
         <button
           onClick={onBack}
@@ -359,24 +906,26 @@ export function ProjectDetailPanel({
         <span className="shrink-0 text-[10px] text-neutral-400">
           #{project.slug}
         </span>
+        <div className="ml-auto">
+          <MoreActionsMenu
+            workspaceId={workspaceId}
+            projectId={project.projectId}
+            cmds={cmds}
+            project={project}
+            onRefresh={onRefresh}
+          />
+        </div>
       </div>
 
       <div className="grid gap-3 lg:grid-cols-3">
-        {/* Left column: project info + stage track */}
         <div className="space-y-3 lg:col-span-2">
-          {/* Current stage highlight */}
           <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
             <div className="flex items-center justify-between">
               <div className="flex items-center gap-2">
                 <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
                 <span className="text-[13px] font-medium text-blue-800 dark:text-blue-300">
-                  当前阶段: {PROJECT_STAGE_LABELS[currentStage] ?? currentStage}
+                  当前环节: {currentBusinessStage?.label ?? "未知"}
                 </span>
-                {group && (
-                  <span className="text-[11px] text-blue-600 dark:text-blue-400">
-                    ({group.label})
-                  </span>
-                )}
               </div>
               <div className="flex items-center gap-2">
                 <div className="h-2 w-20 overflow-hidden rounded-full bg-blue-200 dark:bg-blue-800">
@@ -397,64 +946,141 @@ export function ProjectDetailPanel({
             )}
           </div>
 
-          {/* 15-state machine stage track */}
-          <Section title="数据分析生命周期" icon={GitBranch}>
-            <StageTrack currentStage={currentStage} />
+          <Section title="业务环节进度" icon={GitBranch}>
+            <BusinessStagesProgress currentStage={currentStage} />
           </Section>
 
-          {/* Pending gate */}
+          <TechnicalStageTrack currentStage={currentStage} />
+
+          <Section title="已提交需求" icon={FileText}>
+            {analysisRequest ? (
+              <div className="space-y-2">
+                <div className="max-h-32 overflow-auto rounded bg-neutral-50 p-2 text-[11px] text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                  {analysisRequest.rawRequestText.length > 500
+                    ? analysisRequest.rawRequestText.slice(0, 500) + "…"
+                    : analysisRequest.rawRequestText}
+                </div>
+                <div className="text-[10px] text-neutral-400">
+                  提交时间: {formatRelativeTime(analysisRequest.submittedAt)}
+                  {analysisRequest.locale && (
+                    <span className="ml-1">· {analysisRequest.locale}</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-neutral-200 p-3 text-center dark:border-neutral-700">
+                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
+                  尚未提交业务需求
+                </p>
+                <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">
+                  创建工单时未包含需求提交步骤，请重新创建工单
+                </p>
+              </div>
+            )}
+          </Section>
+
+          <Section title="结构化需求" icon={FileText}>
+            <GenerateRequirementButton
+              workspaceId={workspaceId}
+              projectId={project.projectId}
+              analysisRequest={analysisRequest}
+              currentRequirement={currentRequirement}
+              expectedUpdatedAt={project.updatedAt}
+              capabilities={capabilities}
+              onRefresh={onRefresh}
+            />
+            {currentRequirement && (
+              <div className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
+                <VersionInfo version={currentRequirement} label="当前版本" />
+              </div>
+            )}
+            {!currentRequirement && (
+              <div className="mt-3 border-t border-neutral-100 pt-3 text-[10px] text-neutral-400 dark:border-neutral-800">
+                暂无版本
+              </div>
+            )}
+          </Section>
+
           {pendingGate && (
             <Section title="待处理审核" icon={Shield}>
               <GateInfo gateType={pendingGate} />
             </Section>
           )}
 
-          {/* Available commands */}
-          <CommandsList cmds={activeCmds} />
-
-          {/* Analysis request */}
-          {analysisRequest && (
-            <Section title="分析需求" icon={FileText}>
-              <div className="max-h-32 overflow-auto rounded bg-neutral-50 p-2 text-[11px] text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-                {analysisRequest.rawRequestText.length > 500
-                  ? analysisRequest.rawRequestText.slice(0, 500) + "…"
-                  : analysisRequest.rawRequestText}
-              </div>
-              <div className="mt-1 text-[10px] text-neutral-400">
-                {formatRelativeTime(analysisRequest.submittedAt)}
-                {analysisRequest.locale && (
-                  <span className="ml-1">· {analysisRequest.locale}</span>
-                )}
-              </div>
-            </Section>
-          )}
-
-          {/* Materials & Documents — combined evidence + sources mapped to stages */}
-          {(inputEvidence.length > 0 || sources.length > 0) && (
-            <Section title="材料与文档" icon={FolderOpen}>
-              <div className="space-y-3">
-                {/* Stage mapping explanation */}
-                <div className="rounded-md border border-neutral-100 bg-neutral-50 p-2 dark:border-neutral-800 dark:bg-neutral-800/50">
-                  <div className="text-[10px] text-neutral-500 dark:text-neutral-400">
-                    材料与状态机阶段的对应关系
+          <Section title="数据材料" icon={FolderOpen}>
+            <div className="space-y-2">
+              <div className="grid grid-cols-3 gap-2">
+                <button
+                  onClick={() => setUploadPanel(uploadPanel === "raw" ? null : "raw")}
+                  className={cn(
+                    "rounded-md border p-2 text-center transition-colors",
+                    uploadPanel === "raw"
+                      ? "border-red-400 bg-red-100 dark:border-red-600 dark:bg-red-950/30"
+                      : "border-red-200 bg-red-50 hover:bg-red-100 dark:border-red-800 dark:bg-red-950/20 dark:hover:bg-red-950/30",
+                  )}
+                >
+                  <div className="text-[10px] font-medium text-red-700 dark:text-red-400">010_raw</div>
+                  <div className="mt-1 text-[9px] text-red-600 dark:text-red-500">
+                    {rawEvidence.length > 0 ? `${rawEvidence.length} 项` : "点击上传"}
                   </div>
-                  <div className="mt-1.5 flex flex-wrap gap-1.5">
-                    <span className="inline-flex items-center gap-1 rounded bg-blue-50 px-1.5 py-0.5 text-[9px] text-blue-700 dark:bg-blue-950/30 dark:text-blue-400">
-                      <Circle className="h-2 w-2" /> S1 输入材料
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded bg-violet-50 px-1.5 py-0.5 text-[9px] text-violet-700 dark:bg-violet-950/30 dark:text-violet-400">
-                      <Circle className="h-2 w-2" /> S2 分析证据
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded bg-green-50 px-1.5 py-0.5 text-[9px] text-green-700 dark:bg-green-950/30 dark:text-green-400">
-                      <Circle className="h-2 w-2" /> S2.5/S2.6 报告产物
-                    </span>
-                    <span className="inline-flex items-center gap-1 rounded bg-amber-50 px-1.5 py-0.5 text-[9px] text-amber-700 dark:bg-amber-950/30 dark:text-amber-400">
-                      <Circle className="h-2 w-2" /> S3 行动闭合材料
-                    </span>
+                </button>
+                <button
+                  onClick={() => setUploadPanel(uploadPanel === "clean" ? null : "clean")}
+                  className={cn(
+                    "rounded-md border p-2 text-center transition-colors",
+                    uploadPanel === "clean"
+                      ? "border-amber-400 bg-amber-100 dark:border-amber-600 dark:bg-amber-950/30"
+                      : "border-amber-200 bg-amber-50 hover:bg-amber-100 dark:border-amber-800 dark:bg-amber-950/20 dark:hover:bg-amber-950/30",
+                  )}
+                >
+                  <div className="text-[10px] font-medium text-amber-700 dark:text-amber-400">020_clean</div>
+                  <div className="mt-1 text-[9px] text-amber-600 dark:text-amber-500">
+                    {cleanEvidence.length > 0 ? `${cleanEvidence.length} 项` : "点击上传"}
+                  </div>
+                </button>
+                <div className="rounded-md border border-green-200 bg-green-50 p-2 text-center dark:border-green-800 dark:bg-green-950/20">
+                  <div className="text-[10px] font-medium text-green-700 dark:text-green-400">060_reports</div>
+                  <div className="mt-1 text-[9px] text-green-600 dark:text-green-500">
+                    {hasReport ? "已产出" : "暂无报告产物"}
                   </div>
                 </div>
+              </div>
 
-                {/* Input evidence list */}
+              {uploadPanel === "raw" && (
+                <EvidenceUploadPanel
+                  workspaceId={workspaceId}
+                  projectId={project.projectId}
+                  safetyClass="restricted_raw"
+                  safetyHandlingPolicy="local_transform_required"
+                  label="010_raw 原始数据"
+                  onClose={() => setUploadPanel(null)}
+                  onUploaded={onRefresh}
+                />
+              )}
+              {uploadPanel === "clean" && (
+                <EvidenceUploadPanel
+                  workspaceId={workspaceId}
+                  projectId={project.projectId}
+                  safetyClass="controlled"
+                  safetyHandlingPolicy="controlled_or_derived_allowed"
+                  label="020_clean 受控数据"
+                  onClose={() => setUploadPanel(null)}
+                  onUploaded={onRefresh}
+                />
+              )}
+
+              {!hasReport && !latestReport && (
+                <div className="rounded-md border border-neutral-200 bg-neutral-50 p-2 text-[10px] text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
+                  <Info className="mr-1 inline h-3 w-3" />
+                  报告产物由分析执行自动生成，当前尚无报告。
+                </div>
+              )}
+            </div>
+          </Section>
+
+          {(inputEvidence.length > 0 || sources.length > 0) && (
+            <Section title="已登记材料与来源" icon={FolderOpen}>
+              <div className="space-y-3">
                 {inputEvidence.length > 0 && (
                   <div>
                     <div className="mb-1 text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
@@ -467,8 +1093,6 @@ export function ProjectDetailPanel({
                     </div>
                   </div>
                 )}
-
-                {/* Sources list */}
                 {sources.length > 0 && (
                   <div>
                     <div className="mb-1 text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
@@ -492,12 +1116,6 @@ export function ProjectDetailPanel({
                                 {s.description}
                               </div>
                             )}
-                            {s.latestCheck && (
-                              <div className="text-[10px] text-neutral-400">
-                                检查: {s.latestCheck.availabilityStatus} ·{" "}
-                                {formatRelativeTime(s.latestCheck.checkedAt)}
-                              </div>
-                            )}
                           </div>
                         </div>
                       ))}
@@ -507,26 +1125,9 @@ export function ProjectDetailPanel({
               </div>
             </Section>
           )}
-
-          {/* No materials hint */}
-          {inputEvidence.length === 0 && sources.length === 0 && (
-            <Section title="材料与文档" icon={FolderOpen}>
-              <div className="rounded-md border border-dashed border-neutral-200 p-3 text-center dark:border-neutral-700">
-                <FolderOpen className="mx-auto mb-1.5 h-5 w-5 text-neutral-300 dark:text-neutral-600" />
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  暂无已登记的材料或数据来源
-                </p>
-                <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">
-                  提交分析需求后，可在 S2 阶段登记输入材料和数据来源
-                </p>
-              </div>
-            </Section>
-          )}
         </div>
 
-        {/* Right column: metadata sidebar */}
         <div className="space-y-3">
-          {/* Project info */}
           <Section title="项目信息" icon={Tag}>
             <FieldRow label="类型">
               {PROJECT_KIND_LABELS[project.kind as keyof typeof PROJECT_KIND_LABELS] ?? project.kind}
@@ -534,7 +1135,7 @@ export function ProjectDetailPanel({
             <FieldRow label="状态">
               {PROJECT_STATUS_LABELS[project.status as keyof typeof PROJECT_STATUS_LABELS] ?? project.status}
             </FieldRow>
-            <FieldRow label="阶段">
+            <FieldRow label="技术状态">
               <span className="text-[11px]">
                 {PROJECT_STAGE_LABELS[currentStage] ?? currentStage}
               </span>
@@ -565,67 +1166,18 @@ export function ProjectDetailPanel({
             )}
           </Section>
 
-          {/* Data folder status */}
-          <Section title="数据文件夹" icon={FolderOpen}>
-            <div className="space-y-2">
-              <div className="flex items-center gap-2 text-[11px]">
-                <div className="h-2 w-2 rounded-full bg-amber-400" />
-                <span className="text-neutral-600 dark:text-neutral-400">
-                  当前使用现有 session/flow 任务文件夹
-                </span>
-              </div>
-              <div className="rounded-md border border-dashed border-neutral-200 p-2 dark:border-neutral-700">
-                <div className="text-[10px] text-neutral-400 dark:text-neutral-500">
-                  Analysis Project 尚未拥有独立的任务文件夹。
-                  数据材料存放在关联的 session 或 flow 的标准目录中：
-                </div>
-                <div className="mt-1.5 space-y-0.5">
-                  <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className="rounded bg-red-50 px-1 py-0.5 text-red-600 dark:bg-red-950/30 dark:text-red-400">010_raw</span>
-                    <span className="text-neutral-500">原始数据</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className="rounded bg-amber-50 px-1 py-0.5 text-amber-600 dark:bg-amber-950/30 dark:text-amber-400">020_clean</span>
-                    <span className="text-neutral-500">清洗聚合数据</span>
-                  </div>
-                  <div className="flex items-center gap-1.5 text-[10px]">
-                    <span className="rounded bg-green-50 px-1 py-0.5 text-green-600 dark:bg-green-950/30 dark:text-green-400">060_reports</span>
-                    <span className="text-neutral-500">报告与衍生产物</span>
-                  </div>
-                </div>
-              </div>
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-2 text-[10px] text-amber-700 dark:border-amber-800 dark:bg-amber-950/20 dark:text-amber-400">
-                <Info className="mr-1 inline h-3 w-3" />
-                需要后续 contract：analysis project task folder ownership
-              </div>
-            </div>
-          </Section>
-
-          {/* Latest run */}
-          {latestRun && (
-            <Section title="最近执行" icon={Play}>
-              <RunInfo run={latestRun} />
-            </Section>
-          )}
-
-          {/* Current requirement */}
-          {currentRequirement && (
-            <Section title="当前需求版本" icon={FileText}>
-              <VersionInfo
-                version={currentRequirement}
-                label="结构化需求"
-              />
-            </Section>
-          )}
-
-          {/* Current plan */}
           {currentPlan && (
             <Section title="当前计划版本" icon={FileText}>
               <VersionInfo version={currentPlan} label="分析计划" />
             </Section>
           )}
 
-          {/* Latest report */}
+          {latestRun && (
+            <Section title="最近执行" icon={Play}>
+              <RunInfo run={latestRun} />
+            </Section>
+          )}
+
           {latestReport && (
             <Section title="最新报告" icon={FileText}>
               <div className="text-[11px]">
