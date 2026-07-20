@@ -252,3 +252,98 @@ export const ITERATION_BRANCH_LABELS: Record<IterationBranch, string> = {
   archive: "归档",
   iterate: "迭代",
 };
+
+// ---------------------------------------------------------------------------
+// Stage groups — business journey grouping for the 15-state machine
+// ---------------------------------------------------------------------------
+
+export interface StageGroup {
+  readonly id: string;
+  readonly label: string;
+  readonly description: string;
+  readonly stages: readonly ProjectStage[];
+}
+
+export const STAGE_GROUPS: readonly StageGroup[] = [
+  {
+    id: "S1",
+    label: "需求与计划",
+    description: "明确分析目标、生成结构化需求和执行计划",
+    stages: ["S1.1", "S1.2", "S1.4"],
+  },
+  {
+    id: "S2",
+    label: "分析执行与报告",
+    description: "准备数据、执行分析、生成并锁定报告",
+    stages: ["S2.1", "S2.2", "S2.3", "S2.4", "S2.5", "S2.6"],
+  },
+  {
+    id: "S3",
+    label: "行动闭环",
+    description: "将分析结论转化为业务行动，评估效果并决定下一步",
+    stages: ["S3.1", "S3.2", "S3.3", "S3.4", "S3.5", "S3.6"],
+  },
+];
+
+// ---------------------------------------------------------------------------
+// Next-step hints — business-language guidance for each stage
+// ---------------------------------------------------------------------------
+
+export const STAGE_NEXT_HINTS: Record<ProjectStage, string> = {
+  "S1.1": "等待系统生成结构化需求",
+  "S1.2": "请确认需求是否准确，或要求修改",
+  "S1.4": "请确认分析计划，或要求修改",
+  "S2.1": "计划已确认，准备执行分析",
+  "S2.2": "正在准备输入数据和证据",
+  "S2.3": "分析运行中，请等待完成",
+  "S2.4": "正在生成分析报告",
+  "S2.5": "报告已生成，请审核并决定是否锁定",
+  "S2.6": "报告已锁定，可进入业务闭合阶段",
+  "S3.1": "将分析结论转化为可执行的业务行动",
+  "S3.2": "将行动方案部署到下游系统",
+  "S3.3": "业务团队执行行动方案",
+  "S3.4": "收集执行效果反馈数据",
+  "S3.5": "评估行动效果是否达到预期",
+  "S3.6": "决定归档或迭代优化",
+};
+
+// ---------------------------------------------------------------------------
+// Stage group lookup
+// ---------------------------------------------------------------------------
+
+export function stageGroup(stage: ProjectStage): StageGroup | undefined {
+  return STAGE_GROUPS.find((g) => g.stages.includes(stage));
+}
+
+export function stageGroupIndex(stage: ProjectStage): number {
+  return STAGE_GROUPS.findIndex((g) => g.stages.includes(stage));
+}
+
+// ---------------------------------------------------------------------------
+// Project kind descriptions (for empty state)
+// ---------------------------------------------------------------------------
+
+export const PROJECT_KIND_DESCRIPTIONS: Record<ProjectKind, string> = {
+  goal_decomposition: "将业务目标拆解为可量化的分析子任务",
+  daily_analysis: "日常运营指标的例行分析与监控",
+  topic_research: "针对特定业务问题的深度专题研究",
+};
+
+// ---------------------------------------------------------------------------
+// Slug generation — strips all non-ASCII-alphanumeric characters
+// ---------------------------------------------------------------------------
+
+export const SLUG_PATTERN = /^[a-z0-9]+(?:-[a-z0-9]+)*$/;
+
+export function generateSlug(title: string): string {
+  if (!title.trim()) return "";
+  const ascii = title
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
+  if (ascii && /^[a-z0-9]/.test(ascii)) {
+    return ascii;
+  }
+  return `analysis-${Date.now()}`;
+}

@@ -80,6 +80,12 @@ async function postCommand(url: string, body: unknown): Promise<ClosureCommandRe
 }
 
 // ---------------------------------------------------------------------------
+// Create project result (reuses ClosureCommandResult shape for command envelope)
+// ---------------------------------------------------------------------------
+
+export type CreateProjectResult = ClosureCommandResult;
+
+// ---------------------------------------------------------------------------
 // Analysis Projects API slot
 // ---------------------------------------------------------------------------
 
@@ -87,6 +93,14 @@ export const analysisProjectsApi = {
   // --- Capabilities (non-workspace-scoped) ---
   getAnalysisProjectCapabilities(): Promise<CapabilitiesResponse> {
     return fetch(`${BASE}/capabilities`).then(json<CapabilitiesResponse>);
+  },
+
+  // --- Create project ---
+  createAnalysisProject(
+    workspaceId: string,
+    body: { title: string; slug: string },
+  ): Promise<CreateProjectResult> {
+    return postCommand(`${wsBase(workspaceId)}/projects`, body);
   },
 
   // --- Project list ---

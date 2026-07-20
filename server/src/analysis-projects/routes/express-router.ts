@@ -127,6 +127,16 @@ export function createAnalysisProjectsExpressRouter(
       const mockReq = req as unknown as import("node:http").IncomingMessage;
       (mockReq as { url?: string }).url = fullPath;
 
+      // When mounted on an Express app with express.json(), the body stream
+      // is already consumed. The verify callback in express.json() captures
+      // the raw body bytes as __rawBody BEFORE JSON.parse runs. We attach it
+      // as __preBufferedBody so readRequestBody returns the raw bytes directly,
+      // preserving strict JSON validation (duplicate keys, BOM, etc.).
+      const expressReq = req as Request & { __rawBody?: Buffer };
+      if (expressReq.__rawBody) {
+        (mockReq as { __preBufferedBody?: Buffer }).__preBufferedBody = expressReq.__rawBody;
+      }
+
       await internalRouter({
         req: mockReq,
         res: res as unknown as import("node:http").ServerResponse,

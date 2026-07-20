@@ -271,7 +271,16 @@ const WORKFLOW_SYSTEM_PROMPTS: Record<string, string> = {
 
 const app = express();
 app.use(cors());
-app.use(express.json({ limit: "8mb" }));
+// The verify callback captures the raw body buffer before JSON.parse runs.
+// This preserves the original bytes for strict validation (duplicate keys,
+// BOM, non-finite numbers) in routes that need to run parseJsonStrict on
+// the raw body instead of the Express-parsed req.body (e.g. analysis-projects).
+app.use(express.json({
+  limit: "8mb",
+  verify: (req, _res, buf) => {
+    (req as unknown as { __rawBody?: Buffer }).__rawBody = buf;
+  },
+}));
 
 const DEFAULT_DECISION_TREE_MODEL = "minimax-cn/MiniMax-M3";
 const DEFAULT_PRESENTATION_VERSION_MODEL = "minimax-cn/MiniMax-M3";

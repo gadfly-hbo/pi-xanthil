@@ -12,7 +12,24 @@ import { isUuidV4 } from "../application/shared/runtime.ts";
 
 export class BodyValidationError extends ApplicationError {}
 
+/**
+ * Read the request body as a Buffer.
+ *
+ * When the analysis-projects router is mounted on an Express app that uses
+ * express.json() globally (as pi-Xanthil does), the body stream is already
+ * consumed before our router runs. In that case, the Express adapter
+ * (express-router.ts) re-serializes req.body and attaches it as
+ * `__preBufferedBody` on the mock request object. We return it directly
+ * instead of hanging on an already-ended stream.
+ */
 export function readRequestBody(req: import("node:http").IncomingMessage, maxBytes: number): Promise<Buffer> {
+  const preBuffered = (req as { __preBufferedBody?: Buffer }).__preBufferedBody;
+  if (preBuffered) {
+    if (preBuffered.length > maxBytes) {
+      return Promise.reject(new BodyValidationError("payload_too_large", "Request body exceeds the maximum allowed size."));
+    }
+    return Promise.resolve(preBuffered);
+  }
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
     let total = 0;

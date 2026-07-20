@@ -1,6 +1,6 @@
-import { RefreshCw } from "lucide-react";
+import { RefreshCw, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
-import type { ProjectListReadModel, ProjectListItem } from "@/types/analysis-projects";
+import type { ProjectListReadModel, ProjectListItem, ProjectStage } from "@/types/analysis-projects";
 import {
   PROJECT_KIND_LABELS,
   PROJECT_STATUS_LABELS,
@@ -8,20 +8,24 @@ import {
   RUN_STATUS_LABELS,
   GATE_TYPE_LABELS,
   stageProgress,
+  stageGroup,
   formatRelativeTime,
   truncateText,
   availableCommands,
   commandLabel,
+  STAGE_NEXT_HINTS,
 } from "./shared";
 
 interface Props {
   data: ProjectListReadModel;
   onSelect: (item: ProjectListItem) => void;
   onRefresh: () => void;
+  onCreateClick: () => void;
 }
 
 function StageBar({ stage }: { stage: string }) {
-  const pct = stageProgress(stage as import("@/types/analysis-projects").ProjectStage);
+  const pct = stageProgress(stage as ProjectStage);
+  const group = stageGroup(stage as ProjectStage);
   return (
     <div className="flex items-center gap-2">
       <div className="h-1.5 w-16 overflow-hidden rounded-full bg-neutral-200 dark:bg-neutral-700">
@@ -33,6 +37,11 @@ function StageBar({ stage }: { stage: string }) {
       <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
         {PROJECT_STAGE_LABELS[stage as keyof typeof PROJECT_STAGE_LABELS] ?? stage}
       </span>
+      {group && (
+        <span className="text-[10px] text-neutral-400">
+          {group.label}
+        </span>
+      )}
     </div>
   );
 }
@@ -54,6 +63,7 @@ function StatusBadge({ status }: { status: string }) {
 
 function ProjectRow({ item, onSelect }: { item: ProjectListItem; onSelect: () => void }) {
   const cmds = availableCommands(item.availableCommands);
+  const hint = STAGE_NEXT_HINTS[item.stage as keyof typeof STAGE_NEXT_HINTS];
   return (
     <button
       onClick={onSelect}
@@ -76,6 +86,11 @@ function ProjectRow({ item, onSelect }: { item: ProjectListItem; onSelect: () =>
           <span>·</span>
           <StageBar stage={item.stage} />
         </div>
+        {hint && (
+          <div className="mt-1 text-[10px] text-neutral-400">
+            {hint}
+          </div>
+        )}
         {item.pendingGate && (
           <div className="mt-1 text-[11px] text-amber-600 dark:text-amber-400">
             待审: {GATE_TYPE_LABELS[item.pendingGate] ?? item.pendingGate}
@@ -84,6 +99,11 @@ function ProjectRow({ item, onSelect }: { item: ProjectListItem; onSelect: () =>
         {item.latestRun && (
           <div className="mt-1 text-[11px] text-neutral-400">
             最近执行: {RUN_STATUS_LABELS[item.latestRun.currentRunStatus as keyof typeof RUN_STATUS_LABELS] ?? item.latestRun.currentRunStatus}
+            {item.latestRun.currentAnalysisStage && (
+              <span className="ml-1">
+                · {PROJECT_STAGE_LABELS[item.latestRun.currentAnalysisStage as keyof typeof PROJECT_STAGE_LABELS] ?? item.latestRun.currentAnalysisStage}
+              </span>
+            )}
           </div>
         )}
         {cmds.length > 0 && (
@@ -110,23 +130,8 @@ function ProjectRow({ item, onSelect }: { item: ProjectListItem; onSelect: () =>
   );
 }
 
-export function ProjectListPanel({ data, onSelect, onRefresh }: Props) {
+export function ProjectListPanel({ data, onSelect, onRefresh, onCreateClick }: Props) {
   const { items, hasMore } = data.data;
-
-  if (items.length === 0) {
-    return (
-      <div className="flex flex-1 flex-col items-center justify-center p-8 text-neutral-400">
-        <p className="text-sm">暂无分析项目</p>
-        <button
-          onClick={onRefresh}
-          className="mt-2 inline-flex h-7 items-center gap-1.5 rounded-md px-3 text-[12px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-        >
-          <RefreshCw className="h-3 w-3" />
-          刷新
-        </button>
-      </div>
-    );
-  }
 
   return (
     <div className="flex min-h-0 flex-1 flex-col">
@@ -134,13 +139,22 @@ export function ProjectListPanel({ data, onSelect, onRefresh }: Props) {
         <span className="text-[11px] text-neutral-500">
           {items.length} 个项目{hasMore ? " (有更多)" : ""}
         </span>
-        <button
-          onClick={onRefresh}
-          className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
-        >
-          <RefreshCw className="h-3 w-3" />
-          刷新
-        </button>
+        <div className="flex items-center gap-1.5">
+          <button
+            onClick={onCreateClick}
+            className="inline-flex h-6 items-center gap-1 rounded-md bg-blue-600 px-2.5 text-[11px] font-medium text-white transition-colors hover:bg-blue-700"
+          >
+            <Plus className="h-3 w-3" />
+            新建
+          </button>
+          <button
+            onClick={onRefresh}
+            className="inline-flex h-6 items-center gap-1 rounded-md px-2 text-[11px] text-neutral-500 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          >
+            <RefreshCw className="h-3 w-3" />
+            刷新
+          </button>
+        </div>
       </div>
       <div className="flex-1 overflow-auto">
         {items.map((item) => (

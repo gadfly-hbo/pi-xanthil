@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useState } from "react";
-import { FolderOpen, Loader2, Settings2 } from "lucide-react";
+import { FolderOpen, Loader2, Settings2, Plus } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { api } from "@/lib/api";
 import type {
@@ -7,11 +7,14 @@ import type {
   ProjectDetailReadModel,
   CapabilitiesResponse,
   ProjectListItem,
+  ClosureCommandResult,
 } from "@/types/analysis-projects";
 import { ProjectListPanel } from "./ProjectListPanel";
 import { ProjectDetailPanel } from "./ProjectDetailPanel";
 import { CapabilitiesPanel } from "./CapabilitiesPanel";
 import { ClosurePanel } from "./ClosurePanel";
+import { EmptyState } from "./EmptyState";
+import { CreateProjectDialog } from "./CreateProjectDialog";
 
 type ViewMode = "list" | "detail" | "capabilities" | "closure";
 
@@ -27,6 +30,11 @@ export function AnalysisProjectsPane({ workspaceId }: Props) {
   const [selectedProjectId, setSelectedProjectId] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Create project state
+  const [createDialogOpen, setCreateDialogOpen] = useState(false);
+  const [creating, setCreating] = useState(false);
+  const [createError, setCreateError] = useState<string | null>(null);
 
   const loadList = useCallback(async () => {
     if (!workspaceId) return;
@@ -100,6 +108,47 @@ export function AnalysisProjectsPane({ workspaceId }: Props) {
     }
   }, [selectedProjectId, loadDetail]);
 
+  const handleOpenCreateDialog = useCallback(() => {
+    setCreateDialogOpen(true);
+    setCreateError(null);
+  }, []);
+
+  const handleCloseCreateDialog = useCallback(() => {
+    setCreateDialogOpen(false);
+    setCreateError(null);
+  }, []);
+
+  const handleCreateProject = useCallback(async (title: string, slug: string) => {
+    if (!workspaceId) return;
+    setCreating(true);
+    setCreateError(null);
+    try {
+      const result: ClosureCommandResult = await api.createAnalysisProject(workspaceId, { title, slug });
+      if (result.kind === "executed" || result.kind === "replayed_success") {
+        setCreateDialogOpen(false);
+        // Refresh list and try to open the new project
+        const data = await api.listAnalysisProjects(workspaceId);
+        setListData(data);
+        setView("list");
+        // Try to find and open the newly created project
+        const newItem = data.data.items.find((item) => item.slug === slug);
+        if (newItem) {
+          void loadDetail(newItem.projectId);
+        }
+      } else if (result.kind === "failed") {
+        setCreateError(result.errorSummary ?? "创建失败");
+      } else if (result.kind === "conflict") {
+        setCreateError("标识冲突，请使用不同的技术标识");
+      } else {
+        setCreateError("创建请求未成功，请重试");
+      }
+    } catch (err) {
+      setCreateError(err instanceof Error ? err.message : String(err));
+    } finally {
+      setCreating(false);
+    }
+  }, [workspaceId, loadDetail]);
+
   if (!workspaceId) {
     return (
       <div className="flex min-h-0 flex-1 items-center justify-center">
@@ -110,6 +159,8 @@ export function AnalysisProjectsPane({ workspaceId }: Props) {
       </div>
     );
   }
+
+  const isEmpty = !loading && view === "list" && listData && listData.data.items.length === 0;
 
   return (
     <div className="flex min-h-0 flex-1 flex-col overflow-hidden">
@@ -140,9 +191,18 @@ export function AnalysisProjectsPane({ workspaceId }: Props) {
           能力
         </button>
         {selectedProjectId && view === "detail" && (
-          <span className="ml-2 text-[11px] text-neutral-400 truncate">
+          <span className="ml-2 truncate text-[11px] text-neutral-400">
             {detailData?.data.project.title ?? selectedProjectId}
           </span>
+        )}
+        {!isEmpty && view === "list" && (
+          <button
+            onClick={handleOpenCreateDialog}
+            className="ml-auto inline-flex h-7 items-center gap-1 rounded-md bg-blue-600 px-3 text-[12px] font-medium text-white transition-colors hover:bg-blue-700"
+          >
+            <Plus className="h-3.5 w-3.5" />
+            新建项目
+          </button>
         )}
       </div>
 
@@ -160,11 +220,19 @@ export function AnalysisProjectsPane({ workspaceId }: Props) {
             <Loader2 className="h-5 w-5 animate-spin text-neutral-400" />
           </div>
         )}
-        {!loading && view === "list" && listData && (
+        {!loading && isEmpty && (
+          <EmptyState
+            onCreateProject={handleCreateProject}
+            creating={creating}
+            createError={createError}
+          />
+        )}
+        {!loading && view === "list" && listData && listData.data.items.length > 0 && (
           <ProjectListPanel
             data={listData}
             onSelect={handleSelectProject}
             onRefresh={loadList}
+            onCreateClick={handleOpenCreateDialog}
           />
         )}
         {!loading && view === "detail" && detailData && (
@@ -186,6 +254,15 @@ export function AnalysisProjectsPane({ workspaceId }: Props) {
           />
         )}
       </div>
+
+      {/* Create project dialog (when list has items) */}
+      <CreateProjectDialog
+        open={createDialogOpen}
+        onClose={handleCloseCreateDialog}
+        onSubmit={handleCreateProject}
+        creating={creating}
+        createError={createError}
+      />
     </div>
   );
 }
