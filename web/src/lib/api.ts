@@ -13,6 +13,7 @@ import { dataApi } from "./api/data";
 import { engineApi } from "./api/engine";
 import { vizApi } from "./api/viz";
 import { sharedApi } from "./api/shared";
+import { analysisProjectsApi } from "./api/analysis-projects";
 
 // ---- 契约审查响应类型（对齐 server/src/report-review.ts） ----
 interface ContractReviewFinding {
@@ -1012,4 +1013,4 @@ const legacyApi = {
  * 对外统一入口：legacy 方法(冻结,归总控) + 各域 slot 合并。
  * 新增方法请加入 api/{data,engine,viz,shared}.ts 对应域片段，组件继续用 api.<name>()。
  */
-export const api = { ...legacyApi, ...dataApi, ...engineApi, ...vizApi, ...sharedApi };
+export const api = { ...legacyApi, ...dataApi, ...engineApi, ...vizApi, ...sharedApi, ...analysisProjectsApi };

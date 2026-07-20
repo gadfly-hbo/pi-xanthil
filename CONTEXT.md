@@ -55,6 +55,7 @@ Key pointers:
 | Shared types and API slot ownership | `Orchestration.md` |
 | Workflow compatibility | `docs/workflow-schema-compat.md` |
 | Workflow on-block behavior | `docs/工作流-onblock契约.md` |
+| WorkCanger absorption and Analysis Project boundary | `docs/workcanger-absorption-contract.md` |
 | Tool-use v2 exposure and output contracts | `docs/adr/0001-tool-use-v2-exposure-and-output-contracts.md`, `docs/backlog/tool-use-治理中枢.md`, `docs/notes-infra.md §十五` |
 | Harness and eval contracts | `docs/harness-etclovg-coverage.md`, `docs/backlog/` |
 | Domain current state | `docs/notes-data.md`, `docs/notes-engine.md`, `docs/notes-infra.md`, `docs/notes-viz.md` |

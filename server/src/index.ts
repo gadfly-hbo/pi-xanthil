@@ -5566,7 +5566,7 @@ app.get("/api/extraction-tools/preview", (req, res) => {
 // flow import (multer upload) 已迁至 routes/engine.ts（multer 基建仅该路由用，随路由一起搬）。
 
 // ---- domain route slots (绞杀者接缝层; legacy 路由仍在本文件) ----
-registerDomainRoutes(app);
+const closeDomainRoutes = await registerDomainRoutes(app);
 
 const server = app.listen(PORT, () => {
   console.log(`[xanthil] gateway listening on http://localhost:${PORT}`);
@@ -5574,6 +5574,11 @@ const server = app.listen(PORT, () => {
   if (pruned > 0) console.log(`[xanthil] pruned ${pruned} trace events older than 90 days`);
   // 数据分析 tool-use：回填所有既有工作区的 .mcp.json（ExtractionTool MCP server 注册）
   registerAllWorkspaceMcp();
+});
+server.once("close", () => {
+  void closeDomainRoutes().catch((err: unknown) => {
+    console.error("[xanthil] failed to close domain routes", err);
+  });
 });
 
 // ---- WebSocket gateway ----

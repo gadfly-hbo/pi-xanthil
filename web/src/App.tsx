@@ -17,6 +17,7 @@ import { HealthTabs } from "@/tabs/HealthTabs";
 import { VizTabs } from "@/tabs/VizTabs";
 import type { TabContext } from "@/tabs/types";
 import type { WorkflowTemplate } from "@/components/WorkflowTemplateLibraryPane";
+import { AnalysisProjectsPane } from "@/components/analysis-projects/AnalysisProjectsPane";
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
@@ -755,7 +756,7 @@ export default function App() {
 
   const handleTabChange = useCallback((tab: Tab) => {
     setActiveTab(tab);
-    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "view" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "kb_collect" : tab === "health" ? "health_overview" : "view");
+    setActiveSubTab(tab === "rule_memory" ? "rules" : tab === "xan_db" ? "own_product" :tab === "onto_xanthil" ? "onto_readme" : tab === "zhuanti" ? "view" : tab === "aggregate" ? "readme" : tab === "knowledge_base" ? "kb_collect" : tab === "health" ? "health_overview" : tab === "analysis_projects" ? "view" : "view");
     if (tab === "explore") {
       setActiveSessionId(sessions[0]?.id ?? null);
     }
@@ -1307,6 +1308,7 @@ export default function App() {
             <EngineTabs ctx={tabCtx} />
             <VizTabs ctx={tabCtx} />
             <HealthTabs ctx={tabCtx} />
+            {activeTab === "analysis_projects" && <AnalysisProjectsPane workspaceId={activeWorkspaceId} />}
           </div>
 
           {activeTab === "explore" && activeSessionId && activeSubTab === "view" &&

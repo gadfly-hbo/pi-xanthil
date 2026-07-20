@@ -93,6 +93,7 @@ export function getSubTabsForTab(tab: Tab): { id: SubTab; label: string }[] {
   if (tab === 'multi') return MULTI_SUB_TABS;
   if (tab === 'zhuanti') return ZHUANTI_SUB_TABS;
   if (tab === 'health') return HEALTH_SUB_TABS;
+  if (tab === 'analysis_projects') return [{ id: 'view', label: '概览' }];
   if (VIEW_ONLY_TABS.has(tab)) return SUB_TABS.slice(0, 1);
   return SUB_TABS;
 }

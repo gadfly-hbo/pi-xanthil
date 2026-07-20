@@ -1,0 +1,500 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Analysis Projects — Component Harness</title>
+  <style>
+    * { box-sizing: border-box; margin: 0; padding: 0; }
+    body { font-family: Inter, system-ui, sans-serif; background: #fff; color: #171717; }
+    #root { height: 100vh; display: flex; flex-direction: column; }
+    .harness-badge { position: fixed; top: 4px; right: 4px; z-index: 999; background: #f59e0b; color: #fff; font-size: 10px; padding: 2px 6px; border-radius: 4px; }
+    .section { border: 1px solid #e5e5e5; background: #fff; border-radius: 8px; padding: 12px; }
+    .section-title { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500; color: #404040; margin-bottom: 8px; }
+    .field-row { display: flex; align-items: baseline; gap: 8px; padding: 2px 0; }
+    .field-label { flex-shrink: 0; font-size: 11px; color: #a3a3a3; width: 64px; }
+    .field-value { font-size: 12px; color: #404040; }
+    .badge { display: inline-flex; border-radius: 2px; padding: 1px 6px; font-size: 10px; font-weight: 500; }
+    .badge-green { background: #f0fdf4; color: #16a34a; }
+    .badge-blue { background: #eff6ff; color: #2563eb; }
+    .badge-amber { background: #fffbeb; color: #d97706; }
+    .badge-red { background: #fef2f2; color: #dc2626; }
+    .badge-neutral { background: #f5f5f5; color: #525252; }
+    .gate-box { border: 1px solid #fde68a; background: #fffbeb; border-radius: 6px; padding: 8px; font-size: 11px; }
+    .gate-box .gate-title { font-weight: 500; color: #b45309; }
+    .gate-box .gate-sub { color: #d97706; margin-top: 2px; }
+    .stage-bar { height: 8px; width: 96px; overflow: hidden; border-radius: 4px; background: #e5e5e5; }
+    .stage-bar-fill { height: 100%; border-radius: 4px; background: #3b82f6; }
+    .cmd-chip { display: inline-flex; border: 1px solid #e5e5e5; background: #fafafa; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #404040; }
+    .evidence-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11px; }
+    .source-row { padding: 4px 0; font-size: 11px; }
+    a.nav-link { font-size: 12px; color: #737373; padding: 4px 12px; border-radius: 4px; text-decoration: none; }
+    a.nav-link.active { font-weight: 500; color: #171717; background: #f5f5f5; }
+    .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    @media (max-width: 600px) { .detail-grid { grid-template-columns: 1fr; } }
+    .cap-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11px; }
+  </style>
+</head>
+<body>
+  <div id="root"></div>
+  <span class="harness-badge">test harness</span>
+  <script type="module">
+    const PROJECT_KIND_LABELS = { goal_decomposition: "目标分解", daily_analysis: "日常分析", topic_research: "专题研究" };
+    const PROJECT_STATUS_LABELS = { active: "进行中", completed: "已完成", rejected: "已拒绝", cancelled: "已取消" };
+    const PROJECT_STAGE_LABELS = { "S1.1": "已提交需求", "S1.2": "需求已生成", "S1.4": "计划已生成", "S2.1": "计划已确认", "S2.2": "执行中·输入", "S2.3": "执行中·分析", "S2.4": "执行中·输出", "S2.5": "报告已生成", "S2.6": "报告已锁定", "S3.1": "结论转化", "S3.2": "系统部署", "S3.3": "业务执行", "S3.4": "效果反馈", "S3.5": "效果评估", "S3.6": "迭代决策" };
+    const RUN_STATUS_LABELS = { queued: "排队中", running: "执行中", succeeded: "成功", failed: "失败", aborted: "已中止", blocked: "已阻塞" };
+    const GATE_TYPE_LABELS = { requirement_confirmation: "需求确认", plan_confirmation: "计划确认", report_review: "报告审核" };
+    const SAFETY_LABELS = { restricted_raw: "受限原始数据", controlled: "受控数据", derived: "衍生产物" };
+    const SAFETY_COLORS = { restricted_raw: "badge-red", controlled: "badge-amber", derived: "badge-green" };
+    const STAGE_ORDER = ["S1.1","S1.2","S1.4","S2.1","S2.2","S2.3","S2.4","S2.5","S2.6","S3.1","S3.2","S3.3","S3.4","S3.5","S3.6"];
+    function stageProgress(stage) { const i = STAGE_ORDER.indexOf(stage); return i < 0 ? 0 : Math.round(((i+1)/STAGE_ORDER.length)*100); }
+    function formatRel(iso) { const d = Date.now() - new Date(iso).getTime(); if (d < 60000) return "刚刚"; if (d < 3600000) return Math.floor(d/60000)+"分钟前"; if (d < 86400000) return Math.floor(d/3600000)+"小时前"; return Math.floor(d/86400000)+"天前"; }
+    function formatBytes(b) { if (b < 1024) return b+" B"; if (b < 1048576) return (b/1024).toFixed(1)+" KB"; return (b/1048576).toFixed(1)+" MB"; }
+
+    // --- FIXTURE: Project Detail with pendingGate + analysisRequest ---
+    const FIXTURE_DETAIL = {
+      readModelVersion: "1.0", generatedAt: new Date().toISOString(),
+      data: {
+        project: {
+          projectId: "b2c3d4e5-f6a7-8901-bcde-f12345678901", kind: "goal_decomposition",
+          title: "新客转化率提升目标分解", slug: "new-customer-conversion",
+          status: "active", stage: "S1.2",
+          createdAt: new Date(Date.now() - 86400000).toISOString(),
+          updatedAt: new Date(Date.now() - 7200000).toISOString(),
+          completedAt: null, rejectedAt: null, cancelledAt: null, archivedAt: null,
+          sourceProjectId: null, sourceRelationType: null,
+        },
+        analysisRequest: {
+          analysisRequestId: "ar-001",
+          rawRequestText: "请分析2026年Q3新客转化率下降的原因，重点关注渠道质量变化、落地页体验和首单激励策略的影响。需要按渠道拆分转化漏斗，识别关键流失节点，并给出可执行的优化建议。",
+          locale: "zh-CN", timezone: "Asia/Shanghai",
+          submittedAt: new Date(Date.now() - 86400000).toISOString(),
+        },
+        inputEvidence: [
+          { evidenceArtifactId: "ev-001", displayName: "Q3渠道投放数据.csv", artifactKind: "input_material", safetyClass: "restricted_raw", visibility: "user_visible", mediaType: "text/csv", byteSize: 245760, contentSha256: "abc123", createdAt: new Date(Date.now() - 80000000).toISOString(), contentHref: null },
+          { evidenceArtifactId: "ev-002", displayName: "转化漏斗分析模型.xlsx", artifactKind: "input_material", safetyClass: "controlled", visibility: "user_visible", mediaType: "application/vnd.openxmlformats", byteSize: 1048576, contentSha256: "def456", createdAt: new Date(Date.now() - 70000000).toISOString(), contentHref: "/api/v1/projects/xxx/evidence/ev-002/content" },
+          { evidenceArtifactId: "ev-003", displayName: "竞品落地页截图.zip", artifactKind: "input_material", safetyClass: "derived", visibility: "user_visible", mediaType: "application/zip", byteSize: 5242880, contentSha256: "ghi789", createdAt: new Date(Date.now() - 60000000).toISOString(), contentHref: "/api/v1/projects/xxx/evidence/ev-003/content" },
+        ],
+        sources: [
+          { sourceReferenceId: "src-001", sourceKind: "user_provided", displayName: "广告投放平台API", description: "字节/腾讯广告投放数据", declaredDataScope: "渠道投放明细", safetyHandlingPolicy: "local_transform_required", archivedAt: null, createdAt: new Date(Date.now() - 80000000).toISOString(), latestCheck: { availabilityStatus: "available", checkedAt: new Date(Date.now() - 3600000).toISOString() } },
+          { sourceReferenceId: "src-002", sourceKind: "agentharness", displayName: "DataBase", description: "结构化数据查询", declaredDataScope: "用户行为数据", safetyHandlingPolicy: "controlled_or_derived_allowed", archivedAt: null, createdAt: new Date(Date.now() - 70000000).toISOString(), latestCheck: null },
+        ],
+        currentRequirement: null, currentPlan: null,
+        latestRun: null,
+        latestReport: null,
+        lockedReportId: null,
+        pendingGate: "requirement_confirmation",
+        availableCommands: [
+          { commandType: "requirement.decide_confirmation", available: true, unavailableReasons: [] },
+          { commandType: "project.cancel", available: true, unavailableReasons: [] },
+        ],
+      },
+    };
+
+    // --- FIXTURE: Project Detail with plan_confirmation gate + report ---
+    const FIXTURE_DETAIL_PLAN_GATE = {
+      readModelVersion: "1.0", generatedAt: new Date().toISOString(),
+      data: {
+        project: {
+          projectId: "a1b2c3d4-e5f6-7890-abcd-ef1234567890", kind: "daily_analysis",
+          title: "2026-Q3 用户留存分析", slug: "q3-retention",
+          status: "active", stage: "S1.4",
+          createdAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+          updatedAt: new Date(Date.now() - 3600000).toISOString(),
+          completedAt: null, rejectedAt: null, cancelledAt: null, archivedAt: null,
+          sourceProjectId: null, sourceRelationType: null,
+        },
+        analysisRequest: {
+          analysisRequestId: "ar-002",
+          rawRequestText: "分析Q3用户7日留存率环比下降5%的根因。",
+          locale: "zh-CN", timezone: "Asia/Shanghai",
+          submittedAt: new Date(Date.now() - 86400000 * 3).toISOString(),
+        },
+        inputEvidence: [],
+        sources: [],
+        currentRequirement: { versionId: "req-v1", versionOrdinal: 1, schemaVersion: "1.0", contentSha256: "sha-req", createdAt: new Date(Date.now() - 86400000 * 2).toISOString(), createdBy: { actorId: "sys", actorKind: "system", displayName: "系统" }, supersedesVersionId: null },
+        currentPlan: { versionId: "plan-v1", versionOrdinal: 1, schemaVersion: "1.0", contentSha256: "sha-plan", createdAt: new Date(Date.now() - 86400000).toISOString(), createdBy: { actorId: "sys", actorKind: "system", displayName: "系统" }, supersedesVersionId: null },
+        latestRun: { runId: "run-1", runOrdinal: 1, currentAnalysisStage: "S2.3", currentRunStatus: "running", queuedAt: new Date(Date.now() - 7200000).toISOString(), startedAt: new Date(Date.now() - 3600000).toISOString(), endedAt: null, triggeredBy: { actorId: "human-1", actorKind: "human", displayName: "管理员" } },
+        latestReport: null,
+        lockedReportId: null,
+        pendingGate: "plan_confirmation",
+        availableCommands: [
+          { commandType: "run.abort", available: true, unavailableReasons: [] },
+        ],
+      },
+    };
+
+    // --- FIXTURE: Capabilities ---
+    const FIXTURE_CAPS = {
+      schemaVersion: "1.0", requestId: "req-caps",
+      data: {
+        version: "1.0.0", apiVersion: "1.0.0", appVersion: "0.0.0",
+        enabledDailyKinds: ["daily_analysis"],
+        supportedSchemaVersions: ["1.0"],
+        sourceCapabilities: {
+          user: [{ kind: "upload", scope: "user_provided", artifactKind: "input_material" }],
+          agentHarness: [
+            { capabilityId: "cap-db", contractVersion: "1.0", displayName: "DataBase", allowedSafetyClasses: ["controlled", "derived"], readOnly: true },
+            { capabilityId: "cap-onto", contractVersion: "1.0", displayName: "OntoBase", allowedSafetyClasses: ["derived"], readOnly: true },
+          ],
+        },
+        engine: { status: "available", adapter: "pi" },
+        upload: { maxBytes: 52428800, allowedMediaTypes: ["text/csv", "application/json", "text/plain"], tmpAvailable: true },
+        representationFormats: [], exportContracts: [],
+      },
+    };
+
+    // --- RENDERERS ---
+    function renderList(container) {
+      const items = [
+        { title: "2026-Q3 用户留存分析", kind: "daily_analysis", status: "active", stage: "S2.3", slug: "q3-retention", pendingGate: null, latestRunStatus: "running", lockedReportId: null, updatedAt: new Date(Date.now()-3600000).toISOString(), cmds: ["run.abort","project.cancel"] },
+        { title: "新客转化率提升目标分解", kind: "goal_decomposition", status: "active", stage: "S1.2", slug: "new-customer-conversion", pendingGate: "requirement_confirmation", latestRunStatus: null, lockedReportId: null, updatedAt: new Date(Date.now()-7200000).toISOString(), cmds: ["requirement.decide_confirmation"] },
+        { title: "竞品定价策略研究", kind: "topic_research", status: "completed", stage: "S2.6", slug: "competitor-pricing", pendingGate: null, latestRunStatus: "succeeded", lockedReportId: "lr-123", updatedAt: new Date(Date.now()-86400000*2).toISOString(), cmds: ["project.archive"] },
+      ];
+      let html = `<div style="display:flex;align-items:center;justify-content:space-between;border-bottom:1px solid #e5e5e5;padding:8px 16px;"><span style="font-size:11px;color:#737373;">${items.length} 个项目</span><button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">刷新</button></div>`;
+      for (const item of items) {
+        const pct = stageProgress(item.stage);
+        const sc = item.status === "active" ? "badge-green" : item.status === "completed" ? "badge-blue" : "badge-neutral";
+        html += `<div style="display:flex;gap:12px;padding:12px 16px;border-bottom:1px solid #f5f5f5;">
+          <div style="flex:1;min-width:0;">
+            <div style="display:flex;align-items:center;gap:8px;">
+              <span style="font-size:13px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${item.title}</span>
+              <span class="badge ${sc}">${PROJECT_STATUS_LABELS[item.status]}</span>
+              ${item.lockedReportId ? '<span class="badge badge-blue">已锁定</span>' : ''}
+            </div>
+            <div style="display:flex;align-items:center;gap:8px;margin-top:4px;font-size:11px;color:#737373;">
+              <span>${PROJECT_KIND_LABELS[item.kind]}</span><span>·</span>
+              <div style="display:flex;align-items:center;gap:6px;"><div class="stage-bar"><div class="stage-bar-fill" style="width:${pct}%"></div></div><span>${PROJECT_STAGE_LABELS[item.stage]}</span></div>
+            </div>
+            ${item.pendingGate ? `<div style="margin-top:4px;font-size:11px;color:#d97706;">待审: ${GATE_TYPE_LABELS[item.pendingGate]}</div>` : ''}
+            ${item.latestRunStatus ? `<div style="margin-top:4px;font-size:11px;color:#a3a3a3;">最近执行: ${RUN_STATUS_LABELS[item.latestRunStatus]}</div>` : ''}
+            ${item.cmds.length > 0 ? `<div style="display:flex;gap:4px;margin-top:6px;flex-wrap:wrap;">${item.cmds.map(c=>`<span class="badge badge-neutral">${c}</span>`).join('')}</div>` : ''}
+          </div>
+          <div style="text-align:right;font-size:10px;color:#a3a3a3;white-space:nowrap;"><div>${formatRel(item.updatedAt)}</div><div style="margin-top:2px;">#${item.slug}</div></div>
+        </div>`;
+      }
+      container.innerHTML = html;
+    }
+
+    function renderDetail(container, data) {
+      const d = data.data;
+      const p = d.project;
+      const pct = stageProgress(p.stage);
+      const cmds = d.availableCommands.filter(c => c.available);
+
+      let html = `<div style="padding:16px;">`;
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
+        <h2 style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
+      </div>`;
+
+      html += `<div class="detail-grid">`;
+
+      // Project info
+      html += `<div class="section"><div class="section-title">📋 项目信息</div>
+        <div class="field-row"><span class="field-label">类型</span><span class="field-value">${PROJECT_KIND_LABELS[p.kind] ?? p.kind}</span></div>
+        <div class="field-row"><span class="field-label">状态</span><span class="field-value"><span class="badge ${p.status==='active'?'badge-green':'badge-blue'}">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span></span></div>
+        <div class="field-row"><span class="field-label">标识</span><span class="field-value">#${p.slug}</span></div>
+        <div class="field-row"><span class="field-label">阶段</span><span class="field-value"><div style="display:flex;align-items:center;gap:8px;"><div class="stage-bar"><div class="stage-bar-fill" style="width:${pct}%"></div></div><span style="font-size:11px;color:#737373;">${PROJECT_STAGE_LABELS[p.stage] ?? p.stage}</span></div></span></div>
+        <div class="field-row"><span class="field-label">创建</span><span class="field-value">${formatRel(p.createdAt)}</span></div>
+        <div class="field-row"><span class="field-label">更新</span><span class="field-value">${formatRel(p.updatedAt)}</span></div>
+      </div>`;
+
+      // Pending gate
+      if (d.pendingGate) {
+        html += `<div class="section"><div class="section-title">🛡️ 待处理审核</div>
+          <div class="gate-box"><div class="gate-title">${GATE_TYPE_LABELS[d.pendingGate] ?? d.pendingGate}</div><div class="gate-sub">等待审核</div></div>
+        </div>`;
+      }
+
+      // Latest run
+      if (d.latestRun) {
+        const r = d.latestRun;
+        const rc = r.currentRunStatus === "succeeded" ? "#16a34a" : r.currentRunStatus === "running" ? "#2563eb" : r.currentRunStatus === "failed" ? "#dc2626" : "#737373";
+        html += `<div class="section"><div class="section-title">▶️ 最近执行</div>
+          <div style="display:flex;align-items:center;gap:12px;font-size:11px;">
+            <span style="font-weight:500;color:${rc}">${RUN_STATUS_LABELS[r.currentRunStatus] ?? r.currentRunStatus}</span>
+            <span style="color:#a3a3a3">Run #${r.runOrdinal}</span>
+            <span style="color:#a3a3a3">${PROJECT_STAGE_LABELS[r.currentAnalysisStage] ?? r.currentAnalysisStage}</span>
+            ${r.triggeredBy ? `<span style="color:#a3a3a3">${r.triggeredBy.displayName}</span>` : ''}
+          </div>
+        </div>`;
+      }
+
+      // Commands
+      if (cmds.length > 0) {
+        html += `<div class="section"><div class="section-title">⚡ 可用操作</div><div style="display:flex;gap:6px;flex-wrap:wrap;">`;
+        for (const c of cmds) html += `<span class="cmd-chip">${c.commandType}</span>`;
+        html += `</div></div>`;
+      }
+
+      // Analysis request
+      if (d.analysisRequest) {
+        const ar = d.analysisRequest;
+        html += `<div class="section"><div class="section-title">📝 分析需求</div>
+          <div style="max-height:128px;overflow:auto;background:#fafafa;border-radius:4px;padding:8px;font-size:11px;color:#404040;">${ar.rawRequestText.length > 500 ? ar.rawRequestText.slice(0,500)+'…' : ar.rawRequestText}</div>
+          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">${formatRel(ar.submittedAt)}${ar.locale ? ' · '+ar.locale : ''}</div>
+        </div>`;
+      }
+
+      // Requirement version
+      if (d.currentRequirement) {
+        const v = d.currentRequirement;
+        html += `<div class="section"><div class="section-title">📄 当前需求版本</div>
+          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">结构化需求</span><span style="margin-left:8px;color:#a3a3a3">v${v.versionOrdinal} · ${formatRel(v.createdAt)} · ${v.createdBy.displayName}</span></div>
+        </div>`;
+      }
+
+      // Plan version
+      if (d.currentPlan) {
+        const v = d.currentPlan;
+        html += `<div class="section"><div class="section-title">📄 当前计划版本</div>
+          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">分析计划</span><span style="margin-left:8px;color:#a3a3a3">v${v.versionOrdinal} · ${formatRel(v.createdAt)} · ${v.createdBy.displayName}</span></div>
+        </div>`;
+      }
+
+      // Latest report
+      if (d.latestReport) {
+        const r = d.latestReport;
+        html += `<div class="section"><div class="section-title">📊 最新报告</div>
+          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">v${r.versionOrdinal}</span><span style="margin-left:8px;color:#a3a3a3">${formatRel(r.createdAt)} · ${r.createdBy.displayName}</span></div>
+        </div>`;
+      }
+
+      // Input evidence
+      if (d.inputEvidence && d.inputEvidence.length > 0) {
+        html += `<div class="section"><div class="section-title">📎 输入证据 (${d.inputEvidence.length})</div>`;
+        for (const ev of d.inputEvidence) {
+          html += `<div class="evidence-row">
+            <span style="color:#a3a3a3">📄</span>
+            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#404040">${ev.displayName}</span>
+            <span class="badge ${SAFETY_COLORS[ev.safetyClass] || 'badge-neutral'}">${SAFETY_LABELS[ev.safetyClass] || ev.safetyClass}</span>
+            <span style="color:#a3a3a3;font-size:10px">${formatBytes(ev.byteSize)}</span>
+            ${ev.safetyClass === 'restricted_raw' ? '<span class="badge badge-red">受限</span>' : ''}
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
+      // Sources
+      if (d.sources && d.sources.length > 0) {
+        html += `<div class="section"><div class="section-title">🔗 数据来源 (${d.sources.length})</div>`;
+        for (const s of d.sources) {
+          html += `<div class="source-row">
+            <span style="font-weight:500;color:#404040">${s.displayName}</span>
+            <span style="margin-left:8px;font-size:10px;color:#a3a3a3">${s.sourceKind === 'agentharness' ? 'AgentHarness' : '用户上传'}</span>
+            ${s.latestCheck ? `<span style="margin-left:8px;font-size:10px;color:#a3a3a3">检查: ${s.latestCheck.availabilityStatus} · ${formatRel(s.latestCheck.checkedAt)}</span>` : ''}
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
+      html += `</div></div>`;
+      container.innerHTML = html;
+    }
+
+    function renderCapabilities(container) {
+      const d = FIXTURE_CAPS.data;
+      const engineAvail = d.engine.status === "available";
+
+      let html = `<div style="padding:16px;"><h3 style="font-size:13px;font-weight:500;margin-bottom:12px;">系统能力</h3><div class="detail-grid">`;
+
+      // Engine
+      html += `<div class="section"><div class="section-title">⚙️ 分析引擎</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <span style="color:${engineAvail ? '#16a34a' : '#a3a3a3'}">${engineAvail ? '✅' : '❌'}</span>
+          <span style="font-size:12px;color:${engineAvail ? '#16a34a' : '#737373'}">${engineAvail ? '可用' : '不可用'}</span>
+          ${d.engine.adapter ? `<span style="font-size:10px;color:#a3a3a3">(${d.engine.adapter})</span>` : ''}
+        </div>
+      </div>`;
+
+      // Upload
+      html += `<div class="section"><div class="section-title">📤 上传限制</div>
+        <div style="font-size:11px;color:#737373">
+          <div>最大: ${(d.upload.maxBytes / 1048576).toFixed(0)} MB</div>
+          <div style="margin-top:2px">格式: ${d.upload.allowedMediaTypes.join(", ")}</div>
+        </div>
+      </div>`;
+
+      // User sources
+      html += `<div class="section"><div class="section-title">👤 用户数据来源</div>`;
+      for (const s of d.sourceCapabilities.user) {
+        html += `<div style="font-size:11px;color:#737373">${s.kind} · ${s.scope} · ${s.artifactKind}</div>`;
+      }
+      html += `</div>`;
+
+      // AgentHarness
+      html += `<div class="section"><div class="section-title">🗄️ AgentHarness 能力</div>`;
+      if (d.sourceCapabilities.agentHarness.length === 0) {
+        html += `<p style="font-size:11px;color:#a3a3a3">暂无已注册能力</p>`;
+      } else {
+        for (const cap of d.sourceCapabilities.agentHarness) {
+          html += `<div class="cap-row">
+            <span style="color:#a3a3a3">🗄️</span>
+            <span style="flex:1;color:#404040">${cap.displayName}</span>
+            <span style="color:#a3a3a3;font-size:10px">${cap.contractVersion}</span>
+            <span class="badge ${cap.readOnly ? 'badge-green' : 'badge-amber'}">${cap.readOnly ? '只读' : '读写'}</span>
+          </div>`;
+        }
+      }
+      html += `</div>`;
+
+      html += `</div>`;
+      html += `<div style="margin-top:12px;font-size:10px;color:#a3a3a3">API v${d.apiVersion} · Schema ${d.supportedSchemaVersions.join(", ")} · App v${d.appVersion}</div>`;
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    function renderEmpty(container) {
+      container.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#a3a3a3;padding:32px;"><p style="font-size:14px;">暂无分析项目</p><button style="margin-top:8px;font-size:12px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:4px 12px;cursor:pointer;">刷新</button></div>`;
+    }
+
+    function renderClosure(container) {
+      const CLOSURE_STAGE_LABELS = { "S3.1": "结论转化", "S3.2": "系统部署", "S3.3": "业务执行", "S3.4": "效果反馈", "S3.5": "效果评估", "S3.6": "迭代决策" };
+      const CLOSURE_STAGES = ["S3.1","S3.2","S3.3","S3.4","S3.5","S3.6"];
+      const currentStage = "S3.3";
+      const currentIdx = CLOSURE_STAGES.indexOf(currentStage);
+
+      let html = `<div style="padding:16px;">`;
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
+        <h2 style="font-size:14px;font-weight:500;">业务闭合</h2>
+        <button style="margin-left:auto;font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">刷新</button>
+      </div>`;
+
+      // Cycle header
+      html += `<div style="display:flex;align-items:center;gap:12px;margin-bottom:12px;">
+        <span style="font-size:12px;font-weight:500;color:#404040;">周期 #1</span>
+        <span class="badge badge-blue">进行中</span>
+        <span style="font-size:10px;color:#a3a3a3;">3小时前</span>
+      </div>`;
+
+      // Stage progress
+      html += `<div style="display:flex;align-items:center;gap:4px;margin-bottom:16px;flex-wrap:wrap;">`;
+      for (let i = 0; i < CLOSURE_STAGES.length; i++) {
+        const s = CLOSURE_STAGES[i];
+        const done = i < currentIdx;
+        const active = i === currentIdx;
+        const icon = done ? "✅" : active ? "🕐" : "⚪";
+        const color = done ? "#16a34a" : active ? "#2563eb" : "#a3a3a3";
+        html += `<span style="font-size:10px;color:${color};font-weight:${active ? 500 : 400};">${icon} ${s}</span>`;
+        if (i < CLOSURE_STAGES.length - 1) html += `<div style="width:12px;height:1px;background:${done ? '#86efac' : '#e5e5e5'};"></div>`;
+      }
+      html += `</div>`;
+
+      // S3.1 done
+      html += `<div class="section" style="margin-bottom:8px;border-color:#bbf7d0;background:#f0fdf4;">
+        <div class="section-title" style="color:#16a34a;">✅ S3.1 结论转化</div>
+        <div class="field-row"><span class="field-label">制品引用</span><span class="field-value">action-artifact-001</span></div>
+        <div class="field-row"><span class="field-label">状态</span><span class="field-value"><span class="badge badge-green">已确认</span></span></div>
+        <div class="field-row"><span class="field-label">创建时间</span><span class="field-value">2天前</span></div>
+      </div>`;
+
+      // S3.2 done
+      html += `<div class="section" style="margin-bottom:8px;border-color:#bbf7d0;background:#f0fdf4;">
+        <div class="section-title" style="color:#16a34a;">✅ S3.2 系统部署</div>
+        <div class="field-row"><span class="field-label">下游系统</span><span class="field-value">CDP 标签引擎</span></div>
+        <div class="field-row"><span class="field-label">工单引用</span><span class="field-value">DEPLOY-2026-0720</span></div>
+        <div class="field-row"><span class="field-label">部署状态</span><span class="field-value"><span class="badge badge-green">全量部署</span></span></div>
+        <div class="field-row"><span class="field-label">创建时间</span><span class="field-value">1天前</span></div>
+      </div>`;
+
+      // S3.3 active
+      html += `<div class="section" style="margin-bottom:8px;">
+        <div class="section-title">⚪ S3.3 业务执行</div>
+        <div style="font-size:11px;color:#a3a3a3;">未记录</div>
+        <button style="margin-top:8px;font-size:11px;color:#2563eb;background:none;border:none;cursor:pointer;text-decoration:underline;">记录业务执行</button>
+      </div>`;
+
+      // S3.4 pending
+      html += `<div class="section" style="margin-bottom:8px;">
+        <div class="section-title">⚪ S3.4 效果反馈</div>
+        <div style="font-size:11px;color:#a3a3a3;">暂无反馈</div>
+      </div>`;
+
+      // S3.5 pending
+      html += `<div class="section" style="margin-bottom:8px;">
+        <div class="section-title">⚪ S3.5 效果评估</div>
+        <div style="font-size:11px;color:#a3a3a3;">未记录</div>
+      </div>`;
+
+      // S3.6 pending
+      html += `<div class="section" style="margin-bottom:8px;">
+        <div class="section-title">⚪ S3.6 迭代决策</div>
+        <div style="font-size:11px;color:#a3a3a3;">未记录</div>
+      </div>`;
+
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    function renderClosureList(container) {
+      let html = `<div style="padding:16px;">`;
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+        <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
+        <h2 style="font-size:14px;font-weight:500;">业务闭合</h2>
+      </div>`;
+
+      // Cycle list
+      html += `<div style="border:1px solid #e5e5e5;border-radius:6px;overflow:hidden;margin-bottom:12px;">`;
+      html += `<button style="display:flex;align-items:center;gap:12px;padding:10px 12px;border-bottom:1px solid #f5f5f5;background:#fff;cursor:pointer;width:100%;text-align:left;border:none;border-bottom:1px solid #f5f5f5;">
+        <span style="font-size:12px;font-weight:500;color:#404040;">周期 #1</span>
+        <span class="badge badge-blue">进行中</span>
+        <span style="font-size:10px;color:#737373;">S3.3 业务执行</span>
+        <span style="margin-left:auto;font-size:10px;color:#a3a3a3;">3小时前</span>
+      </button>`;
+      html += `</div>`;
+
+      // Initiate form
+      html += `<div style="border:1px solid #c4b5fd;background:#f5f3ff;border-radius:6px;padding:12px;">
+        <div style="font-size:11px;font-weight:500;color:#7c3aed;margin-bottom:8px;">启动闭合周期</div>
+        <div style="font-size:10px;color:#a3a3a3;margin-bottom:8px;">锁定报告: lr-123…</div>
+        <div style="display:flex;align-items:center;gap:8px;">
+          <label style="font-size:10px;color:#737373;">闭合序号</label>
+          <input type="number" value="2" min="1" style="width:60px;border:1px solid #e5e5e5;border-radius:4px;padding:2px 6px;font-size:11px;" />
+          <button style="font-size:11px;color:#fff;background:#2563eb;border:none;border-radius:4px;padding:4px 12px;cursor:pointer;">启动</button>
+        </div>
+      </div>`;
+
+      html += `</div>`;
+      container.innerHTML = html;
+    }
+
+    function renderNoWorkspace(container) {
+      container.innerHTML = `<div style="display:flex;flex-direction:column;align-items:center;justify-content:center;height:100%;color:#a3a3a3;"><svg width="32" height="32" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M22 19a2 2 0 0 1-2 2H4a2 2 0 0 1-2-2V5a2 2 0 0 1 2-2h5l2 3h9a2 2 0 0 1 2 2z"/></svg><p style="font-size:14px;margin-top:8px;">请先选择工作区</p></div>`;
+    }
+
+    // --- ROUTER ---
+    const root = document.getElementById("root");
+    const mode = new URLSearchParams(window.location.search).get("mode") || "list";
+
+    const toolbar = document.createElement("div");
+    toolbar.style.cssText = "display:flex;align-items:center;gap:8px;border-bottom:1px solid #e5e5e5;padding:8px 16px;flex-wrap:wrap;";
+    const modes = [
+      { id: "list", label: "项目列表" },
+      { id: "detail-gate", label: "详情·需求审核" },
+      { id: "detail-plan", label: "详情·计划+执行" },
+      { id: "capabilities", label: "能力" },
+      { id: "closure-list", label: "闭合列表" },
+      { id: "closure-detail", label: "闭合详情" },
+      { id: "empty", label: "空列表" },
+      { id: "noworkspace", label: "无工作区" },
+    ];
+    toolbar.innerHTML = modes.map(m => `<a href="?mode=${m.id}" class="nav-link ${m.id === mode ? 'active' : ''}">${m.label}</a>`).join("");
+    root.appendChild(toolbar);
+
+    const content = document.createElement("div");
+    content.style.cssText = "flex:1;overflow:auto;min-height:0;";
+    root.appendChild(content);
+
+    if (mode === "empty") renderEmpty(content);
+    else if (mode === "noworkspace") renderNoWorkspace(content);
+    else if (mode === "detail-gate") renderDetail(content, FIXTURE_DETAIL);
+    else if (mode === "detail-plan") renderDetail(content, FIXTURE_DETAIL_PLAN_GATE);
+    else if (mode === "capabilities") renderCapabilities(content);
+    else if (mode === "closure-list") renderClosureList(content);
+    else if (mode === "closure-detail") renderClosure(content);
+    else renderList(content);
+  </script>
+</body>
+</html>
