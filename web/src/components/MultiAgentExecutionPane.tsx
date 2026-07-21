@@ -111,6 +111,56 @@ function NodeModelSelect(p: {
   );
 }
 
+function WorkflowDefaultModelSelect(p: {
+  value: string;
+  models: PiModel[];
+  fallbackModel: string;
+  disabled: boolean;
+  onChange: (value: string) => void;
+}) {
+  const groups = p.models.reduce<Record<string, PiModel[]>>((acc, model) => {
+    (acc[model.provider] ??= []).push(model);
+    return acc;
+  }, {});
+  const fallbackLabel = p.fallbackModel ? `使用运行模型 (${p.fallbackModel.split("/").pop()})` : "使用运行模型";
+
+  return (
+    <select
+      value={p.value}
+      disabled={p.disabled}
+      onChange={(event) => p.onChange(event.target.value)}
+      className="h-8 rounded-md border border-neutral-200 bg-transparent px-2 text-[12px] text-neutral-900 outline-none focus:border-neutral-400 disabled:opacity-50 dark:border-neutral-700 dark:text-neutral-100 dark:focus:border-neutral-500"
+    >
+      <option value="">{fallbackLabel}</option>
+      {Object.entries(groups).map(([provider, items]) => (
+        <optgroup key={provider} label={provider}>
+          {items.map((model) => (
+            <option key={model.id} value={model.id}>{model.id}</option>
+          ))}
+        </optgroup>
+      ))}
+      {p.value && !p.models.some((model) => model.id === p.value) && (
+        <option value={p.value}>{p.value}</option>
+      )}
+    </select>
+  );
+}
+
+function validateWorkflowModelSelection(workflow: EditableWorkflowDef | null, models: PiModel[]): WorkflowIssue[] {
+  if (!workflow || models.length === 0) return [];
+  const enabled = new Set(models.map((model) => model.id));
+  const issues: WorkflowIssue[] = [];
+  if (workflow.defaultModel && !enabled.has(workflow.defaultModel)) {
+    issues.push({ level: "error", message: `defaultModel 未启用：${workflow.defaultModel}` });
+  }
+  for (const node of workflow.nodes) {
+    if (node.model && !enabled.has(node.model)) {
+      issues.push({ level: "error", nodeId: node.id, message: `${node.id} model 未启用：${node.model}` });
+    }
+  }
+  return issues;
+}
+
 interface WorkflowSkillOption {
   path: string;
   name: string;
@@ -516,7 +566,10 @@ export function MultiAgentExecutionPane(p: Props) {
 
   const handleSaveWorkflow = useCallback(async () => {
     if (!flowId || !workflow || savingWorkflow) return;
-    const firstError = validateWorkflowEditor(workflow).find((issue) => issue.level === "error");
+    const firstError = [
+      ...validateWorkflowEditor(workflow),
+      ...validateWorkflowModelSelection(workflow, p.models),
+    ].find((issue) => issue.level === "error");
     if (firstError) {
       setWorkflowSaveError(firstError.message);
       return;
@@ -533,7 +586,7 @@ export function MultiAgentExecutionPane(p: Props) {
     } finally {
       setSavingWorkflow(false);
     }
-  }, [flowId, workflow, savingWorkflow]);
+  }, [flowId, workflow, savingWorkflow, p.models]);
 
   const orderedNodes = useMemo(() => workflow?.nodes ?? [], [workflow]);
   const nodeIdSet = useMemo(() => new Set(orderedNodes.map((n) => n.id)), [orderedNodes]);
@@ -541,9 +594,16 @@ export function MultiAgentExecutionPane(p: Props) {
     () => orderedNodes.filter((n) => stepStates[n.id]?.status === "done").length,
     [orderedNodes, stepStates],
   );
-  const workflowIssues = useMemo(() => validateWorkflowEditor(workflow), [workflow]);
+  const workflowIssues = useMemo(
+    () => [...validateWorkflowEditor(workflow), ...validateWorkflowModelSelection(workflow, p.models)],
+    [workflow, p.models],
+  );
   const skillOptions = useMemo(() => buildWorkflowSkillOptions(flowSkills, registryEntries), [flowSkills, registryEntries]);
   const workflowHasErrors = workflowIssues.some((issue) => issue.level === "error");
+  const workflowRootIssues = useMemo(
+    () => workflowIssues.filter((issue) => !issue.nodeId && !issue.edgeId),
+    [workflowIssues],
+  );
   const issueByNodeId = useMemo(() => {
     const out = new Map<string, WorkflowIssue[]>();
     for (const issue of workflowIssues) {
@@ -746,7 +806,20 @@ export function MultiAgentExecutionPane(p: Props) {
                 {centerTab === "flow" && (
                   <div className="flex min-h-0 flex-1 flex-col gap-2 overflow-y-auto p-3">
                     {workflow && (
-                      <div className="grid gap-2 md:grid-cols-[minmax(0,1fr)_280px]">
+                      <div className="grid gap-2 md:grid-cols-[260px_minmax(0,1fr)_280px]">
+                        <label className="flex min-h-[68px] flex-col gap-2 rounded-md border border-neutral-100 bg-neutral-50/60 p-2 dark:border-neutral-800 dark:bg-neutral-900/30">
+                          <div className="flex items-center gap-2">
+                            <Workflow className="h-3.5 w-3.5 text-neutral-500" strokeWidth={1.75} />
+                            <span className="text-[10px] font-medium text-neutral-500">workflow defaultModel</span>
+                          </div>
+                          <WorkflowDefaultModelSelect
+                            value={workflow.defaultModel ?? ""}
+                            models={p.models}
+                            fallbackModel={p.model}
+                            disabled={running}
+                            onChange={(value) => updateWorkflowRoot({ defaultModel: value })}
+                          />
+                        </label>
                         <WorkflowSkillSelect
                           label="workflow defaultSkillPaths"
                           mode="workflow"
@@ -771,6 +844,22 @@ export function MultiAgentExecutionPane(p: Props) {
                             </span>
                           </span>
                         </label>
+                      </div>
+                    )}
+                    {workflowRootIssues.length > 0 && (
+                      <div className="flex flex-col gap-1 rounded-md border border-rose-100 bg-rose-50/50 px-2.5 py-2 dark:border-rose-900/50 dark:bg-rose-950/20">
+                        {workflowRootIssues.map((issue) => (
+                          <div
+                            key={issue.message}
+                            className={cn(
+                              "flex items-center gap-1 text-[10.5px]",
+                              issue.level === "error" ? "text-rose-600 dark:text-rose-300" : "text-amber-700 dark:text-amber-300",
+                            )}
+                          >
+                            <AlertCircle className="h-3 w-3 shrink-0" strokeWidth={1.75} />
+                            {issue.message}
+                          </div>
+                        ))}
                       </div>
                     )}
                     {orderedNodes.length === 0 ? (

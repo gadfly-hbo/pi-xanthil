@@ -1,7 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from "react";
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
-import type { Flow, FlowRun, ServerMessage } from "@/types";
+import type { Flow, FlowRun, FlowRunStatus, ServerMessage } from "@/types";
 import type { EditableWorkflowDef, StepState, StepStatus } from "./types";
 import { basename, collectTreeDirs, describePiEvent, extractEventText, makeRunId, validateWorkflowEditor } from "./workflow-utils";
 
@@ -30,24 +30,27 @@ export function useMultiAgentRun({ flow, workflow, model, rulesPromptEnabled, kn
 
   // 待映射的恢复目录：由①写入，②消费后清空。把「网络拉取」与「依赖 workflow 的纯映射」解耦，
   // 避免恢复 effect 因 workflow 每次编辑换引用而反复重跑、反复打 listFlowRuns/flowRunTree。
-  const [restoreDirs, setRestoreDirs] = useState<Set<string> | null>(null);
+  const [restoreSnapshot, setRestoreSnapshot] = useState<{ dirs: Set<string>; status: FlowRunStatus; runId: string } | null>(null);
 
   // ① 每个 flow 只拉一次运行历史 + 判活跃 run（网络），活跃则取其目录树备映射。
   useEffect(() => {
     if (!flowId) return;
     let cancelled = false;
-    setRestoreDirs(null);
+    setRestoreSnapshot(null);
     api.listFlowRuns(flowId).then((rows) => {
       if (cancelled) return;
       setRuns(rows);
       const active = rows.find((r) => r.status === "running");
-      if (!active) return;
-      const restoredRunId = basename(active.outputDir);
+      const restored = active ?? rows[0];
+      if (!restored) return;
+      const restoredRunId = basename(restored.outputDir);
       setRunId(restoredRunId);
-      setRunning(true);
-      setLogs((cur) => cur.length > 0 ? cur : [`─ 已从历史恢复运行状态 ${restoredRunId}`]);
-      api.flowRunTree(flowId, active.id)
-        .then((tree) => { if (!cancelled) setRestoreDirs(collectTreeDirs(tree)); })
+      setRunning(restored.status === "running");
+      setLogs((cur) => cur.length > 0 ? cur : [`─ 已从历史恢复${restored.status === "running" ? "运行中" : "已结束"}状态 ${restoredRunId}`]);
+      api.flowRunTree(flowId, restored.id)
+        .then((tree) => {
+          if (!cancelled) setRestoreSnapshot({ dirs: collectTreeDirs(tree), status: restored.status, runId: restoredRunId });
+        })
         .catch(() => undefined);
     }).catch(() => { if (!cancelled) setRuns([]); });
     return () => { cancelled = true; };
@@ -55,20 +58,27 @@ export function useMultiAgentRun({ flow, workflow, model, rulesPromptEnabled, kn
 
   // ② workflow 就绪后把恢复目录映射成 step 状态（纯计算，映射一次即清空，不随后续编辑重跑）。
   useEffect(() => {
-    if (!restoreDirs || !workflow) return;
-    const created = workflow.nodes.filter((node) => restoreDirs.has(node.id));
-    setStepStates((cur) => {
-      const next = { ...cur };
+    if (!restoreSnapshot || !workflow) return;
+    const created = workflow.nodes.filter((node) => restoreSnapshot.dirs.has(node.id));
+    setStepStates(() => {
+      const next: Record<string, StepState> = {};
       created.forEach((node, idx) => {
         const isLastCreated = idx === created.length - 1;
-        next[node.id] = next[node.id] ?? { status: isLastCreated ? "running" : "done", output: "", events: [] };
+        const restoredStatus: StepStatus = restoreSnapshot.status === "running" && isLastCreated
+          ? "running"
+          : (restoreSnapshot.status === "failed" || restoreSnapshot.status === "aborted") && isLastCreated
+            ? "failed"
+            : "done";
+        next[node.id] = { status: restoredStatus, output: "", events: [] };
       });
       return next;
     });
-    const activeNode = [...workflow.nodes].reverse().find((node) => restoreDirs.has(node.id));
-    if (activeNode) setActiveNodeId(activeNode.id);
-    setRestoreDirs(null);
-  }, [restoreDirs, workflow]);
+    const activeNode = restoreSnapshot.status === "running"
+      ? [...workflow.nodes].reverse().find((node) => restoreSnapshot.dirs.has(node.id))
+      : null;
+    setActiveNodeId(activeNode?.id ?? null);
+    setRestoreSnapshot(null);
+  }, [restoreSnapshot, workflow]);
 
   useEffect(() => {
     if (!flowId) return;

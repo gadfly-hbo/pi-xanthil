@@ -193,6 +193,24 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
           knowledgePromptEnabled={ctx.knowledgePromptEnabled}
         />
       )}
+      {activeTab === "multi" && activeSubTab === "anax_view" && (
+        <AnaXPane
+          workspaceId={ctx.activeWorkspaceId}
+          model={ctx.model}
+          models={ctx.models}
+          rulesPromptEnabled={ctx.rulesPromptEnabled}
+          knowledgePromptEnabled={ctx.knowledgePromptEnabled}
+          seed={null}
+          onSeedConsumed={() => undefined}
+          onBackflowSummary={() => undefined}
+        />
+      )}
+      {activeTab === "multi" && activeSubTab === "hypothesis" && (
+        <HypothesisPane workspaceId={ctx.activeWorkspaceId} />
+      )}
+      {activeTab === "multi" && activeSubTab === "change_mgmt" && (
+        <ChangeManagementPane workspaceId={ctx.activeWorkspaceId} />
+      )}
 
       {activeTab === "aggregate" && activeSubTab === "skill" && (
         <SkillLabPane workspaceId={ctx.activeWorkspaceId} model={ctx.model} models={ctx.models} onModelChange={ctx.setModel} />

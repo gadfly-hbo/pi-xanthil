@@ -30,6 +30,10 @@ const shots = [
   { mode: "detail-interactive", vp: { width: 390,  height: 1600 }, file: "screenshot-narrow-detail-interactive.png" },
   { mode: "detail-upload", vp: { width: 1280, height: 1200 }, file: "screenshot-desktop-detail-upload.png" },
   { mode: "detail-upload", vp: { width: 390,  height: 1600 }, file: "screenshot-narrow-detail-upload.png" },
+  { mode: "detail-flow-nodes", vp: { width: 1280, height: 1400 }, file: "screenshot-desktop-detail-flow-nodes.png" },
+  { mode: "detail-flow-nodes", vp: { width: 390,  height: 2000 }, file: "screenshot-narrow-detail-flow-nodes.png" },
+  { mode: "detail-with-report", vp: { width: 1280, height: 1200 }, file: "screenshot-desktop-detail-with-report.png" },
+  { mode: "detail-with-report", vp: { width: 390,  height: 1600 }, file: "screenshot-narrow-detail-with-report.png" },
 ];
 
 for (const shot of shots) {

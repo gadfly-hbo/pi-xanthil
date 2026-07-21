@@ -4,14 +4,12 @@ import {
   FileText,
   GitBranch,
   Play,
-  Shield,
   Tag,
   CheckCircle2,
   Circle,
   Clock,
   AlertCircle,
   FolderOpen,
-  Info,
   Link2,
   ChevronDown,
   ChevronRight,
@@ -46,10 +44,18 @@ import {
   formatRelativeTime,
   formatBytes,
   commandLabel,
-  STAGE_GROUPS,
   BUSINESS_STAGES,
   STAGE_NEXT_HINTS,
 } from "./shared";
+
+const NODE_COMMANDS: Record<string, readonly string[]> = {
+  submit: ["request.submit"],
+  confirm: ["requirement.generate", "requirement.decide_confirmation", "plan.generate", "plan.decide_confirmation"],
+  prepare: [],
+  execute: ["run.abort", "run.retry"],
+  review: ["report.decide_review"],
+  close: ["closure.initiate_cycle", "closure.record_s31_translation", "closure.record_s32_deployment", "closure.record_s33_execution", "closure.append_s34_feedback", "closure.record_s35_evaluation", "closure.record_s36_trigger"],
+};
 
 interface Props {
   data: ProjectDetailReadModel;
@@ -126,58 +132,185 @@ function StageDot({ status }: { status: StageStatus }) {
   return <Circle className="h-3.5 w-3.5 text-neutral-300 dark:text-neutral-600" />;
 }
 
-function BusinessStagesProgress({ currentStage }: { currentStage: ProjectStage }) {
+function InteractiveFlowTrack({
+  currentStage,
+  cmds,
+  analysisRequest,
+  currentRequirement,
+  currentPlan,
+  latestRun,
+  pendingGate,
+  inputEvidence,
+  workspaceId,
+  projectId,
+  expectedUpdatedAt,
+  capabilities,
+  onRefresh,
+  onNavigateToClosure,
+}: {
+  currentStage: ProjectStage;
+  cmds: readonly CommandAffordance[];
+  analysisRequest: ProjectDetailReadModel["data"]["analysisRequest"];
+  currentRequirement: VersionRef | null;
+  currentPlan: VersionRef | null;
+  latestRun: RunRef | null;
+  pendingGate: GateType | null;
+  inputEvidence: readonly EvidenceRef[];
+  workspaceId: string;
+  projectId: string;
+  expectedUpdatedAt: string;
+  capabilities: CapabilitiesResponse | null;
+  onRefresh: () => void;
+  onNavigateToClosure?: () => void;
+}) {
   const currentBusinessStage = businessStage(currentStage);
   const currentIdx = currentBusinessStage
     ? BUSINESS_STAGES.findIndex((b) => b.id === currentBusinessStage.id)
     : -1;
 
+  const [expandedNodes, setExpandedNodes] = useState<Set<string>>(() => {
+    const initial = new Set<string>();
+    if (currentBusinessStage) initial.add(currentBusinessStage.id);
+    return initial;
+  });
+
+  const toggleNode = useCallback((nodeId: string) => {
+    setExpandedNodes((prev) => {
+      const next = new Set(prev);
+      if (next.has(nodeId)) next.delete(nodeId);
+      else next.add(nodeId);
+      return next;
+    });
+  }, []);
+
   return (
-    <div className="space-y-2">
+    <div className="relative py-1">
       {BUSINESS_STAGES.map((stage, idx) => {
         const isDone = idx < currentIdx;
         const isCurrent = idx === currentIdx;
+        const isLast = idx === BUSINESS_STAGES.length - 1;
+        const isExpanded = expandedNodes.has(stage.id);
+        const nodeCmds = cmds.filter((c) => NODE_COMMANDS[stage.id]?.includes(c.commandType));
+        const availableCmdCount = nodeCmds.filter((c) => c.available).length;
+        const totalCmdCount = nodeCmds.length;
 
         return (
-          <div
-            key={stage.id}
-            className={cn(
-              "flex items-center gap-2 rounded-md border px-3 py-2",
-              isDone
-                ? "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
-                : isCurrent
-                  ? "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20"
-                  : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/50",
-            )}
-          >
-            {isDone ? (
-              <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
-            ) : isCurrent ? (
-              <Clock className="h-4 w-4 shrink-0 text-blue-500" />
-            ) : (
-              <Circle className="h-4 w-4 shrink-0 text-neutral-300 dark:text-neutral-600" />
-            )}
-            <div className="min-w-0 flex-1">
+          <div key={stage.id} className="relative flex gap-3">
+            {!isLast && (
               <div
                 className={cn(
-                  "text-[12px]",
+                  "absolute left-[11px] top-[28px] bottom-0 w-[2px]",
                   isDone
-                    ? "text-green-700 dark:text-green-400"
-                    : isCurrent
-                      ? "font-medium text-blue-700 dark:text-blue-400"
-                      : "text-neutral-500 dark:text-neutral-400",
+                    ? "bg-green-300 dark:bg-green-800"
+                    : "bg-neutral-200 dark:bg-neutral-700",
                 )}
+              />
+            )}
+            <div className="relative z-10 shrink-0 pt-0.5">
+              {isDone ? (
+                <CheckCircle2 className="h-[22px] w-[22px] text-green-500" />
+              ) : isCurrent ? (
+                <Clock className="h-[22px] w-[22px] text-blue-500" />
+              ) : (
+                <Circle className="h-[22px] w-[22px] text-neutral-300 dark:text-neutral-600" />
+              )}
+            </div>
+            <div className={cn("min-w-0 flex-1", isLast ? "pb-0" : "pb-4")}>
+              <button
+                onClick={() => toggleNode(stage.id)}
+                className="flex w-full items-center gap-1 text-left"
               >
-                {stage.label}
-              </div>
+                <div
+                  className={cn(
+                    "text-[13px]",
+                    isDone
+                      ? "text-green-700 dark:text-green-400"
+                      : isCurrent
+                        ? "font-medium text-blue-700 dark:text-blue-400"
+                        : "text-neutral-400 dark:text-neutral-500",
+                  )}
+                >
+                  {stage.label}
+                </div>
+                {!isExpanded && totalCmdCount > 0 && (
+                  <span className="ml-1 rounded bg-neutral-100 px-1 py-0.5 text-[9px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+                    {availableCmdCount}/{totalCmdCount}
+                  </span>
+                )}
+                <span className="ml-auto shrink-0 text-neutral-400">
+                  {isExpanded ? (
+                    <ChevronDown className="h-3.5 w-3.5" />
+                  ) : (
+                    <ChevronRight className="h-3.5 w-3.5" />
+                  )}
+                </span>
+              </button>
               {isCurrent && (
-                <div className="text-[10px] text-blue-600 dark:text-blue-400">
+                <div className="mt-0.5 text-[11px] text-blue-600 dark:text-blue-400">
                   当前环节
                 </div>
               )}
-            </div>
-            <div className="shrink-0 text-[10px] text-neutral-400">
-              {stage.stages.join(", ")}
+              <div className="mt-0.5 text-[10px] text-neutral-400">
+                {stage.stages.join(" → ")}
+              </div>
+
+              {isExpanded && (
+                <div className="mt-2 space-y-2 rounded-md border border-neutral-100 bg-neutral-50/50 p-2 dark:border-neutral-800 dark:bg-neutral-900/30">
+                  <div className="flex flex-wrap gap-x-2 gap-y-1">
+                    {stage.stages.map((s) => {
+                      const status = getStageStatus(s, currentStage);
+                      const sHint = STAGE_NEXT_HINTS[s];
+                      return (
+                        <div
+                          key={s}
+                          className={cn(
+                            "flex items-center gap-1 rounded border px-1.5 py-0.5",
+                            status === "done"
+                              ? "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
+                              : status === "active"
+                                ? "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20"
+                                : "border-neutral-200 bg-white dark:border-neutral-700 dark:bg-neutral-900",
+                          )}
+                        >
+                          <StageDot status={status} />
+                          <span
+                            className={cn(
+                              "text-[10px]",
+                              status === "done"
+                                ? "text-green-700 dark:text-green-400"
+                                : status === "active"
+                                  ? "font-medium text-blue-700 dark:text-blue-400"
+                                  : "text-neutral-500 dark:text-neutral-400",
+                            )}
+                          >
+                            {s} {PROJECT_STAGE_LABELS[s]}
+                          </span>
+                          {status === "active" && sHint && (
+                            <span className="text-[9px] text-blue-500">· {sHint}</span>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+
+                  <NodeActions
+                    nodeId={stage.id}
+                    nodeCmds={nodeCmds}
+                    analysisRequest={analysisRequest}
+                    currentRequirement={currentRequirement}
+                    currentPlan={currentPlan}
+                    latestRun={latestRun}
+                    pendingGate={pendingGate}
+                    inputEvidence={inputEvidence}
+                    workspaceId={workspaceId}
+                    projectId={projectId}
+                    expectedUpdatedAt={expectedUpdatedAt}
+                    capabilities={capabilities}
+                    onRefresh={onRefresh}
+                    onNavigateToClosure={onNavigateToClosure}
+                  />
+                </div>
+              )}
             </div>
           </div>
         );
@@ -186,80 +319,168 @@ function BusinessStagesProgress({ currentStage }: { currentStage: ProjectStage }
   );
 }
 
-function TechnicalStageTrack({ currentStage }: { currentStage: ProjectStage }) {
-  const [expanded, setExpanded] = useState(false);
-
-  return (
-    <div>
-      <button
-        onClick={() => setExpanded(!expanded)}
-        className="flex w-full items-center justify-between rounded-md border border-neutral-200 bg-neutral-50 px-3 py-2 text-left text-[12px] font-medium text-neutral-700 hover:bg-neutral-100 dark:border-neutral-800 dark:bg-neutral-900 dark:text-neutral-300 dark:hover:bg-neutral-800"
-      >
-        <span className="flex items-center gap-1.5">
-          <GitBranch className="h-3.5 w-3.5" />
-          技术状态详情 (15 个技术状态)
-        </span>
-        {expanded ? (
-          <ChevronDown className="h-4 w-4" />
+function NodeActions({
+  nodeId,
+  nodeCmds,
+  analysisRequest,
+  currentRequirement,
+  currentPlan,
+  latestRun,
+  pendingGate,
+  inputEvidence,
+  workspaceId,
+  projectId,
+  expectedUpdatedAt,
+  capabilities,
+  onRefresh,
+  onNavigateToClosure,
+}: {
+  nodeId: string;
+  nodeCmds: readonly CommandAffordance[];
+  analysisRequest: ProjectDetailReadModel["data"]["analysisRequest"];
+  currentRequirement: VersionRef | null;
+  currentPlan: VersionRef | null;
+  latestRun: RunRef | null;
+  pendingGate: GateType | null;
+  inputEvidence: readonly EvidenceRef[];
+  workspaceId: string;
+  projectId: string;
+  expectedUpdatedAt: string;
+  capabilities: CapabilitiesResponse | null;
+  onRefresh: () => void;
+  onNavigateToClosure?: () => void;
+}) {
+  if (nodeId === "submit") {
+    return (
+      <div className="space-y-1.5">
+        {analysisRequest ? (
+          <div className="text-[10px] text-neutral-500">
+            需求已提交 · {formatRelativeTime(analysisRequest.submittedAt)}
+            {analysisRequest.locale && <span> · {analysisRequest.locale}</span>}
+          </div>
         ) : (
-          <ChevronRight className="h-4 w-4" />
+          <div className="text-[10px] text-neutral-400">尚未提交业务需求</div>
         )}
-      </button>
-      {expanded && (
-        <div className="mt-2 space-y-3">
-          {STAGE_GROUPS.map((group) => (
-            <div key={group.id}>
-              <div className="mb-1.5 flex items-center gap-2">
-                <span className="text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
-                  {group.id} {group.label}
-                </span>
-                <span className="text-[10px] text-neutral-400">
-                  {group.description}
-                </span>
-              </div>
-              <div className="flex flex-wrap gap-x-3 gap-y-1.5">
-                {group.stages.map((stage) => {
-                  const status = getStageStatus(stage, currentStage);
-                  const hint = STAGE_NEXT_HINTS[stage];
-                  return (
-                    <div
-                      key={stage}
-                      className={cn(
-                        "flex items-center gap-1.5 rounded-md border px-2 py-1",
-                        status === "done"
-                          ? "border-green-200 bg-green-50/50 dark:border-green-900 dark:bg-green-950/20"
-                          : status === "active"
-                            ? "border-blue-200 bg-blue-50 dark:border-blue-900 dark:bg-blue-950/20"
-                            : "border-neutral-200 bg-neutral-50 dark:border-neutral-800 dark:bg-neutral-900/50",
-                      )}
-                    >
-                      <StageDot status={status} />
-                      <div>
-                        <div
-                          className={cn(
-                            "text-[11px]",
-                            status === "done"
-                              ? "text-green-700 dark:text-green-400"
-                              : status === "active"
-                                ? "font-medium text-blue-700 dark:text-blue-400"
-                                : "text-neutral-500 dark:text-neutral-400",
-                          )}
-                        >
-                          {stage} {PROJECT_STAGE_LABELS[stage]}
-                        </div>
-                        {status === "active" && hint && (
-                          <div className="text-[10px] text-blue-600 dark:text-blue-400">
-                            {hint}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  );
-                })}
-              </div>
-            </div>
-          ))}
+        {nodeCmds.map((cmd) => (
+          <DisabledCommandChip key={cmd.commandType} cmd={cmd} />
+        ))}
+      </div>
+    );
+  }
+
+  if (nodeId === "confirm") {
+    return (
+      <div className="space-y-2">
+        <GenerateRequirementButton
+          workspaceId={workspaceId}
+          projectId={projectId}
+          analysisRequest={analysisRequest}
+          currentRequirement={currentRequirement}
+          expectedUpdatedAt={expectedUpdatedAt}
+          capabilities={capabilities}
+          onRefresh={onRefresh}
+        />
+        {currentRequirement && (
+          <VersionInfo version={currentRequirement} label="当前需求版本" />
+        )}
+        {currentPlan && (
+          <VersionInfo version={currentPlan} label="当前计划版本" />
+        )}
+        {pendingGate && (pendingGate === "requirement_confirmation" || pendingGate === "plan_confirmation") && (
+          <GateInfo gateType={pendingGate} />
+        )}
+        {nodeCmds.filter((c) => c.commandType !== "requirement.generate").map((cmd) => (
+          <DisabledCommandChip key={cmd.commandType} cmd={cmd} />
+        ))}
+      </div>
+    );
+  }
+
+  if (nodeId === "prepare") {
+    const rawCount = inputEvidence.filter((ev) => ev.safetyClass === "restricted_raw").length;
+    const cleanCount = inputEvidence.filter((ev) => ev.safetyClass === "controlled").length;
+    return (
+      <div className="space-y-1.5">
+        <div className="text-[10px] text-neutral-500">
+          原始数据: {rawCount} 项 · 受控数据: {cleanCount} 项
         </div>
+        {inputEvidence.length === 0 && (
+          <div className="text-[10px] text-neutral-400">暂无已登记材料</div>
+        )}
+      </div>
+    );
+  }
+
+  if (nodeId === "execute") {
+    return (
+      <div className="space-y-1.5">
+        {latestRun ? (
+          <RunInfo run={latestRun} />
+        ) : (
+          <div className="text-[10px] text-neutral-400">暂无执行记录</div>
+        )}
+        {nodeCmds.map((cmd) => (
+          <DisabledCommandChip key={cmd.commandType} cmd={cmd} />
+        ))}
+      </div>
+    );
+  }
+
+  if (nodeId === "review") {
+    return (
+      <div className="space-y-1.5">
+        {pendingGate === "report_review" && <GateInfo gateType={pendingGate} />}
+        {nodeCmds.map((cmd) => (
+          <DisabledCommandChip key={cmd.commandType} cmd={cmd} />
+        ))}
+        {nodeCmds.length === 0 && (
+          <div className="text-[10px] text-neutral-400">报告审核操作待后续扩展</div>
+        )}
+      </div>
+    );
+  }
+
+  if (nodeId === "close") {
+    return (
+      <div className="space-y-1.5">
+        {onNavigateToClosure && (
+          <button
+            onClick={onNavigateToClosure}
+            className="w-full rounded-md border border-violet-200 bg-violet-50 px-2 py-1.5 text-left text-[11px] text-violet-700 transition-colors hover:border-violet-300 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/20 dark:text-violet-400 dark:hover:border-violet-700"
+          >
+            进入业务闭合面板
+          </button>
+        )}
+        {nodeCmds.map((cmd) => (
+          <DisabledCommandChip key={cmd.commandType} cmd={cmd} />
+        ))}
+      </div>
+    );
+  }
+
+  return null;
+}
+
+function DisabledCommandChip({ cmd }: { cmd: CommandAffordance }) {
+  return (
+    <div
+      className={cn(
+        "rounded-md border px-2 py-1.5 text-[11px]",
+        cmd.available
+          ? "border-blue-200 bg-blue-50 text-blue-700 dark:border-blue-800 dark:bg-blue-950/20 dark:text-blue-400"
+          : "border-neutral-200 bg-neutral-100 text-neutral-400 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-500",
+      )}
+    >
+      <div className="flex items-center gap-1.5">
+        <span className="font-medium">{commandLabel(cmd.commandType)}</span>
+      </div>
+      {!cmd.available && cmd.unavailableReasons.length > 0 && (
+        <div className="mt-0.5 text-[9px] text-neutral-400">
+          {cmd.unavailableReasons[0]}
+        </div>
+      )}
+      {cmd.available && (
+        <div className="mt-0.5 text-[9px] text-neutral-400">API 尚未接入</div>
       )}
     </div>
   );
@@ -330,27 +551,28 @@ function VersionInfo({
 
 function EvidenceRow({ ev }: { ev: EvidenceRef }) {
   return (
-    <div className="flex items-center gap-2 py-1 text-[11px]">
-      <FileText className="h-3 w-3 shrink-0 text-neutral-400" />
-      <span className="min-w-0 flex-1 truncate text-neutral-700 dark:text-neutral-300">
-        {ev.displayName}
-      </span>
-      <span
-        className={cn(
-          "shrink-0 rounded px-1 py-0.5 text-[9px] font-medium",
-          SAFETY_CLASS_COLORS[ev.safetyClass],
-        )}
-      >
-        {SAFETY_CLASS_LABELS[ev.safetyClass]}
-      </span>
-      <span className="shrink-0 text-[10px] text-neutral-400">
-        {formatBytes(ev.byteSize)}
-      </span>
-      {ev.safetyClass === "restricted_raw" && (
-        <span className="shrink-0 rounded bg-red-100 px-1 py-0.5 text-[9px] text-red-600 dark:bg-red-950/30 dark:text-red-400">
-          受限
+    <div className="space-y-0.5 border-b border-neutral-100 py-1.5 last:border-b-0 dark:border-neutral-800">
+      <div className="flex items-center gap-2 text-[11px]">
+        <FileText className="h-3 w-3 shrink-0 text-neutral-400" />
+        <span className="min-w-0 flex-1 truncate text-neutral-700 dark:text-neutral-300">
+          {ev.displayName}
         </span>
-      )}
+        <span
+          className={cn(
+            "shrink-0 rounded px-1 py-0.5 text-[9px] font-medium",
+            SAFETY_CLASS_COLORS[ev.safetyClass],
+          )}
+        >
+          {SAFETY_CLASS_LABELS[ev.safetyClass]}
+        </span>
+      </div>
+      <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 pl-5 text-[9px] text-neutral-400">
+        <span>{formatBytes(ev.byteSize)}</span>
+        <span className="truncate font-mono" title={ev.contentSha256}>
+          sha256:{ev.contentSha256.slice(0, 8)}
+        </span>
+        <span>{formatRelativeTime(ev.createdAt)}</span>
+      </div>
     </div>
   );
 }
@@ -900,13 +1122,16 @@ export function ProjectDetailPanel({
           <ArrowLeft className="h-3 w-3" />
           返回
         </button>
-        <h2 className="truncate text-[14px] font-medium text-neutral-900 dark:text-neutral-100">
+        <h2 className="min-w-0 truncate text-[14px] font-medium text-neutral-900 dark:text-neutral-100">
           {project.title}
         </h2>
         <span className="shrink-0 text-[10px] text-neutral-400">
           #{project.slug}
         </span>
-        <div className="ml-auto">
+        <span className="shrink-0 rounded bg-neutral-100 px-1.5 py-0.5 text-[10px] text-neutral-500 dark:bg-neutral-800 dark:text-neutral-400">
+          {PROJECT_STATUS_LABELS[project.status as keyof typeof PROJECT_STATUS_LABELS] ?? project.status}
+        </span>
+        <div className="ml-auto shrink-0">
           <MoreActionsMenu
             workspaceId={workspaceId}
             projectId={project.projectId}
@@ -917,97 +1142,10 @@ export function ProjectDetailPanel({
         </div>
       </div>
 
-      <div className="grid gap-3 lg:grid-cols-3">
-        <div className="space-y-3 lg:col-span-2">
-          <div className="rounded-lg border border-blue-200 bg-blue-50 p-3 dark:border-blue-900 dark:bg-blue-950/20">
-            <div className="flex items-center justify-between">
-              <div className="flex items-center gap-2">
-                <Clock className="h-4 w-4 text-blue-600 dark:text-blue-400" />
-                <span className="text-[13px] font-medium text-blue-800 dark:text-blue-300">
-                  当前环节: {currentBusinessStage?.label ?? "未知"}
-                </span>
-              </div>
-              <div className="flex items-center gap-2">
-                <div className="h-2 w-20 overflow-hidden rounded-full bg-blue-200 dark:bg-blue-800">
-                  <div
-                    className="h-full rounded-full bg-blue-600 transition-all"
-                    style={{ width: `${pct}%` }}
-                  />
-                </div>
-                <span className="text-[11px] text-blue-600 dark:text-blue-400">
-                  {pct}%
-                </span>
-              </div>
-            </div>
-            {hint && (
-              <div className="mt-1.5 text-[11px] text-blue-700 dark:text-blue-400">
-                下一步: {hint}
-              </div>
-            )}
-          </div>
-
-          <Section title="业务环节进度" icon={GitBranch}>
-            <BusinessStagesProgress currentStage={currentStage} />
-          </Section>
-
-          <TechnicalStageTrack currentStage={currentStage} />
-
-          <Section title="已提交需求" icon={FileText}>
-            {analysisRequest ? (
-              <div className="space-y-2">
-                <div className="max-h-32 overflow-auto rounded bg-neutral-50 p-2 text-[11px] text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
-                  {analysisRequest.rawRequestText.length > 500
-                    ? analysisRequest.rawRequestText.slice(0, 500) + "…"
-                    : analysisRequest.rawRequestText}
-                </div>
-                <div className="text-[10px] text-neutral-400">
-                  提交时间: {formatRelativeTime(analysisRequest.submittedAt)}
-                  {analysisRequest.locale && (
-                    <span className="ml-1">· {analysisRequest.locale}</span>
-                  )}
-                </div>
-              </div>
-            ) : (
-              <div className="rounded-md border border-dashed border-neutral-200 p-3 text-center dark:border-neutral-700">
-                <p className="text-[11px] text-neutral-500 dark:text-neutral-400">
-                  尚未提交业务需求
-                </p>
-                <p className="mt-1 text-[10px] text-neutral-400 dark:text-neutral-500">
-                  创建工单时未包含需求提交步骤，请重新创建工单
-                </p>
-              </div>
-            )}
-          </Section>
-
-          <Section title="结构化需求" icon={FileText}>
-            <GenerateRequirementButton
-              workspaceId={workspaceId}
-              projectId={project.projectId}
-              analysisRequest={analysisRequest}
-              currentRequirement={currentRequirement}
-              expectedUpdatedAt={project.updatedAt}
-              capabilities={capabilities}
-              onRefresh={onRefresh}
-            />
-            {currentRequirement && (
-              <div className="mt-3 border-t border-neutral-100 pt-3 dark:border-neutral-800">
-                <VersionInfo version={currentRequirement} label="当前版本" />
-              </div>
-            )}
-            {!currentRequirement && (
-              <div className="mt-3 border-t border-neutral-100 pt-3 text-[10px] text-neutral-400 dark:border-neutral-800">
-                暂无版本
-              </div>
-            )}
-          </Section>
-
-          {pendingGate && (
-            <Section title="待处理审核" icon={Shield}>
-              <GateInfo gateType={pendingGate} />
-            </Section>
-          )}
-
-          <Section title="数据材料" icon={FolderOpen}>
+      <div className="grid min-h-0 gap-3 lg:grid-cols-[280px_minmax(0,1fr)_300px]">
+        {/* ── Left pane: Inputs ── */}
+        <div className="space-y-3 order-3 lg:order-1">
+          <Section title="Uploads" icon={FolderOpen}>
             <div className="space-y-2">
               <div className="grid grid-cols-3 gap-2">
                 <button
@@ -1021,7 +1159,7 @@ export function ProjectDetailPanel({
                 >
                   <div className="text-[10px] font-medium text-red-700 dark:text-red-400">010_raw</div>
                   <div className="mt-1 text-[9px] text-red-600 dark:text-red-500">
-                    {rawEvidence.length > 0 ? `${rawEvidence.length} 项` : "点击上传"}
+                    {rawEvidence.length > 0 ? `${rawEvidence.length} 项` : "上传"}
                   </div>
                 </button>
                 <button
@@ -1035,17 +1173,16 @@ export function ProjectDetailPanel({
                 >
                   <div className="text-[10px] font-medium text-amber-700 dark:text-amber-400">020_clean</div>
                   <div className="mt-1 text-[9px] text-amber-600 dark:text-amber-500">
-                    {cleanEvidence.length > 0 ? `${cleanEvidence.length} 项` : "点击上传"}
+                    {cleanEvidence.length > 0 ? `${cleanEvidence.length} 项` : "上传"}
                   </div>
                 </button>
                 <div className="rounded-md border border-green-200 bg-green-50 p-2 text-center dark:border-green-800 dark:bg-green-950/20">
                   <div className="text-[10px] font-medium text-green-700 dark:text-green-400">060_reports</div>
                   <div className="mt-1 text-[9px] text-green-600 dark:text-green-500">
-                    {hasReport ? "已产出" : "暂无报告产物"}
+                    {hasReport ? "已产出" : "暂无"}
                   </div>
                 </div>
               </div>
-
               {uploadPanel === "raw" && (
                 <EvidenceUploadPanel
                   workspaceId={workspaceId}
@@ -1068,72 +1205,209 @@ export function ProjectDetailPanel({
                   onUploaded={onRefresh}
                 />
               )}
-
-              {!hasReport && !latestReport && (
-                <div className="rounded-md border border-neutral-200 bg-neutral-50 p-2 text-[10px] text-neutral-500 dark:border-neutral-700 dark:bg-neutral-800 dark:text-neutral-400">
-                  <Info className="mr-1 inline h-3 w-3" />
-                  报告产物由分析执行自动生成，当前尚无报告。
-                </div>
-              )}
             </div>
           </Section>
 
-          {(inputEvidence.length > 0 || sources.length > 0) && (
-            <Section title="已登记材料与来源" icon={FolderOpen}>
-              <div className="space-y-3">
-                {inputEvidence.length > 0 && (
-                  <div>
-                    <div className="mb-1 text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
-                      输入证据 ({inputEvidence.length})
-                    </div>
-                    <div className="max-h-40 overflow-auto rounded border border-neutral-100 dark:border-neutral-800">
-                      {inputEvidence.map((ev) => (
-                        <EvidenceRow key={ev.evidenceArtifactId} ev={ev} />
-                      ))}
+          <Section title="Raw files" icon={FileText}>
+            {rawEvidence.length > 0 ? (
+              <div className="max-h-40 overflow-auto">
+                {rawEvidence.map((ev) => (
+                  <EvidenceRow key={ev.evidenceArtifactId} ev={ev} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-neutral-200 p-2 text-center dark:border-neutral-700">
+                <p className="text-[10px] text-neutral-400">暂无原始数据</p>
+              </div>
+            )}
+            <div className="mt-1.5 text-[9px] text-red-500 dark:text-red-400">
+              原始数据仅登记元数据，行级内容不进入 LLM 处理
+            </div>
+          </Section>
+
+          <Section title="Clean files" icon={FileText}>
+            {cleanEvidence.length > 0 ? (
+              <div className="max-h-40 overflow-auto">
+                {cleanEvidence.map((ev) => (
+                  <EvidenceRow key={ev.evidenceArtifactId} ev={ev} />
+                ))}
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-neutral-200 p-2 text-center dark:border-neutral-700">
+                <p className="text-[10px] text-neutral-400">暂无受控数据</p>
+              </div>
+            )}
+            <div className="mt-1.5 text-[9px] text-amber-600 dark:text-amber-400">
+              受控数据经处理后用于分析流程，需用户知情
+            </div>
+          </Section>
+
+          <Section title="Business request" icon={FileText}>
+            {analysisRequest ? (
+              <div className="space-y-2">
+                <div className="max-h-32 overflow-auto rounded bg-neutral-50 p-2 text-[11px] leading-relaxed break-words text-neutral-700 dark:bg-neutral-800 dark:text-neutral-300">
+                  {analysisRequest.rawRequestText.length > 500
+                    ? analysisRequest.rawRequestText.slice(0, 500) + "…"
+                    : analysisRequest.rawRequestText}
+                </div>
+                <div className="text-[10px] text-neutral-400">
+                  {formatRelativeTime(analysisRequest.submittedAt)}
+                  {analysisRequest.locale && (
+                    <span className="ml-1">· {analysisRequest.locale}</span>
+                  )}
+                </div>
+              </div>
+            ) : (
+              <div className="rounded-md border border-dashed border-neutral-200 p-2 text-center dark:border-neutral-700">
+                <p className="text-[10px] text-neutral-400">尚未提交业务需求</p>
+              </div>
+            )}
+          </Section>
+
+          {sources.length > 0 && (
+            <Section title="数据来源" icon={Link2}>
+              <div className="space-y-1">
+                {sources.map((s) => (
+                  <div key={s.sourceReferenceId} className="flex items-start gap-2 rounded border border-neutral-100 px-2 py-1.5 text-[11px] dark:border-neutral-800">
+                    <Link2 className="mt-0.5 h-3 w-3 shrink-0 text-neutral-400" />
+                    <div className="min-w-0 flex-1">
+                      <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                        {s.displayName}
+                      </span>
+                      <span className="ml-2 text-[10px] text-neutral-400">
+                        {s.sourceKind === "agentharness" ? "AgentHarness" : "用户上传"}
+                      </span>
+                      {s.description && (
+                        <div className="text-[10px] text-neutral-400">{s.description}</div>
+                      )}
                     </div>
                   </div>
-                )}
-                {sources.length > 0 && (
-                  <div>
-                    <div className="mb-1 text-[11px] font-medium text-neutral-600 dark:text-neutral-400">
-                      数据来源 ({sources.length})
-                    </div>
-                    <div className="space-y-1">
-                      {sources.map((s) => (
-                        <div key={s.sourceReferenceId} className="flex items-start gap-2 rounded border border-neutral-100 px-2 py-1.5 text-[11px] dark:border-neutral-800">
-                          <Link2 className="mt-0.5 h-3 w-3 shrink-0 text-neutral-400" />
-                          <div className="min-w-0 flex-1">
-                            <span className="font-medium text-neutral-700 dark:text-neutral-300">
-                              {s.displayName}
-                            </span>
-                            <span className="ml-2 text-[10px] text-neutral-400">
-                              {s.sourceKind === "agentharness"
-                                ? "AgentHarness"
-                                : "用户上传"}
-                            </span>
-                            {s.description && (
-                              <div className="text-[10px] text-neutral-400">
-                                {s.description}
-                              </div>
-                            )}
-                          </div>
-                        </div>
-                      ))}
-                    </div>
-                  </div>
-                )}
+                ))}
               </div>
             </Section>
           )}
         </div>
 
-        <div className="space-y-3">
+        {/* ── Center pane: Flow ── */}
+        <div className="space-y-3 order-1 lg:order-2">
+          <div className="rounded-lg border border-blue-200 bg-blue-50 px-3 py-2 dark:border-blue-900 dark:bg-blue-950/20">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <Clock className="h-3.5 w-3.5 text-blue-600 dark:text-blue-400" />
+                <span className="text-[12px] font-medium text-blue-800 dark:text-blue-300">
+                  {currentBusinessStage?.label ?? "未知"}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <div className="h-1.5 w-16 overflow-hidden rounded-full bg-blue-200 dark:bg-blue-800">
+                  <div
+                    className="h-full rounded-full bg-blue-600 transition-all"
+                    style={{ width: `${pct}%` }}
+                  />
+                </div>
+                <span className="text-[10px] text-blue-600 dark:text-blue-400">
+                  {pct}%
+                </span>
+              </div>
+            </div>
+            {hint && (
+              <div className="mt-1 text-[10px] text-blue-700 dark:text-blue-400">
+                下一步: {hint}
+              </div>
+            )}
+          </div>
+
+          <Section title="流程路径" icon={GitBranch}>
+            <InteractiveFlowTrack
+              currentStage={currentStage}
+              cmds={cmds}
+              analysisRequest={analysisRequest}
+              currentRequirement={currentRequirement}
+              currentPlan={currentPlan}
+              latestRun={latestRun}
+              pendingGate={pendingGate}
+              inputEvidence={inputEvidence}
+              workspaceId={workspaceId}
+              projectId={project.projectId}
+              expectedUpdatedAt={project.updatedAt}
+              capabilities={capabilities}
+              onRefresh={onRefresh}
+              onNavigateToClosure={onNavigateToClosure}
+            />
+          </Section>
+        </div>
+
+        {/* ── Right pane: Outputs ── */}
+        <div className="space-y-3 order-2 lg:order-3">
+          {latestReport ? (
+            <Section title="Latest report" icon={FileText}>
+              <div className="space-y-1.5 text-[11px]">
+                <div>
+                  <span className="font-medium text-neutral-700 dark:text-neutral-300">
+                    v{latestReport.versionOrdinal}
+                  </span>
+                  <span className="ml-2 text-neutral-400">
+                    {formatRelativeTime(latestReport.createdAt)}
+                  </span>
+                </div>
+                <div className="text-[10px] text-neutral-400">
+                  {latestReport.createdBy.displayName}
+                </div>
+                <div className="flex flex-wrap items-center gap-x-3 gap-y-0.5 text-[9px] text-neutral-400">
+                  <span>schema: {latestReport.schemaVersion}</span>
+                  <span className="truncate font-mono" title={latestReport.contentSha256}>
+                    sha256:{latestReport.contentSha256.slice(0, 8)}
+                  </span>
+                </div>
+                <div className="mt-1 rounded border border-dashed border-neutral-200 px-2 py-1 text-[10px] text-neutral-400 dark:border-neutral-700">
+                  报告内容查看待后续扩展（当前无 content route）
+                </div>
+              </div>
+            </Section>
+          ) : (
+            <Section title="Latest report" icon={FileText}>
+              <div className="rounded-md border border-dashed border-neutral-200 p-2 text-center dark:border-neutral-700">
+                <p className="text-[10px] text-neutral-400">暂无报告产物</p>
+                <p className="mt-0.5 text-[9px] text-neutral-400">
+                  报告由分析执行自动生成
+                </p>
+              </div>
+            </Section>
+          )}
+
+          {lockedReportId ? (
+            <Section title="Locked report" icon={FileText}>
+              <div className="space-y-1.5">
+                <div className="rounded-md border border-blue-200 bg-blue-50 p-2 text-[11px] text-blue-700 dark:border-blue-800 dark:bg-blue-950/20 dark:text-blue-400">
+                  <div className="truncate font-mono text-[10px]" title={lockedReportId}>
+                    {lockedReportId}
+                  </div>
+                </div>
+                <div className="text-[9px] text-neutral-400">
+                  锁定后不可修改，作为最终交付版本
+                </div>
+              </div>
+            </Section>
+          ) : (
+            <Section title="Locked report" icon={FileText}>
+              <div className="rounded-md border border-dashed border-neutral-200 p-2 text-center dark:border-neutral-700">
+                <p className="text-[10px] text-neutral-400">暂无锁定报告</p>
+              </div>
+            </Section>
+          )}
+
+          <Section title="Report versions" icon={FileText}>
+            <div className="rounded-md border border-dashed border-neutral-200 p-2 text-center dark:border-neutral-700">
+              <p className="text-[10px] text-neutral-400">版本浏览待扩展</p>
+              <p className="mt-0.5 text-[9px] text-neutral-400">
+                当前仅展示最新版本，多版本浏览待后续实现
+              </p>
+            </div>
+          </Section>
+
           <Section title="项目信息" icon={Tag}>
             <FieldRow label="类型">
               {PROJECT_KIND_LABELS[project.kind as keyof typeof PROJECT_KIND_LABELS] ?? project.kind}
-            </FieldRow>
-            <FieldRow label="状态">
-              {PROJECT_STATUS_LABELS[project.status as keyof typeof PROJECT_STATUS_LABELS] ?? project.status}
             </FieldRow>
             <FieldRow label="技术状态">
               <span className="text-[11px]">
@@ -1146,18 +1420,13 @@ export function ProjectDetailPanel({
             <FieldRow label="更新">
               {formatRelativeTime(project.updatedAt)}
             </FieldRow>
-            {lockedReportId && (
-              <div className="mt-1.5 rounded-md border border-blue-200 bg-blue-50 p-2 text-[11px] text-blue-700 dark:border-blue-800 dark:bg-blue-950/20 dark:text-blue-400">
-                已锁定报告: {lockedReportId.slice(0, 8)}…
-              </div>
-            )}
             {showClosure && onNavigateToClosure && (
               <button
                 onClick={onNavigateToClosure}
                 className="mt-2 w-full rounded-md border border-violet-200 bg-violet-50 p-2 text-left text-[11px] text-violet-700 transition-colors hover:border-violet-300 hover:bg-violet-100 dark:border-violet-800 dark:bg-violet-950/20 dark:text-violet-400 dark:hover:border-violet-700"
               >
                 <span className="font-medium">业务闭合</span>
-                <span className="ml-2 text-violet-500 dark:text-violet-500">
+                <span className="ml-2 text-violet-500">
                   {isS3Stage
                     ? `当前: ${PROJECT_STAGE_LABELS[currentStage] ?? currentStage}`
                     : "查看闭合周期"}
@@ -1175,20 +1444,6 @@ export function ProjectDetailPanel({
           {latestRun && (
             <Section title="最近执行" icon={Play}>
               <RunInfo run={latestRun} />
-            </Section>
-          )}
-
-          {latestReport && (
-            <Section title="最新报告" icon={FileText}>
-              <div className="text-[11px]">
-                <span className="font-medium text-neutral-700 dark:text-neutral-300">
-                  v{latestReport.versionOrdinal}
-                </span>
-                <span className="ml-2 text-neutral-400">
-                  {formatRelativeTime(latestReport.createdAt)} ·{" "}
-                  {latestReport.createdBy.displayName}
-                </span>
-              </div>
             </Section>
           )}
         </div>

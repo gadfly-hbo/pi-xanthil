@@ -240,12 +240,15 @@ This section does not replace the rules above. Existing product rules remain aut
 - 任务涉及 contract、persistence、API、read model、并发或审计时，worker 必须先在工作记录或 `handoff.md` 草稿中写出 constraint matrix，再开始编码。
 - constraint matrix 至少包含：brief bullet、invariant family、权威来源、实现位置、正向证据、负向证据、waiver 或 blocker。
 - 如果任务同时跨越 schema、application、read model、HTTP、audit、concurrency、UI 等多个 invariant family，worker 必须先反馈“建议拆分”或列出分阶段 acceptance；不得直接把大范围交付合并成一个不可审查 handoff。
+- 任务开始前提交“约束清单”：本次允许动作、禁止动作、回退触发条件。若关键证据不足，必须在此阶段提出明确 blocker 并停止该分支继续执行，不得用猜测补齐约束。
 
 ## 证据映射
 
 - 每个 brief bullet 必须对应至少一个可验证证据：正向测试、负向测试、命令输出、源码路径或明确 waiver。
 - `handoff.md` 中每个“已完成”“已覆盖”“已验证” claim 都必须能 grep 到 test name、源码实现、命令输出或 waiver；grep 不到就不要 claim。
 - changes_requested 后，worker 必须先整理完整 blocker checklist，再统一闭环；不得一轮只补一个 reviewer 点名项就重新 handoff。
+- 对关键决策要给出简明理由：为何采用当前路径、为何不采用替代方案，并在 brief 或 handoff 的决策记录中落地。
+- 当关键证据不足以支撑安全执行时，必须先终止该分支并给出缺口说明，等待上游批准后恢复。
 
 ## Durable Read Model
 
@@ -270,6 +273,7 @@ This section does not replace the rules above. Existing product rules remain aut
 - `/agentops-handoff-self-audit` 是交付 gate，不是文案步骤；要求执行时，worker 必须把 PASS 证据写进 `handoff.md`。
 - self-audit PASS 必须引用可复查证据：test name、文件路径、命令输出摘录或明确 waiver。
 - blocked 或 failed handoff 也必须列出已验证项、未验证项、blocker checklist 和下一步所需决策。
+- 自动化失败或关键假设失效时，不要继续执行下游动作；保持状态可恢复，优先冻结可读中间状态并等待控制面明确批准后再继续。
 
 ## Waiver
 

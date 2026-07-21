@@ -581,6 +581,13 @@ export function AnaXPane({ workspaceId, model, models, rulesPromptEnabled, knowl
     setExpanded(null);
   }, [flow, nodes]);
 
+  useEffect(() => {
+    if (running || historySnap || Object.keys(stepStates).length > 0) return;
+    const latest = allRuns[0];
+    if (!latest || latest.status === "running") return;
+    void loadHistorySnap(latest);
+  }, [allRuns, historySnap, loadHistorySnap, running, stepStates]);
+
   const loadCompareSnap = useCallback(async (run: FlowRun) => {
     if (!flow || nodes.length === 0) return;
     setCompareRunId(run.id);

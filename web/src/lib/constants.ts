@@ -38,8 +38,15 @@ export const EXPLORE_L2_GROUPS: L2Group[] = [
 // 扁平表由分组派生（供默认 subtab 纠偏 + SettingsModal 可见性列表）。
 export const EXPLORE_SUB_TABS: { id: SubTab; label: string }[] = flattenL2Groups(EXPLORE_L2_GROUPS);
 
-// 重复(multi) tab 专用：在 SUB_TABS 基础上追加「readme」操作说明二级 tab（结合案例讲解重复模块；其产物仍称工作流）。
-export const MULTI_SUB_TABS: { id: SubTab; label: string }[] = [...SUB_TABS, { id: 'readme', label: 'readme' }];
+// 工作流(multi) tab 专用：在 SUB_TABS 基础上追加 Anax 商业分析与 readme；产物仍称工作流/flow。
+export const MULTI_SUB_TABS: { id: SubTab; label: string }[] = [
+  { id: 'view', label: '工作视图' },
+  { id: 'anax_view', label: 'Anax 商业分析' },
+  { id: 'hypothesis', label: '假设库' },
+  { id: 'change_mgmt', label: '变更管理' },
+  ...SUB_TABS.filter((tab) => tab.id !== 'view' && tab.id !== 'hypothesis' && tab.id !== 'change_mgmt'),
+  { id: 'readme', label: 'readme' },
+];
 
 export const VIEW_ONLY_TABS = new Set<Tab>(['aggregate']);
 

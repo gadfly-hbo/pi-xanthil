@@ -26,12 +26,30 @@
     .stage-bar { height: 8px; width: 96px; overflow: hidden; border-radius: 4px; background: #e5e5e5; }
     .stage-bar-fill { height: 100%; border-radius: 4px; background: #3b82f6; }
     .cmd-chip { display: inline-flex; border: 1px solid #e5e5e5; background: #fafafa; border-radius: 4px; padding: 4px 8px; font-size: 11px; color: #404040; }
-    .evidence-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11px; }
+    .evidence-row { display: flex; flex-direction: column; gap: 2px; padding: 6px 0; font-size: 11px; border-bottom: 1px solid #f5f5f5; }
+    .evidence-row:last-child { border-bottom: none; }
+    .evidence-row-main { display: flex; align-items: center; gap: 8px; }
+    .evidence-row-meta { display: flex; flex-wrap: wrap; gap: 8px 12px; padding-left: 20px; font-size: 9px; color: #a3a3a3; }
+    .safety-hint { font-size: 9px; margin-top: 6px; }
+    .safety-hint-raw { color: #dc2626; }
+    .safety-hint-clean { color: #d97706; }
     .source-row { padding: 4px 0; font-size: 11px; }
     a.nav-link { font-size: 12px; color: #737373; padding: 4px 12px; border-radius: 4px; text-decoration: none; }
     a.nav-link.active { font-weight: 500; color: #171717; background: #f5f5f5; }
     .detail-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
     @media (max-width: 600px) { .detail-grid { grid-template-columns: 1fr; } }
+    .three-pane { display: grid; gap: 12px; }
+    @media (min-width: 1024px) { .three-pane { grid-template-columns: 280px minmax(0, 1fr) 300px; } }
+    .pane-left { order: 3; }
+    .pane-center { order: 1; }
+    .pane-right { order: 2; }
+    @media (min-width: 1024px) { .pane-left { order: 1; } .pane-center { order: 2; } .pane-right { order: 3; } }
+    .flow-node { display: flex; gap: 12px; position: relative; }
+    .flow-line { position: absolute; left: 11px; top: 28px; bottom: 0; width: 2px; }
+    .flow-dot { position: relative; z-index: 1; flex-shrink: 0; padding-top: 2px; font-size: 16px; }
+    .flow-content { min-width: 0; flex: 1; }
+    .empty-dashed { border: 1px dashed #e5e5e5; border-radius: 6px; padding: 8px; text-align: center; }
+    .empty-dashed p { font-size: 10px; color: #a3a3a3; }
     .cap-row { display: flex; align-items: center; gap: 8px; padding: 4px 0; font-size: 11px; }
   </style>
 </head>
@@ -252,6 +270,40 @@
       },
     };
 
+    // --- FIXTURE: Project Detail with report (T0041) ---
+    const FIXTURE_DETAIL_WITH_REPORT = {
+      readModelVersion: "1.0", generatedAt: new Date().toISOString(),
+      data: {
+        project: {
+          projectId: "f6a7b8c9-d0e1-2345-fghi-678901234567", kind: "topic_research",
+          title: "竞品定价策略研究", slug: "competitor-pricing",
+          status: "active", stage: "S2.6",
+          createdAt: new Date(Date.now() - 86400000 * 7).toISOString(),
+          updatedAt: new Date(Date.now() - 3600000).toISOString(),
+          completedAt: null, rejectedAt: null, cancelledAt: null, archivedAt: null,
+          sourceProjectId: null, sourceRelationType: null,
+        },
+        analysisRequest: {
+          analysisRequestId: "ar-004",
+          rawRequestText: "研究竞品定价策略，分析其价格区间、促销频率和客户分层逻辑。",
+          locale: "zh-CN", timezone: "Asia/Shanghai",
+          submittedAt: new Date(Date.now() - 86400000 * 7).toISOString(),
+        },
+        inputEvidence: [
+          { evidenceArtifactId: "ev-011", displayName: "竞品A价格表.csv", artifactKind: "input_material", safetyClass: "controlled", visibility: "user_visible", mediaType: "text/csv", byteSize: 512000, contentSha256: "sha-competitor-a", createdAt: new Date(Date.now() - 86400000 * 5).toISOString(), contentHref: null },
+          { evidenceArtifactId: "ev-012", displayName: "竞品B促销日志.json", artifactKind: "input_material", safetyClass: "controlled", visibility: "user_visible", mediaType: "application/json", byteSize: 1024000, contentSha256: "sha-competitor-b", createdAt: new Date(Date.now() - 86400000 * 4).toISOString(), contentHref: null },
+        ],
+        sources: [],
+        currentRequirement: { versionId: "req-v2", versionOrdinal: 1, schemaVersion: "1.0", contentSha256: "sha-req-2", createdAt: new Date(Date.now() - 86400000 * 6).toISOString(), createdBy: { actorId: "sys", actorKind: "system", displayName: "系统" }, supersedesVersionId: null },
+        currentPlan: { versionId: "plan-v2", versionOrdinal: 1, schemaVersion: "1.0", contentSha256: "sha-plan-2", createdAt: new Date(Date.now() - 86400000 * 3).toISOString(), createdBy: { actorId: "sys", actorKind: "system", displayName: "系统" }, supersedesVersionId: null },
+        latestRun: { runId: "run-2", runOrdinal: 1, currentAnalysisStage: "S2.4", currentRunStatus: "succeeded", queuedAt: new Date(Date.now() - 86400000 * 2).toISOString(), startedAt: new Date(Date.now() - 86400000 * 2).toISOString(), endedAt: new Date(Date.now() - 86400000).toISOString(), triggeredBy: { actorId: "human-1", actorKind: "human", displayName: "管理员" } },
+        latestReport: { reportVersionId: "rpt-v1", versionOrdinal: 1, schemaVersion: "1.0", contentSha256: "sha-report-full-analysis", createdAt: new Date(Date.now() - 86400000).toISOString(), createdBy: { actorId: "sys", actorKind: "system", displayName: "系统" } },
+        lockedReportId: "rpt-v1-locked-uuid-abc123def456",
+        pendingGate: null,
+        availableCommands: [],
+      },
+    };
+
     // --- RENDERERS ---
     function renderList(container) {
       const items = [
@@ -298,6 +350,147 @@
       container.innerHTML = html;
     }
 
+    const NODE_COMMANDS = {
+      submit: ["request.submit"],
+      confirm: ["requirement.generate", "requirement.decide_confirmation", "plan.generate", "plan.decide_confirmation"],
+      prepare: [],
+      execute: ["run.abort", "run.retry"],
+      review: ["report.decide_review"],
+      close: ["closure.initiate_cycle", "closure.record_s31_translation", "closure.record_s32_deployment", "closure.record_s33_execution", "closure.append_s34_feedback", "closure.record_s35_evaluation", "closure.record_s36_trigger"],
+    };
+
+    function renderFlowTrack(stage, data, opts) {
+      const d = data.data;
+      const currentBS = businessStage(stage);
+      const currentBSIdx = currentBS ? BUSINESS_STAGES.findIndex(b => b.id === currentBS.id) : -1;
+      const cmds = d.availableCommands || [];
+      const expandedNodes = opts && opts.expandedNodes ? opts.expandedNodes : (currentBS ? [currentBS.id] : []);
+      let html = '';
+      for (let i = 0; i < BUSINESS_STAGES.length; i++) {
+        const bs = BUSINESS_STAGES[i];
+        const isDone = i < currentBSIdx;
+        const isCurrent = i === currentBSIdx;
+        const isLast = i === BUSINESS_STAGES.length - 1;
+        const isExpanded = expandedNodes.includes(bs.id);
+        const nodeCmdTypes = NODE_COMMANDS[bs.id] || [];
+        const nodeCmds = cmds.filter(c => nodeCmdTypes.includes(c.commandType));
+        const availCount = nodeCmds.filter(c => c.available).length;
+        const totalCount = nodeCmds.length;
+        const icon = isDone ? "✅" : isCurrent ? "🕐" : "⚪";
+        const textColor = isDone ? "#16a34a" : isCurrent ? "#1e40af" : "#a3a3a3";
+        const lineColor = isDone ? "#86efac" : "#e5e5e5";
+
+        html += `<div class="flow-node" style="${isLast ? '' : 'padding-bottom:16px;'}">
+          ${!isLast ? `<div class="flow-line" style="background:${lineColor};"></div>` : ''}
+          <div class="flow-dot">${icon}</div>
+          <div class="flow-content">
+            <div style="display:flex;align-items:center;gap:4px;">
+              <span style="font-size:13px;color:${textColor};${isCurrent?'font-weight:500;':''}">${bs.label}</span>
+              ${!isExpanded && totalCount > 0 ? `<span style="font-size:9px;color:#737373;background:#f5f5f5;border-radius:2px;padding:1px 4px;">${availCount}/${totalCount}</span>` : ''}
+              <span style="margin-left:auto;font-size:10px;color:#a3a3a3;">${isExpanded ? '▾' : '▸'}</span>
+            </div>
+            ${isCurrent ? '<div style="font-size:10px;color:#3b82f6;margin-top:2px;">当前环节</div>' : ''}
+            <div style="font-size:10px;color:#a3a3a3;margin-top:2px;">${bs.stages.join(" → ")}</div>`;
+
+        if (isExpanded) {
+          html += `<div style="margin-top:8px;border:1px solid #f5f5f5;border-radius:6px;background:#fafafa;padding:8px;">`;
+          // Technical stages
+          html += `<div style="display:flex;flex-wrap:wrap;gap:4px;margin-bottom:8px;">`;
+          for (const s of bs.stages) {
+            const status = getStageStatus(s, stage);
+            const sHint = STAGE_NEXT_HINTS[s];
+            const borderC = status === "done" ? "#bbf7d0" : status === "active" ? "#bfdbfe" : "#e5e5e5";
+            const bgC = status === "done" ? "#f0fdf4" : status === "active" ? "#eff6ff" : "#fff";
+            const sIcon = status === "done" ? "✅" : status === "active" ? "🕐" : "○";
+            const sTextColor = status === "done" ? "#16a34a" : status === "active" ? "#1e40af" : "#737373";
+            html += `<div style="display:flex;align-items:center;gap:4px;border:1px solid ${borderC};background:${bgC};border-radius:4px;padding:2px 6px;">
+              <span style="font-size:10px;">${sIcon}</span>
+              <span style="font-size:10px;color:${sTextColor};${status==='active'?'font-weight:500;':''}">${s} ${PROJECT_STAGE_LABELS[s]}</span>
+              ${status === "active" && sHint ? `<span style="font-size:9px;color:#3b82f6;">· ${sHint}</span>` : ''}
+            </div>`;
+          }
+          html += `</div>`;
+
+          // Node-specific actions
+          html += renderNodeActions(bs.id, d, nodeCmds);
+
+          html += `</div>`;
+        }
+
+        html += `</div></div>`;
+      }
+      return html;
+    }
+
+    function renderNodeActions(nodeId, d, nodeCmds) {
+      let html = '';
+      if (nodeId === "submit") {
+        if (d.analysisRequest) {
+          html += `<div style="font-size:10px;color:#737373;">需求已提交 · ${formatRel(d.analysisRequest.submittedAt)}${d.analysisRequest.locale ? ' · '+d.analysisRequest.locale : ''}</div>`;
+        } else {
+          html += `<div style="font-size:10px;color:#a3a3a3;">尚未提交业务需求</div>`;
+        }
+        for (const cmd of nodeCmds) { html += renderDisabledCmd(cmd); }
+      } else if (nodeId === "confirm") {
+        html += `<button disabled style="width:100%;border:1px solid #d4d4d4;background:#f5f5f5;border-radius:6px;padding:6px 8px;text-align:left;cursor:not-allowed;font-size:11px;color:#737373;">
+          <div style="display:flex;align-items:center;gap:4px;">⚙️ 生成结构化需求</div>
+        </button>`;
+        if (d.currentRequirement) {
+          const v = d.currentRequirement;
+          html += `<div style="font-size:10px;color:#737373;margin-top:4px;">当前需求版本: v${v.versionOrdinal} · ${formatRel(v.createdAt)}</div>`;
+        }
+        if (d.currentPlan) {
+          const v = d.currentPlan;
+          html += `<div style="font-size:10px;color:#737373;margin-top:2px;">当前计划版本: v${v.versionOrdinal} · ${formatRel(v.createdAt)}</div>`;
+        }
+        if (d.pendingGate && (d.pendingGate === "requirement_confirmation" || d.pendingGate === "plan_confirmation")) {
+          html += `<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:4px;padding:4px 6px;font-size:10px;color:#b45309;margin-top:4px;">${GATE_TYPE_LABELS[d.pendingGate]} · 等待审核决定</div>`;
+        }
+        for (const cmd of nodeCmds.filter(c => c.commandType !== "requirement.generate")) { html += renderDisabledCmd(cmd); }
+      } else if (nodeId === "prepare") {
+        const rawEv = (d.inputEvidence || []).filter(ev => ev.safetyClass === "restricted_raw");
+        const cleanEv = (d.inputEvidence || []).filter(ev => ev.safetyClass === "controlled");
+        html += `<div style="font-size:10px;color:#737373;">原始数据: ${rawEv.length} 项 · 受控数据: ${cleanEv.length} 项</div>`;
+        if (!d.inputEvidence || d.inputEvidence.length === 0) {
+          html += `<div style="font-size:10px;color:#a3a3a3;">暂无已登记材料</div>`;
+        }
+      } else if (nodeId === "execute") {
+        if (d.latestRun) {
+          const r = d.latestRun;
+          const rc = r.currentRunStatus === "succeeded" ? "#16a34a" : r.currentRunStatus === "running" ? "#2563eb" : r.currentRunStatus === "failed" ? "#dc2626" : "#737373";
+          html += `<div style="display:flex;align-items:center;gap:8px;font-size:10px;">
+            <span style="font-weight:500;color:${rc}">${RUN_STATUS_LABELS[r.currentRunStatus] ?? r.currentRunStatus}</span>
+            <span style="color:#a3a3a3">Run #${r.runOrdinal}</span>
+            <span style="color:#a3a3a3">${PROJECT_STAGE_LABELS[r.currentAnalysisStage] ?? r.currentAnalysisStage}</span>
+          </div>`;
+        } else {
+          html += `<div style="font-size:10px;color:#a3a3a3;">暂无执行记录</div>`;
+        }
+        for (const cmd of nodeCmds) { html += renderDisabledCmd(cmd); }
+      } else if (nodeId === "review") {
+        if (d.pendingGate === "report_review") {
+          html += `<div style="border:1px solid #fde68a;background:#fffbeb;border-radius:4px;padding:4px 6px;font-size:10px;color:#b45309;margin-bottom:4px;">${GATE_TYPE_LABELS[d.pendingGate]} · 等待审核决定</div>`;
+        }
+        for (const cmd of nodeCmds) { html += renderDisabledCmd(cmd); }
+        if (nodeCmds.length === 0) { html += `<div style="font-size:10px;color:#a3a3a3;">报告审核操作待后续扩展</div>`; }
+      } else if (nodeId === "close") {
+        html += `<button style="width:100%;border:1px solid #c4b5fd;background:#f5f3ff;border-radius:6px;padding:6px 8px;text-align:left;cursor:pointer;font-size:11px;color:#7c3aed;">进入业务闭合面板</button>`;
+        for (const cmd of nodeCmds) { html += renderDisabledCmd(cmd); }
+      }
+      return html;
+    }
+
+    function renderDisabledCmd(cmd) {
+      const borderC = cmd.available ? "#bfdbfe" : "#e5e5e5";
+      const bgC = cmd.available ? "#eff6ff" : "#fafafa";
+      const textC = cmd.available ? "#1e40af" : "#a3a3a3";
+      return `<div style="border:1px solid ${borderC};background:${bgC};border-radius:4px;padding:4px 6px;margin-top:4px;font-size:10px;">
+        <span style="font-weight:500;color:${textC};">${commandLabel(cmd.commandType)}</span>
+        ${!cmd.available && cmd.unavailableReasons && cmd.unavailableReasons.length > 0 ? `<div style="font-size:9px;color:#a3a3a3;margin-top:2px;">${cmd.unavailableReasons[0]}</div>` : ''}
+        ${cmd.available ? `<div style="font-size:9px;color:#a3a3a3;margin-top:2px;">API 尚未接入</div>` : ''}
+      </div>`;
+    }
+
     function renderDetail(container, data) {
       const d = data.data;
       const p = d.project;
@@ -306,14 +499,18 @@
       const hint = STAGE_NEXT_HINTS[p.stage];
       const cmds = d.availableCommands;
       const managementCmds = cmds.filter(c => ["project.update_metadata", "project.delete_draft", "project.cancel", "project.archive"].includes(c.commandType));
+      const rawEv = (d.inputEvidence || []).filter(ev => ev.safetyClass === "restricted_raw");
+      const cleanEv = (d.inputEvidence || []).filter(ev => ev.safetyClass === "controlled");
+      const hasReport = d.latestReport != null || d.lockedReportId != null;
 
       let html = `<div style="padding:16px;">`;
 
-      // Header with more actions dropdown
-      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      // Header
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
         <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
-        <h2 style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
+        <h2 style="font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
         <span style="font-size:10px;color:#a3a3a3;">#${p.slug}</span>
+        <span style="font-size:10px;color:#525252;background:#f5f5f5;border-radius:2px;padding:1px 6px;">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span>
         ${managementCmds.length > 0 ? `<div style="margin-left:auto;position:relative;">
           <button style="font-size:11px;color:#737373;background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:4px 8px;cursor:pointer;">⋮ 更多操作</button>
           <div style="position:absolute;right:0;top:100%;margin-top:4px;width:200px;border:1px solid #e5e5e5;background:#fff;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.1);">
@@ -325,80 +522,130 @@
         </div>` : ''}
       </div>`;
 
-      // Current business stage highlight
-      html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:12px;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;font-weight:500;color:#1e40af;">🕐 当前环节: ${currentBS ? currentBS.label : '未知'}</span></div>
-          <div style="display:flex;align-items:center;gap:8px;"><div style="height:8px;width:80px;overflow:hidden;border-radius:4px;background:#bfdbfe;"><div style="height:100%;border-radius:4px;background:#2563eb;width:${bsPct}%;"></div></div><span style="font-size:11px;color:#3b82f6;">${bsPct}%</span></div>
+      // Three-pane grid
+      html += `<div class="three-pane">`;
+
+      // ── Left pane: Inputs ──
+      html += `<div class="pane-left" style="display:flex;flex-direction:column;gap:12px;">`;
+
+      // Uploads
+      html += `<div class="section"><div class="section-title">📂 Uploads</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#dc2626;">010_raw</div>
+            <div style="margin-top:4px;font-size:9px;color:#b91c1c;">${rawEv.length > 0 ? rawEv.length+' 项' : '上传'}</div>
+          </div>
+          <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#d97706;">020_clean</div>
+            <div style="margin-top:4px;font-size:9px;color:#b45309;">${cleanEv.length > 0 ? cleanEv.length+' 项' : '上传'}</div>
+          </div>
+          <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#16a34a;">060_reports</div>
+            <div style="margin-top:4px;font-size:9px;color:#15803d;">${hasReport ? '已产出' : '暂无'}</div>
+          </div>
         </div>
-        ${hint ? `<div style="margin-top:6px;font-size:11px;color:#1d4ed8;">下一步: ${hint}</div>` : ''}
       </div>`;
 
-      // 6 Business stages progress
-      html += `<div class="section" style="margin-bottom:12px;"><div class="section-title">📊 业务环节进度</div><div style="display:flex;flex-direction:column;gap:8px;">`;
-      const currentBSIdx = currentBS ? BUSINESS_STAGES.findIndex(b => b.id === currentBS.id) : -1;
-      for (let i = 0; i < BUSINESS_STAGES.length; i++) {
-        const bs = BUSINESS_STAGES[i];
-        const isDone = i < currentBSIdx;
-        const isCurrent = i === currentBSIdx;
-        const borderC = isDone ? "#bbf7d0" : isCurrent ? "#bfdbfe" : "#e5e5e5";
-        const bgC = isDone ? "#f0fdf4" : isCurrent ? "#eff6ff" : "#fafafa";
-        const icon = isDone ? "✅" : isCurrent ? "🕐" : "○";
-        const textColor = isDone ? "#16a34a" : isCurrent ? "#1e40af" : "#737373";
-        html += `<div style="display:flex;align-items:center;gap:8px;border:1px solid ${borderC};background:${bgC};border-radius:6px;padding:8px;">
-          <span style="font-size:14px;">${icon}</span>
-          <div style="flex:1;"><div style="font-size:12px;color:${textColor};${isCurrent?'font-weight:500;':''}">${bs.label}</div>${isCurrent ? `<div style="font-size:10px;color:#3b82f6;">当前环节</div>` : ''}</div>
-          <div style="font-size:10px;color:#a3a3a3;">${bs.stages.join(", ")}</div>
-        </div>`;
-      }
-      html += `</div></div>`;
-
-      // Expandable technical stage track
-      html += `<details style="margin-bottom:12px;border:1px solid #e5e5e5;border-radius:8px;background:#fff;">
-        <summary style="padding:12px;cursor:pointer;font-size:12px;font-weight:500;color:#404040;">🔧 技术状态详情 (15 个技术状态)</summary>
-        <div style="padding:0 12px 12px;">`;
-      for (const g of STAGE_GROUPS) {
-        html += `<div style="margin-bottom:12px;"><div style="display:flex;align-items:center;gap:6px;margin-bottom:6px;"><span style="font-size:11px;font-weight:500;color:#525252;">${g.id} ${g.label}</span><span style="font-size:10px;color:#a3a3a3;">${g.description}</span></div><div style="display:flex;flex-wrap:wrap;gap:8px;">`;
-        for (const s of g.stages) {
-          const status = getStageStatus(s, p.stage);
-          const sHint = STAGE_NEXT_HINTS[s];
-          const borderC = status === "done" ? "#bbf7d0" : status === "active" ? "#bfdbfe" : "#e5e5e5";
-          const bgC = status === "done" ? "#f0fdf4" : status === "active" ? "#eff6ff" : "#fafafa";
-          const icon = status === "done" ? "✅" : status === "active" ? "🕐" : "○";
-          const textColor = status === "done" ? "#16a34a" : status === "active" ? "#1e40af" : "#737373";
-          html += `<div style="display:flex;align-items:center;gap:6px;border:1px solid ${borderC};background:${bgC};border-radius:6px;padding:4px 8px;">
-            <span style="font-size:12px;">${icon}</span>
-            <div><div style="font-size:11px;color:${textColor};${status==='active'?'font-weight:500;':''}">${s} ${PROJECT_STAGE_LABELS[s]}</div>${status === "active" && sHint ? `<div style="font-size:10px;color:#3b82f6;">${sHint}</div>` : ''}</div>
+      // Raw files
+      html += `<div class="section"><div class="section-title">📄 Raw files</div>`;
+      if (rawEv.length > 0) {
+        html += `<div style="max-height:160px;overflow:auto;">`;
+        for (const ev of rawEv) {
+          html += `<div class="evidence-row">
+            <div class="evidence-row-main">
+              <span style="color:#a3a3a3">📄</span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#404040">${ev.displayName}</span>
+              <span class="badge ${SAFETY_COLORS[ev.safetyClass] || 'badge-neutral'}">${SAFETY_LABELS[ev.safetyClass] || ev.safetyClass}</span>
+            </div>
+            <div class="evidence-row-meta">
+              <span>${formatBytes(ev.byteSize)}</span>
+              <span style="font-family:monospace;" title="${ev.contentSha256}">sha256:${ev.contentSha256.slice(0,8)}</span>
+              <span>${formatRel(ev.createdAt)}</span>
+            </div>
           </div>`;
         }
-        html += `</div></div>`;
+        html += `</div>`;
+      } else {
+        html += `<div class="empty-dashed"><p>暂无原始数据</p></div>`;
       }
-      html += `</div></details>`;
+      html += `<div class="safety-hint safety-hint-raw">原始数据仅登记元数据，行级内容不进入 LLM 处理</div>`;
+      html += `</div>`;
 
-      // 2-column grid for remaining sections
-      html += `<div class="detail-grid">`;
+      // Clean files
+      html += `<div class="section"><div class="section-title">📄 Clean files</div>`;
+      if (cleanEv.length > 0) {
+        html += `<div style="max-height:160px;overflow:auto;">`;
+        for (const ev of cleanEv) {
+          html += `<div class="evidence-row">
+            <div class="evidence-row-main">
+              <span style="color:#a3a3a3">📄</span>
+              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#404040">${ev.displayName}</span>
+              <span class="badge ${SAFETY_COLORS[ev.safetyClass] || 'badge-neutral'}">${SAFETY_LABELS[ev.safetyClass] || ev.safetyClass}</span>
+            </div>
+            <div class="evidence-row-meta">
+              <span>${formatBytes(ev.byteSize)}</span>
+              <span style="font-family:monospace;" title="${ev.contentSha256}">sha256:${ev.contentSha256.slice(0,8)}</span>
+              <span>${formatRel(ev.createdAt)}</span>
+            </div>
+          </div>`;
+        }
+        html += `</div>`;
+      } else {
+        html += `<div class="empty-dashed"><p>暂无受控数据</p></div>`;
+      }
+      html += `<div class="safety-hint safety-hint-clean">受控数据经处理后用于分析流程，需用户知情</div>`;
+      html += `</div>`;
 
-      // 已提交需求
-      html += `<div class="section"><div class="section-title">📝 已提交需求</div>`;
+      // Business request
+      html += `<div class="section"><div class="section-title">📝 Business request</div>`;
       if (d.analysisRequest) {
         const ar = d.analysisRequest;
         html += `<div style="max-height:128px;overflow:auto;background:#fafafa;border-radius:4px;padding:8px;font-size:11px;color:#404040;">${ar.rawRequestText.length > 500 ? ar.rawRequestText.slice(0,500)+'…' : ar.rawRequestText}</div>
-          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">提交时间: ${formatRel(ar.submittedAt)}${ar.locale ? ' · '+ar.locale : ''}</div>`;
+          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">${formatRel(ar.submittedAt)}${ar.locale ? ' · '+ar.locale : ''}</div>`;
       } else {
-        html += `<div style="border:1px dashed #e5e5e5;border-radius:6px;padding:12px;text-align:center;">
-          <p style="font-size:11px;color:#737373;">当前 contract 未提供需求来源</p>
-          <p style="font-size:10px;color:#a3a3a3;margin-top:4px;">后端尚未持久化业务需求字段</p>
-        </div>`;
+        html += `<div class="empty-dashed"><p>尚未提交业务需求</p></div>`;
       }
       html += `</div>`;
+
+      // Sources
+      if (d.sources && d.sources.length > 0) {
+        html += `<div class="section"><div class="section-title">🔗 数据来源</div>`;
+        for (const s of d.sources) {
+          html += `<div style="display:flex;align-items:flex-start;gap:8px;border:1px solid #f5f5f5;border-radius:4px;padding:6px 8px;margin-bottom:4px;font-size:11px;">
+            <span style="color:#a3a3a3;flex-shrink:0;">🔗</span>
+            <div style="min-width:0;flex:1;">
+              <span style="font-weight:500;color:#404040">${s.displayName}</span>
+              <span style="margin-left:8px;font-size:10px;color:#a3a3a3">${s.sourceKind === 'agentharness' ? 'AgentHarness' : '用户上传'}</span>
+              ${s.description ? `<div style="font-size:10px;color:#a3a3a3;">${s.description}</div>` : ''}
+            </div>
+          </div>`;
+        }
+        html += `</div>`;
+      }
+
+      html += `</div>`; // end left pane
+
+      // ── Center pane: Flow ──
+      html += `<div class="pane-center" style="display:flex;flex-direction:column;gap:12px;">`;
+
+      // Current stage compact banner
+      html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:8px 12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12px;font-weight:500;color:#1e40af;">🕐 ${currentBS ? currentBS.label : '未知'}</span></div>
+          <div style="display:flex;align-items:center;gap:6px;"><div style="height:6px;width:64px;overflow:hidden;border-radius:3px;background:#bfdbfe;"><div style="height:100%;border-radius:3px;background:#2563eb;width:${bsPct}%;"></div></div><span style="font-size:10px;color:#3b82f6;">${bsPct}%</span></div>
+        </div>
+        ${hint ? `<div style="margin-top:4px;font-size:10px;color:#1d4ed8;">下一步: ${hint}</div>` : ''}
+      </div>`;
+
+      // Flow track
+      html += `<div class="section"><div class="section-title">🔧 流程路径</div>${renderFlowTrack(p.stage, data)}</div>`;
 
       // 结构化需求
       html += `<div class="section"><div class="section-title">📄 结构化需求</div>
         <button disabled style="width:100%;border:1px solid #d4d4d4;background:#f5f5f5;border-radius:6px;padding:8px;text-align:left;cursor:not-allowed;">
           <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#737373;">⚙️ 生成结构化需求</div>
           <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">当前 contract 未开放</div>
-        </button>
-        <div style="margin-top:8px;font-size:10px;color:#a3a3a3;">生成状态: 未触发 (read model 未提供状态)</div>`;
+        </button>`;
       if (d.currentRequirement) {
         const v = d.currentRequirement;
         html += `<div style="margin-top:8px;padding-top:8px;border-top:1px solid #f5f5f5;font-size:11px;"><span style="font-weight:500;color:#404040">当前版本:</span><span style="margin-left:8px;color:#a3a3a3">v${v.versionOrdinal} · ${formatRel(v.createdAt)} · ${v.createdBy.displayName}</span></div>`;
@@ -414,69 +661,52 @@
         </div>`;
       }
 
-      // 数据材料
-      html += `<div class="section"><div class="section-title">📂 数据材料</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
-          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:6px;padding:8px;text-align:center;">
-            <div style="font-size:10px;font-weight:500;color:#dc2626;">010_raw</div>
-            <div style="margin-top:4px;font-size:9px;color:#b91c1c;">未登记</div>
-          </div>
-          <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;text-align:center;">
-            <div style="font-size:10px;font-weight:500;color:#d97706;">020_clean</div>
-            <div style="margin-top:4px;font-size:9px;color:#b45309;">未登记</div>
-          </div>
-          <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;">
-            <div style="font-size:10px;font-weight:500;color:#16a34a;">060_reports</div>
-            <div style="margin-top:4px;font-size:9px;color:#15803d;">未产出</div>
-          </div>
-        </div>
-        <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;font-size:10px;color:#b45309;">ℹ️ 当前 contract 未提供材料登记状态。需要后续 backend contract 扩展支持。</div>
-      </div>`;
+      html += `</div>`; // end center pane
 
-      // Existing evidence and sources
-      if (d.inputEvidence && d.inputEvidence.length > 0 || d.sources && d.sources.length > 0) {
-        html += `<div class="section"><div class="section-title">📂 已登记材料与来源</div>`;
-        if (d.inputEvidence && d.inputEvidence.length > 0) {
-          html += `<div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:500;color:#525252;margin-bottom:4px;">输入证据 (${d.inputEvidence.length})</div><div style="border:1px solid #f5f5f5;border-radius:4px;">`;
-          for (const ev of d.inputEvidence) {
-            html += `<div class="evidence-row" style="padding:4px 8px;">
-              <span style="color:#a3a3a3">📄</span>
-              <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#404040">${ev.displayName}</span>
-              <span class="badge ${SAFETY_COLORS[ev.safetyClass] || 'badge-neutral'}">${SAFETY_LABELS[ev.safetyClass] || ev.safetyClass}</span>
-              <span style="color:#a3a3a3;font-size:10px">${formatBytes(ev.byteSize)}</span>
-              ${ev.safetyClass === 'restricted_raw' ? '<span class="badge badge-red">受限</span>' : ''}
-            </div>`;
-          }
-          html += `</div></div>`;
-        }
-        if (d.sources && d.sources.length > 0) {
-          html += `<div><div style="font-size:11px;font-weight:500;color:#525252;margin-bottom:4px;">数据来源 (${d.sources.length})</div>`;
-          for (const s of d.sources) {
-            html += `<div style="display:flex;align-items:flex-start;gap:8px;border:1px solid #f5f5f5;border-radius:4px;padding:6px 8px;margin-bottom:4px;font-size:11px;">
-              <span style="color:#a3a3a3;flex-shrink:0;">🔗</span>
-              <div style="min-width:0;flex:1;">
-                <span style="font-weight:500;color:#404040">${s.displayName}</span>
-                <span style="margin-left:8px;font-size:10px;color:#a3a3a3">${s.sourceKind === 'agentharness' ? 'AgentHarness' : '用户上传'}</span>
-                ${s.description ? `<div style="font-size:10px;color:#a3a3a3;">${s.description}</div>` : ''}
-              </div>
-            </div>`;
-          }
-          html += `</div>`;
-        }
-        html += `</div>`;
+      // ── Right pane: Outputs ──
+      html += `<div class="pane-right" style="display:flex;flex-direction:column;gap:12px;">`;
+
+      // Latest report
+      html += `<div class="section"><div class="section-title">📊 Latest report</div>`;
+      if (d.latestReport) {
+        const r = d.latestReport;
+        html += `<div style="font-size:11px;">
+          <div><span style="font-weight:500;color:#404040">v${r.versionOrdinal}</span><span style="margin-left:8px;color:#a3a3a3">${formatRel(r.createdAt)}</span></div>
+          <div style="font-size:10px;color:#a3a3a3;margin-top:2px;">${r.createdBy.displayName}</div>
+          <div style="display:flex;flex-wrap:wrap;gap:4px 12px;font-size:9px;color:#a3a3a3;margin-top:4px;">
+            <span>schema: ${r.schemaVersion}</span>
+            <span style="font-family:monospace;" title="${r.contentSha256}">sha256:${r.contentSha256.slice(0,8)}</span>
+          </div>
+          <div style="margin-top:6px;border:1px dashed #e5e5e5;border-radius:4px;padding:4px 8px;font-size:10px;color:#a3a3a3;">报告内容查看待后续扩展（当前无 content route）</div>
+        </div>`;
+      } else {
+        html += `<div class="empty-dashed"><p>暂无报告产物</p><p style="margin-top:2px;font-size:9px;">报告由分析执行自动生成</p></div>`;
       }
+      html += `</div>`;
 
-      // Right column: metadata
-      html += `<div style="display:flex;flex-direction:column;gap:12px;">`;
+      // Locked report
+      html += `<div class="section"><div class="section-title">🔒 Locked report</div>`;
+      if (d.lockedReportId) {
+        html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:4px;padding:6px;font-size:11px;color:#1e40af;">
+          <div style="font-family:monospace;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${d.lockedReportId}">${d.lockedReportId}</div>
+          <div style="font-size:9px;color:#a3a3a3;margin-top:4px;">锁定后不可修改，作为最终交付版本</div>
+        </div>`;
+      } else {
+        html += `<div class="empty-dashed"><p>暂无锁定报告</p></div>`;
+      }
+      html += `</div>`;
+
+      // Report versions
+      html += `<div class="section"><div class="section-title">📋 Report versions</div>
+        <div class="empty-dashed"><p>版本浏览待扩展</p><p style="margin-top:2px;font-size:9px;">当前仅展示最新版本，多版本浏览待后续实现</p></div>
+      </div>`;
 
       // Project info
       html += `<div class="section"><div class="section-title">🏷️ 项目信息</div>
         <div class="field-row"><span class="field-label">类型</span><span class="field-value">${PROJECT_KIND_LABELS[p.kind] ?? p.kind}</span></div>
-        <div class="field-row"><span class="field-label">状态</span><span class="field-value">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span></div>
         <div class="field-row"><span class="field-label">技术状态</span><span class="field-value">${PROJECT_STAGE_LABELS[p.stage] ?? p.stage}</span></div>
         <div class="field-row"><span class="field-label">创建</span><span class="field-value">${formatRel(p.createdAt)}</span></div>
         <div class="field-row"><span class="field-label">更新</span><span class="field-value">${formatRel(p.updatedAt)}</span></div>
-        ${d.lockedReportId ? `<div style="margin-top:6px;border:1px solid #bfdbfe;background:#eff6ff;border-radius:4px;padding:6px;font-size:11px;color:#1e40af;">已锁定报告: ${d.lockedReportId.slice(0,8)}…</div>` : ''}
       </div>`;
 
       // Current plan
@@ -500,15 +730,9 @@
         </div>`;
       }
 
-      // Latest report
-      if (d.latestReport) {
-        const r = d.latestReport;
-        html += `<div class="section"><div class="section-title">📊 最新报告</div>
-          <div style="font-size:11px;"><span style="font-weight:500;color:#404040">v${r.versionOrdinal}</span><span style="margin-left:8px;color:#a3a3a3">${formatRel(r.createdAt)} · ${r.createdBy.displayName}</span></div>
-        </div>`;
-      }
-
-      html += `</div></div></div>`;
+      html += `</div>`; // end right pane
+      html += `</div>`; // end three-pane
+      html += `</div>`; // end padding
       container.innerHTML = html;
     }
 
@@ -765,14 +989,17 @@
       const bsPct = businessStageProgress(p.stage);
       const hint = STAGE_NEXT_HINTS[p.stage];
       const cmds = d.availableCommands;
+      const rawEv = (d.inputEvidence || []).filter(ev => ev.safetyClass === "restricted_raw");
+      const cleanEv = (d.inputEvidence || []).filter(ev => ev.safetyClass === "controlled");
 
       let html = `<div style="padding:16px;">`;
 
       // Header with more actions dropdown (open state)
-      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
         <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
-        <h2 style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
+        <h2 style="font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
         <span style="font-size:10px;color:#a3a3a3;">#${p.slug}</span>
+        <span style="font-size:10px;color:#525252;background:#f5f5f5;border-radius:2px;padding:1px 6px;">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span>
         <div style="margin-left:auto;position:relative;">
           <button style="font-size:11px;color:#737373;background:#fff;border:1px solid #e5e5e5;border-radius:4px;padding:4px 8px;cursor:pointer;">⋮ 更多操作</button>
           <div style="position:absolute;right:0;top:100%;margin-top:4px;width:220px;border:1px solid #e5e5e5;background:#fff;border-radius:4px;box-shadow:0 2px 8px rgba(0,0,0,0.1);z-index:10;">
@@ -783,38 +1010,15 @@
         </div>
       </div>`;
 
-      // Current business stage highlight
-      html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:12px;margin-bottom:12px;">
-        <div style="display:flex;align-items:center;justify-content:space-between;">
-          <div style="display:flex;align-items:center;gap:8px;"><span style="font-size:13px;font-weight:500;color:#1e40af;">🕐 当前环节: ${currentBS ? currentBS.label : '未知'}</span></div>
-          <div style="display:flex;align-items:center;gap:8px;"><div style="height:8px;width:80px;overflow:hidden;border-radius:4px;background:#bfdbfe;"><div style="height:100%;border-radius:4px;background:#2563eb;width:${bsPct}%;"></div></div><span style="font-size:11px;color:#3b82f6;">${bsPct}%</span></div>
-        </div>
-        ${hint ? `<div style="margin-top:6px;font-size:11px;color:#1d4ed8;">下一步: ${hint}</div>` : ''}
-      </div>`;
+      // Three-pane grid
+      html += `<div class="three-pane">`;
 
-      // 2-column grid
-      html += `<div class="detail-grid">`;
+      // ── Left pane ──
+      html += `<div class="pane-left" style="display:flex;flex-direction:column;gap:12px;">`;
 
-      // 已提交需求 (with real data)
-      html += `<div class="section"><div class="section-title">📝 已提交需求</div>`;
-      if (d.analysisRequest) {
-        const ar = d.analysisRequest;
-        html += `<div style="max-height:128px;overflow:auto;background:#fafafa;border-radius:4px;padding:8px;font-size:11px;color:#404040;">${ar.rawRequestText}</div>
-          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">提交时间: ${formatRel(ar.submittedAt)} · ${ar.locale}</div>`;
-      }
-      html += `</div>`;
-
-      // 结构化需求 (with enabled button)
-      html += `<div class="section"><div class="section-title">📄 结构化需求</div>
-        <button style="width:100%;border:1px solid #93c5fd;background:#eff6ff;border-radius:6px;padding:8px;text-align:left;cursor:pointer;color:#1d4ed8;">
-          <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;">▶️ 生成结构化需求</div>
-        </button>
-        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f5f5f5;font-size:10px;color:#a3a3a3;">暂无版本</div>
-      </div>`;
-
-      // 数据材料 (with clickable cards)
-      html += `<div class="section"><div class="section-title">📂 数据材料</div>
-        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
+      // Uploads
+      html += `<div class="section"><div class="section-title">📂 Uploads</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
           <button style="border:1px solid #fecaca;background:#fef2f2;border-radius:6px;padding:8px;text-align:center;cursor:pointer;">
             <div style="font-size:10px;font-weight:500;color:#dc2626;">010_raw</div>
             <div style="margin-top:4px;font-size:9px;color:#b91c1c;">点击上传</div>
@@ -825,55 +1029,146 @@
           </button>
           <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;">
             <div style="font-size:10px;font-weight:500;color:#16a34a;">060_reports</div>
-            <div style="margin-top:4px;font-size:9px;color:#15803d;">暂无报告产物</div>
+            <div style="margin-top:4px;font-size:9px;color:#15803d;">暂无</div>
           </div>
         </div>
-        <div style="border:1px solid #e5e5e5;background:#fafafa;border-radius:6px;padding:8px;font-size:10px;color:#737373;">ℹ️ 报告产物由分析执行自动生成，当前尚无报告。</div>
       </div>`;
 
-      // Evidence list
-      if (d.inputEvidence && d.inputEvidence.length > 0) {
-        html += `<div class="section"><div class="section-title">📂 已登记材料与来源</div>
-          <div style="margin-bottom:8px;"><div style="font-size:11px;font-weight:500;color:#525252;margin-bottom:4px;">输入证据 (${d.inputEvidence.length})</div><div style="border:1px solid #f5f5f5;border-radius:4px;">`;
-        for (const ev of d.inputEvidence) {
-          html += `<div class="evidence-row" style="padding:4px 8px;">
-            <span style="color:#a3a3a3">📄</span>
-            <span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#404040">${ev.displayName}</span>
-            <span class="badge ${SAFETY_COLORS[ev.safetyClass] || 'badge-neutral'}">${SAFETY_LABELS[ev.safetyClass] || ev.safetyClass}</span>
-            <span style="color:#a3a3a3;font-size:10px">${formatBytes(ev.byteSize)}</span>
+      // Raw files
+      html += `<div class="section"><div class="section-title">📄 Raw files</div>`;
+      if (rawEv.length > 0) {
+        for (const ev of rawEv) {
+          html += `<div class="evidence-row">
+            <div class="evidence-row-main"><span style="color:#a3a3a3">📄</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#404040">${ev.displayName}</span><span class="badge ${SAFETY_COLORS[ev.safetyClass]}">${SAFETY_LABELS[ev.safetyClass]}</span></div>
+            <div class="evidence-row-meta"><span>${formatBytes(ev.byteSize)}</span><span style="font-family:monospace;" title="${ev.contentSha256}">sha256:${ev.contentSha256.slice(0,8)}</span><span>${formatRel(ev.createdAt)}</span></div>
           </div>`;
         }
-        html += `</div></div></div>`;
+      } else { html += `<div class="empty-dashed"><p>暂无原始数据</p></div>`; }
+      html += `<div class="safety-hint safety-hint-raw">原始数据仅登记元数据，行级内容不进入 LLM 处理</div>`;
+      html += `</div>`;
+
+      // Clean files
+      html += `<div class="section"><div class="section-title">📄 Clean files</div>`;
+      if (cleanEv.length > 0) {
+        for (const ev of cleanEv) {
+          html += `<div class="evidence-row">
+            <div class="evidence-row-main"><span style="color:#a3a3a3">📄</span><span style="flex:1;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;color:#404040">${ev.displayName}</span><span class="badge ${SAFETY_COLORS[ev.safetyClass]}">${SAFETY_LABELS[ev.safetyClass]}</span></div>
+            <div class="evidence-row-meta"><span>${formatBytes(ev.byteSize)}</span><span style="font-family:monospace;" title="${ev.contentSha256}">sha256:${ev.contentSha256.slice(0,8)}</span><span>${formatRel(ev.createdAt)}</span></div>
+          </div>`;
+        }
+      } else { html += `<div class="empty-dashed"><p>暂无受控数据</p></div>`; }
+      html += `<div class="safety-hint safety-hint-clean">受控数据经处理后用于分析流程，需用户知情</div>`;
+      html += `</div>`;
+
+      // Business request
+      html += `<div class="section"><div class="section-title">📝 Business request</div>`;
+      if (d.analysisRequest) {
+        const ar = d.analysisRequest;
+        html += `<div style="max-height:128px;overflow:auto;background:#fafafa;border-radius:4px;padding:8px;font-size:11px;color:#404040;">${ar.rawRequestText}</div>
+          <div style="margin-top:4px;font-size:10px;color:#a3a3a3;">${formatRel(ar.submittedAt)} · ${ar.locale}</div>`;
+      } else { html += `<div class="empty-dashed"><p>尚未提交业务需求</p></div>`; }
+      html += `</div>`;
+
+      html += `</div>`; // end left pane
+
+      // ── Center pane ──
+      html += `<div class="pane-center" style="display:flex;flex-direction:column;gap:12px;">`;
+
+      // Compact banner
+      html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:8px 12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12px;font-weight:500;color:#1e40af;">🕐 ${currentBS ? currentBS.label : '未知'}</span></div>
+          <div style="display:flex;align-items:center;gap:6px;"><div style="height:6px;width:64px;overflow:hidden;border-radius:3px;background:#bfdbfe;"><div style="height:100%;border-radius:3px;background:#2563eb;width:${bsPct}%;"></div></div><span style="font-size:10px;color:#3b82f6;">${bsPct}%</span></div>
+        </div>
+        ${hint ? `<div style="margin-top:4px;font-size:10px;color:#1d4ed8;">下一步: ${hint}</div>` : ''}
+      </div>`;
+
+      // Flow track
+      html += `<div class="section"><div class="section-title">🔧 流程路径</div>${renderFlowTrack(p.stage, data)}</div>`;
+
+      // 结构化需求 (with enabled button)
+      html += `<div class="section"><div class="section-title">📄 结构化需求</div>
+        <button style="width:100%;border:1px solid #93c5fd;background:#eff6ff;border-radius:6px;padding:8px;text-align:left;cursor:pointer;color:#1d4ed8;">
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;font-weight:500;">▶️ 生成结构化需求</div>
+        </button>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f5f5f5;font-size:10px;color:#a3a3a3;">暂无版本</div>
+      </div>`;
+
+      html += `</div>`; // end center pane
+
+      // ── Right pane ──
+      html += `<div class="pane-right" style="display:flex;flex-direction:column;gap:12px;">`;
+
+      // Latest report
+      if (d.latestReport) {
+        const r = d.latestReport;
+        html += `<div class="section"><div class="section-title">📊 Latest report</div>
+          <div style="font-size:11px;">
+            <div><span style="font-weight:500;color:#404040">v${r.versionOrdinal}</span><span style="margin-left:8px;color:#a3a3a3">${formatRel(r.createdAt)}</span></div>
+            <div style="font-size:10px;color:#a3a3a3;margin-top:2px;">${r.createdBy.displayName}</div>
+            <div style="display:flex;flex-wrap:wrap;gap:4px 12px;font-size:9px;color:#a3a3a3;margin-top:4px;">
+              <span>schema: ${r.schemaVersion}</span>
+              <span style="font-family:monospace;" title="${r.contentSha256}">sha256:${r.contentSha256.slice(0,8)}</span>
+            </div>
+            <div style="margin-top:6px;border:1px dashed #e5e5e5;border-radius:4px;padding:4px 8px;font-size:10px;color:#a3a3a3;">报告内容查看待后续扩展（当前无 content route）</div>
+          </div>
+        </div>`;
+      } else {
+        html += `<div class="section"><div class="section-title">📊 Latest report</div><div class="empty-dashed"><p>暂无报告产物</p><p style="margin-top:2px;font-size:9px;">报告由分析执行自动生成</p></div></div>`;
       }
 
-      // Right column: metadata
-      html += `<div style="display:flex;flex-direction:column;gap:12px;">`;
+      // Locked report
+      if (d.lockedReportId) {
+        html += `<div class="section"><div class="section-title">🔒 Locked report</div>
+          <div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:4px;padding:6px;font-size:11px;color:#1e40af;">
+            <div style="font-family:monospace;font-size:10px;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;" title="${d.lockedReportId}">${d.lockedReportId}</div>
+            <div style="font-size:9px;color:#a3a3a3;margin-top:4px;">锁定后不可修改，作为最终交付版本</div>
+          </div>
+        </div>`;
+      } else {
+        html += `<div class="section"><div class="section-title">🔒 Locked report</div><div class="empty-dashed"><p>暂无锁定报告</p></div></div>`;
+      }
+
+      html += `<div class="section"><div class="section-title">📋 Report versions</div><div class="empty-dashed"><p>版本浏览待扩展</p><p style="margin-top:2px;font-size:9px;">当前仅展示最新版本，多版本浏览待后续实现</p></div></div>`;
+
       html += `<div class="section"><div class="section-title">🏷️ 项目信息</div>
         <div class="field-row"><span class="field-label">类型</span><span class="field-value">${PROJECT_KIND_LABELS[p.kind] ?? p.kind}</span></div>
-        <div class="field-row"><span class="field-label">状态</span><span class="field-value">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span></div>
         <div class="field-row"><span class="field-label">技术状态</span><span class="field-value">${PROJECT_STAGE_LABELS[p.stage] ?? p.stage}</span></div>
         <div class="field-row"><span class="field-label">创建</span><span class="field-value">${formatRel(p.createdAt)}</span></div>
         <div class="field-row"><span class="field-label">更新</span><span class="field-value">${formatRel(p.updatedAt)}</span></div>
       </div>`;
-      html += `</div></div></div>`;
+
+      html += `</div>`; // end right pane
+      html += `</div>`; // end three-pane
+      html += `</div>`; // end padding
       container.innerHTML = html;
     }
 
     function renderDetailUploadPanel(container, data) {
       const d = data.data;
       const p = d.project;
+      const currentBS = businessStage(p.stage);
+      const bsPct = businessStageProgress(p.stage);
+      const hint = STAGE_NEXT_HINTS[p.stage];
 
       let html = `<div style="padding:16px;">`;
 
       // Header
-      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;">
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
         <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
-        <h2 style="font-size:14px;font-weight:500;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
+        <h2 style="font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
         <span style="font-size:10px;color:#a3a3a3;">#${p.slug}</span>
+        <span style="font-size:10px;color:#525252;background:#f5f5f5;border-radius:2px;padding:1px 6px;">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span>
       </div>`;
 
-      // 数据材料 section with upload panel open
-      html += `<div class="section"><div class="section-title">📂 数据材料</div>
+      // Three-pane grid
+      html += `<div class="three-pane">`;
+
+      // ── Left pane ──
+      html += `<div class="pane-left" style="display:flex;flex-direction:column;gap:12px;">`;
+
+      // Uploads with panel open
+      html += `<div class="section"><div class="section-title">📂 Uploads</div>
         <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;margin-bottom:8px;">
           <button style="border:2px solid #f87171;background:#fee2e2;border-radius:6px;padding:8px;text-align:center;cursor:pointer;">
             <div style="font-size:10px;font-weight:500;color:#dc2626;">010_raw</div>
@@ -885,7 +1180,7 @@
           </button>
           <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;">
             <div style="font-size:10px;font-weight:500;color:#16a34a;">060_reports</div>
-            <div style="margin-top:4px;font-size:9px;color:#15803d;">暂无报告产物</div>
+            <div style="margin-top:4px;font-size:9px;color:#15803d;">暂无</div>
           </div>
         </div>`;
 
@@ -919,9 +1214,50 @@
           <button style="display:inline-flex;align-items:center;gap:4px;background:#2563eb;color:#fff;border:none;border-radius:4px;padding:6px 12px;font-size:11px;font-weight:500;cursor:pointer;width:fit-content;">上传</button>
         </div>
       </div>`;
+      html += `</div>`;
 
-      html += `</div>`;
-      html += `</div>`;
+      // Raw files (empty)
+      html += `<div class="section"><div class="section-title">📄 Raw files</div><div class="empty-dashed"><p>暂无原始数据</p></div></div>`;
+      // Clean files (empty)
+      html += `<div class="section"><div class="section-title">📄 Clean files</div><div class="empty-dashed"><p>暂无受控数据</p></div></div>`;
+      // Business request (empty)
+      html += `<div class="section"><div class="section-title">📝 Business request</div><div class="empty-dashed"><p>尚未提交业务需求</p></div></div>`;
+
+      html += `</div>`; // end left pane
+
+      // ── Center pane ──
+      html += `<div class="pane-center" style="display:flex;flex-direction:column;gap:12px;">`;
+      html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:8px 12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12px;font-weight:500;color:#1e40af;">🕐 ${currentBS ? currentBS.label : '未知'}</span></div>
+          <div style="display:flex;align-items:center;gap:6px;"><div style="height:6px;width:64px;overflow:hidden;border-radius:3px;background:#bfdbfe;"><div style="height:100%;border-radius:3px;background:#2563eb;width:${bsPct}%;"></div></div><span style="font-size:10px;color:#3b82f6;">${bsPct}%</span></div>
+        </div>
+        ${hint ? `<div style="margin-top:4px;font-size:10px;color:#1d4ed8;">下一步: ${hint}</div>` : ''}
+      </div>`;
+      html += `<div class="section"><div class="section-title">🔧 流程路径</div>${renderFlowTrack(p.stage, data)}</div>`;
+      html += `<div class="section"><div class="section-title">📄 结构化需求</div>
+        <button disabled style="width:100%;border:1px solid #d4d4d4;background:#f5f5f5;border-radius:6px;padding:8px;text-align:left;cursor:not-allowed;">
+          <div style="display:flex;align-items:center;gap:6px;font-size:12px;color:#737373;">⚙️ 生成结构化需求</div>
+        </button>
+        <div style="margin-top:8px;padding-top:8px;border-top:1px solid #f5f5f5;font-size:10px;color:#a3a3a3;">暂无版本</div>
+      </div>`;
+      html += `</div>`; // end center pane
+
+      // ── Right pane ──
+      html += `<div class="pane-right" style="display:flex;flex-direction:column;gap:12px;">`;
+      html += `<div class="section"><div class="section-title">📊 Latest report</div><div class="empty-dashed"><p>暂无报告产物</p><p style="margin-top:2px;font-size:9px;">报告由分析执行自动生成</p></div></div>`;
+      html += `<div class="section"><div class="section-title">🔒 Locked report</div><div class="empty-dashed"><p>暂无锁定报告</p></div></div>`;
+      html += `<div class="section"><div class="section-title">📋 Report versions</div><div class="empty-dashed"><p>版本浏览待扩展</p><p style="margin-top:2px;font-size:9px;">当前仅展示最新版本，多版本浏览待后续实现</p></div></div>`;
+      html += `<div class="section"><div class="section-title">🏷️ 项目信息</div>
+        <div class="field-row"><span class="field-label">类型</span><span class="field-value">${PROJECT_KIND_LABELS[p.kind] ?? p.kind}</span></div>
+        <div class="field-row"><span class="field-label">技术状态</span><span class="field-value">${PROJECT_STAGE_LABELS[p.stage] ?? p.stage}</span></div>
+        <div class="field-row"><span class="field-label">创建</span><span class="field-value">${formatRel(p.createdAt)}</span></div>
+        <div class="field-row"><span class="field-label">更新</span><span class="field-value">${formatRel(p.updatedAt)}</span></div>
+      </div>`;
+      html += `</div>`; // end right pane
+
+      html += `</div>`; // end three-pane
+      html += `</div>`; // end padding
       container.innerHTML = html;
     }
 
@@ -935,6 +1271,82 @@
         "project.reopen": "重新打开",
       };
       return labels[cmdType] ?? cmdType;
+    }
+
+    function renderDetailFlowNodes(container, data) {
+      const d = data.data;
+      const p = d.project;
+      const currentBS = businessStage(p.stage);
+      const bsPct = businessStageProgress(p.stage);
+      const hint = STAGE_NEXT_HINTS[p.stage];
+
+      let html = `<div style="padding:16px;">`;
+
+      // Header
+      html += `<div style="display:flex;align-items:center;gap:8px;margin-bottom:12px;flex-wrap:wrap;">
+        <button style="font-size:11px;color:#737373;background:none;border:1px solid #e5e5e5;border-radius:4px;padding:2px 8px;cursor:pointer;">← 返回</button>
+        <h2 style="font-size:14px;font-weight:500;min-width:0;overflow:hidden;text-overflow:ellipsis;white-space:nowrap;">${p.title}</h2>
+        <span style="font-size:10px;color:#a3a3a3;">#${p.slug}</span>
+        <span style="font-size:10px;color:#525252;background:#f5f5f5;border-radius:2px;padding:1px 6px;">${PROJECT_STATUS_LABELS[p.status] ?? p.status}</span>
+      </div>`;
+
+      // Three-pane grid
+      html += `<div class="three-pane">`;
+
+      // ── Left pane ──
+      html += `<div class="pane-left" style="display:flex;flex-direction:column;gap:12px;">`;
+      html += `<div class="section"><div class="section-title">📂 Uploads</div>
+        <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:8px;">
+          <div style="border:1px solid #fecaca;background:#fef2f2;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#dc2626;">010_raw</div>
+            <div style="margin-top:4px;font-size:9px;color:#b91c1c;">上传</div>
+          </div>
+          <div style="border:1px solid #fde68a;background:#fffbeb;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#d97706;">020_clean</div>
+            <div style="margin-top:4px;font-size:9px;color:#b45309;">上传</div>
+          </div>
+          <div style="border:1px solid #bbf7d0;background:#f0fdf4;border-radius:6px;padding:8px;text-align:center;">
+            <div style="font-size:10px;font-weight:500;color:#16a34a;">060_reports</div>
+            <div style="margin-top:4px;font-size:9px;color:#15803d;">暂无</div>
+          </div>
+        </div>
+      </div>`;
+      html += `<div class="section"><div class="section-title">📄 Raw files</div><div class="empty-dashed"><p>暂无原始数据</p></div></div>`;
+      html += `<div class="section"><div class="section-title">📄 Clean files</div><div class="empty-dashed"><p>暂无受控数据</p></div></div>`;
+      html += `<div class="section"><div class="section-title">📝 Business request</div><div class="empty-dashed"><p>尚未提交业务需求</p></div></div>`;
+      html += `</div>`;
+
+      // ── Center pane ──
+      html += `<div class="pane-center" style="display:flex;flex-direction:column;gap:12px;">`;
+      html += `<div style="border:1px solid #bfdbfe;background:#eff6ff;border-radius:8px;padding:8px 12px;">
+        <div style="display:flex;align-items:center;justify-content:space-between;">
+          <div style="display:flex;align-items:center;gap:6px;"><span style="font-size:12px;font-weight:500;color:#1e40af;">🕐 ${currentBS ? currentBS.label : '未知'}</span></div>
+          <div style="display:flex;align-items:center;gap:6px;"><div style="height:6px;width:64px;overflow:hidden;border-radius:3px;background:#bfdbfe;"><div style="height:100%;border-radius:3px;background:#2563eb;width:${bsPct}%;"></div></div><span style="font-size:10px;color:#3b82f6;">${bsPct}%</span></div>
+        </div>
+        ${hint ? `<div style="margin-top:4px;font-size:10px;color:#1d4ed8;">下一步: ${hint}</div>` : ''}
+      </div>`;
+
+      // Flow track with multiple nodes expanded (submit + confirm)
+      html += `<div class="section"><div class="section-title">🔧 流程路径</div>${renderFlowTrack(p.stage, data, { expandedNodes: ["submit", "confirm"] })}</div>`;
+
+      html += `</div>`;
+
+      // ── Right pane ──
+      html += `<div class="pane-right" style="display:flex;flex-direction:column;gap:12px;">`;
+      html += `<div class="section"><div class="section-title">📊 Latest report</div><div class="empty-dashed"><p>暂无报告产物</p><p style="margin-top:2px;font-size:9px;">报告由分析执行自动生成</p></div></div>`;
+      html += `<div class="section"><div class="section-title">🔒 Locked report</div><div class="empty-dashed"><p>暂无锁定报告</p></div></div>`;
+      html += `<div class="section"><div class="section-title">📋 Report versions</div><div class="empty-dashed"><p>版本浏览待扩展</p><p style="margin-top:2px;font-size:9px;">当前仅展示最新版本，多版本浏览待后续实现</p></div></div>`;
+      html += `<div class="section"><div class="section-title">🏷️ 项目信息</div>
+        <div class="field-row"><span class="field-label">类型</span><span class="field-value">${PROJECT_KIND_LABELS[p.kind] ?? p.kind}</span></div>
+        <div class="field-row"><span class="field-label">技术状态</span><span class="field-value">${PROJECT_STAGE_LABELS[p.stage] ?? p.stage}</span></div>
+        <div class="field-row"><span class="field-label">创建</span><span class="field-value">${formatRel(p.createdAt)}</span></div>
+        <div class="field-row"><span class="field-label">更新</span><span class="field-value">${formatRel(p.updatedAt)}</span></div>
+      </div>`;
+      html += `</div>`;
+
+      html += `</div>`;
+      html += `</div>`;
+      container.innerHTML = html;
     }
 
     // --- ROUTER ---
@@ -951,6 +1363,8 @@
       { id: "detail-no-materials", label: "详情·无材料" },
       { id: "detail-interactive", label: "详情·交互" },
       { id: "detail-upload", label: "详情·上传面板" },
+      { id: "detail-flow-nodes", label: "详情·多节点展开" },
+      { id: "detail-with-report", label: "详情·有报告" },
       { id: "capabilities", label: "能力" },
       { id: "closure-list", label: "闭合列表" },
       { id: "closure-detail", label: "闭合详情" },
@@ -972,6 +1386,8 @@
     else if (mode === "detail-no-materials") renderDetail(content, FIXTURE_DETAIL_NO_MATERIALS);
     else if (mode === "detail-interactive") renderDetailInteractive(content, FIXTURE_DETAIL_INTERACTIVE);
     else if (mode === "detail-upload") renderDetailUploadPanel(content, FIXTURE_DETAIL_UPLOAD_PANEL);
+    else if (mode === "detail-flow-nodes") renderDetailFlowNodes(content, FIXTURE_DETAIL);
+    else if (mode === "detail-with-report") renderDetail(content, FIXTURE_DETAIL_WITH_REPORT);
     else if (mode === "capabilities") renderCapabilities(content);
     else if (mode === "closure-list") renderClosureList(content);
     else if (mode === "closure-detail") renderClosure(content);
