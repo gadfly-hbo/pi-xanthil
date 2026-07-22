@@ -160,6 +160,11 @@ export function EngineTabs({ ctx }: { ctx: TabContext }) {
           runtimeNotice={ctx.runtimeNotice}
           onCompact={() => void ctx.compactContext()}
           onRefreshRuntime={() => void ctx.refreshRuntime()}
+          exploreWorkbench={{
+            hasReportPath: ctx.exploreOutputStatus.availableRoots > 0,
+            reportFileCount: ctx.exploreOutputStatus.report,
+            onNavigate: ctx.setActiveSubTab,
+          }}
         />
       )}
       {(activeTab === "explore" || activeTab === "multi" || activeTab === "zhuanti") && activeSubTab === "business_requirement" && (

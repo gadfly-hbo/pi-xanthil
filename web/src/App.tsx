@@ -1,16 +1,17 @@
 import { useCallback, useEffect, useMemo, useRef, useState } from "react";
-import { PanelRightOpen, CircleAlert, TriangleAlert, X } from "lucide-react";
+import { CircleAlert, TriangleAlert, X } from "lucide-react";
 import { cn } from "@/lib/cn";
 import { Sidebar } from "@/components/Sidebar";
 import { type UiMessage } from "@/components/MessageRow";
-import { PreviewPane } from "@/components/PreviewPane";
 import { CleanDataDocsColumn } from "@/components/CleanDataDocsColumn";
 import { FlowListColumn } from "@/components/FlowListColumn";
 import { MainHeader, type Tab, TABS } from "@/components/MainHeader";
+import { ExploreWorkbenchNav } from "@/components/ExploreWorkbenchNav";
 import { SettingsModal } from "@/components/SettingsModal";
 import { QuickNotesPane } from "@/components/QuickNotesPane";
 import { useTabVisibility } from "@/lib/useTabVisibility";
 import { getSubTabsForTab, getL2GroupsForTab, getActiveL2Group, getDefaultSubTab, ONTO_SUB_TABS, LAB_SUB_TABS, LAB_SUB_IDS, ZHUANTI_SIDEBAR_TABS, type SubTab } from "@/lib/constants";
+import { EMPTY_EXPLORE_OUTPUT_STATUS, isExplorePathAvailable, loadExploreOutputStatus } from "@/lib/exploreResources";
 import { DataTabs } from "@/tabs/DataTabs";
 import { EngineTabs } from "@/tabs/EngineTabs";
 import { HealthTabs } from "@/tabs/HealthTabs";
@@ -21,7 +22,7 @@ import { AnalysisProjectsPane } from "@/components/analysis-projects/AnalysisPro
 
 import { api } from "@/lib/api";
 import { gateway } from "@/lib/ws";
-import { asBlocks, textOf, type ContentBlock, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type CollectSession, type CollectFolder, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
+import { asBlocks, type ContentBlock, type ExploreSeed, type Flow, type FlowKind, type PiEvent, type PiModel, type ServerMessage, type Session, type CollectSession, type CollectFolder, type SessionRuntime, type StoredMessage, type Workspace, type WorkspacePath } from "@/types";
 
 type ZhuantiTask = { flow: Flow; session: Session };
 type MemoryPromptInfo = {
@@ -138,7 +139,6 @@ export default function App() {
   const [activeFlowId, setActiveFlowId] = useState<string | null>(null);
 
   const [messages, setMessages] = useState<UiMessage[]>([]);
-  const [report, setReport] = useState("");
   const [running, setRunning] = useState(false);
   const [zhuantiChatFlowId, setZhuantiChatFlowId] = useState<string | null>(null);
   const [zhuantiChatSessionId, setZhuantiChatSessionId] = useState<string | null>(null);
@@ -177,12 +177,12 @@ export default function App() {
     return () => window.removeEventListener("keydown", onKey);
   }, [quickNotesOpen]);
   const [sidebarOpen, setSidebarOpen] = useState(true);
-  const [previewOpen, setPreviewOpen] = useState(true);
   const [activeTab, setActiveTab] = useState<Tab>("explore");
   const [activeSubTab, setActiveSubTab] = useState<SubTab>("view");
   // One-way seed: 业务需求 → 数据探索 (field-name hints only, never data).
   const [exploreSeed, setExploreSeed] = useState<ExploreSeed | null>(null);
   const [hasReportPath, setHasReportPath] = useState(false);
+  const [exploreOutputStatus, setExploreOutputStatus] = useState(EMPTY_EXPLORE_OUTPUT_STATUS);
   const [rulesPromptEnabled, setRulesPromptEnabled] = useState(false);
   const [rulesPromptInfo, setRulesPromptInfo] = useState<MemoryPromptInfo>({ count: 0, updatedAt: null, details: [] });
   const [knowledgePromptEnabled, setKnowledgePromptEnabled] = useState(false);
@@ -383,7 +383,6 @@ export default function App() {
     let cancelled = false;
     if (!activeSessionId) {
       setMessages([]);
-      setReport("");
       setTotals({ tokens: 0, cost: 0, input: 0, cacheRead: 0, cacheWrite: 0 });
       setRuntime(null);
       setRuntimeNotice("");
@@ -403,8 +402,6 @@ export default function App() {
         };
       });
       setMessages(msgs);
-      const lastAssistant = [...rows].reverse().find((r) => r.role === "assistant");
-      setReport(lastAssistant ? textOf(lastAssistant.content) : "");
       void refreshTokenTotals();
     });
     api.getSessionRunStatus(activeSessionId)
@@ -575,8 +572,6 @@ export default function App() {
               const visibleBlocks = filterDuplicateToolBlocks(blocks, cur);
               return visibleBlocks.length > 0 ? [...cur, { id: nextId(), role: m.role, content: visibleBlocks }] : cur;
             });
-            const text = textOf(m.content);
-            if (!isZhuantiChat && !isCollect && m.role === "assistant" && text) setReport(text);
           }
           if (m.usage) void refreshTokenTotals();
         }
@@ -977,26 +972,28 @@ export default function App() {
   useEffect(() => {
     let cancelled = false;
     setHasReportPath(false);
+    setExploreOutputStatus(EMPTY_EXPLORE_OUTPUT_STATUS);
     if (!folderScope) return;
-    const request = folderScope.type === "workspace"
-      ? api.listWorkspacePaths(folderScope.workspaceId, "report")
-      : folderScope.type === "session"
-        ? api.listSessionPaths(folderScope.sessionId, "report")
-        : api.listFlowPaths(folderScope.flowId, "report");
-    request
-      .then((paths) => {
-        if (!cancelled) setHasReportPath(paths.length > 0);
+    loadExploreOutputStatus(folderScope)
+      .then((status) => {
+        if (!cancelled) {
+          setExploreOutputStatus(status);
+          setHasReportPath(status.availableRoots > 0);
+        }
       })
       .catch(() => {
-        if (!cancelled) setHasReportPath(false);
+        if (!cancelled) {
+          setHasReportPath(false);
+          setExploreOutputStatus(EMPTY_EXPLORE_OUTPUT_STATUS);
+        }
       });
     return () => {
       cancelled = true;
     };
-  }, [folderScope]);
+  }, [artifactRefreshKey, folderScope]);
 
   const handleReportPathsChange = useCallback((paths: WorkspacePath[]) => {
-    setHasReportPath(paths.length > 0);
+    setHasReportPath(paths.some(isExplorePathAvailable));
     setArtifactRefreshKey((current) => current + 1);
   }, []);
 
@@ -1016,6 +1013,7 @@ export default function App() {
     collectSessions, activeCollectSessionId, setActiveCollectSessionId, collectFolders,
     refreshCollectSessions, createCollectSession, renameCollectSession, deleteCollectSession, setCollectSessionFolder, refreshCollectFolders,
     exploreSeed, setExploreSeed,
+    exploreOutputStatus,
     handleReportPathsChange, setArtifactRefreshKey, refreshRulesPromptInfo, refreshKnowledgePromptInfo,
     activeFlow, zhuantiChatFlow, flows, rulesPromptEnabled, knowledgePromptEnabled,
   };
@@ -1137,10 +1135,20 @@ export default function App() {
           onOpenQuickNotes={() => setQuickNotesOpen(true)}
         />
 
-        {/* Sub-tab strip。分组类 tab(日常/专题)：横条 = L2 分组，L3 子项见下方左竖栏；其余 tab：横条 = 扁平二级 tab。
-            重复(multi) 顶部 workflow tab 见 MultiAgentExecutionPane 三级 tab；专题(zhuanti) 核心项见下方左竖栏。
+        {/* 数分助手使用工作台导航；分组类 tab(专题)：横条 = L2 分组，L3 子项见下方左竖栏；其余 tab：横条 = 扁平二级 tab。
+            工作流顶部 workflow tab 见 MultiAgentExecutionPane 三级 tab；专题(zhuanti) 核心项见下方左竖栏。
             本体库(onto-xanthil) 的二级 tab 全部以左侧竖栏呈现（见下方），故此处顶部条对 onto 隐藏。 */}
-        {activeTab !== "onto_xanthil" && (() => {
+        {activeTab === "explore" && (
+          <ExploreWorkbenchNav
+            activeSubTab={activeSubTab}
+            hasReportPath={hasReportPath}
+            scope={folderScope}
+            refreshKey={artifactRefreshKey}
+            isVisible={isVisible}
+            onNavigate={setActiveSubTab}
+          />
+        )}
+        {activeTab !== "onto_xanthil" && activeTab !== "explore" && (() => {
           const l2Groups = getL2GroupsForTab(activeTab);
           if (l2Groups) {
             const activeGroup = getActiveL2Group(l2Groups, activeSubTab);
@@ -1258,17 +1266,6 @@ export default function App() {
               })}
             </nav>
           )}
-          {/* 日常：左侧竖栏 = 当前 L2 组的 L3 子项（叶子组「业务需求/readme」无竖栏） */}
-          {activeTab === "explore" && (() => {
-            const groups = getL2GroupsForTab("explore")!;
-            const children = (getActiveL2Group(groups, activeSubTab)?.children ?? []).filter((c) => isVisible("explore:" + c.id));
-            if (children.length === 0) return null;
-            return (
-              <nav className="scrollbar-thin flex w-40 shrink-0 flex-col gap-0.5 overflow-y-auto border-r border-neutral-200 p-2 dark:border-neutral-800">
-                {children.map(renderL3SubTabButton)}
-              </nav>
-            );
-          })()}
           {/* 专题：左竖栏上区 = 当前 L2 组的 L3 子项（叶子组上区为空）；下区 = 专属 3 项（流水线/假设库/变更管理） */}
           {activeTab === "zhuanti" && (() => {
             const groups = getL2GroupsForTab("zhuanti")!;
@@ -1282,10 +1279,6 @@ export default function App() {
               </nav>
             );
           })()}
-          {/* 探索·工作视图：左侧「聚合数据」只读文档竖栏（红线域，纯读取+复制） */}
-          {activeTab === "explore" && activeSubTab === "view" && (
-            <CleanDataDocsColumn scope={folderScope} />
-          )}
           {/* 专题·数据分析(主对话)：左侧「聚合数据」只读文档竖栏（复用探索范式，scope=专题 flow） */}
           {activeTab === "zhuanti" && activeSubTab === "view" && (
             <CleanDataDocsColumn scope={zhuantiChatFolderScope} />
@@ -1310,19 +1303,6 @@ export default function App() {
             <HealthTabs ctx={tabCtx} />
             {activeTab === "analysis_projects" && <AnalysisProjectsPane workspaceId={activeWorkspaceId} />}
           </div>
-
-          {activeTab === "explore" && activeSessionId && activeSubTab === "view" &&
-            (previewOpen ? (
-              <PreviewPane sessionId={activeSessionId!} report={report} running={running} refreshKey={artifactRefreshKey} onCollapse={() => setPreviewOpen(false)} />
-            ) : (
-              <button
-                onClick={() => setPreviewOpen(true)}
-                title="展开预览"
-                className="flex w-9 shrink-0 items-center justify-center border-l border-neutral-200 text-neutral-500 hover:bg-neutral-100 hover:text-neutral-900 dark:border-neutral-800 dark:text-neutral-400 dark:hover:bg-neutral-800 dark:hover:text-neutral-100"
-              >
-                <PanelRightOpen className="h-4 w-4" strokeWidth={1.75} />
-              </button>
-            ))}
         </div>
       </section>
       {settingsOpen && <SettingsModal onClose={() => setSettingsOpen(false)} hiddenTabs={hiddenTabs} toggleTab={toggleTab} />}

@@ -3,6 +3,7 @@ import type { Tab } from "@/components/MainHeader";
 import type { SubTab } from "@/lib/constants";
 import type { UiMessage } from "@/components/MessageRow";
 import type { CollectFolder, CollectSession, ExploreSeed, Flow, PiModel, SessionRuntime, WorkspacePath } from "@/types";
+import type { ExploreOutputStatus } from "@/lib/exploreResources";
 
 /**
  * 域渲染模块的共享上下文契约 —— owner: Claude(总控)。
@@ -87,6 +88,7 @@ export interface TabContext {
   // 业务需求 → 数据探索 单向 seed
   exploreSeed: ExploreSeed | null;
   setExploreSeed: (seed: ExploreSeed | null) => void;
+  exploreOutputStatus: ExploreOutputStatus;
 
   // 报告 / 产物刷新
   handleReportPathsChange: (paths: WorkspacePath[]) => void;

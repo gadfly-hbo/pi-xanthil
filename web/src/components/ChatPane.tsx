@@ -1,5 +1,5 @@
 import { useCallback, useEffect, useMemo, useRef, useState, type MouseEvent as ReactMouseEvent, type ReactNode } from "react";
-import { Archive, ArrowUp, Bot, CheckCircle2, ChevronDown, ChevronRight, Cpu, FileText, Gauge, GitBranch, Loader2, Paperclip, RefreshCw, Square, WandSparkles, X } from "lucide-react";
+import { Archive, ArrowUp, Bot, CheckCircle2, ChevronDown, ChevronRight, Cpu, FileCheck2, FileOutput, FileText, Gauge, GitBranch, Languages, Lightbulb, ListChecks, Loader2, Paperclip, PencilLine, RefreshCw, Square, Target, WandSparkles, X } from "lucide-react";
 import { DelegateSubAgentCard } from "@/components/DelegateSubAgentCard";
 import { ForkBranchPanel } from "@/components/ForkBranchPanel";
 import { MemoryFeedbackInline } from "@/components/MemoryFeedbackInline";
@@ -9,9 +9,10 @@ import { PromptSelector } from "@/components/PromptSelector";
 import { SkillSelector } from "@/components/SkillSelector";
 import { useBusinessRequirementContexts } from "@/components/useBusinessRequirementContexts";
 import { api } from "@/lib/api";
-import { getActiveContractContext } from "@/lib/activeContractContext";
+import { getActiveContractContext, setActiveContractContext } from "@/lib/activeContractContext";
 import type { ReportContractContext } from "@/lib/api/engine";
 import { cn } from "@/lib/cn";
+import type { SubTab } from "@/lib/constants";
 import { asBlocks, textOf, type FlowTreeNode, type PiModel, type PromptDraft, type PromptTemplateInput, type SessionArtifactTree, type SessionRuntime, type StoredMessage, type WorkspacePath, type XanCommand, type XanCommandParam } from "@/types";
 
 type FolderScope =
@@ -53,6 +54,11 @@ interface Props {
   hidePromptLib?: boolean;  // prompt 库
   hideBizReq?: boolean;     // 业务需求下拉
   hideDelegate?: boolean;   // 委派子 agent
+  exploreWorkbench?: {
+    hasReportPath: boolean;
+    reportFileCount: number;
+    onNavigate: (subTab: SubTab) => void;
+  };
 }
 
 interface ComposerAttachment {
@@ -538,7 +544,18 @@ export function ChatPane(p: Props) {
     selectedId: selectedBusinessRequirementId,
     setSelectedId: setSelectedBusinessRequirementId,
     selectedContext: selectedBusinessRequirement,
+    loading: businessRequirementContextsLoading,
   } = useBusinessRequirementContexts(p.folderScope);
+
+  function selectBusinessRequirement(id: string) {
+    setSelectedBusinessRequirementId(id);
+    const context = businessRequirementContexts.find((item) => item.id === id);
+    setActiveContractContext(context ? {
+      pathId: context.pathId,
+      markdownPath: context.markdownPath,
+      jsonPath: context.jsonPath,
+    } : null);
+  }
 
   // Contract summary for selected business requirement.
   const [contractSummary, setContractSummary] = useState<ReportContractContext | null>(null);
@@ -1021,6 +1038,13 @@ export function ChatPane(p: Props) {
   const executionStages = getExecutionStages(activeStageIndex, p.running);
   const activeStageLabel = executionStages[activeStageIndex]?.label ?? EXECUTION_STAGES[0];
   const showExecutionOverview = p.messages.length > 0 || p.running || artifactCount > 0;
+  const canGenerateReport = Boolean(selectedBusinessRequirement) && Boolean(p.exploreWorkbench?.hasReportPath);
+  const hasSourceReport = (p.exploreWorkbench?.reportFileCount ?? 0) > 0;
+  const reportActionBlocker = !selectedBusinessRequirement
+    ? "未选择分析目标"
+    : !p.exploreWorkbench?.hasReportPath
+      ? "未配置报告输出目录"
+      : null;
   const contextPercent = p.runtime?.contextPercent;
   const contextTone = p.runtime?.status === "error"
     ? "text-rose-600 dark:text-rose-400"
@@ -1108,6 +1132,44 @@ export function ChatPane(p: Props) {
         )}
       </div>
 
+      {p.exploreWorkbench && (
+        <div className="flex min-h-12 shrink-0 flex-wrap items-center gap-x-3 gap-y-2 border-b border-neutral-200 bg-neutral-50/70 px-4 py-2 dark:border-neutral-800 dark:bg-neutral-900/30">
+          <div className="flex shrink-0 items-center gap-1.5 text-[11px] font-medium text-neutral-500 dark:text-neutral-400">
+            <Target className="h-3.5 w-3.5" strokeWidth={1.75} />
+            分析目标
+          </div>
+          <select
+            value={selectedBusinessRequirementId}
+            onChange={(event) => selectBusinessRequirement(event.target.value)}
+            disabled={businessRequirementContextsLoading || businessRequirementContexts.length === 0}
+            title="选择本次分析采用的业务需求"
+            className="min-w-0 max-w-full flex-1 basis-56 rounded-md border border-neutral-200 bg-white px-2 py-1.5 text-[12px] text-neutral-800 outline-none focus:border-neutral-400 disabled:cursor-not-allowed disabled:text-neutral-400 dark:border-neutral-700 dark:bg-neutral-950 dark:text-neutral-200"
+          >
+            <option value="">
+              {businessRequirementContextsLoading ? "正在加载分析目标…" : businessRequirementContexts.length === 0 ? "暂无分析目标" : "未选择分析目标"}
+            </option>
+            {businessRequirementContexts.map((item) => (
+              <option key={item.id} value={item.id}>{item.label}</option>
+            ))}
+          </select>
+          {contractSummaryLoading && selectedBusinessRequirement ? (
+            <Loader2 className="h-3.5 w-3.5 shrink-0 animate-spin text-neutral-400" />
+          ) : contractSummary ? (
+            <span className="min-w-0 max-w-full basis-full truncate text-[11px] text-neutral-500 dark:text-neutral-400 sm:basis-auto" title={contractSummary.objective || contractSummary.projectName}>
+              {contractSummary.projectName} · {contractSummary.sections.length} 章{contractSummary.objective ? ` · ${contractSummary.objective}` : ""}
+            </span>
+          ) : null}
+          <button
+            type="button"
+            onClick={() => p.exploreWorkbench?.onNavigate("business_requirement")}
+            className="inline-flex h-7 shrink-0 items-center gap-1 rounded-md px-2 text-[11.5px] text-neutral-600 hover:bg-neutral-200/70 dark:text-neutral-300 dark:hover:bg-neutral-800"
+          >
+            <PencilLine className="h-3.5 w-3.5" strokeWidth={1.75} />
+            编辑完整需求
+          </button>
+        </div>
+      )}
+
       {/* messages */}
       <div className="scrollbar-thin min-h-0 flex-1 overflow-y-auto">
         <div className="mx-auto max-w-[760px] space-y-5 px-6 py-6">
@@ -1187,6 +1249,46 @@ export function ChatPane(p: Props) {
 
                   {artifactsError && (
                     <p className="mt-2 text-[11.5px] text-rose-500">产物加载失败：{artifactsError}</p>
+                  )}
+
+                  {!p.running && p.exploreWorkbench && (
+                    <div className="mt-3 border-t border-neutral-200 pt-3 dark:border-neutral-800">
+                      <div className="flex flex-wrap items-center gap-1.5">
+                        <button
+                          type="button"
+                          onClick={() => sendText("请基于当前分析目标完成数据分析，生成完整报告，并将结果写入已登记的报告输出目录。")}
+                          disabled={!canGenerateReport || p.disabled}
+                          title={reportActionBlocker ?? "基于当前分析目标生成报告"}
+                          className="inline-flex h-7 items-center gap-1 rounded-md bg-neutral-900 px-2.5 text-[11.5px] font-medium text-white hover:bg-neutral-700 disabled:cursor-not-allowed disabled:bg-neutral-200 disabled:text-neutral-400 dark:bg-neutral-100 dark:text-neutral-900 dark:hover:bg-white dark:disabled:bg-neutral-800 dark:disabled:text-neutral-500"
+                        >
+                          <FileOutput className="h-3.5 w-3.5" strokeWidth={1.75} />
+                          生成报告
+                        </button>
+                        {([
+                          ["report_review", "报告评审", FileCheck2],
+                          ["presentation_version", "业务语言", Languages],
+                          ["golden_strategy", "黄金策", Lightbulb],
+                          ["actions", "执行反馈", ListChecks],
+                        ] as const).map(([subTab, label, Icon]) => (
+                          <button
+                            key={subTab}
+                            type="button"
+                            onClick={() => p.exploreWorkbench?.onNavigate(subTab)}
+                            disabled={!hasSourceReport}
+                            title={hasSourceReport ? `进入${label}` : "需要先生成报告文件"}
+                            className="inline-flex h-7 items-center gap-1 rounded-md border border-neutral-200 px-2 text-[11.5px] text-neutral-600 hover:bg-neutral-50 disabled:cursor-not-allowed disabled:opacity-40 dark:border-neutral-700 dark:text-neutral-300 dark:hover:bg-neutral-800"
+                          >
+                            <Icon className="h-3.5 w-3.5" strokeWidth={1.75} />
+                            {label}
+                          </button>
+                        ))}
+                      </div>
+                      {(reportActionBlocker || !hasSourceReport) && (
+                        <p className="mt-2 text-[11px] text-neutral-400">
+                          {reportActionBlocker ?? "后续动作等待报告文件"}
+                        </p>
+                      )}
+                    </div>
                   )}
                 </div>
               </div>
@@ -1420,12 +1522,12 @@ export function ChatPane(p: Props) {
                 />
                 )}
                 {!p.hidePromptLib && <PromptSelector workspaceId={p.workspaceId} onInsert={insertPrompt} />}
-                {!p.hideBizReq && businessRequirementContexts.length > 0 && (
+                {!p.hideBizReq && !p.exploreWorkbench && businessRequirementContexts.length > 0 && (
                   <label className="flex min-w-0 items-center gap-1.5 text-[12px] text-neutral-500 dark:text-neutral-400">
                     <FileText className="h-3.5 w-3.5 shrink-0" strokeWidth={1.75} />
                     <select
                       value={selectedBusinessRequirementId}
-                      onChange={(event) => setSelectedBusinessRequirementId(event.target.value)}
+                      onChange={(event) => selectBusinessRequirement(event.target.value)}
                       title="将业务需求作为本轮分析上下文"
                       className="max-w-[260px] rounded-md bg-transparent px-1 py-0.5 text-[12px] outline-none focus:bg-neutral-100 dark:focus:bg-neutral-800"
                     >
@@ -1436,7 +1538,7 @@ export function ChatPane(p: Props) {
                     </select>
                   </label>
                 )}
-                {!p.hideBizReq && contractSummary && (
+                {!p.hideBizReq && !p.exploreWorkbench && contractSummary && (
                   <span className="inline-flex min-w-0 max-w-full items-center gap-1 rounded-full bg-emerald-50 px-2 py-0.5 text-[10.5px] text-emerald-700 dark:bg-emerald-950/30 dark:text-emerald-400 sm:max-w-[360px]" title={contractSummary.objective || contractSummary.projectName}>
                     <FileText className="h-3 w-3 shrink-0" />
                     <span className="min-w-0 truncate">{contractSummary.projectName}</span>
@@ -1445,7 +1547,7 @@ export function ChatPane(p: Props) {
                     {contractSummary.fallback && <span className="shrink-0 text-amber-500">·默认</span>}
                   </span>
                 )}
-                {!p.hideBizReq && contractSummaryLoading && selectedBusinessRequirement && (
+                {!p.hideBizReq && !p.exploreWorkbench && contractSummaryLoading && selectedBusinessRequirement && (
                   <Loader2 className="h-3.5 w-3.5 animate-spin text-neutral-400" />
                 )}
               </div>
