@@ -1,0 +1,6 @@
+# Prevent raw or controlled data from entering the code graph or LLM context.
+draw_data/
+clean_data/
+
+# Task Bus state is orchestration metadata, not product code.
+.agentops/

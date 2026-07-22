@@ -1,0 +1,28 @@
+[mcp_servers.codebase_memory]
+command = "/Users/huangbo/.local/share/agentops/tools/codebase-memory-mcp/v0.9.0/codebase-memory-mcp"
+args = []
+enabled = true
+required = false
+startup_timeout_sec = 30
+tool_timeout_sec = 600
+default_tools_approval_mode = "auto"
+enabled_tools = [
+  "index_repository",
+  "search_graph",
+  "query_graph",
+  "trace_path",
+  "get_code_snippet",
+  "get_graph_schema",
+  "get_architecture",
+  "search_code",
+  "list_projects",
+  "index_status",
+  "detect_changes",
+]
+
+[mcp_servers.codebase_memory.env]
+CBM_ALLOWED_ROOT = "/Users/huangbo/Dev/Projects/pi-xanthil"
+CBM_CACHE_DIR = "/Users/huangbo/.cache/agentops/codebase-memory-mcp-trial/pi-xanthil/v0.9.0"
+CBM_MEM_BUDGET_MB = "2048"
+CBM_WORKERS = "4"
+CBM_LOG_LEVEL = "info"
